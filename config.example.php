@@ -28,7 +28,7 @@ $db_prefix = '';               // Table prefix (empty = legacy default)
 $base_url  = 'https://cad.example.org';
 
 // ── Application metadata ────────────────────────────────────────
-define('NEWUI_VERSION', '4.0.0');
+define('NEWUI_VERSION', '4.0.1');
 define('NEWUI_ROOT',    __DIR__);
 define('NEWUI_DEBUG',   false);   // true = dev-only verbose errors
 

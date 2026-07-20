@@ -57,6 +57,52 @@ services:
       # To supply your own config.php instead of the env-generated one, mount it:
       # - ./config.php:/var/www/html/config.php:ro
 
+  # ── Optional voice features: browser push-to-talk over Zello + DMR ──────────
+  #   Start with:   docker compose --profile voice up -d
+  #   These reuse the app image (no extra image to build) and run the PHP Ratchet
+  #   WebSocket relays the radio widget connects to, via the app's /zello-ws and
+  #   /dmr-ws paths (wired in the Dockerfile). Configure Zello credentials + DMR
+  #   channels in Settings first. Leave the proxy ports at their defaults
+  #   (8090 / 8092) so the app's built-in WS routing matches.
+  zello-proxy:
+    profiles: ["voice"]
+    build: .
+    image: ticketscad-newui:local
+    container_name: ticketscad_zello_proxy
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NEWUI_DB_HOST: db
+      NEWUI_DB_NAME: ${NEWUI_DB_NAME:-newui}
+      NEWUI_DB_USER: ${NEWUI_DB_USER:-newui}
+      NEWUI_DB_PASS: ${NEWUI_DB_PASS:-newui}
+    # Override the image entrypoint: proxies only need config.php + the daemon.
+    # They must NOT run the schema install/migrate — the app container owns that
+    # (running it in every container races and corrupts the install).
+    entrypoint: ["sh", "-c", "php /var/www/html/docker-config-gen.php && exec php /var/www/html/proxy/zello-proxy.php"]
+    volumes:
+      - app_keys:/var/www/keys          # shared field-encryption keys (to read stored Zello creds)
+
+  dmr-proxy:
+    profiles: ["voice"]
+    build: .
+    image: ticketscad-newui:local
+    container_name: ticketscad_dmr_proxy
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NEWUI_DB_HOST: db
+      NEWUI_DB_NAME: ${NEWUI_DB_NAME:-newui}
+      NEWUI_DB_USER: ${NEWUI_DB_USER:-newui}
+      NEWUI_DB_PASS: ${NEWUI_DB_PASS:-newui}
+    entrypoint: ["sh", "-c", "php /var/www/html/docker-config-gen.php && exec php /var/www/html/proxy/dmr-proxy.php"]
+    volumes:
+      - app_keys:/var/www/keys
+
 volumes:
   db_data:
   app_uploads:

@@ -3,6 +3,16 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.0.1] - 2026-07-20
+
+### Added
+- Docker: an optional `voice` compose profile that runs the Zello + DMR
+  push-to-talk relays alongside the app — `docker compose --profile voice up -d`
+  — reusing the app image (nothing extra to build). The app's Apache
+  reverse-proxies the browser WebSocket paths (`/zello-ws`, `/dmr-ws`) to the
+  relay containers. See docs/DOCKER.md section 8a. (The hardware DMR/AMBE bridge
+  and Meshtastic still run on the host — they need a physical radio.)
+
 ## [4.0.0] - 2026-07-19
 
 First public release of the NewUI v4 rewrite of TicketsCAD — a from-scratch,

@@ -176,10 +176,48 @@ an internet-facing deployment. For production:
 - **Don't publish the database port.** The compose file keeps MariaDB on the
   internal Docker network only — leave it that way.
 - **Back up `db_data` + `app_keys` on a schedule** (see §4).
-- **Real-time voice/radio features** (Zello proxy, DMR/Meshtastic bridges) run
-  as separate long-lived services and are **not** part of this single-container
-  quick-start. Add them only if you need them — see the docs under `docs/` for
-  each integration.
+- **Voice features are opt-in** via a compose profile — see §8a. The
+  **hardware** radio bridges (native DMR/AMBE to BrandMeister, Meshtastic) need a
+  physical radio/serial device and run on the host, not in this stack — see their
+  docs under `docs/` (`RADIO-DMR-INSTALL.md`, Meshtastic guide).
+
+---
+
+## 8a. Voice features (Zello + DMR push-to-talk)
+
+The browser radio widget's push-to-talk needs a small WebSocket relay per network
+(Zello, DMR). These ship as an **optional compose profile** that **reuses the app
+image** (nothing extra to build) and are off by default:
+
+```bash
+docker compose --profile voice up -d          # app + db + zello-proxy + dmr-proxy
+```
+
+That's it — the app image is already wired to reverse-proxy the browser's
+`wss://<host>/zello-ws` and `wss://<host>/dmr-ws` connections to the two relay
+containers (`zello-proxy` on 8090, `dmr-proxy` on 8092). You do **not** publish
+those ports; they stay on the internal Docker network.
+
+Then, in the app, enable and configure the channels:
+
+1. Log in as an admin → **Settings → Communications** (Zello and/or DMR).
+2. Enter your Zello credentials (Work network + username/password, or Consumer
+   token) and/or your DMR bridge channels. Leave the proxy **ports at their
+   defaults** (8090 / 8092) so the built-in WebSocket routing matches.
+3. Open the radio widget on the dashboard — it connects through the app to the
+   relay. Green status = connected.
+
+Notes:
+- **Behind your own TLS reverse proxy** (Caddy/nginx/Traefik, §8): make sure it
+  WebSocket-upgrades `/zello-ws` and `/dmr-ws` in addition to normal traffic, or
+  push-to-talk won't connect.
+- **Turn it off** by bringing the stack up without the profile again
+  (`docker compose up -d`) — the relays stop; the core CAD is unaffected.
+- The relays read their settings from the same database; they carry **no** state
+  of their own.
+- This profile covers **Zello and the DMR *relay***. The native **DMR/AMBE bridge
+  to BrandMeister** and **Meshtastic** need real radio hardware on the host and
+  are deployed separately (see their docs).
 
 ---
 

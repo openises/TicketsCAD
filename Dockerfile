@@ -11,16 +11,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && docker-php-ext-install -j"$(nproc)" mysqli pdo pdo_mysql gd zip xml mbstring bcmath \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN a2enmod rewrite headers \
+RUN a2enmod rewrite headers proxy proxy_http proxy_wstunnel \
     && echo 'ServerName localhost' > /etc/apache2/conf-available/servername.conf \
     && a2enconf servername
 
 # ── Apache: allow .htaccess (clean-URL API dispatcher) + no dir listing ─────
+#    Plus the optional voice-feature WebSocket paths: when the `voice` compose
+#    profile is running, /zello-ws and /dmr-ws are wstunnel-proxied to the
+#    zello-proxy / dmr-proxy containers. When that profile is NOT up, those two
+#    hostnames don't resolve and only those paths 503 — the core app is unaffected.
 RUN printf '<Directory /var/www/html/>\n\
     Options -Indexes +FollowSymLinks\n\
     AllowOverride All\n\
     Require all granted\n\
-</Directory>\n' > /etc/apache2/conf-available/newui.conf \
+</Directory>\n\
+<Location /zello-ws>\n\
+    ProxyPass        ws://zello-proxy:8090/ keepalive=On\n\
+    ProxyPassReverse ws://zello-proxy:8090/\n\
+</Location>\n\
+<Location /dmr-ws>\n\
+    ProxyPass        ws://dmr-proxy:8092/ keepalive=On\n\
+    ProxyPassReverse ws://dmr-proxy:8092/\n\
+</Location>\n' > /etc/apache2/conf-available/newui.conf \
     && a2enconf newui
 
 # ── PHP runtime configuration ───────────────────────────────────────────────
