@@ -1,0 +1,47 @@
+Tickets CAD NewUI v4 — Software Bill of Materials
+Generated: 2026-06-13 05:58:26
+============================================================
+
+## JS
+  bootstrap                                bundled          MIT  (frontend)
+  gridstack                                bundled          MIT  (frontend)
+  leaflet                                  bundled          BSD-2-Clause  (frontend)
+
+## JS-CDN
+  qrcode                                   1.5.3            MIT  (mesh-console)
+
+## PHP
+  cboden/ratchet                           0.4.4            MIT  (newui)
+  evenement/evenement                      3.0.2            MIT  (newui)
+  firebase/php-jwt                         7.0.3            BSD-3-Clause  (newui)
+  guzzlehttp/psr7                          2.9.0            MIT  (newui)
+  psr/http-factory                         1.1.0            MIT  (newui)
+  psr/http-message                         2.0              MIT  (newui)
+  ralouphie/getallheaders                  3.0.3            MIT  (newui)
+  ratchet/pawl                             0.3.5            MIT  (newui)
+  ratchet/rfc6455                          0.3.1            MIT  (newui)
+  react/cache                              1.2.0            MIT  (newui)
+  react/dns                                1.14.0           MIT  (newui)
+  react/event-loop                         1.6.0            MIT  (newui)
+  react/promise                            3.3.0            MIT  (newui)
+  react/socket                             1.17.0           MIT  (newui)
+  react/stream                             1.4.0            MIT  (newui)
+  symfony/deprecation-contracts            3.6.0            MIT  (newui)
+  symfony/http-foundation                  6.4.35           MIT  (newui)
+  symfony/polyfill-mbstring                1.33.0           MIT  (newui)
+  symfony/polyfill-php83                   1.33.0           MIT  (newui)
+  symfony/routing                          6.4.34           MIT  (newui)
+
+## PYTHON
+  aprslib                                  unpinned         unknown-license  (aprs-listener)
+  meshcore-cli                             unpinned         unknown-license  (mesh-bridge)
+  meshtastic                               unpinned         unknown-license  (mesh-bridge)
+  pymysql                                  unpinned         unknown-license  (aprs-listener)
+  pypubsub                                 unpinned         unknown-license  (mesh-bridge)
+  pyserial                                 unpinned         unknown-license  (mesh-bridge)
+  requests                                 unpinned         unknown-license  (mesh-bridge)
+  requests                                 unpinned         unknown-license  (aprs-listener)
+
+
+Total components: 32
+Machine-readable copy: SBOM.cdx.json (CycloneDX v1.5)

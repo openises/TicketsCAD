@@ -1,0 +1,16 @@
+{
+    "name": "ticketscad/newui",
+    "description": "NewUI v4.0 - Zello proxy and server-side dependencies",
+    "require": {
+        "php": ">=8.0",
+        "cboden/ratchet": "^0.4",
+        "ratchet/pawl": "0.3.5",
+        "firebase/php-jwt": "^7.0",
+        "minishlink/web-push": "^9.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "NewUI\\Proxy\\": "proxy/"
+        }
+    }
+}

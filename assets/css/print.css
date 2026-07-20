@@ -1,0 +1,369 @@
+/**
+ * NewUI v4.0 - Print Stylesheet
+ *
+ * Applied via media="print" on the <link> tag.
+ * Hides navigation chrome, forces light colors, and
+ * produces clean single-column output for paper.
+ */
+
+/* ── Print header: "Tickets CAD — Printed [date]" ── */
+body::before {
+    content: "Tickets CAD \2014  Printed " attr(data-print-date);
+    display: block;
+    font-size: 11pt;
+    font-weight: 600;
+    text-align: center;
+    padding: 4pt 0 8pt;
+    border-bottom: 1pt solid #000;
+    margin-bottom: 8pt;
+}
+
+/* ── Hide non-printable UI chrome ── */
+#appHeader,
+.nav-main,
+.nav-widgets,
+.command-bar,
+#commandBar,
+.grid-stack-item-content .card-header .widget-refresh,
+.grid-stack-item-content .card-header .widget-collapse,
+.grid-stack-item-content .card-header .widget-remove,
+.grid-stack-item-content .card-header .widget-menu,
+.edit-section-btn,
+.edit-cancel-btn,
+.collapse-icon,
+.btn-close,
+.zello-widget,
+#themeToggle,
+#orgSwitcherWrap,
+#assignControl,
+#addNoteForm,
+#statusControls,
+#loadingSpinner,
+#availableRespondersPanel,
+.ui-resizable-handle,
+.gs-resizable-handle,
+[class*="gs-resize"],
+.skip-link {
+    display: none !important;
+}
+
+/* Hide buttons that are only useful on screen */
+button[onclick="window.print()"],
+a[href="index.php"].btn,
+a[href="login.php"].btn,
+#resetLayout,
+#undoLayout,
+#snapshotMenu,
+#widgetToggles,
+.widget-toggle,
+.widget-toggle-reset,
+.filter-btn,
+#btnNewMember,
+#btnEditMember,
+#btnDeleteMember,
+#btnSaveMember,
+#btnCancelEdit,
+#btnClearSearch {
+    display: none !important;
+}
+
+/* ── Force light, readable colors ── */
+html, body {
+    background: #fff !important;
+    color: #000 !important;
+    font-size: 10pt;
+}
+
+/* Override dark-theme variables */
+[data-bs-theme="dark"],
+[data-bs-theme="dark"] body {
+    background: #fff !important;
+    color: #000 !important;
+}
+
+/* Cards and panels */
+.card {
+    border: 1pt solid #ccc !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    break-inside: avoid;
+}
+
+.card-header {
+    background: #f0f0f0 !important;
+    color: #000 !important;
+    border-bottom: 1pt solid #ccc !important;
+    cursor: default !important;
+    padding: 4pt 6pt !important;
+    font-size: 9pt;
+}
+
+.card-body {
+    background: #fff !important;
+    color: #000 !important;
+    padding: 6pt !important;
+}
+
+/* Badges — outline style for print */
+.badge {
+    border: 1pt solid #666 !important;
+    background: transparent !important;
+    color: #000 !important;
+    font-weight: 600;
+}
+
+/* ── Expand all collapsed sections ── */
+.collapse:not(.show) {
+    display: block !important;
+    height: auto !important;
+    visibility: visible !important;
+    overflow: visible !important;
+}
+
+/* ── Tables: clean borders, no hover ── */
+.table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+    font-size: 9pt;
+    color: #000 !important;
+}
+
+.table th,
+.table td {
+    border: 1pt solid #999 !important;
+    padding: 3pt 5pt !important;
+    background: transparent !important;
+    color: #000 !important;
+}
+
+.table th {
+    background: #eee !important;
+    font-weight: 600;
+}
+
+.table tbody tr:hover {
+    background: transparent !important;
+}
+
+.table-hover tbody tr:hover {
+    background: transparent !important;
+}
+
+/* Sortable column indicators — hide in print */
+.sort-icon,
+.sortable::after {
+    display: none !important;
+}
+
+/* ── Map: hide (maps don't render to print) ── */
+#mapContainer,
+#detailMap,
+.widget-map,
+.leaflet-container {
+    display: none !important;
+}
+
+/* ── Dashboard: single-column stacked layout ── */
+.grid-stack {
+    display: block !important;
+    min-height: auto !important;
+    height: auto !important;
+    padding: 0 !important;
+    position: static !important;
+}
+
+.grid-stack-item {
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin-bottom: 8pt !important;
+    transform: none !important;
+}
+
+.grid-stack-item-content {
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    border: none !important;
+}
+
+.grid-stack-item-content .card {
+    height: auto !important;
+}
+
+.grid-stack-item-content .card-body {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+}
+
+/* Widget card headers — readable in print */
+.grid-stack-item-content .card-header {
+    background: #e8e8e8 !important;
+    color: #000 !important;
+    border-bottom: 1pt solid #999 !important;
+    cursor: default !important;
+}
+
+/* ── Page breaks ── */
+.grid-stack-item {
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+
+table {
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+
+tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+
+/* Break between major sections */
+.col-lg-7,
+.col-lg-5,
+.col-xl-6 {
+    break-before: auto;
+}
+
+/* ── Incident detail page: clean layout ── */
+.container-fluid {
+    padding: 0 !important;
+    max-width: 100%;
+}
+
+/* Stack columns for incident detail */
+.row.g-3 {
+    display: block !important;
+}
+
+.row.g-3 > [class*="col-"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: none !important;
+    padding: 0 !important;
+    margin-bottom: 6pt !important;
+}
+
+/* Remove sticky positioning */
+.sticky-top {
+    position: static !important;
+}
+
+/* ── Roster page ── */
+#rosterTable {
+    font-size: 8pt;
+}
+
+#detailView .card {
+    margin-bottom: 6pt !important;
+}
+
+/* Hide edit form in print */
+#editView {
+    display: none !important;
+}
+
+/* Hide search input chrome */
+.input-group-text {
+    display: none !important;
+}
+
+#searchInput {
+    border: 1pt solid #999 !important;
+}
+
+/* Search & filter row — hide in print */
+.card:has(#searchInput) {
+    display: none !important;
+}
+
+/* ── Modals: hide ── */
+.modal,
+.modal-backdrop {
+    display: none !important;
+}
+
+/* ── Misc helpers ── */
+.text-body-secondary,
+.text-body-tertiary {
+    color: #555 !important;
+}
+
+.text-primary {
+    color: #000 !important;
+}
+
+.text-danger {
+    color: #333 !important;
+}
+
+.text-success {
+    color: #333 !important;
+}
+
+.text-warning {
+    color: #333 !important;
+}
+
+.text-info {
+    color: #333 !important;
+}
+
+/* Links: show URL after text */
+a[href]::after {
+    content: none; /* Don't clutter printout with URLs */
+}
+
+a {
+    color: #000 !important;
+    text-decoration: none !important;
+}
+
+/* Stat cards in Statistics widget */
+.stat-card {
+    border: 1pt solid #ccc !important;
+    background: #fafafa !important;
+}
+
+.stat-value {
+    color: #000 !important;
+}
+
+.stat-label {
+    color: #555 !important;
+}
+
+/* Form-section headers (collapsible card headers) */
+.form-section {
+    cursor: default !important;
+}
+
+/* Spinner — always hide */
+.spinner-border {
+    display: none !important;
+}
+
+/* Alert area — hide */
+#alertArea {
+    display: none !important;
+}
+
+/* Empty detail state — hide */
+#detailEmpty {
+    display: none !important;
+}
+
+/* Protocol panel — show if visible */
+#protocolPanel.d-none {
+    display: none !important;
+}
+
+#protocolPanel:not(.d-none) {
+    display: block !important;
+    break-inside: avoid;
+}

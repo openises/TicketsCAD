@@ -1,0 +1,51 @@
+# NewUI v4.0 — Zello WebSocket proxy systemd unit (Linux production).
+#
+# Install:
+#   1. Edit the User/Group/WorkingDirectory paths below to match your install.
+#   2. sudo cp proxy/newui-zello-proxy.service.example /etc/systemd/system/newui-zello-proxy.service
+#   3. sudo mkdir -p /var/log/newui && sudo chown www-data:www-data /var/log/newui
+#   4. sudo systemctl daemon-reload
+#   5. sudo systemctl enable --now newui-zello-proxy.service
+#
+# Logs:  journalctl -u newui-zello-proxy   (also tee'd to /var/log/newui/zello-proxy.log)
+# Stop:  sudo systemctl stop  newui-zello-proxy
+# Status: sudo systemctl status newui-zello-proxy
+#
+# The proxy listens on TCP 8090 by default; configure via Settings > Integrations
+# > Zello in the NewUI admin UI.
+
+[Unit]
+Description=NewUI Zello WebSocket Proxy
+Documentation=https://github.com/openises/TicketsCAD/blob/main/proxy/zello-proxy.php
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/newui
+ExecStart=/usr/bin/php /var/www/newui/proxy/zello-proxy.php
+Restart=on-failure
+RestartSec=5s
+StandardOutput=append:/var/log/newui/zello-proxy.log
+StandardError=append:/var/log/newui/zello-proxy.log
+
+# Hardening — the proxy only needs network + the NewUI install dir.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+# cache/ MUST be writable: the proxy saves voice recordings to
+# cache/zello-audio/*.ogg for replay. Without it, ProtectSystem=strict makes
+# the write fail ("Read-only file system") and replay shows "playback error".
+ReadWritePaths=/var/www/newui/proxy /var/www/newui/cache /var/log/newui /tmp
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,68 @@
+/* ── Incident List Screen ─────────────────────────────────────── */
+
+/* Sortable column headers */
+.sortable {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+.sortable:hover {
+    background-color: rgba(var(--bs-primary-rgb), 0.08);
+}
+
+/* Severity color stripe */
+.sev-stripe {
+    display: inline-block;
+    width: 4px;
+    height: 1.1em;
+    border-radius: 2px;
+    vertical-align: middle;
+}
+
+/* Result rows */
+.incident-row:hover {
+    background-color: rgba(var(--bs-primary-rgb), 0.06);
+}
+
+/* Compact table cells */
+#incidentTable td {
+    vertical-align: middle;
+    font-size: 0.82rem;
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+}
+#incidentTable th {
+    font-size: 0.78rem;
+}
+
+/* Status tabs */
+.status-tab {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s, color 0.15s;
+}
+.status-tab:hover:not(.active) {
+    background-color: rgba(var(--bs-primary-rgb), 0.08);
+}
+
+/* Auto-refresh countdown */
+#refreshCountdown {
+    font-size: 0.75rem;
+    color: var(--bs-body-color);
+    opacity: 0.6;
+}
+
+/* Print styles */
+@media print {
+    header, #themeToggle, .navbar, .btn, #paginationRow,
+    #filterBar, #autoRefreshToggle, #refreshCountdown,
+    #alertArea { display: none !important; }
+    .card { break-inside: avoid; border: 1px solid #ccc !important; }
+    body { font-size: 10pt; }
+}
+
+/* Responsive */
+@media (max-width: 767.98px) {
+    #incidentTable { font-size: 0.72rem; }
+    #incidentTable td { padding: 0.25rem 0.35rem; }
+}

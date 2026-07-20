@@ -1,0 +1,86 @@
+/**
+ * NewUI v4.0 - Constituents Page Styles
+ */
+
+.constituent-row {
+    cursor: pointer;
+}
+
+.constituent-row:hover {
+    background-color: rgba(var(--bs-primary-rgb), 0.05) !important;
+}
+
+.constituent-row.table-active {
+    background-color: rgba(var(--bs-warning-rgb), 0.15) !important;
+    box-shadow: inset 4px 0 0 var(--bs-warning);
+}
+
+#detailCard, #editCard {
+    position: sticky;
+    top: 80px;
+}
+
+/* Compact form in edit mode */
+#constituentForm .form-label {
+    font-weight: 600;
+}
+
+#constituentsTable th {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+}
+
+#constituentsTable td {
+    vertical-align: middle;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Import wizard step indicators */
+.import-step-indicator {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2rem 0.6rem;
+    margin-right: 0.5rem;
+    border-radius: 0.25rem;
+    color: var(--bs-body-color);
+    opacity: 0.5;
+    font-weight: 500;
+}
+
+.import-step-indicator.active {
+    opacity: 1;
+    background-color: rgba(var(--bs-primary-rgb), 0.1);
+    color: var(--bs-primary);
+}
+
+/* Mapping table selects */
+#mappingTable .form-select-sm {
+    min-width: 140px;
+}
+
+/* Conflict cards */
+#conflictsList .card-header {
+    cursor: pointer;
+}
+
+#conflictsList .card-header:hover {
+    background-color: rgba(var(--bs-primary-rgb), 0.05);
+}
+
+/* Merge table pick buttons */
+#mergeBody .btn-group .btn.active {
+    font-weight: 700;
+}
+
+/* Print */
+@media print {
+    #appHeader, #themeToggle, #detailPanel, #paginationFooter, #btnNew, #searchInput,
+    #btnExport, #btnImport, #btnMerge { display: none !important; }
+    #listPanel { width: 100% !important; flex: 0 0 100% !important; max-width: 100% !important; }
+}

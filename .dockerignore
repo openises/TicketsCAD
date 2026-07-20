@@ -1,0 +1,29 @@
+# Build context excludes — keep the image lean and never bake in secrets.
+.git
+.github
+.gitignore
+.dockerignore
+Dockerfile
+docker-compose*.yml
+.env
+.env.*
+
+# Secrets / instance state — MUST NOT be copied into the image.
+config.php
+keys/
+
+# Rebuilt inside the image (composer install) or supplied at runtime.
+vendor/
+node_modules/
+
+# Runtime data — provided by mounted volumes, not the image.
+cache/*
+uploads/*
+*.log
+
+# Development-only material not needed at runtime.
+specs/
+coordination/
+docs/
+tests/
+.phpunit.result.cache

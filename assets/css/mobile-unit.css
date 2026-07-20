@@ -1,0 +1,333 @@
+/**
+ * NewUI v4.0 - Mobile Unit Interface Styles
+ *
+ * Mobile-first, touch-friendly layout for field responders.
+ * Max-width 480px centered, large touch targets (min 44px).
+ */
+
+/* ── Base Layout ──────────────────��──────────────────────── */
+
+body {
+    margin: 0;
+    padding: 0;
+    background: var(--bs-body-bg);
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: contain;
+}
+
+.mobile-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--bs-body-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+}
+
+.mobile-main {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 0.75rem;
+}
+
+/* ── Cards ───��───────────────────────────────────────────── */
+
+.mobile-card {
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.75rem;
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.mobile-section-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--bs-secondary);
+    padding: 0.5rem 0.25rem 0.25rem;
+}
+
+/* ── Buttons ─────────────────────────────────────────────── */
+
+.btn-mobile {
+    min-height: 60px;
+    font-size: 1.1rem;
+    font-weight: 500;
+    border-radius: 0.625rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+}
+
+/* ── Status Grid ────���────────────────────────────────────── */
+
+.status-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+}
+
+.status-btn {
+    min-height: 60px;
+    border: 2px solid var(--bs-border-color);
+    border-radius: 0.625rem;
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.5rem;
+    touch-action: manipulation;
+    transition: transform 0.1s, box-shadow 0.15s;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.status-btn:active {
+    transform: scale(0.96);
+}
+
+.status-btn.active {
+    box-shadow: 0 0 0 3px var(--status-color, var(--bs-primary));
+    border-color: var(--status-color, var(--bs-primary));
+    background: color-mix(in srgb, var(--status-color, var(--bs-primary)) 12%, var(--bs-body-bg));
+}
+
+.status-btn .status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* ── Status color mappings (for well-known statuses) ��────── */
+
+.status-btn[data-dispatch="0"] {
+    --status-color: #198754;
+}
+
+.status-btn[data-dispatch="2"] {
+    --status-color: #dc3545;
+}
+
+/* ── Assignment Card ─────────────────��───────────────────── */
+
+#assignmentCard .badge {
+    font-size: 0.8rem;
+}
+
+#quickNoteInput {
+    min-height: 44px;
+    font-size: 1rem;
+}
+
+#btnAddNote {
+    min-width: 48px;
+    min-height: 44px;
+}
+
+/* ── Mileage ───────────────────────────────────────���─────── */
+
+#mileageCard input[type="number"] {
+    min-height: 44px;
+    font-size: 1.1rem;
+}
+
+/* ── GPS Toggle ──────────────────────────────────────────── */
+
+.form-switch-lg .form-check-input {
+    cursor: pointer;
+}
+
+/* ── Recent Assignments List ─────────────────────────────── */
+
+.recent-item {
+    padding: 0.625rem 0;
+    border-bottom: 1px solid var(--bs-border-color-translucent);
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+.recent-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.recent-item:first-child {
+    padding-top: 0;
+}
+
+.recent-item .recent-type {
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.recent-item .recent-addr {
+    font-size: 0.8rem;
+    color: var(--bs-secondary);
+}
+
+.recent-item .recent-time {
+    font-size: 0.75rem;
+    color: var(--bs-tertiary-color);
+    white-space: nowrap;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+/* ── Status Badge in Header ───────────────────────────��──── */
+
+#mobileStatusBadge {
+    font-size: 0.7rem;
+    min-width: 60px;
+    text-align: center;
+}
+
+/* ── Toast ────────────────────────────────────────────────── */
+
+#mobileToast {
+    min-width: 280px;
+    border-radius: 0.625rem;
+}
+
+#mobileToast.toast-success {
+    background: var(--bs-success);
+    color: #fff;
+}
+
+#mobileToast.toast-error {
+    background: var(--bs-danger);
+    color: #fff;
+}
+
+#mobileToast.toast-info {
+    background: var(--bs-info);
+    color: #000;
+}
+
+/* ── Refresh Spinner ─���───────────────────────────────────── */
+
+#btnRefresh.spinning i {
+    animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* ── Responsive: full width below 480 ────────────────────── */
+
+@media (max-width: 480px) {
+    .mobile-main {
+        padding: 0.5rem;
+    }
+
+    .mobile-card {
+        border-radius: 0.5rem;
+    }
+
+    .status-grid {
+        gap: 0.375rem;
+    }
+
+    .status-btn {
+        min-height: 54px;
+        font-size: 0.85rem;
+    }
+}
+
+/* ── Dark mode adjustments ────────���──────────────────────── */
+
+[data-bs-theme="dark"] .mobile-header {
+    background: rgba(var(--bs-dark-rgb), 0.95);
+}
+
+[data-bs-theme="dark"] .status-btn {
+    border-color: var(--bs-border-color);
+}
+
+/* ── No hover states (touch only) ──���─────────────────────── */
+
+@media (hover: none) {
+    .status-btn:hover {
+        transform: none;
+        box-shadow: none;
+    }
+}
+
+/* ── Print hidden ───────────────────���────────────────────── */
+
+@media print {
+    .mobile-header,
+    #btnRefresh,
+    #gpsToggle,
+    .btn-mobile {
+        display: none !important;
+    }
+}
+
+/* ── PAR (Personnel Accountability) floating banner ───────────────────────────
+   Copied from assets/css/mobile.css so mobile.php — which loads ONLY this file
+   (mobile-unit.css), not mobile.css — styles #parBanner when a PAR cycle is
+   pending. Without these rules the banner un-hid as an unstyled static block.
+   mobile.css is shared by 5 other pages, so these are COPIED (kept in sync),
+   not moved. Keep both copies aligned. */
+.par-banner {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 1080;
+    background: linear-gradient(180deg, #fff3cd 0%, #ffeaa7 100%);
+    border-bottom: 3px solid #f0a500;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+    animation: par-slide-down 0.4s ease-out;
+}
+[data-bs-theme="dark"] .par-banner {
+    background: linear-gradient(180deg, #4a3500 0%, #5e4500 100%);
+    border-bottom-color: #ffc107;
+}
+@keyframes par-slide-down {
+    from { transform: translateY(-100%); opacity: 0; }
+    to   { transform: translateY(0);     opacity: 1; }
+}
+.par-banner-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+}
+.par-banner-icon { font-size: 1.5rem; color: #b58400; }
+[data-bs-theme="dark"] .par-banner-icon { color: #ffc107; }
+.par-banner-text { flex: 1 1 auto; min-width: 0; }
+.par-banner-title { font-weight: 600; font-size: 0.95rem; color: #5c4300; }
+[data-bs-theme="dark"] .par-banner-title { color: #ffe69c; }
+.par-banner-sub   { font-size: 0.8rem; color: #8a6800; }
+[data-bs-theme="dark"] .par-banner-sub { color: #d4b266; }
+.par-banner-ack {
+    background: #f0a500; color: #fff;
+    border: none; border-radius: 6px;
+    padding: 0.4rem 0.75rem;
+    font-weight: 600; font-size: 0.9rem;
+    flex-shrink: 0;
+}
+.par-banner-ack:hover { background: #d49000; }
+.par-banner-form {
+    background: rgba(255,255,255,0.7);
+    border-top: 1px solid rgba(240, 165, 0, 0.3);
+}
+[data-bs-theme="dark"] .par-banner-form {
+    background: rgba(0,0,0,0.3);
+    border-top-color: rgba(255, 193, 7, 0.3);
+}
+body.par-banner-active .mobile-main { padding-top: 4rem; }

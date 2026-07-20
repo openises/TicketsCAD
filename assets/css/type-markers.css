@@ -1,0 +1,89 @@
+/*
+ * Shared unit/facility map markers (GH #82 type icons + #76 name labels).
+ * Rendered by window.TypeIcons.markerDivIcon(). One look across every map:
+ * a status-coloured badge with the configured type glyph, and an optional
+ * always-on name label so the board reads at a glance without clicking.
+ */
+
+.ti-marker-divicon {
+    background: transparent;
+    border: 0;
+}
+
+.ti-marker {
+    position: relative;
+    width: 24px;
+    height: 24px;
+    line-height: 0;
+}
+
+.ti-marker-glyph {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    font-size: 13px;
+    /* White ring + soft drop shadow so a coloured badge reads on any basemap. */
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.95), 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+.ti-marker-glyph .bi { line-height: 1; }
+
+/* Facilities are square-ish so they're distinguishable from round unit badges. */
+.ti-marker-square .ti-marker-glyph { border-radius: 6px; }
+
+/* Stale location — dim the badge (matches the dot-dimming behaviour it replaces). */
+.ti-marker-stale .ti-marker-glyph { opacity: 0.5; }
+
+/* Always-on name label (#76) — floats to the right of the badge so it never
+   shifts the marker's geographic anchor. */
+.ti-marker-label {
+    position: absolute;
+    left: 29px;
+    top: 50%;
+    transform: translateY(-50%);
+    max-width: 130px;
+    padding: 0 5px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.5;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #111;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+}
+
+/* On the dark full-screen EOC display, flip the label to a dark chip. */
+[data-bs-theme="dark"] .ti-marker-label,
+.eoc-body .ti-marker-label {
+    color: #f1f5f9;
+    background: rgba(15, 23, 42, 0.82);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+/* GH #76 — label declutter: hide the always-on names when zoomed out (auto)
+   or when the user toggles names off. The glyph badge stays; only the name
+   chip is suppressed. */
+.ti-labels-hidden .ti-marker-label { display: none; }
+
+/* Toggle control (top-right of each map) to show/hide names. */
+.ti-label-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    font-size: 15px;
+    color: var(--bs-body-color, #222);
+    background: var(--bs-body-bg, #fff);
+    text-decoration: none;
+}
+.ti-label-toggle.ti-label-off { opacity: 0.45; }

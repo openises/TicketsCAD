@@ -1,0 +1,115 @@
+/* ── Units / Responders ─────────────────────────────────────── */
+
+/* Collapsible section headers */
+.form-section {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s;
+}
+.form-section:hover {
+    background-color: rgba(var(--bs-emphasis-color-rgb), 0.05);
+}
+.form-section .collapse-icon {
+    transition: transform 0.2s;
+}
+.form-section[aria-expanded="false"] .collapse-icon,
+.form-section.collapsed .collapse-icon {
+    transform: rotate(-90deg);
+}
+
+/* Units table */
+.unit-row:hover {
+    background-color: rgba(var(--bs-primary-rgb), 0.08) !important;
+}
+
+#unitsTable th {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--bs-body-color);
+    border-bottom: 2px solid var(--bs-border-color);
+    white-space: nowrap;
+}
+
+/* Status badges in table */
+#unitsTable .badge {
+    font-size: 0.65rem;
+    padding: 0.2em 0.5em;
+}
+
+/* Map */
+#unitsMap,
+#unitMap,
+#editMap {
+    border-radius: 0 0 0.375rem 0.375rem;
+    z-index: 0;
+}
+
+/* Header card accent */
+#headerCard .card-body {
+    border-left: 4px solid var(--bs-primary);
+}
+
+/* Status buttons */
+.status-btn {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.6rem;
+}
+.status-btn.active {
+    outline: 2px solid var(--bs-primary);
+    outline-offset: 1px;
+}
+
+/* Stats cards */
+#statTotalCalls,
+#statAvgResponse,
+#statThisMonth {
+    color: var(--bs-primary);
+}
+
+/* Filter buttons */
+#statusFilter .btn {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.5rem;
+}
+
+/* Search input */
+#unitSearch {
+    max-width: 100%;
+}
+
+/* Dark mode Leaflet overrides */
+[data-bs-theme="dark"] .leaflet-control-zoom a {
+    background-color: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    border-color: var(--bs-border-color);
+}
+[data-bs-theme="dark"] .leaflet-popup-content-wrapper,
+[data-bs-theme="dark"] .leaflet-popup-tip {
+    background-color: var(--bs-body-bg);
+    color: var(--bs-body-color);
+}
+[data-bs-theme="dark"] .leaflet-control-attribution {
+    background-color: rgba(var(--bs-body-bg-rgb), 0.7);
+    color: var(--bs-body-color);
+}
+
+/* Print styles */
+@media print {
+    header, #themeToggle, .btn-outline-secondary, .btn-outline-danger,
+    .btn-outline-primary, .btn-success, #mainMenu, .navbar,
+    #statusFilter, .status-btn, #statusNotes,
+    #btnSave, #btnSaveBottom, #btnCancel, #btnDelete,
+    #deleteSection { display: none !important; }
+    #unitMap, #unitsMap { height: 250px !important; }
+    .card { break-inside: avoid; }
+    .collapse:not(.show) { display: block !important; height: auto !important; }
+    .sticky-top { position: static !important; }
+    body { font-size: 11pt; }
+}
+
+/* Responsive */
+@media (max-width: 991.98px) {
+    .sticky-top { position: static !important; }
+    #unitsMap, #unitMap, #editMap { height: 300px !important; }
+}

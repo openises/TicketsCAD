@@ -1,0 +1,37 @@
+/*
+ * Phase 10 Security Compliance Dashboard styling.
+ * Keeps badge colors visually distinct on both light + dark themes.
+ */
+
+#complianceContent .display-6 {
+    font-weight: 600;
+    line-height: 1.1;
+}
+
+#complianceContent .badge {
+    font-size: 0.75rem;
+}
+
+#complianceContent .card-header {
+    font-weight: 600;
+    background-color: var(--bs-body-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+}
+
+#complianceContent .table > :not(caption) > * > * {
+    padding: 0.4rem 0.5rem;
+}
+
+#complianceContent .table {
+    margin-bottom: 0;
+}
+
+/* Compact row styling so the dashboard fits comfortably without scroll
+   on a 1080p laptop screen. */
+#complianceContent .table small {
+    line-height: 1.2;
+}
+
+#complianceContent .col-md-2 .display-6 {
+    font-size: 2rem;
+}

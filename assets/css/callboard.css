@@ -1,0 +1,421 @@
+/**
+ * NewUI v4.0 - Call Board Styles
+ *
+ * Optimized for wall-mounted dispatch monitors.
+ * Large fonts, high contrast, dark theme default.
+ * Color-coded elapsed time progression.
+ */
+
+/* ── Base Layout ─────────────────────────────────────────────────── */
+html, body {
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#appHeader {
+    flex-shrink: 0;
+}
+
+#cbContainer {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 8px 12px;
+}
+
+/* ── Header Bar ──────────────────────────────────────────────────── */
+.cb-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 2px solid var(--bs-border-color);
+    margin-bottom: 8px;
+}
+
+.cb-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.cb-header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.cb-clock {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 1.6rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--bs-emphasis-color);
+}
+
+.cb-date {
+    font-size: 0.85rem;
+    color: var(--bs-secondary-color);
+    white-space: nowrap;
+}
+
+.cb-count-badge {
+    font-size: 0.9rem;
+    padding: 4px 10px;
+}
+
+/* ── Table Styles ────────────────────────────────────────────────── */
+.cb-table {
+    font-size: 1rem;
+    margin-bottom: 0;
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+}
+
+.cb-table thead th {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    padding: 6px 10px;
+    border-bottom: 2px solid var(--bs-border-color);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--bs-body-bg);
+}
+
+.cb-table tbody td {
+    padding: 6px 10px;
+    vertical-align: middle;
+    border-bottom: 1px solid var(--bs-border-color-translucent);
+}
+
+.cb-table tbody tr {
+    transition: background 0.15s;
+}
+
+.cb-table tbody tr:hover {
+    background: rgba(var(--bs-primary-rgb), 0.1) !important;
+}
+
+/* ── Ticket Link ─────────────────────────────────────────────────── */
+.cb-ticket-link {
+    font-weight: 600;
+    text-decoration: none;
+    color: var(--bs-link-color);
+    font-size: 1.05rem;
+}
+
+.cb-ticket-link:hover {
+    text-decoration: underline;
+}
+
+/* ── Incident Type with Color Dot ────────────────────────────────── */
+.cb-type-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* ── Severity Badges ─────────────────────────────────────────────── */
+.cb-sev-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-align: center;
+    min-width: 60px;
+}
+
+.cb-sev-0 {
+    background-color: #198754;
+    color: #fff;
+}
+
+.cb-sev-1 {
+    background-color: #ffc107;
+    color: #000;
+}
+
+.cb-sev-2 {
+    background-color: #dc3545;
+    color: #fff;
+}
+
+/* ── Units Column ────────────────────────────────────────────────── */
+.cb-units-count {
+    font-weight: 700;
+    font-size: 1.1rem;
+}
+
+.cb-units-names {
+    font-size: 0.75rem;
+    color: var(--bs-secondary-color);
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ── Status Badges ───────────────────────────────────────────────── */
+.cb-status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    min-width: 80px;
+    text-align: center;
+}
+
+.cb-status-open {
+    background-color: #0d6efd;
+    color: #fff;
+}
+
+.cb-status-dispatched {
+    background-color: #6f42c1;
+    color: #fff;
+}
+
+.cb-status-enroute {
+    background-color: #fd7e14;
+    color: #fff;
+}
+
+.cb-status-onscene {
+    background-color: #198754;
+    color: #fff;
+}
+
+.cb-status-closed {
+    background-color: #6c757d;
+    color: #fff;
+}
+
+/* ── Elapsed Time Colors ─────────────────────────────────────────── */
+.cb-elapsed {
+    font-weight: 700;
+    font-size: 1.1rem;
+    font-family: 'Courier New', Courier, monospace;
+    white-space: nowrap;
+    padding: 2px 8px;
+    border-radius: 4px;
+    display: inline-block;
+    min-width: 70px;
+    text-align: center;
+}
+
+/* Green: < 5 minutes */
+.cb-elapsed-green {
+    background-color: #198754;
+    color: #fff;
+}
+
+/* Yellow: 5-15 minutes */
+.cb-elapsed-yellow {
+    background-color: #ffc107;
+    color: #000;
+}
+
+/* Orange: 15-30 minutes */
+.cb-elapsed-orange {
+    background-color: #fd7e14;
+    color: #fff;
+}
+
+/* Red: > 30 minutes */
+.cb-elapsed-red {
+    background-color: #dc3545;
+    color: #fff;
+}
+
+/* Dark red flashing: > 60 minutes */
+.cb-elapsed-critical {
+    background-color: #8b0000;
+    color: #fff;
+    animation: cb-flash 1s ease-in-out infinite;
+}
+
+@keyframes cb-flash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* ── Row Severity Accent ─────────────────────────────────────────── */
+.cb-row-sev-0 {
+    border-left: 4px solid #198754;
+}
+
+.cb-row-sev-1 {
+    border-left: 4px solid #ffc107;
+}
+
+.cb-row-sev-2 {
+    border-left: 4px solid #dc3545;
+}
+
+/* ── Timestamp ───────────────────────────────────────────────────── */
+.cb-timestamp {
+    font-size: 0.85rem;
+    white-space: nowrap;
+    color: var(--bs-secondary-color);
+}
+
+/* ── Progression Column ──────────────────────────────────────────── */
+.cb-progression {
+    font-size: 0.8rem;
+}
+
+.cb-progression-step {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-right: 2px;
+    font-size: 0.7rem;
+}
+
+.cb-progression-active {
+    font-weight: 700;
+}
+
+/* ── Filter Bar ──────────────────────────────────────────────────── */
+.cb-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.cb-filter-bar .form-select {
+    width: auto;
+    min-width: 120px;
+    font-size: 0.85rem;
+}
+
+/* ── No Incidents Message ────────────────────────────────────────── */
+.cb-empty {
+    text-align: center;
+    padding: 40px 20px;
+    font-size: 1.4rem;
+    color: var(--bs-secondary-color);
+}
+
+.cb-empty i {
+    font-size: 3rem;
+    display: block;
+    margin-bottom: 12px;
+}
+
+/* ── New Incident Highlight ──────────────────────────────────────── */
+.cb-row-new {
+    animation: cb-highlight 2s ease-out;
+}
+
+@keyframes cb-highlight {
+    0% { background-color: rgba(13, 110, 253, 0.35); }
+    100% { background-color: transparent; }
+}
+
+/* ── Responsive ──────────────────────────────────────────────────── */
+
+/* Large displays (4K) — bigger fonts */
+@media (min-width: 2560px) {
+    .cb-table {
+        font-size: 1.3rem;
+    }
+
+    .cb-table thead th {
+        font-size: 1rem;
+        padding: 10px 14px;
+    }
+
+    .cb-table tbody td {
+        padding: 10px 14px;
+    }
+
+    .cb-clock {
+        font-size: 2.2rem;
+    }
+
+    .cb-elapsed {
+        font-size: 1.4rem;
+        min-width: 90px;
+    }
+
+    .cb-ticket-link {
+        font-size: 1.3rem;
+    }
+}
+
+/* Medium screens */
+@media (max-width: 1200px) {
+    .cb-units-names {
+        display: none;
+    }
+}
+
+/* Small screens */
+@media (max-width: 768px) {
+    .cb-table {
+        font-size: 0.85rem;
+    }
+
+    .cb-table thead th,
+    .cb-table tbody td {
+        padding: 4px 6px;
+    }
+
+    .cb-clock {
+        font-size: 1.2rem;
+    }
+
+    .cb-elapsed {
+        font-size: 0.9rem;
+    }
+
+    .cb-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+/* ── Print ───────────────────────────────────────────────────────── */
+@media print {
+    .cb-header-right .btn,
+    .cb-filter-bar {
+        display: none !important;
+    }
+
+    .cb-elapsed-critical {
+        animation: none;
+    }
+
+    .cb-table {
+        font-size: 10pt;
+    }
+
+    #appHeader {
+        display: none !important;
+    }
+
+    #cbContainer {
+        overflow: visible;
+    }
+}

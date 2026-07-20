@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Phase 71 — Navigate Launcher unit tests</title>
+<style>
+  body { font-family: monospace; padding: 1em; }
+  .pass { color: green; } .fail { color: red; font-weight: bold; }
+</style>
+</head>
+<body>
+<h1>Phase 71 — Navigate Launcher</h1>
+<div id="results"></div>
+
+<!-- The shim under test. Loaded standalone — no Leaflet or PHP needed. -->
+<script src="../assets/js/navigate-launcher.js"></script>
+<script>
+(function () {
+    var out = document.getElementById('results');
+    var tests = 0, passed = 0, failed = 0;
+
+    function check(name, cond, detail) {
+        tests++;
+        var el = document.createElement('div');
+        if (cond) {
+            passed++;
+            el.className = 'pass';
+            el.textContent = 'PASS: ' + name;
+        } else {
+            failed++;
+            el.className = 'fail';
+            el.textContent = 'FAIL: ' + name + (detail ? ' — ' + detail : '');
+        }
+        out.appendChild(el);
+    }
+
+    // Stub navigator.userAgent so we can test each platform branch.
+    function withUA(ua, fn) {
+        var orig = Object.getOwnPropertyDescriptor(navigator, 'userAgent');
+        Object.defineProperty(navigator, 'userAgent', { get: function () { return ua; }, configurable: true });
+        try { fn(); }
+        finally {
+            if (orig) Object.defineProperty(navigator, 'userAgent', orig);
+            else delete navigator.userAgent;
+        }
+    }
+
+    // iOS app list
+    withUA('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)', function () {
+        var apps = NavigateLauncher.appsForPlatform();
+        check('iOS: 4 apps offered (Apple, GMaps, Waze, Web)', apps.length === 4, 'got ' + apps.length);
+        check('iOS: apple first', apps[0].id === 'apple');
+        check('iOS: apple URL uses maps:// scheme',
+            apps[0].build(44.97, -93.26) === 'maps://?daddr=44.97,-93.26');
+        check('iOS: gmaps app uses comgooglemaps://',
+            apps[1].build(44.97, -93.26) === 'comgooglemaps://?daddr=44.97,-93.26&directionsmode=driving');
+        check('iOS: waze uses waze:// with navigate=yes',
+            apps[2].build(44.97, -93.26) === 'waze://?ll=44.97,-93.26&navigate=yes');
+        check('iOS: web fallback last and uses https',
+            apps[3].id === 'web' &&
+            apps[3].build(44.97, -93.26).indexOf('https://www.google.com/maps/dir/') === 0);
+    });
+
+    // Android app list
+    withUA('Mozilla/5.0 (Linux; Android 13; Pixel 7)', function () {
+        var apps = NavigateLauncher.appsForPlatform();
+        check('Android: 4 apps offered (default, GMaps, Waze, Web)', apps.length === 4);
+        check('Android: default-nav uses geo: intent',
+            apps[0].id === 'android-default' &&
+            apps[0].build(44.97, -93.26).indexOf('geo:44.97,-93.26?q=44.97,-93.26') === 0);
+        check('Android: gmaps uses google.navigation:',
+            apps[1].build(44.97, -93.26) === 'google.navigation:q=44.97,-93.26&mode=d');
+        check('Android: waze same scheme as iOS',
+            apps[2].build(44.97, -93.26) === 'waze://?ll=44.97,-93.26&navigate=yes');
+    });
+
+    // Desktop fallback — only web
+    withUA('Mozilla/5.0 (Windows NT 10.0; Win64) Chrome/120', function () {
+        var apps = NavigateLauncher.appsForPlatform();
+        check('Desktop: 1 app offered (web only)', apps.length === 1);
+        check('Desktop: web link',
+            apps[0].build(44.97, -93.26) === 'https://www.google.com/maps/dir/?api=1&destination=44.97,-93.26');
+    });
+
+    // Address embedded in Android geo: intent
+    withUA('Mozilla/5.0 (Linux; Android 13)', function () {
+        var apps = NavigateLauncher.appsForPlatform();
+        var url = apps[0].build(44.97, -93.26, '1100 Hospital Dr');
+        check('Android geo: includes URL-encoded address',
+            url.indexOf('q=44.97,-93.26(1100%20Hospital%20Dr)') !== -1, 'got ' + url);
+    });
+
+    // localStorage preference round-trip
+    NavigateLauncher.clearPreference();
+    check('clearPreference removes stored choice',
+        localStorage.getItem('navAppChoice') === null);
+
+    // Public API surface
+    check('exposes launch()', typeof NavigateLauncher.launch === 'function');
+    check('exposes attach()', typeof NavigateLauncher.attach === 'function');
+    check('exposes appsForPlatform()', typeof NavigateLauncher.appsForPlatform === 'function');
+
+    var summary = document.createElement('h2');
+    summary.className = failed === 0 ? 'pass' : 'fail';
+    summary.textContent = passed + '/' + tests + ' passed' + (failed ? ' (' + failed + ' failed)' : '');
+    out.insertBefore(summary, out.firstChild);
+})();
+</script>
+</body>
+</html>

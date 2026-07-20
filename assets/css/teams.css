@@ -1,0 +1,75 @@
+/**
+ * NewUI v4.0 - Teams Page Styles
+ */
+
+/* Team list: compact rows */
+#teamsTable tbody tr:hover {
+    cursor: pointer;
+}
+
+#teamsTable th {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-bottom-width: 2px;
+    white-space: nowrap;
+    user-select: none;
+}
+
+#teamsTable td {
+    font-size: 0.82rem;
+    vertical-align: middle;
+    padding-top: 0.4rem;
+    padding-bottom: 0.4rem;
+}
+
+/* Detail card headers */
+#detailView .card-header .fw-semibold {
+    font-size: 0.95rem;
+}
+
+/* Members table compact */
+#membersBody td {
+    font-size: 0.82rem;
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+}
+
+/* Role badge sizing */
+#membersBody .badge {
+    font-size: 0.7rem;
+}
+
+/* Edit form compact */
+#editView .form-label {
+    font-size: 0.75rem;
+    color: var(--bs-secondary-color);
+}
+
+/* NIMS collapse section */
+#nimsCollapse .form-label {
+    font-size: 0.75rem;
+}
+
+/* Modal compact */
+.modal .form-label {
+    font-size: 0.78rem;
+}
+
+/* Active row highlight */
+.team-row.table-active {
+    font-weight: 600;
+}
+
+/* Sticky header in scrollable table */
+#teamsTable thead.sticky-top th {
+    background: var(--bs-body-bg);
+    z-index: 1;
+}
+
+#membersBody + table thead.sticky-top th,
+#detailView .table thead.sticky-top th {
+    background: var(--bs-body-bg);
+    z-index: 1;
+}

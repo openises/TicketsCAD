@@ -1,0 +1,117 @@
+/* ═══════════════════════════════════════════════════════════════
+   Unit Tracking — Map Marker Styles
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Wrapper removes Leaflet's default white background */
+.unit-icon-wrapper {
+    background: none !important;
+    border: none !important;
+}
+
+/* Main marker circle */
+.unit-map-marker {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--bs-body-bg, #fff);
+    border: 2px solid currentColor;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    position: relative;
+    transition: opacity 0.3s ease;
+}
+
+.unit-map-marker i {
+    line-height: 1;
+}
+
+.unit-marker-stale {
+    filter: grayscale(60%);
+}
+
+/* Heading arrow (shows direction of travel) */
+.unit-heading-arrow {
+    position: absolute;
+    top: -10px;
+    left: 50%;
+    transform-origin: center bottom;
+    margin-left: -4px;
+    font-size: 8px;
+    color: inherit;
+    line-height: 1;
+}
+
+/* Unit name label below marker */
+.unit-label {
+    background: none !important;
+    border: none !important;
+}
+
+.unit-label-text {
+    display: inline-block;
+    background: var(--bs-body-bg, #fff);
+    color: var(--bs-body-color, #000);
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 3px;
+    padding: 0 4px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    white-space: nowrap;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+    line-height: 1.4;
+}
+
+.unit-label-stale {
+    opacity: 0.5;
+}
+
+/* Popup styling */
+.unit-popup hr {
+    margin: 4px 0;
+    opacity: 0.15;
+}
+
+/* Pulse animation for fresh markers (optional, can be toggled) */
+@keyframes unit-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(51, 102, 255, 0.4); }
+    70% { box-shadow: 0 0 0 8px rgba(51, 102, 255, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(51, 102, 255, 0); }
+}
+
+.unit-map-marker.unit-marker-active {
+    animation: unit-pulse 2s ease-out infinite;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Route Playback Controls
+   ═══════════════════════════════════════════════════════════════ */
+
+.route-playback-controls {
+    background: var(--bs-body-bg, #fff);
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-top: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.route-playback-controls .form-range {
+    height: 4px;
+    cursor: pointer;
+}
+
+.route-playback-controls .rp-play-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.route-playback-controls .rp-speed {
+    flex-shrink: 0;
+}

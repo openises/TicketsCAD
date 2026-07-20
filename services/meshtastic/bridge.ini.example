@@ -1,0 +1,31 @@
+[meshtastic]
+# Connection mode: mqtt, serial, or tcp
+mode = mqtt
+
+# TicketsCAD server
+ticketscad_url = http://localhost/newui
+ticketscad_csrf_token =
+
+# ── MQTT Mode ──
+mqtt_broker = localhost
+mqtt_port = 1883
+mqtt_username =
+mqtt_password =
+mqtt_topic_root = msh/US/2
+mqtt_json_enabled = true
+
+# ── Serial Mode ──
+# Leave empty for auto-detect, or specify: COM3, /dev/ttyUSB0, etc.
+serial_port =
+serial_baud = 115200
+
+# ── TCP Mode ──
+tcp_host = meshtastic.local
+tcp_port = 4403
+
+# ── Behavior ──
+message_channel = general
+provider_code = meshtastic
+log_level = INFO
+log_file =
+health_port = 8084

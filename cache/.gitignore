@@ -1,0 +1,4 @@
+# Ignore all cached weather data
+weather/
+cache/zello-audio/*.ogg
+cache/zello-audio/*.webm

@@ -1,0 +1,34 @@
+/* ── Search Screen ─────────────────────────────────────────── */
+
+/* Sortable column headers */
+.sortable {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+.sortable:hover {
+    background-color: rgba(var(--bs-primary-rgb), 0.08);
+}
+
+/* Result rows */
+.search-result-row:hover {
+    background-color: rgba(var(--bs-primary-rgb), 0.06);
+}
+
+/* Compact results */
+#resultsTable td {
+    vertical-align: middle;
+}
+
+/* Print styles */
+@media print {
+    header, #themeToggle, .navbar, #searchForm, .btn, #paginationRow,
+    #pageSize, #alertArea { display: none !important; }
+    .card { break-inside: avoid; border: 1px solid #ccc !important; }
+    body { font-size: 10pt; }
+}
+
+/* Responsive */
+@media (max-width: 767.98px) {
+    #resultsTable { font-size: 0.75rem; }
+}

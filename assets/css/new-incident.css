@@ -1,0 +1,183 @@
+/**
+ * NewUI v4.0 - New Incident Styles
+ */
+
+/* ── Form section cards ── */
+.form-section .card-header {
+    cursor: pointer;
+    padding: 0.5rem 0.75rem;
+    user-select: none;
+    transition: background-color 0.15s;
+}
+
+.form-section .card-header:hover {
+    filter: brightness(0.95);
+}
+
+.form-section .card-body {
+    padding: 0.75rem;
+}
+
+/* Collapse icon rotation */
+.collapse-icon {
+    transition: transform 0.2s ease;
+}
+
+.collapsed .collapse-icon,
+[aria-expanded="false"] .collapse-icon {
+    transform: rotate(-90deg);
+}
+
+/* Required badge */
+.required-badge {
+    font-size: 0.65rem;
+    font-weight: 500;
+    padding: 0.15rem 0.4rem;
+}
+
+/* ── Form elements tighter spacing ── */
+.form-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 0.15rem;
+}
+
+.form-text {
+    font-size: 0.75rem;
+}
+
+/* Severity indicator bar on the selected severity */
+#severity option[value="0"] { color: #28a745; }
+#severity option[value="1"] { color: #ffc107; }
+#severity option[value="2"] { color: #dc3545; }
+
+/* ── Protocol panel ── */
+#protocolPanel {
+    transition: opacity 0.2s ease;
+}
+
+#protocolContent {
+    max-height: 200px;
+    overflow-y: auto;
+    line-height: 1.5;
+}
+
+/* ── Map ── */
+#incidentMap {
+    border-radius: 0 0 0.375rem 0.375rem;
+    z-index: 0;
+}
+
+/* ── Responder list ── */
+.responder-list {
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.responder-item {
+    cursor: pointer;
+    transition: background-color 0.1s, box-shadow 0.1s;
+    margin: 0;
+    font-size: 0.85rem;
+    /* Strip the default focus outline; we draw our own that respects
+       the d-flex layout and contrasts with both the hover and the
+       selected states. */
+    outline: none;
+}
+
+.responder-item:hover {
+    background-color: var(--bs-tertiary-bg);
+}
+
+.responder-item:has(input:checked) {
+    background-color: rgba(var(--bs-success-rgb), 0.1);
+}
+
+/*  Keyboard focus indicator.
+    The operator navigates the list with Tab + ↑/↓ and selects with
+    Space. Without a visible focus ring, the next Space-press goes to
+    an invisible target. The combo of:
+      * a 3px primary-blue inset border on the left edge
+      * a subtle blue tint on the row background
+      * a soft outer ring via box-shadow
+    makes the focused row obvious even when the row is ALSO selected
+    (green check + green bg) or hovered. Works in both light and dark
+    themes since it uses CSS custom properties from Bootstrap.
+
+    :focus-visible would be more correct, but Firefox's
+    :focus-visible doesn't fire reliably for elements that gained
+    focus via .focus() (the script path used by our keyboard nav),
+    so we use plain :focus and accept the trade-off of showing the
+    ring on mouse focus too. */
+.responder-item:focus {
+    background-color: rgba(var(--bs-primary-rgb), 0.12);
+    box-shadow: inset 4px 0 0 0 var(--bs-primary),
+                0 0 0 2px rgba(var(--bs-primary-rgb), 0.35);
+    position: relative;
+    z-index: 1;
+}
+
+/* When the focused row is ALSO selected, keep both signals visible:
+   blue ring stays, but lean the bg slightly green to retain the
+   "selected" cue. */
+.responder-item:focus:has(input:checked) {
+    background-color: rgba(var(--bs-success-rgb), 0.18);
+}
+
+.responder-item .form-check-input {
+    flex-shrink: 0;
+}
+
+/* ── Patient entries ── */
+.patient-entry {
+    background-color: var(--bs-tertiary-bg);
+    border: 1px solid var(--bs-border-color);
+}
+
+.patient-entry .btn-remove-patient {
+    padding: 0.1rem 0.3rem;
+    line-height: 1;
+}
+
+/* ── Call history ── */
+.call-history-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.call-history-list .table {
+    font-size: 0.8rem;
+}
+
+/* ── Validation ── */
+.is-invalid {
+    border-color: var(--bs-danger) !important;
+    box-shadow: 0 0 0 0.2rem rgba(var(--bs-danger-rgb), 0.25);
+}
+
+/* ── Page title area ── */
+h5 {
+    font-size: 1.1rem;
+}
+
+/* ── Sticky right column offset for header ── */
+@media (min-width: 992px) {
+    .col-lg-5 .sticky-top,
+    .col-xl-6 .sticky-top {
+        top: 110px !important;
+    }
+}
+
+/* ── Print hide for nav ── */
+@media print {
+    #appHeader,
+    #btnSubmit, #btnSubmitBottom, #btnReset,
+    .responder-list,
+    #responderSearch {
+        display: none !important;
+    }
+
+    #incidentMap {
+        height: 200px !important;
+    }
+}

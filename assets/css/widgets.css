@@ -1,0 +1,413 @@
+/* NewUI v4.0 - Widget-specific styles */
+
+/* Statistics widget */
+.widget-statistics {
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+}
+
+.widget-statistics .row {
+    --bs-gutter-x: 0.3rem;
+    --bs-gutter-y: 0.2rem;
+    flex: 1;
+}
+
+.widget-statistics .stat-card {
+    padding: 0.2rem 0.15rem;
+    border-radius: 0.25rem;
+    background-color: var(--bs-tertiary-bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+}
+
+.widget-statistics .stat-value {
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.1;
+}
+
+.widget-statistics .stat-label {
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--bs-body-secondary);
+    margin-top: 0.05rem;
+    line-height: 1.1;
+}
+
+/* When widget is very short, compact the stat cards */
+.grid-stack-item[gs-h="1"] .widget-statistics .stat-card {
+    padding: 0.05rem 0.1rem;
+}
+
+.grid-stack-item[gs-h="1"] .widget-statistics .stat-value {
+    font-size: 0.8rem;
+}
+
+.grid-stack-item[gs-h="1"] .widget-statistics .stat-label {
+    font-size: 0.45rem;
+    margin-top: 0;
+}
+
+/* Incidents severity badges */
+.widget-incidents .sev-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 600;
+    font-size: 0.75rem;
+}
+
+/* Incident updated time — smaller font for >24h entries with date */
+.updated-old {
+    font-size: 0.75em;
+}
+
+/* Row hover and selection */
+.incident-row,
+.responder-row,
+.facility-row {
+    cursor: pointer;
+    transition: background-color 0.15s;
+}
+
+.incident-row:hover,
+.responder-row:hover,
+.facility-row:hover {
+    background-color: var(--bs-tertiary-bg) !important;
+}
+
+/* Row highlight for selected items */
+.incident-row.selected,
+.responder-row.selected,
+.facility-row.selected {
+    background-color: rgba(var(--bs-warning-rgb), 0.25) !important;
+    box-shadow: inset 5px 0 0 var(--bs-warning);
+    outline: 2px solid var(--bs-warning);
+    outline-offset: -2px;
+}
+
+.incident-row.selected td,
+.responder-row.selected td,
+.facility-row.selected td {
+    font-weight: 600;
+}
+
+/* Dark mode: boost selected row contrast */
+[data-bs-theme="dark"] .incident-row.selected,
+[data-bs-theme="dark"] .responder-row.selected,
+[data-bs-theme="dark"] .facility-row.selected {
+    background-color: rgba(var(--bs-warning-rgb), 0.2) !important;
+}
+
+/* Map marker highlight ring */
+.marker-highlight-ring {
+    animation: marker-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes marker-pulse {
+    0%, 100% { opacity: 0.9; }
+    50% { opacity: 0.4; }
+}
+
+/* Log widget */
+.widget-log tbody tr td:first-child {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Dark base layer — brighten CartoDB dark tiles */
+.dark-tiles {
+    filter: brightness(1.4);
+}
+
+/* Leaflet dark mode overrides */
+[data-bs-theme="dark"] .leaflet-control-zoom a {
+    background-color: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    border-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] .leaflet-control-attribution {
+    background-color: rgba(var(--bs-body-bg-rgb), 0.8);
+    color: var(--bs-body-secondary);
+}
+
+[data-bs-theme="dark"] .leaflet-popup-content-wrapper,
+[data-bs-theme="dark"] .leaflet-popup-tip {
+    background-color: var(--bs-body-bg);
+    color: var(--bs-body-color);
+}
+
+/* Controls & Communications widget buttons */
+.widget-controls .ctrl-btn,
+.widget-comms .ctrl-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.7rem;
+    min-width: 60px;
+    border-radius: 0.3rem;
+}
+
+.widget-controls .ctrl-btn i,
+.widget-comms .ctrl-btn i {
+    font-size: 1.1rem;
+}
+
+.widget-controls .ctrl-btn span,
+.widget-comms .ctrl-btn span {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    line-height: 1;
+}
+
+.widget-controls .ctrl-btn:hover,
+.widget-comms .ctrl-btn:hover {
+    background-color: var(--bs-primary);
+    border-color: var(--bs-primary);
+    color: #fff !important;
+}
+
+.widget-controls .ctrl-btn:hover i,
+.widget-comms .ctrl-btn:hover i {
+    color: #fff !important;
+}
+
+/* Map controls — semi-transparent */
+.map-search-control,
+.leaflet-control-layers,
+.leaflet-control-zoom {
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.map-search-control:hover,
+.map-search-control:focus-within,
+.leaflet-control-layers:hover,
+.leaflet-control-zoom:hover {
+    opacity: 1;
+}
+
+/* Map search control */
+.map-search-control {
+    display: flex;
+    background: #fff;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.map-search-input {
+    border: none;
+    outline: none;
+    padding: 4px 8px;
+    font-size: 0.8rem;
+    width: 180px;
+    background: #fff;
+    color: #333;
+}
+
+.map-search-btn {
+    border: none;
+    background: #fff;
+    padding: 4px 8px;
+    cursor: pointer;
+    color: #333;
+}
+
+.map-search-btn:hover {
+    background: #e9ecef;
+}
+
+.map-search-input.search-no-results {
+    background: #fff3cd;
+}
+
+[data-bs-theme="dark"] .map-search-control {
+    background: var(--bs-body-bg);
+}
+
+[data-bs-theme="dark"] .map-search-input {
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+}
+
+[data-bs-theme="dark"] .map-search-btn {
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+}
+
+[data-bs-theme="dark"] .map-search-btn:hover {
+    background: var(--bs-tertiary-bg);
+}
+
+/* Map popup styles */
+.map-popup-title {
+    font-weight: 700;
+    font-size: 0.85rem;
+    margin-bottom: 2px;
+}
+
+.map-popup-type {
+    font-size: 0.75rem;
+    color: #6c757d;
+    margin-bottom: 4px;
+}
+
+.map-popup-detail {
+    font-size: 0.75rem;
+    line-height: 1.5;
+}
+
+.map-popup-detail i {
+    width: 14px;
+    text-align: center;
+}
+
+/* Map area title */
+.map-area-title {
+    background: rgba(255, 255, 255, 0.8);
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #333;
+    border-radius: 3px;
+}
+
+[data-bs-theme="dark"] .map-area-title {
+    background: rgba(30, 30, 46, 0.8);
+    color: var(--bs-body-color);
+}
+
+/* Map scale control transparency */
+.leaflet-control-scale {
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.leaflet-control-scale:hover {
+    opacity: 1;
+}
+
+/* Map reset view button */
+.map-reset-view:hover {
+    color: var(--bs-primary) !important;
+}
+
+/* Map focus label — shows selected item name in map header */
+.map-focus-label {
+    font-weight: 400;
+    font-size: 0.7rem;
+    max-width: 450px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Leaflet layer control dark mode */
+[data-bs-theme="dark"] .leaflet-control-layers {
+    background-color: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    border-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] .leaflet-control-layers-toggle {
+    background-color: var(--bs-body-bg);
+}
+
+/* Scrollbar styling for widget bodies */
+.card-body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.card-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.card-body::-webkit-scrollbar-thumb {
+    background-color: var(--bs-border-color);
+    border-radius: 3px;
+}
+
+/* Snapshot dropdown */
+.snapshot-dropdown {
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.snapshot-item:hover {
+    background-color: var(--bs-tertiary-bg);
+    border-radius: 0.25rem;
+}
+
+.snapshot-item .snapshot-delete {
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.snapshot-item:hover .snapshot-delete {
+    opacity: 1;
+}
+
+.snapshot-item .dropdown-item {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ── Action Bar (incidents + responders + facilities widget headers) ──
+   a beta tester beta 2026-06-29: the Responders action bar inherited
+   none of these styles before (selector was .incident-action-bar
+   only) so the V/E/D/S/N buttons defaulted to Bootstrap's full
+   .btn sizing and looked huge next to everything else. Phase 115
+   (Eric 2026-07-06): the Facilities action bar hit the exact same
+   trap — added .facility-action-bar here so all three share the
+   same compact styling. */
+.incident-action-bar .btn-xs,
+.responder-action-bar .btn-xs,
+.facility-action-bar .btn-xs {
+    padding: 0.1rem 0.35rem;
+    font-size: 0.65rem;
+    line-height: 1.3;
+    border-radius: 0.2rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    white-space: nowrap;
+}
+
+.incident-action-bar .btn-xs kbd,
+.responder-action-bar .btn-xs kbd,
+.facility-action-bar .btn-xs kbd {
+    font-size: 0.55rem;
+    padding: 0 3px;
+    border-radius: 2px;
+    background: rgba(var(--bs-emphasis-color-rgb), 0.08);
+    border: 1px solid rgba(var(--bs-emphasis-color-rgb), 0.15);
+    color: var(--bs-body-secondary);
+    font-weight: normal;
+    line-height: 1.3;
+    margin-left: 2px;
+}
+
+.incident-action-bar .action-label,
+.responder-action-bar .action-label,
+.facility-action-bar .action-label {
+    font-size: 0.6rem;
+    letter-spacing: 0.02em;
+}
+
+/* ── Keyboard Focus Indicator ── */
+.grid-stack-item-content[data-kb-focused="true"] {
+    box-shadow: 0 0 0 2px var(--bs-primary), 0 0 8px rgba(var(--bs-primary-rgb), 0.3);
+    z-index: 10;
+}
+
+/* Command Bar styles moved to dashboard.css (available on all pages) */

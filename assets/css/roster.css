@@ -1,0 +1,200 @@
+/* ── Personnel Roster ─────────────────────────────────────────── */
+
+/* Table */
+#rosterTable {
+    font-size: 0.8rem;
+}
+#rosterTable th {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    color: var(--bs-body-color);
+    border-bottom: 2px solid var(--bs-border-color);
+}
+#rosterTable th.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+#rosterTable th.sortable:hover {
+    background-color: rgba(var(--bs-emphasis-color-rgb), 0.05);
+}
+.sort-icon {
+    font-size: 0.6rem;
+    opacity: 0.4;
+    margin-left: 0.2rem;
+}
+th.sortable:hover .sort-icon {
+    opacity: 0.7;
+}
+
+/* Row styling */
+.roster-row {
+    cursor: pointer;
+    transition: background-color 0.1s;
+}
+.roster-row:hover {
+    background-color: rgba(var(--bs-warning-rgb), 0.08) !important;
+}
+.roster-row.selected {
+    background-color: rgba(var(--bs-warning-rgb), 0.18) !important;
+    border-left: 3px solid var(--bs-warning);
+}
+.roster-row td {
+    vertical-align: middle;
+    padding: 0.3rem 0.5rem;
+    white-space: nowrap;
+}
+
+/* Badges in table */
+.roster-row .badge {
+    font-size: 0.65rem;
+    font-weight: 500;
+    padding: 0.2em 0.5em;
+}
+
+/* Detail panel header */
+#detailHeader .card-body {
+    border-left: 4px solid var(--bs-primary);
+}
+
+/* Collapsible section headers (reuse from incident-detail) */
+.form-section {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s;
+}
+.form-section:hover {
+    background-color: rgba(var(--bs-emphasis-color-rgb), 0.05);
+}
+.form-section .collapse-icon {
+    transition: transform 0.2s;
+}
+.form-section[aria-expanded="false"] .collapse-icon,
+.form-section.collapsed .collapse-icon {
+    transform: rotate(-90deg);
+}
+
+/* Edit form collapsible headers */
+.cursor-pointer {
+    cursor: pointer;
+}
+.cursor-pointer .collapse-icon {
+    transition: transform 0.2s;
+    font-size: 0.65rem;
+}
+.cursor-pointer[aria-expanded="false"] .collapse-icon,
+.cursor-pointer.collapsed .collapse-icon {
+    transform: rotate(-90deg);
+}
+
+/* Certification table */
+#detailCerts table {
+    font-size: 0.78rem;
+}
+#detailCerts table th {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    padding: 0.2rem 0.4rem;
+    border-bottom: 1px solid var(--bs-border-color);
+}
+#detailCerts table td {
+    padding: 0.25rem 0.4rem;
+    vertical-align: middle;
+}
+
+/* Expired certification */
+.cert-expired td {
+    color: var(--bs-danger) !important;
+}
+.cert-expired td:first-child {
+    font-weight: 600;
+}
+
+/* Extra-small buttons (cert remove, etc.) */
+.btn-xs {
+    padding: 0.1rem 0.35rem;
+    font-size: 0.7rem;
+    line-height: 1.2;
+    border-radius: 0.2rem;
+}
+
+/* Filter buttons */
+.filter-btn {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.45rem;
+}
+.filter-btn.active {
+    background-color: var(--bs-primary);
+    border-color: var(--bs-primary);
+    color: #fff;
+}
+
+/* Detail/edit empty state */
+#detailEmpty i {
+    opacity: 0.3;
+}
+
+/* Edit form compact labels */
+#editFormBody .form-label {
+    font-size: 0.7rem;
+    color: var(--bs-body-color);
+    opacity: 0.75;
+}
+
+/* Member count badge */
+#memberCount {
+    vertical-align: middle;
+}
+
+/* ── Print Styles ────────────────────────────────────────────── */
+@media print {
+    header, #themeToggle, .btn-outline-secondary, .btn-outline-danger,
+    #mainMenu, .navbar, #btnNewMember, .filter-btn,
+    #searchInput, #btnClearSearch, .input-group,
+    #detailView, #editView, #detailEmpty,
+    .remove-cert-btn, #btnAddCert, #addCertSelect,
+    #addCertEarned, #addCertExpiry {
+        display: none !important;
+    }
+    .col-lg-7 {
+        width: 100% !important;
+        max-width: 100% !important;
+        flex: 0 0 100% !important;
+    }
+    .col-lg-5 {
+        display: none !important;
+    }
+    .card { break-inside: avoid; }
+    .sticky-top { position: static !important; }
+    body { font-size: 10pt; }
+    #rosterTable { font-size: 9pt; }
+    .roster-row.selected {
+        background-color: transparent !important;
+        border-left: none;
+    }
+    .badge {
+        border: 1px solid #999 !important;
+        color: #333 !important;
+        background-color: #eee !important;
+    }
+}
+
+/* ── Responsive ──────────────────────────────────────────────── */
+@media (max-width: 991.98px) {
+    .sticky-top { position: static !important; }
+    #rosterTable {
+        font-size: 0.75rem;
+    }
+    .roster-row td {
+        padding: 0.25rem 0.35rem;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .filter-btn {
+        font-size: 0.65rem;
+        padding: 0.1rem 0.35rem;
+    }
+}

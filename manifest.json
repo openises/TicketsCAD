@@ -1,0 +1,27 @@
+{
+    "name": "Tickets CAD",
+    "short_name": "TicketsCAD",
+    "description": "Computer-Aided Dispatch for volunteer fire, ARES/RACES, CERT, EMS, and campus security",
+    "start_url": "./index.php",
+    "scope": "./",
+    "display": "standalone",
+    "background_color": "#1a1a2e",
+    "theme_color": "#1570ef",
+    "orientation": "any",
+    "icons": [
+        {
+            "src": "assets/logo-light.png",
+            "sizes": "600x600",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "assets/logo-dark.png",
+            "sizes": "600x600",
+            "type": "image/png",
+            "purpose": "any"
+        }
+    ],
+    "categories": ["public-safety", "utilities"],
+    "lang": "en-US"
+}

@@ -1,0 +1,48 @@
+# Example config for the TicketsCAD APRS-IS persistent listener.
+# Copy to /etc/ticketscad/aprs-is.ini and edit before running.
+
+[aprs_is]
+# APRS-IS server. rotate.aprs2.net round-robins to the closest healthy
+# core server in the network. Don't change unless you have a reason.
+server = rotate.aprs2.net
+port   = 14580
+
+# Your station callsign for APRS-IS login. Use -1 as the passcode if you
+# don't have one (receive-only). For full bidirectional access you need
+# a real passcode (calculated from the callsign — there are many online
+# calculators; the algorithm is public).
+callsign = N0CALL
+passcode = -1
+
+# Server-side filter — only packets matching this are sent to us.
+# Examples:
+#   b/W7ABC*/KE0XYZ        any callsign starting with W7ABC or exactly KE0XYZ
+#   r/44.97/-93.26/100     within 100 km of lat 44.97 / lon -93.26
+#   t/p                    all position packets (firehose — DO NOT use without filter)
+# Combine with spaces.
+filter = b/N0CALL*
+
+# Code of the location provider row in TicketsCAD. Reports will be tagged
+# with this so the dashboard knows where they came from.
+provider_code = aprs
+
+[ticketscad]
+# Base URL of the TicketsCAD install.
+url = http://localhost/newui
+
+# CSRF token for API access. For server-to-server use, leave blank if the
+# listener IP is in the trusted-providers allow-list on the server.
+csrf_token =
+
+# Seconds between health pings to /api/service-uptime.php.
+health_interval = 60
+
+# Reconnect backoff (seconds). Doubles on each failure up to max.
+reconnect_min = 5
+reconnect_max = 300
+
+# Log to a file in addition to stdout.
+log_file =
+
+# PID file location (used by systemd / kill commands).
+pid_file = /var/run/aprs-is-listener.pid

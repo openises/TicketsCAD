@@ -1,0 +1,22 @@
+[Unit]
+Description=Run NewUI webhook retry tick every minute
+Documentation=file:///var/www/newui/tools/webhook_retry_tick.php
+
+[Timer]
+# Run 60 seconds after boot, then every minute thereafter. The Phase
+# 94 Stage 5 retry policy uses exponential backoff (30s, 60s, 120s,
+# 240s, 480s); a 60-second tick cadence catches every backoff window
+# without spamming. Idle ticks are quiet — no journal log unless there
+# was work to do.
+OnBootSec=60s
+OnUnitActiveSec=60s
+AccuracySec=5s
+
+# Prevent thundering-herd if many systems boot at once (unlikely in
+# practice for single-host NewUI deployments but harmless)
+RandomizedDelaySec=5s
+
+Persistent=true
+
+[Install]
+WantedBy=timers.target

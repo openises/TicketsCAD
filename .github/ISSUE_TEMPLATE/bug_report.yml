@@ -1,0 +1,40 @@
+name: Bug report
+description: Tell us about something that isn't working in TicketsCAD
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: "Thanks for helping test TicketsCAD! Please DON'T include real names, addresses, phone numbers, patient info, or amateur-radio callsigns in your report — these reports are visible to the whole test team."
+  - type: input
+    id: what-page
+    attributes:
+      label: What page or screen were you on?
+      placeholder: e.g. New Incident form, Dashboard, Roster
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What went wrong?
+      description: What did you expect to happen, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What steps lead to it?
+      placeholder: |
+        1. Clicked ...
+        2. Typed ...
+        3. Saw ...
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot (optional)
+      description: Drag an image into this box if you have one.
+  - type: input
+    id: browser
+    attributes:
+      label: What device / browser?
+      placeholder: e.g. Windows laptop, Chrome; or iPhone, Safari

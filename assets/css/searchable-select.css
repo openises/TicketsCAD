@@ -1,0 +1,66 @@
+/* SearchableSelect — popover combobox styles.
+   Spec: specs/searchable-member-dropdown-2026-05/plan.md
+   Mirrors the focus-ring pattern used on the new-incident responder list. */
+
+.searchable-select-wrap {
+    position: relative;
+}
+
+.searchable-select-list {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    max-height: 260px;
+    overflow-y: auto;
+    margin-top: 2px;
+    /* Sit above adjacent form fields AND above Bootstrap modals (z=1050). */
+    z-index: 1055;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    border-radius: 0.25rem;
+}
+
+/* Hide via the d-none Bootstrap utility — already imported, no extra rule. */
+
+.searchable-select-item {
+    cursor: pointer;
+    font-size: 0.875rem;
+    padding: 0.4rem 0.75rem;
+    border-left: 3px solid transparent;
+    transition: background-color 0.1s, border-color 0.1s;
+}
+
+.searchable-select-item:hover {
+    background-color: var(--bs-tertiary-bg);
+}
+
+/* The unlink / "— None —" row reads as the absence of a selection. */
+.searchable-select-item.empty-option {
+    font-style: italic;
+    color: var(--bs-secondary-color);
+}
+
+/* No-results row: not clickable, no hover. */
+.searchable-select-item.no-match {
+    cursor: default;
+    font-style: italic;
+    color: var(--bs-secondary-color);
+}
+.searchable-select-item.no-match:hover {
+    background-color: transparent;
+}
+
+/* Keyboard-highlighted row. Same three-layer cue used on the responder
+   list (commit b255c3f): blue tinted bg + thick blue bar + soft outer
+   ring via box-shadow. Visible against both light and dark themes. */
+.searchable-select-item.active {
+    background-color: rgba(var(--bs-primary-rgb), 0.12);
+    border-left-color: var(--bs-primary);
+    box-shadow: inset 0 0 0 1px rgba(var(--bs-primary-rgb), 0.2);
+}
+
+/* When the list is open the input should look subtly different so the
+   operator knows their keystrokes will filter rather than scroll. */
+.searchable-select-input:focus + .searchable-select-list:not(.d-none) {
+    border-color: var(--bs-primary);
+}

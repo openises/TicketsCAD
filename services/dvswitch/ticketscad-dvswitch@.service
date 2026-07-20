@@ -1,0 +1,27 @@
+[Unit]
+Description=TicketsCAD DVSwitch bridge (instance %I)
+After=network-online.target analog_bridge.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ticketscad
+Group=ticketscad
+EnvironmentFile=/etc/ticketscad/dvswitch-%i.env
+ExecStart=/usr/bin/python3 /opt/ticketscad/services/dvswitch/bridge.py --instance %i
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Hardening: bridge.py only needs UDP, no filesystem writes outside its audit
+# and recording dirs, no privileged sockets (USRP ports are user-range).
+ProtectSystem=strict
+# Audit JSONL is mandatory; recordings dir is optional (Phase 77b) but writable
+# when DMR_RECORDINGS_DIR=/var/lib/ticketscad-dvswitch/recordings is configured.
+ReadWritePaths=/var/log/ticketscad-dvswitch /var/lib/ticketscad-dvswitch
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

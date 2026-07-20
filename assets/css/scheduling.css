@@ -1,0 +1,215 @@
+/* ═══════════════════════════════════════════════════════════
+   Scheduling & Shift Management Styles
+   ═══════════════════════════════════════════════════════════ */
+
+/* Template list */
+.template-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--bs-border-color-translucent);
+    font-size: 0.82rem;
+    transition: background 0.15s;
+}
+.template-item:last-child { border-bottom: none; }
+.template-item:hover { background: var(--bs-secondary-bg); }
+.template-item.active {
+    background: rgba(13, 110, 253, 0.08);
+    border-left: 3px solid var(--bs-primary);
+    padding-left: 9px;
+}
+.template-item .badge { font-size: 0.68rem; }
+
+/* Week grid */
+.shift-grid-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+}
+.shift-grid-table th {
+    background: var(--bs-secondary-bg);
+    padding: 6px 8px;
+    text-align: center;
+    border: 1px solid var(--bs-border-color);
+    font-weight: 600;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+}
+.shift-grid-table th.today {
+    background: rgba(13, 110, 253, 0.1);
+    color: var(--bs-primary);
+}
+.shift-grid-table td {
+    border: 1px solid var(--bs-border-color);
+    padding: 4px;
+    vertical-align: top;
+    min-width: 120px;
+}
+.shift-grid-table td.today {
+    background: rgba(13, 110, 253, 0.03);
+}
+
+/* Slot cells */
+.slot-cell {
+    margin-bottom: 2px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color-translucent);
+    font-size: 0.72rem;
+}
+.slot-cell .slot-label {
+    font-weight: 600;
+    font-size: 0.68rem;
+    color: var(--bs-primary);
+    text-transform: uppercase;
+}
+.slot-cell .slot-time {
+    font-size: 0.66rem;
+    opacity: 0.6;
+}
+
+/* Assignment badges */
+.assignment-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 0.68rem;
+    margin: 1px 0;
+    cursor: pointer;
+}
+.assignment-badge.role-manager {
+    background: rgba(220, 53, 69, 0.1);
+    color: var(--bs-danger);
+    border: 1px solid rgba(220, 53, 69, 0.2);
+}
+.assignment-badge.role-support {
+    background: rgba(13, 110, 253, 0.1);
+    color: var(--bs-primary);
+    border: 1px solid rgba(13, 110, 253, 0.2);
+}
+.assignment-badge.role-observer {
+    background: rgba(25, 135, 84, 0.1);
+    color: var(--bs-success);
+    border: 1px solid rgba(25, 135, 84, 0.2);
+}
+.assignment-badge.role-default {
+    background: rgba(108, 117, 125, 0.1);
+    color: var(--bs-secondary);
+    border: 1px solid rgba(108, 117, 125, 0.2);
+}
+
+.btn-add-assignment {
+    font-size: 0.62rem;
+    padding: 0 4px;
+    line-height: 1.4;
+    opacity: 0.5;
+}
+.btn-add-assignment:hover { opacity: 1; }
+
+/* Shift time row labels */
+.shift-time-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+    min-width: 80px;
+}
+
+/* Roles list */
+.role-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--bs-border-color-translucent);
+    font-size: 0.78rem;
+}
+.role-item:last-child { border-bottom: none; }
+
+/* Event list */
+.event-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--bs-border-color-translucent);
+    transition: background 0.15s;
+}
+.event-item:hover { background: var(--bs-secondary-bg); }
+.event-item.active {
+    background: rgba(13, 110, 253, 0.08);
+    border-left: 3px solid var(--bs-primary);
+    padding-left: 9px;
+}
+.event-type-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 0.9rem;
+}
+.event-type-icon.type-drill       { background: rgba(255, 193, 7, 0.15); color: var(--bs-warning); }
+.event-type-icon.type-exercise    { background: rgba(13, 110, 253, 0.15); color: var(--bs-primary); }
+.event-type-icon.type-deployment  { background: rgba(220, 53, 69, 0.15); color: var(--bs-danger); }
+.event-type-icon.type-meeting     { background: rgba(25, 135, 84, 0.15); color: var(--bs-success); }
+.event-type-icon.type-training    { background: rgba(111, 66, 193, 0.15); color: #6f42c1; }
+.event-type-icon.type-other       { background: rgba(108, 117, 125, 0.15); color: var(--bs-secondary); }
+
+.event-item-title {
+    font-weight: 600;
+    font-size: 0.82rem;
+}
+.event-item-meta {
+    font-size: 0.72rem;
+    opacity: 0.6;
+}
+
+/* Event detail */
+.event-detail-header {
+    padding: 12px 16px;
+    background: var(--bs-secondary-bg);
+    border-radius: 6px 6px 0 0;
+    border: 1px solid var(--bs-border-color);
+    border-bottom: none;
+}
+.event-detail-body {
+    padding: 12px 16px;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0 0 6px 6px;
+}
+
+/* Participant list */
+.participant-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--bs-border-color-translucent);
+    font-size: 0.8rem;
+}
+.participant-row:last-child { border-bottom: none; }
+
+/* Status badges */
+.status-pill {
+    font-size: 0.66rem;
+    padding: 1px 6px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-weight: 600;
+}
+.status-pill.st-registered { background: rgba(13,110,253,0.15); color: var(--bs-primary); }
+.status-pill.st-confirmed  { background: rgba(25,135,84,0.15); color: var(--bs-success); }
+.status-pill.st-attended   { background: rgba(25,135,84,0.3); color: var(--bs-success); }
+.status-pill.st-no-show    { background: rgba(220,53,69,0.15); color: var(--bs-danger); }
+.status-pill.st-cancelled  { background: rgba(108,117,125,0.15); color: var(--bs-secondary); text-decoration: line-through; }

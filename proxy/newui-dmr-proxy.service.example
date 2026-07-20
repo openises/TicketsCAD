@@ -1,0 +1,52 @@
+# NewUI v4.0 — DMR WebSocket proxy systemd unit (Phase 85c).
+#
+# Install:
+#   1. Edit the User/Group/WorkingDirectory paths below to match your install.
+#   2. sudo cp proxy/newui-dmr-proxy.service.example /etc/systemd/system/newui-dmr-proxy.service
+#   3. sudo mkdir -p /var/log/newui && sudo chown www-data:www-data /var/log/newui
+#   4. sudo systemctl daemon-reload
+#   5. sudo systemctl enable --now newui-dmr-proxy.service
+#
+# Logs:  journalctl -u newui-dmr-proxy   (also tee'd to /var/log/newui/dmr-proxy.log)
+# Stop:  sudo systemctl stop  newui-dmr-proxy
+# Status: sudo systemctl status newui-dmr-proxy
+#
+# The proxy listens on TCP 8092 by default (zello uses 8090). Apache
+# vhost must include:
+#     <Location /dmr-ws>
+#         ProxyPass        ws://localhost:8092/ keepalive=On
+#         ProxyPassReverse ws://localhost:8092/
+#     </Location>
+# Requires `a2enmod proxy_wstunnel`.
+
+[Unit]
+Description=NewUI DMR WebSocket Proxy
+Documentation=https://github.com/openises/TicketsCAD/blob/main/proxy/dmr-proxy.php
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/newui
+ExecStart=/usr/bin/php /var/www/newui/proxy/dmr-proxy.php
+Restart=on-failure
+RestartSec=5s
+StandardOutput=append:/var/log/newui/dmr-proxy.log
+StandardError=append:/var/log/newui/dmr-proxy.log
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/www/newui/proxy /var/log/newui /tmp
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

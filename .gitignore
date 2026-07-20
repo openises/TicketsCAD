@@ -1,0 +1,95 @@
+# NewUI v4 / TicketsCAD — repo .gitignore
+
+# ──────────────────────────────────────────────────────────────────────
+#  Per-install secrets and runtime data
+# ──────────────────────────────────────────────────────────────────────
+
+# config.php carries DB credentials for the local install.
+# Use config.example.php as the committed template and copy it on install.
+/config.php
+
+# Encryption keys are per-install; never commit
+/keys/
+/../keys/
+*.pem
+!proxy/zello-proxy.pid.example
+*.key
+!*.example.key
+
+# Python build/cache artifacts (services/aprs-is, services/meshtastic, etc.)
+__pycache__/
+*.pyc
+
+# SonarQube scanner working directory — internal state, no source value.
+/.scannerwork/
+
+# ──────────────────────────────────────────────────────────────────────
+#  Runtime / per-deployment artifacts
+# ──────────────────────────────────────────────────────────────────────
+
+# User-uploaded files (per-folder .gitignore already excludes the contents,
+# but be defensive in case those stub files are removed)
+/uploads/*
+!/uploads/.gitignore
+!/uploads/.htaccess
+
+/cache/*
+!/cache/.gitignore
+
+# Per-deploy backups + audit dumps
+/backups/
+
+# PID files
+/proxy/*.pid
+*.pid
+
+# Logs
+*.log
+/services/*/logs/
+
+# ──────────────────────────────────────────────────────────────────────
+#  Vendored dependencies — installable via composer
+# ──────────────────────────────────────────────────────────────────────
+
+# vendor/ is recreated by `composer install`; composer.lock IS committed
+/vendor/
+/composer.phar
+
+# ──────────────────────────────────────────────────────────────────────
+#  IDE / OS noise
+# ──────────────────────────────────────────────────────────────────────
+
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ──────────────────────────────────────────────────────────────────────
+#  Test temp data
+# ──────────────────────────────────────────────────────────────────────
+
+/tests/tmp/
+/tools/data/
+*.sql.gz
+
+# ──────────────────────────────────────────────────────────────────────
+#  Project-internal scratch / one-off scripts
+#  (uncomment lines as we consolidate tooling)
+# ──────────────────────────────────────────────────────────────────────
+
+/tools/data/
+
+# Bloomington-specific seed scripts left from the test deploy — they
+# contain real personnel emails and should not be in the public repo.
+/tools/a-seed-script.php
+/tools/enrich_from_contacts_csv.php
+/tools/commit_confirmed_callsigns.php
+/tools/fcc_find_missing.php
+/tools/debug_search_unmatched.php
+/tools/debug_radioid_pages.php
+
+# Docker Compose local environment (holds DB passwords) — never commit
+.env

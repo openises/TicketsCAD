@@ -1,0 +1,692 @@
+{
+    "bomFormat": "CycloneDX",
+    "specVersion": "1.5",
+    "version": 1,
+    "metadata": {
+        "timestamp": "2026-06-13T05:58:26+02:00",
+        "component": {
+            "type": "application",
+            "name": "TicketsCAD NewUI",
+            "version": "4.0.0-dev",
+            "bom-ref": "pkg:generic/ticketscad-newui"
+        },
+        "tools": [
+            {
+                "vendor": "Tickets CAD",
+                "name": "tools/generate-sbom.php",
+                "version": "1.0.0"
+            }
+        ]
+    },
+    "components": [
+        {
+            "type": "library",
+            "name": "cboden/ratchet",
+            "version": "0.4.4",
+            "purl": "pkg:composer/cboden/ratchet@0.4.4",
+            "bom-ref": "pkg:composer/cboden/ratchet@0.4.4",
+            "scope": "required",
+            "group": "cboden",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "description": "PHP WebSocket library",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/ratchetphp/Ratchet.git"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "evenement/evenement",
+            "version": "3.0.2",
+            "purl": "pkg:composer/evenement/evenement@3.0.2",
+            "bom-ref": "pkg:composer/evenement/evenement@3.0.2",
+            "scope": "required",
+            "group": "evenement",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "description": "\u00c9v\u00e9nement is a very simple event dispatching library for PHP",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/igorw/evenement.git"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "firebase/php-jwt",
+            "version": "7.0.3",
+            "purl": "pkg:composer/firebase/php-jwt@7.0.3",
+            "bom-ref": "pkg:composer/firebase/php-jwt@7.0.3",
+            "scope": "required",
+            "group": "firebase",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "BSD-3-Clause"
+                    }
+                }
+            ],
+            "description": "A simple library to encode and decode JSON Web Tokens (JWT) in PHP. Should conform to the current spec.",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/firebase/php-jwt.git"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "guzzlehttp/psr7",
+            "version": "2.9.0",
+            "purl": "pkg:composer/guzzlehttp/psr7@2.9.0",
+            "bom-ref": "pkg:composer/guzzlehttp/psr7@2.9.0",
+            "scope": "required",
+            "group": "guzzlehttp",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "description": "PSR-7 message implementation that also provides common utility methods",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/guzzle/psr7.git"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "psr/http-factory",
+            "version": "1.1.0",
+            "purl": "pkg:composer/psr/http-factory@1.1.0",
+            "bom-ref": "pkg:composer/psr/http-factory@1.1.0",
+            "scope": "required",
+            "group": "psr",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "description": "PSR-17: Common interfaces for PSR-7 HTTP message factories",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/php-fig/http-factory.git"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "psr/http-message",
+            "version": "2.0",
+            "purl": "pkg:composer/psr/http-message@2.0",
+            "bom-ref": "pkg:composer/psr/http-message@2.0",
+            "scope": "required",
+            "group": "psr",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "description": "Common interface for HTTP messages",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/php-fig/http-message.git"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "ralouphie/getallheaders",
+            "version": "3.0.3",
+            "purl": "pkg:composer/ralouphie/getallheaders@3.0.3",
+            "bom-ref": "pkg:composer/ralouphie/getallheaders@3.0.3",
+            "scope": "required",
+            "group": "ralouphie",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "description": "A polyfill for getallheaders.",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/ralouphie/getallheaders.git"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "ratchet/pawl",
+            "version": "0.3.5",
+            "purl": "pkg:composer/ratchet/pawl@0.3.5",
+            "bom-ref": "pkg:composer/ratchet/pawl@0.3.5",
+            "scope": "required",
+            "group": "ratchet",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "description": "Asynchronous WebSocket client",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/ratchetphp/Pawl.git"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "ratchet/rfc6455",
+            "version": "0.3.1",
+            "purl": "pkg:composer/ratchet/rfc6455@0.3.1",
+            "bom-ref": "pkg:composer/ratchet/rfc6455@0.3.1",
+            "scope": "required",
+            "group": "ratchet",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "description": "RFC6455 WebSocket protocol handler",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/ratchetphp/RFC6455.git"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "react/cache",
+            "version": "1.2.0",
+            "purl": "pkg:composer/react/cache@1.2.0",
+            "bom-ref": "pkg:composer/react/cache@1.2.0",
+            "scope": "required",
+            "group": "react",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "description": "Async, Promise-based cache interface for ReactPHP",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/reactphp/cache.git"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "react/dns",
+            "version": "1.14.0",
+            "purl": "pkg:composer/react/dns@1.14.0",
+            "bom-ref": "pkg:composer/react/dns@1.14.0",
+            "scope": "required",
+            "group": "react",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "description": "Async DNS resolver for ReactPHP",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/reactphp/dns.git"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "react/event-loop",
+            "version": "1.6.0",
+            "purl": "pkg:composer/react/event-loop@1.6.0",
+            "bom-ref": "pkg:composer/react/event-loop@1.6.0",
+            "scope": "required",
+            "group": "react",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "description": "ReactPHP's core reactor event loop that libraries can use for evented I/O.",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/reactphp/event-loop.git"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "react/promise",
+            "version": "3.3.0",
+            "purl": "pkg:composer/react/promise@3.3.0",
+            "bom-ref": "pkg:composer/react/promise@3.3.0",
+            "scope": "required",
+            "group": "react",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "description": "A lightweight implementation of CommonJS Promises/A for PHP",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/reactphp/promise.git"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "react/socket",
+            "version": "1.17.0",
+            "purl": "pkg:composer/react/socket@1.17.0",
+            "bom-ref": "pkg:composer/react/socket@1.17.0",
+            "scope": "required",
+            "group": "react",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "description": "Async, streaming plaintext TCP/IP and secure TLS socket server and client connections for ReactPHP",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/reactphp/socket.git"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "react/stream",
+            "version": "1.4.0",
+            "purl": "pkg:composer/react/stream@1.4.0",
+            "bom-ref": "pkg:composer/react/stream@1.4.0",
+            "scope": "required",
+            "group": "react",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "description": "Event-driven readable and writable streams for non-blocking I/O in ReactPHP",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/reactphp/stream.git"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "symfony/deprecation-contracts",
+            "version": "3.6.0",
+            "purl": "pkg:composer/symfony/deprecation-contracts@3.6.0",
+            "bom-ref": "pkg:composer/symfony/deprecation-contracts@3.6.0",
+            "scope": "required",
+            "group": "symfony",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "description": "A generic function and convention to trigger deprecation notices",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/symfony/deprecation-contracts.git"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "symfony/http-foundation",
+            "version": "6.4.35",
+            "purl": "pkg:composer/symfony/http-foundation@6.4.35",
+            "bom-ref": "pkg:composer/symfony/http-foundation@6.4.35",
+            "scope": "required",
+            "group": "symfony",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "description": "Defines an object-oriented layer for the HTTP specification",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/symfony/http-foundation.git"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "symfony/polyfill-mbstring",
+            "version": "1.33.0",
+            "purl": "pkg:composer/symfony/polyfill-mbstring@1.33.0",
+            "bom-ref": "pkg:composer/symfony/polyfill-mbstring@1.33.0",
+            "scope": "required",
+            "group": "symfony",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "description": "Symfony polyfill for the Mbstring extension",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/symfony/polyfill-mbstring.git"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "symfony/polyfill-php83",
+            "version": "1.33.0",
+            "purl": "pkg:composer/symfony/polyfill-php83@1.33.0",
+            "bom-ref": "pkg:composer/symfony/polyfill-php83@1.33.0",
+            "scope": "required",
+            "group": "symfony",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "description": "Symfony polyfill backporting some PHP 8.3+ features to lower PHP versions",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/symfony/polyfill-php83.git"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "symfony/routing",
+            "version": "6.4.34",
+            "purl": "pkg:composer/symfony/routing@6.4.34",
+            "bom-ref": "pkg:composer/symfony/routing@6.4.34",
+            "scope": "required",
+            "group": "symfony",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "description": "Maps an HTTP request to a set of configuration variables",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/symfony/routing.git"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "bootstrap",
+            "version": "bundled",
+            "purl": "pkg:generic/bootstrap@bundled",
+            "bom-ref": "pkg:generic/bootstrap@bundled",
+            "scope": "required",
+            "group": null,
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/twbs/bootstrap"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "leaflet",
+            "version": "bundled",
+            "purl": "pkg:generic/leaflet@bundled",
+            "bom-ref": "pkg:generic/leaflet@bundled",
+            "scope": "required",
+            "group": null,
+            "licenses": [
+                {
+                    "license": {
+                        "id": "BSD-2-Clause"
+                    }
+                }
+            ],
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/Leaflet/Leaflet"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "gridstack",
+            "version": "bundled",
+            "purl": "pkg:generic/gridstack@bundled",
+            "bom-ref": "pkg:generic/gridstack@bundled",
+            "scope": "required",
+            "group": null,
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/gridstack/gridstack.js"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "meshtastic",
+            "version": "unpinned",
+            "purl": "pkg:pypi/meshtastic",
+            "bom-ref": "pkg:pypi/meshtastic",
+            "scope": "required",
+            "group": null,
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/meshtastic/"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "pypubsub",
+            "version": "unpinned",
+            "purl": "pkg:pypi/pypubsub",
+            "bom-ref": "pkg:pypi/pypubsub",
+            "scope": "required",
+            "group": null,
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/pypubsub/"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "pyserial",
+            "version": "unpinned",
+            "purl": "pkg:pypi/pyserial",
+            "bom-ref": "pkg:pypi/pyserial",
+            "scope": "required",
+            "group": null,
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/pyserial/"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "requests",
+            "version": "unpinned",
+            "purl": "pkg:pypi/requests",
+            "bom-ref": "pkg:pypi/requests",
+            "scope": "required",
+            "group": null,
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/requests/"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "meshcore-cli",
+            "version": "unpinned",
+            "purl": "pkg:pypi/meshcore-cli",
+            "bom-ref": "pkg:pypi/meshcore-cli",
+            "scope": "required",
+            "group": null,
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/meshcore-cli/"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "aprslib",
+            "version": "unpinned",
+            "purl": "pkg:pypi/aprslib",
+            "bom-ref": "pkg:pypi/aprslib",
+            "scope": "required",
+            "group": null,
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/aprslib/"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "requests",
+            "version": "unpinned",
+            "purl": "pkg:pypi/requests",
+            "bom-ref": "pkg:pypi/requests",
+            "scope": "required",
+            "group": null,
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/requests/"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "pymysql",
+            "version": "unpinned",
+            "purl": "pkg:pypi/pymysql",
+            "bom-ref": "pkg:pypi/pymysql",
+            "scope": "required",
+            "group": null,
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/pymysql/"
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "name": "qrcode",
+            "version": "1.5.3",
+            "purl": "pkg:npm/qrcode@1.5.3",
+            "bom-ref": "pkg:npm/qrcode@1.5.3",
+            "scope": "required",
+            "group": null,
+            "licenses": [
+                {
+                    "license": {
+                        "id": "MIT"
+                    }
+                }
+            ],
+            "description": "QR code generator (loaded from jsdelivr CDN by mesh-console.php)",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/soldair/node-qrcode"
+                }
+            ]
+        }
+    ]
+}

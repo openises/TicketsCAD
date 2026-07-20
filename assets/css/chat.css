@@ -1,0 +1,246 @@
+/**
+ * NewUI v4.0 - Chat Widget Styles
+ *
+ * Floating widget for local chat messaging.
+ * Uses Bootstrap CSS variables for theme support (dark/light).
+ * Mirrors zello-widget.css conventions.
+ */
+
+/* ── Widget Container ────────────────────────────────────────── */
+.chat-widget {
+    position: fixed;
+    z-index: 1100;
+    width: 380px;
+    height: 500px;
+    min-width: 300px;
+    min-height: 280px;
+    max-width: 600px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    border-radius: 8px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--bs-border-color);
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    font-size: 0.85rem;
+    overflow: hidden;
+    transition: box-shadow 0.15s ease;
+}
+
+.chat-widget:focus-within {
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35), 0 0 0 2px var(--bs-primary);
+}
+
+.chat-widget.chat-hidden {
+    display: none;
+}
+
+/* ── Header / Title Bar ──────────────────────────────────────── */
+.chat-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: var(--bs-secondary-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+    cursor: move;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.chat-header-icon {
+    font-size: 1rem;
+}
+
+.chat-header-title {
+    font-weight: 600;
+    font-size: 0.82rem;
+    white-space: nowrap;
+}
+
+.chat-header-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 4px;
+}
+
+/* ── Channel Bar ─────────────────────────────────────────────── */
+.chat-channel-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--bs-border-color);
+    background: var(--bs-tertiary-bg);
+    flex-shrink: 0;
+}
+
+.chat-channel-bar .form-select-sm {
+    max-width: 130px;
+    font-size: 0.78rem;
+    padding: 2px 24px 2px 6px;
+}
+
+.chat-signal-btn {
+    font-size: 0.78rem;
+    padding: 2px 8px;
+}
+
+/* ── Message Feed ────────────────────────────────────────────── */
+.chat-feed {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 4px 0;
+    scroll-behavior: smooth;
+}
+
+.chat-feed-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--bs-secondary-color);
+    text-align: center;
+    padding: 20px;
+    font-size: 0.82rem;
+}
+
+/* ── Message Row ─────────────────────────────────────────────── */
+.chat-msg {
+    padding: 3px 10px;
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+    line-height: 1.35;
+    border-left: 3px solid transparent;
+}
+
+.chat-msg:hover {
+    background: var(--bs-tertiary-bg);
+}
+
+.chat-msg-time {
+    font-size: 0.72rem;
+    color: var(--bs-secondary-color);
+    white-space: nowrap;
+    flex-shrink: 0;
+    min-width: 42px;
+}
+
+.chat-msg-user {
+    font-weight: 600;
+    font-size: 0.78rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.chat-msg-body {
+    font-size: 0.8rem;
+    word-break: break-word;
+    flex: 1;
+    min-width: 0;
+}
+
+/* Priority highlighting */
+.chat-msg-high {
+    border-left-color: var(--bs-danger);
+    background: rgba(var(--bs-danger-rgb), 0.08);
+}
+
+.chat-msg-high .chat-msg-body {
+    font-weight: 600;
+}
+
+/* Signal/code messages */
+.chat-msg-signal {
+    border-left-color: var(--bs-warning);
+    background: rgba(var(--bs-warning-rgb), 0.06);
+}
+
+.chat-msg-signal .chat-msg-body {
+    font-style: italic;
+}
+
+/* System messages */
+.chat-msg-system {
+    border-left-color: var(--bs-info);
+    justify-content: center;
+}
+
+.chat-msg-system .chat-msg-body {
+    color: var(--bs-secondary-color);
+    font-size: 0.75rem;
+    font-style: italic;
+}
+
+/* ── Input Row ───────────────────────────────────────────────── */
+.chat-input-row {
+    display: flex;
+    gap: 4px;
+    padding: 6px 8px;
+    border-top: 1px solid var(--bs-border-color);
+    background: var(--bs-secondary-bg);
+    flex-shrink: 0;
+}
+
+.chat-input-row .form-control-sm {
+    font-size: 0.8rem;
+}
+
+/* ── Signal Dropdown ─────────────────────────────────────────── */
+.chat-signal-menu {
+    max-height: 250px;
+    overflow-y: auto;
+    min-width: 220px;
+    font-size: 0.8rem;
+}
+
+.chat-signal-menu .dropdown-item {
+    padding: 4px 12px;
+    font-size: 0.78rem;
+}
+
+.chat-signal-menu .dropdown-item .badge {
+    font-size: 0.7rem;
+    margin-right: 6px;
+}
+
+/* ── Resize Handle ───────────────────────────────────────────── */
+.chat-resize-handle {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 16px;
+    height: 16px;
+    cursor: nwse-resize;
+    background: linear-gradient(135deg, transparent 50%, var(--bs-border-color) 50%);
+    opacity: 0.5;
+    border-radius: 0 0 8px 0;
+}
+
+.chat-resize-handle:hover {
+    opacity: 1;
+}
+
+/* ── Scrollbar Styling ───────────────────────────────────────── */
+.chat-feed::-webkit-scrollbar {
+    width: 6px;
+}
+
+.chat-feed::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.chat-feed::-webkit-scrollbar-thumb {
+    background: var(--bs-border-color);
+    border-radius: 3px;
+}
+
+.chat-feed::-webkit-scrollbar-thumb:hover {
+    background: var(--bs-secondary-color);
+}

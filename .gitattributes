@@ -1,0 +1,51 @@
+# Normalize line endings — code is LF, regardless of contributor OS.
+# Binaries are untouched.
+
+* text=auto eol=lf
+
+# Source files — LF
+*.php  text eol=lf
+*.js   text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+*.htm  text eol=lf
+*.md   text eol=lf
+*.sql  text eol=lf
+*.sh   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.xml  text eol=lf
+.gitignore     text eol=lf
+.gitattributes text eol=lf
+.htaccess      text eol=lf
+
+# Windows-only — keep CRLF
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.bmp  binary
+*.ico  binary
+*.zip  binary
+*.tar  binary
+*.gz   binary
+*.pdf  binary
+*.mp3  binary
+*.mp4  binary
+*.webm binary
+*.woff binary
+*.woff2 binary
+*.ttf  binary
+*.eot  binary
+*.otf  binary
+
+# GitHub linguist hints — surface PHP / JS as the languages, hide vendored docs
+docs/* linguist-documentation
+specs/* linguist-documentation

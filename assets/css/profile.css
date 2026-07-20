@@ -1,0 +1,153 @@
+/**
+ * NewUI v4.0 - Profile / Security Page Styles
+ *
+ * Wizard step indicators, QR code display, backup codes grid,
+ * device table, and responsive adjustments.
+ */
+
+/* ── Wizard Step Indicators ───────────────────────────────── */
+
+.tfa-wizard-steps {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.tfa-step {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 2rem;
+    font-size: 0.8rem;
+    color: var(--bs-secondary);
+    background: var(--bs-tertiary-bg);
+    transition: all 0.2s ease;
+}
+
+.tfa-step.active {
+    color: #fff;
+    background: var(--bs-primary);
+    font-weight: 600;
+}
+
+.tfa-step.done {
+    color: var(--bs-success);
+    background: var(--bs-success-bg-subtle);
+}
+
+.tfa-step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 50%;
+    font-size: 0.7rem;
+    font-weight: 700;
+    background: rgba(255,255,255,0.2);
+}
+
+.tfa-step.active .tfa-step-num {
+    background: rgba(255,255,255,0.3);
+}
+
+.tfa-step.done .tfa-step-num {
+    background: var(--bs-success);
+    color: #fff;
+}
+
+.tfa-step-label {
+    display: inline;
+}
+
+/* ── QR Code Area ─────────────────────────────────────────── */
+
+.tfa-qr-area {
+    display: inline-block;
+    padding: 1rem;
+    border: 2px dashed var(--bs-border-color);
+    border-radius: 0.5rem;
+    background: #fff;
+}
+
+.tfa-qr-area img {
+    display: block;
+}
+
+/* ── TOTP Code Input ──────────────────────────────────────── */
+
+.tfa-code-input {
+    font-size: 1.3rem !important;
+    text-align: center;
+    letter-spacing: 0.4em;
+    font-family: monospace;
+    max-width: 200px;
+}
+
+/* ── Backup Codes Grid ────────────────────────────────────── */
+
+.tfa-backup-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.5rem;
+    max-width: 500px;
+}
+
+.tfa-backup-code {
+    display: block;
+    padding: 0.4rem 0.6rem;
+    text-align: center;
+    font-family: monospace;
+    font-size: 0.9rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.25rem;
+    background: var(--bs-tertiary-bg);
+    user-select: all;
+}
+
+/* ── Device Table ─────────────────────────────────────────── */
+
+#devicesTable th {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--bs-secondary);
+    border-bottom-width: 2px;
+}
+
+#devicesTable td {
+    vertical-align: middle;
+    font-size: 0.85rem;
+}
+
+/* ── Wizard Panel Transitions ─────────────────────────────── */
+
+.tfa-wizard-panel {
+    animation: tfaFadeIn 0.25s ease;
+}
+
+@keyframes tfaFadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Responsive ───────────────────────────────────────────── */
+
+@media (max-width: 767.98px) {
+    .tfa-wizard-steps {
+        flex-wrap: wrap;
+    }
+    .tfa-step-label {
+        display: none;
+    }
+    .tfa-backup-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .tfa-code-input {
+        max-width: 100%;
+    }
+}

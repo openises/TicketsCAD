@@ -1,0 +1,239 @@
+/**
+ * NewUI v4.0 — Communications Console (Phase 114b, slice b1)
+ *
+ * Vertical channel strips in a horizontal bank (Mimer SoftRadio pattern).
+ * Bootstrap CSS variables only — supports light and dark themes.
+ */
+
+.console-bank {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: flex-start;
+}
+
+.console-strip {
+    width: 190px;
+    min-height: 120px;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-top: 3px solid var(--bs-primary);
+    border-radius: 6px;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.console-strip-head {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.console-strip-label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Status LED */
+.console-led {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--bs-secondary);
+}
+.console-led-connected { background: var(--bs-success); box-shadow: 0 0 4px var(--bs-success); }
+.console-led-degraded  { background: var(--bs-warning); box-shadow: 0 0 4px var(--bs-warning); }
+.console-led-down      { background: var(--bs-danger);  box-shadow: 0 0 4px var(--bs-danger); }
+.console-led-unknown   { background: var(--bs-secondary); opacity: 0.6; }
+
+.console-strip-reg {
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    color: var(--bs-warning-text-emphasis);
+    background: var(--bs-warning-bg-subtle);
+    border-radius: 3px;
+    padding: 1px 5px;
+    text-align: center;
+}
+
+.console-strip-activity {
+    font-size: 0.75rem;
+    min-height: 1.1rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.console-strip-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+/* Large PTT-style action button — red default per Eric, per-strip colour
+   override applied inline from the channel row */
+.console-ptt {
+    background: var(--bs-danger);
+    color: #fff;
+    font-weight: 600;
+    min-height: 44px;
+    border: none;
+}
+.console-ptt:hover { filter: brightness(1.1); color: #fff; }
+.console-ptt:active { filter: brightness(0.85); }
+
+.console-strip-note {
+    font-size: 0.68rem;
+    color: var(--bs-secondary-color);
+    text-align: center;
+}
+
+/* Text drawer */
+.console-strip-drawer {
+    border-top: 1px solid var(--bs-border-color);
+    padding-top: 0.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.console-strip-feed {
+    max-height: 180px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.75rem;
+}
+
+.console-feed-item {
+    background: var(--bs-tertiary-bg);
+    border-radius: 4px;
+    padding: 0.25rem 0.4rem;
+}
+.console-feed-tx { background: var(--bs-primary-bg-subtle); }
+.console-feed-notice {
+    background: var(--bs-danger-bg-subtle);
+    color: var(--bs-danger-text-emphasis);
+}
+.console-feed-meta {
+    font-size: 0.65rem;
+    color: var(--bs-secondary-color);
+}
+.console-feed-body { word-break: break-word; }
+
+/* Designer-configured variants */
+.console-strip-wide { width: 392px; }       /* 2x width incl. the gap */
+.console-strip-disabled { opacity: 0.55; }  /* fail-soft greyed strip */
+
+/* ── Free-form positioned views (b2.5) ─────────────────────────────
+   The bank becomes an absolute canvas: strips are rectangles on a
+   12-column × 20px-row outer grid; components are rectangles on a
+   12-column × 14px-row inner grid. Same math as the designer. */
+.console-bank-abs {
+    display: block;
+    position: relative;
+}
+.console-strip-abs {
+    position: absolute;
+    width: auto;
+    min-height: 0;
+    display: block;
+    padding: 6px;
+    overflow: hidden;
+}
+.console-strip-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+.console-comp { overflow: hidden; }
+
+.ccp {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 5px;
+    font-size: 0.8rem;
+    padding: 1px 4px;
+    box-sizing: border-box;
+}
+.ccp-label {
+    background: var(--bs-tertiary-bg);
+    font-weight: 600;
+    font-size: 0.95rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ccp-led { background: transparent; }
+.ccp-activity {
+    justify-content: flex-start;
+    font-size: 0.72rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ccp-ptt {
+    color: #fff;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+}
+.ccp-ptt:hover:not(:disabled) { filter: brightness(1.1); }
+.ccp-ptt:active:not(:disabled) { filter: brightness(0.85); }
+.ccp-ptt:disabled { opacity: 0.55; cursor: not-allowed; }
+.ccp-text {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-end;
+    gap: 3px;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    padding: 3px;
+}
+.ccp-feed { flex: 1; max-height: none; min-height: 0; }
+.ccp-btn {
+    background: var(--bs-secondary-bg);
+    border: 1px solid var(--bs-border-color);
+    color: var(--bs-body-color);
+    font-weight: 600;
+}
+.ccp-future-rt { opacity: 0.45; }
+.ccp-volume { background: transparent; }
+.ccp-vol-track, .cdc-vol-track {
+    width: 100%;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--bs-secondary-bg);
+    border: 1px solid var(--bs-border-color);
+}
+
+.console-strip-reg-abs {
+    position: absolute;
+    right: 4px;
+    bottom: 3px;
+    font-size: 0.55rem;
+    padding: 0 4px;
+}
+.console-strip-off-note {
+    position: absolute;
+    left: 0; right: 0; bottom: 3px;
+    text-align: center;
+    font-size: 0.65rem;
+    color: var(--bs-secondary-color);
+}
+
+/* Narrow screens: stacked strips go full-width (positioned views keep
+   their authored geometry — they are purpose-built for a console screen) */
+@media (max-width: 576px) {
+    .console-strip:not(.console-strip-abs), .console-strip-wide { width: 100%; }
+}

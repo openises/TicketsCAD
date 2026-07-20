@@ -1,0 +1,39 @@
+[Unit]
+Description=NewUI webhook retry tick — drains pending webhook deliveries
+Documentation=file:///var/www/newui/tools/webhook_retry_tick.php
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+
+# Adjust path to match your NewUI install
+WorkingDirectory=/var/www/newui
+ExecStart=/usr/bin/php /var/www/newui/tools/webhook_retry_tick.php
+
+# Hardening — same pattern as the Zello proxy unit. Webhook retry is
+# a pure DB+HTTP-out operation; no filesystem writes outside the temp
+# directory needed by PHP, no privileged ops.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictRealtime=true
+RestrictNamespaces=true
+SystemCallArchitectures=native
+
+# 30-second timeout. The tick itself processes up to 50 deliveries per
+# run with 5s curl timeouts — well under 30s even worst-case.
+TimeoutStartSec=30s
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

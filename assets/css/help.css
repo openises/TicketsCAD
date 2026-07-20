@@ -1,0 +1,233 @@
+/* NewUI v4.0 - Help Page */
+
+/* -- Layout: sidebar + content ------------------------------------------- */
+.help-layout {
+    display: flex;
+    height: calc(100vh - 56px);
+    gap: 0;
+    overflow: hidden;
+}
+
+.help-sidebar {
+    width: 260px;
+    flex-shrink: 0;
+    border-right: 1px solid #dee2e6;
+    background-color: #f8f9fa;
+    overflow-y: auto;
+    height: 100%;
+}
+
+[data-bs-theme="dark"] .help-sidebar {
+    background-color: #1a1d21;
+    border-right-color: #495057;
+}
+
+.help-content {
+    flex: 1;
+    padding: 1.25rem 1.5rem;
+    overflow-y: auto;
+    min-width: 0;
+    height: 100%;
+}
+
+/* -- Sidebar section headers --------------------------------------------- */
+.help-section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6c757d;
+    cursor: pointer;
+    user-select: none;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+    transition: color 0.15s;
+}
+
+.help-section-header:hover {
+    color: #2980b9;
+}
+
+.help-section-header i.section-icon {
+    font-size: 0.85rem;
+    width: 1.1rem;
+    text-align: center;
+}
+
+.help-section-header i.chevron {
+    margin-left: auto;
+    font-size: 0.65rem;
+    transition: transform 0.2s;
+    color: #adb5bd;
+}
+
+.help-section-header.collapsed i.chevron {
+    transform: rotate(-90deg);
+}
+
+[data-bs-theme="dark"] .help-section-header {
+    color: #8b929a;
+}
+
+[data-bs-theme="dark"] .help-section-header:hover {
+    color: #3498db;
+}
+
+/* -- Topic list ---------------------------------------------------------- */
+.help-topic-list {
+    list-style: none;
+    margin: 0;
+    padding: 0 0 0.25rem 0;
+}
+
+.help-topic-list li {
+    padding: 0;
+}
+
+.help-topic-link {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.3rem 0.75rem 0.3rem 2rem;
+    font-size: 0.8rem;
+    color: inherit;
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.help-topic-link:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+    color: #2980b9;
+}
+
+[data-bs-theme="dark"] .help-topic-link:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    color: #3498db;
+}
+
+.help-topic-link.active {
+    background-color: #0d6efd;
+    color: #fff;
+    border-radius: 2px;
+}
+
+/* -- Search results ------------------------------------------------------ */
+.help-search-results {
+    padding: 0.25rem 0.5rem;
+    max-height: calc(100vh - 160px);
+    overflow-y: auto;
+}
+
+.help-search-result {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.8rem;
+    color: inherit;
+    background: none;
+    border: none;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.help-search-result:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+[data-bs-theme="dark"] .help-search-result {
+    border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+[data-bs-theme="dark"] .help-search-result:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.help-search-result .search-cat {
+    font-size: 0.65rem;
+    color: #6c757d;
+    display: block;
+}
+
+/* -- Topic content panels ------------------------------------------------ */
+.help-topic-panel {
+    max-width: 800px;
+}
+
+.help-topic-panel table {
+    font-size: 0.85rem;
+}
+
+.help-topic-panel kbd {
+    font-size: 0.8rem;
+    padding: 0.1rem 0.4rem;
+}
+
+.help-topic-panel h6 {
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+.help-topic-panel ol,
+.help-topic-panel ul {
+    padding-left: 1.5rem;
+}
+
+.help-topic-panel li {
+    margin-bottom: 0.25rem;
+}
+
+/* -- Print styles -------------------------------------------------------- */
+@media print {
+    .help-sidebar,
+    #appHeader,
+    .btn {
+        display: none !important;
+    }
+    .help-layout {
+        display: block;
+        height: auto;
+        overflow: visible;
+    }
+    .help-content {
+        padding: 0;
+        overflow: visible;
+        height: auto;
+    }
+    .help-topic-panel {
+        max-width: none;
+    }
+}
+
+/* -- Responsive: stack sidebar on small screens -------------------------- */
+@media (max-width: 767.98px) {
+    .help-layout {
+        flex-direction: column;
+        height: auto;
+        overflow: visible;
+    }
+    .help-sidebar {
+        width: 100%;
+        height: auto;
+        max-height: 40vh;
+        border-right: none;
+        border-bottom: 1px solid #dee2e6;
+    }
+    .help-content {
+        height: auto;
+        overflow: visible;
+    }
+}

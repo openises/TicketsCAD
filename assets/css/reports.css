@@ -1,0 +1,154 @@
+/* ── Reports Page ──────────────────────────────────────────────── */
+
+/* Summary cards */
+.summary-card {
+    border-left-width: 3px !important;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+.summary-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Sortable table headers */
+.sortable-header {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s;
+}
+.sortable-header:hover {
+    background-color: rgba(var(--bs-emphasis-color-rgb), 0.05);
+}
+
+/* Report table compact */
+#reportTable th {
+    white-space: nowrap;
+    font-size: 0.8rem;
+    padding: 0.35rem 0.5rem;
+}
+#reportTable td {
+    font-size: 0.8rem;
+    padding: 0.3rem 0.5rem;
+    vertical-align: middle;
+}
+#reportTable thead {
+    background-color: var(--bs-body-bg);
+    z-index: 2;
+}
+
+/* Report type button group */
+#reportTypeBtns .btn {
+    font-size: 0.78rem;
+}
+
+/* Period selector */
+#periodSelect {
+    min-width: 140px;
+}
+
+/* After action panel */
+#afterActionPanel .card-body {
+    font-size: 0.85rem;
+}
+
+/* Filter row compact */
+.form-label.small {
+    font-size: 0.75rem;
+}
+
+/* ── Print stylesheet ──────────────────────────────────────────── */
+@media print {
+    /* Hide navigation, controls, filters */
+    header,
+    #appHeader,
+    #themeToggle,
+    #mainMenu,
+    .navbar,
+    #btnExportCSV,
+    #btnPrint,
+    .btn-outline-secondary,
+    .btn-outline-danger,
+    #reportTypeBtns,
+    #periodSelect,
+    #customDateRange,
+    #customDateRange2,
+    #responderFilterCol,
+    #incidentFilterCol,
+    #btnRunReport,
+    .card:has(#reportTypeBtns),
+    .card:has(#periodSelect) {
+        display: none !important;
+    }
+
+    /* Show report header */
+    #reportHeader {
+        display: flex !important;
+    }
+
+    /* Show summary cards */
+    #summaryCards {
+        display: flex !important;
+    }
+    .summary-card {
+        border: 1px solid #dee2e6 !important;
+        break-inside: avoid;
+    }
+
+    /* Table adjustments */
+    #reportTable {
+        font-size: 9pt !important;
+    }
+    #reportTable th,
+    #reportTable td {
+        padding: 2px 4px !important;
+        font-size: 9pt !important;
+    }
+    .sortable-header i {
+        display: none !important;
+    }
+
+    /* Page layout */
+    body {
+        font-size: 11pt;
+        background: white !important;
+    }
+    .container-fluid {
+        padding: 0 !important;
+    }
+    .card {
+        border: none !important;
+        box-shadow: none !important;
+    }
+    .card-body {
+        padding: 0 !important;
+    }
+
+    /* After action panel */
+    #afterActionPanel {
+        break-before: avoid;
+    }
+
+    /* Ensure table prints fully */
+    .table-responsive {
+        overflow: visible !important;
+    }
+}
+
+/* ── Dark theme adjustments ────────────────────────────────────── */
+[data-bs-theme="dark"] .summary-card:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+[data-bs-theme="dark"] #reportTable thead {
+    background-color: var(--bs-body-bg);
+}
+
+/* ── Responsive ────────────────────────────────────────────────── */
+@media (max-width: 767.98px) {
+    #reportTypeBtns {
+        flex-wrap: wrap;
+    }
+    #reportTypeBtns .btn {
+        font-size: 0.7rem;
+    }
+}

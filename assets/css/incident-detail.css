@@ -1,0 +1,142 @@
+/* ── Incident Detail ─────────────────────────────────────────── */
+
+/* Collapsible section headers */
+.form-section {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s;
+}
+.form-section:hover {
+    background-color: rgba(var(--bs-emphasis-color-rgb), 0.05);
+}
+.form-section .collapse-icon {
+    transition: transform 0.2s;
+}
+.form-section[aria-expanded="false"] .collapse-icon,
+.form-section.collapsed .collapse-icon {
+    transform: rotate(-90deg);
+}
+
+/* Map */
+#detailMap {
+    border-radius: 0 0 0.375rem 0.375rem;
+    z-index: 0;
+}
+
+/* Assignments table */
+.assignment-cleared {
+    opacity: 0.45;
+}
+.assignment-cleared td {
+    text-decoration: line-through;
+    text-decoration-color: var(--bs-body-color);
+}
+
+/* Extra-small action buttons for assignment rows */
+.btn-xs {
+    padding: 0.1rem 0.35rem;
+    font-size: 0.7rem;
+    line-height: 1.2;
+    border-radius: 0.2rem;
+}
+
+/* Responder search dropdown */
+#responderDropdown .list-group-item-action:hover,
+#responderDropdown .list-group-item-action.active {
+    background-color: rgba(var(--bs-primary-rgb), 0.15);
+}
+#responderDropdown .list-group-item-action.active {
+    outline: 2px solid var(--bs-primary);
+    outline-offset: -2px;
+}
+
+/* Assign control area */
+#assignControl {
+    background-color: rgba(var(--bs-emphasis-color-rgb), 0.02);
+}
+
+/* Note form area */
+#addNoteForm {
+    background-color: rgba(var(--bs-emphasis-color-rgb), 0.02);
+}
+
+/* Available responders panel */
+#availableRespondersPanel .collapse-icon {
+    transition: transform 0.2s;
+}
+#availableRespondersPanel [aria-expanded="true"] .collapse-icon {
+    transform: rotate(90deg);
+}
+#availableRespondersPanel .avail-resp-item {
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    transition: background-color 0.1s;
+}
+#availableRespondersPanel .avail-resp-item:hover {
+    background-color: rgba(var(--bs-primary-rgb), 0.1);
+}
+
+/* Activity log timeline */
+.action-entry {
+    border-left: 3px solid var(--bs-secondary) !important;
+    border-top: none !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--bs-border-color) !important;
+}
+.action-entry:last-child {
+    border-bottom: none !important;
+}
+
+/* Header card compact */
+#headerCard .card-body {
+    border-left: 4px solid var(--bs-primary);
+}
+
+/* Dark mode Leaflet overrides */
+[data-bs-theme="dark"] .leaflet-control-zoom a {
+    background-color: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    border-color: var(--bs-border-color);
+}
+[data-bs-theme="dark"] .leaflet-popup-content-wrapper,
+[data-bs-theme="dark"] .leaflet-popup-tip {
+    background-color: var(--bs-body-bg);
+    color: var(--bs-body-color);
+}
+[data-bs-theme="dark"] .leaflet-control-attribution {
+    background-color: rgba(var(--bs-body-bg-rgb), 0.7);
+    color: var(--bs-body-color);
+}
+
+/* Inline edit buttons */
+.edit-section-btn {
+    color: var(--bs-body-color);
+    opacity: 0.4;
+    transition: opacity 0.15s;
+    text-decoration: none;
+}
+.edit-section-btn:hover {
+    opacity: 1;
+    color: var(--bs-primary);
+}
+.card-header:hover .edit-section-btn {
+    opacity: 0.7;
+}
+
+/* Print styles */
+@media print {
+    header, #themeToggle, .btn-outline-secondary, .btn-outline-danger,
+    #mainMenu, .navbar, #assignControl, .assign-action,
+    #addNoteForm, #statusControls, .edit-section-btn { display: none !important; }
+    #detailMap { height: 200px !important; }
+    .card { break-inside: avoid; }
+    .collapse:not(.show) { display: block !important; height: auto !important; }
+    .sticky-top { position: static !important; }
+    body { font-size: 11pt; }
+}
+
+/* Responsive */
+@media (max-width: 991.98px) {
+    .sticky-top { position: static !important; }
+}

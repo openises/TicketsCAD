@@ -1,0 +1,93 @@
+/*
+ * Zone Coverage board (Phase 115, GH #64).
+ * Mobile-first: big, glanceable zone cards for volunteers on phones.
+ * Theme-aware via Bootstrap CSS variables — no hardcoded page colors.
+ */
+
+.zc-wrap { max-width: 1200px; }
+
+/* ── Zone card ── */
+.zc-zone-card {
+    border-top: 4px solid var(--bs-secondary);
+    transition: box-shadow .12s ease;
+}
+.zc-zone-card:hover { box-shadow: 0 .25rem .75rem rgba(0, 0, 0, .12); }
+
+.zc-zone-code {
+    display: inline-block;
+    padding: .05rem .4rem;
+    border-radius: .3rem;
+    font-size: .72rem;
+    font-weight: 700;
+    line-height: 1.3;
+    white-space: nowrap;
+}
+.zc-zone-name {
+    font-size: .85rem;
+    font-weight: 600;
+    min-width: 0;                 /* let text-truncate work in flex */
+}
+
+.zc-zone-count {
+    font-size: 2.4rem;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -1px;
+}
+.zc-zone-unit-word {
+    font-size: .7rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    color: var(--bs-secondary-color);
+    margin-left: .15rem;
+}
+
+.zc-zone-units {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .2rem;
+    margin-top: .35rem;
+}
+
+/* ── Unit chip (used in cards + unassigned bucket) ── */
+.zc-unit-chip {
+    display: inline-flex;
+    align-items: baseline;
+    max-width: 100%;
+    padding: .1rem .4rem;
+    border-radius: .35rem;
+    background: var(--bs-tertiary-bg);
+    border: 1px solid var(--bs-border-color);
+    font-size: .74rem;
+    line-height: 1.25;
+}
+.zc-unit-cs { font-weight: 700; white-space: nowrap; }
+.zc-unit-lead {
+    color: var(--bs-secondary-color);
+    font-size: .68rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 8rem;
+}
+
+/* ── Self-report strip ── */
+.zc-selfreport { border-left: 3px solid var(--bs-danger); }
+.zc-self-btn {
+    min-width: 2.6rem;
+    font-weight: 700;
+    font-size: .82rem;
+}
+.zc-self-btn.active { box-shadow: 0 0 0 .12rem rgba(13, 110, 253, .25); }
+
+/* ── Live indicator ── */
+.zc-live { display: inline-flex; align-items: center; gap: .25rem; }
+.zc-live-on  { color: var(--bs-success) !important; }
+.zc-live-off { color: var(--bs-warning) !important; }
+.zc-live .bi-broadcast { font-size: .8rem; }
+
+/* Small phones: keep two cards per row but tighten the count. */
+@media (max-width: 400px) {
+    .zc-zone-count { font-size: 2rem; }
+    .zc-unit-lead  { max-width: 5rem; }
+}

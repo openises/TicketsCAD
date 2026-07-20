@@ -1,0 +1,51 @@
+# Phase 94 Stage 3 — External API URL dispatch.
+#
+# Rewrites /api/external/v1/<anything> → _dispatch.php so external
+# clients can use clean REST URLs like:
+#
+#   GET    /api/external/v1/incidents
+#   POST   /api/external/v1/incidents
+#   GET    /api/external/v1/incidents/42
+#   PATCH  /api/external/v1/incidents/42
+#   DELETE /api/external/v1/incidents/42
+#   POST   /api/external/v1/incidents/42/actions
+#   POST   /api/external/v1/incidents/42/assignments
+#   PATCH  /api/external/v1/incidents/42/assignments/7
+#   POST   /api/external/v1/incidents/42/attachments
+#   GET    /api/external/v1/members
+#   POST   /api/external/v1/members
+#   PATCH  /api/external/v1/members/142/status
+#   ... etc.
+#
+# Direct-file access (/api/external/v1/incidents.php?id=42) still
+# works on installs without mod_rewrite — every endpoint handler
+# accepts the same $_GET shape regardless of how it was reached.
+# The Settings UI mints token-doc that prefers clean URLs but tells
+# operators to fall back to .php paths if rewrite isn't available.
+
+# When the bare directory is requested (`/api/external/v1/`), serve the
+# dispatcher's API-discovery stub instead of Apache's default directory
+# index (which would either list files or 403). DirectoryIndex applies
+# even without mod_rewrite, so installs that only have AllowOverride
+# Indexes still work for the root case.
+DirectoryIndex _dispatch.php
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Pass-through for files that actually exist on disk (the handler
+    # .php files themselves + this .htaccess). Without this, requests
+    # for /api/external/v1/_dispatch.php would recurse.
+    RewriteCond %{REQUEST_FILENAME} -f
+    RewriteRule ^ - [L]
+
+    # Everything else under this prefix routes through _dispatch.php
+    # with the original path captured in PATH_INFO via REDIRECT_URL.
+    RewriteRule ^(.+)$ _dispatch.php [QSA,L]
+</IfModule>
+
+# Tighten — never serve hidden files (e.g. someone uploads .git/* by
+# accident, or .env winds up here). Defense-in-depth.
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>

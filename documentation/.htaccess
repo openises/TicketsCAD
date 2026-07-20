@@ -1,0 +1,30 @@
+# TicketsCAD documentation viewer — clean URLs
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /documentation/
+
+    # Allow the bare entry point + static assets to pass through.
+    RewriteRule ^(index\.php|md\.php|style\.css|\.htaccess)$ - [L]
+
+    # /documentation/SOME-DOC  →  /documentation/index.php?doc=SOME-DOC
+    # /documentation/locales/de/INDEX  →  /documentation/index.php?doc=locales/de/INDEX
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.+)$ index.php?doc=$1 [QSA,L]
+</IfModule>
+
+# Cache CSS short, no caching on the rendered HTML
+<IfModule mod_headers.c>
+    <FilesMatch "\.css$">
+        Header set Cache-Control "public, max-age=3600"
+    </FilesMatch>
+</IfModule>
+
+# Don't list directory contents
+Options -Indexes
+
+# Block internal PHP includes from being hit directly
+<Files "md.php">
+    Require all denied
+</Files>

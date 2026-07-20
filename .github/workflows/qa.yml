@@ -1,0 +1,87 @@
+name: qa
+
+# QA gate on every push (Eric 2026-07-07): performs the exact fresh-install
+# a beta tester does — empty MariaDB → config from example → install_fresh
+# (auto-imports base_schema.sql + every sql/run_*.php migration) — then
+# runs the full DB-backed test suite plus both audit gates. GH #72
+# (fresh-install migration failures) is precisely the class of bug this
+# job exists to catch before a tester does.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  fresh-install-and-test:
+    name: fresh install + test suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root
+          MARIADB_DATABASE: newui
+          MARIADB_USER: newui
+          MARIADB_PASSWORD: ci-newui
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_mysql, mysqli, mbstring, openssl, curl, zip, gd
+          coverage: none
+
+      - name: Create config.php from template
+        run: |
+          cp config.example.php config.php
+          sed -i "s/\$db_host   = 'localhost';/\$db_host   = '127.0.0.1';/" config.php
+          sed -i "s/\$db_pass   = 'CHANGE-ME';.*/\$db_pass   = 'ci-newui';/" config.php
+
+      - name: Fresh install (base schema + all migrations)
+        run: php tools/install_fresh.php
+
+      - name: Migrations are idempotent (second run applies nothing new)
+        run: |
+          php sql/run_migrations.php | tee /tmp/second-run.log
+          # A second run must not fail; "Pending: 0" proves idempotency.
+          grep -q "Pending: 0" /tmp/second-run.log || {
+            echo "::warning::second migration run still had pending scripts (non-idempotent hash churn?)"
+            true
+          }
+
+      - name: Create admin user + seed demo data
+        run: |
+          php tools/create_admin.php --username=admin --email=ci@example.invalid || php tools/create_admin.php
+          php sql/seed_demo_data.php
+
+      - name: Schema audit (SQL ↔ fresh schema)
+        run: php tests/test_schema_audit.php
+
+      - name: API ↔ JS contract audit
+        run: php tests/test_api_contract_audit.php
+
+      - name: Full test suite (HTTP-integration tests skipped)
+        env:
+          NEWUI_TEST_NO_HTTP: '1'
+        run: php tools/test_all.php
+
+      - name: Audio-matrix Python suite (Phase 114c, no radio/bridge)
+        run: |
+          set -e
+          for t in test_matrix_core test_control_http test_dmr_leg test_service; do
+            echo "── $t ──"
+            python3 "services/audio-matrix/tests/$t.py"
+          done

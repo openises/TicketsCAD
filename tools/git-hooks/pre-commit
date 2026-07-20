@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+#
+# tools/git-hooks/pre-commit — local QA gate (Eric 2026-07-07).
+#
+# Runs on every `git commit`:
+#   1. php -l on every staged .php file          (syntax)
+#   2. tools/schema_audit.php                    (SQL ↔ real database schema)
+#   3. tools/api_contract_audit.php              (JS reads ↔ API emitted keys)
+#
+# Install once per clone:  bash tools/install-git-hooks.sh
+# Bypass in an emergency:  git commit --no-verify   (CI still catches it)
+#
+# The two audits compare against baselines (tools/schema_audit_baseline.txt,
+# tools/api_contract_baseline.txt) — they only fail on NEW findings.
+# The schema audit needs a reachable database (config.php); if the DB is
+# down it warns and passes rather than blocking unrelated commits.
+
+set -u
+
+# Resolve a PHP binary: PATH first, then Eric's XAMPP install.
+PHP="$(command -v php || true)"
+if [ -z "$PHP" ] && [ -x "/c/xampp/8.2.4/php/php.exe" ]; then
+    PHP="/c/xampp/8.2.4/php/php.exe"
+fi
+if [ -z "$PHP" ]; then
+    echo "pre-commit: no php binary found (PATH or /c/xampp/8.2.4) — skipping QA gate" >&2
+    exit 0
+fi
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+FAILED=0
+
+# ── 1. Syntax-lint staged PHP files ────────────────────────────────
+STAGED_PHP="$(git diff --cached --name-only --diff-filter=ACM | grep '\.php$' || true)"
+if [ -n "$STAGED_PHP" ]; then
+    while IFS= read -r f; do
+        [ -f "$f" ] || continue
+        if ! "$PHP" -l "$f" > /dev/null 2>&1; then
+            echo "✗ syntax error: $f"
+            "$PHP" -l "$f" 2>&1 | head -3
+            FAILED=1
+        fi
+    done <<< "$STAGED_PHP"
+fi
+
+# ── 2. Schema audit (needs DB; warn-and-pass if unreachable) ───────
+if [ -f tools/schema_audit.php ]; then
+    OUT="$("$PHP" tools/schema_audit.php 2>&1)"
+    CODE=$?
+    if echo "$OUT" | grep -qi "connection failed\|Access denied\|Unknown database"; then
+        echo "⚠ schema audit skipped (database unreachable) — CI will run it"
+    elif [ $CODE -ne 0 ]; then
+        echo "✗ schema audit found NEW SQL↔schema mismatches:"
+        echo "$OUT" | tail -20
+        FAILED=1
+    fi
+fi
+
+# ── 3. API ↔ JS contract audit (static, always runs) ───────────────
+if [ -f tools/api_contract_audit.php ]; then
+    OUT="$("$PHP" tools/api_contract_audit.php 2>&1)"
+    if [ $? -ne 0 ]; then
+        echo "✗ API contract audit found NEW JS-reads-what-nothing-emits keys:"
+        echo "$OUT" | tail -20
+        FAILED=1
+    fi
+fi
+
+if [ $FAILED -ne 0 ]; then
+    echo ""
+    echo "Commit blocked by the QA gate. Fix the findings above, or for a"
+    echo "verified false positive add the key to the relevant baseline file"
+    echo "with a comment in the commit message."
+    exit 1
+fi
+exit 0

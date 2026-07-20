@@ -1,0 +1,95 @@
+# TicketsCAD NewUI Apache vhost template.
+#
+# Install:
+#   sudo cp apache/newui.conf.example /etc/apache2/sites-available/newui.conf
+#   sudo vim /etc/apache2/sites-available/newui.conf   # adjust ServerName, paths
+#   sudo a2enmod proxy proxy_http proxy_wstunnel rewrite headers
+#   sudo a2ensite newui.conf
+#   sudo systemctl reload apache2
+#
+# Notes:
+#   - This is the plain HTTP vhost. Terminate TLS one of these ways:
+#       * Cloudflare tunnel (HTTP origin, TLS at the edge) — what Eric's
+#         training + your deployment hosts use; nothing further needed here.
+#       * Let's Encrypt on the host itself — wrap this block in a *:443
+#         VirtualHost, add SSLEngine on + cert paths, and redirect *:80
+#         to *:443.
+#       * Reverse-proxy in front (nginx, HAProxy) — leave this *:80.
+#   - The /dmr-ws Location block is only used when the DMR/radio feature
+#     is enabled (see docs/RADIO-DMR-INSTALL.md). It's harmless if the
+#     dmr-proxy daemon isn't running — the path just 502s, no error.
+#   - The /events-stream Location handles Server-Sent Events for the
+#     real-time dispatch updates. mod_proxy buffers SSE by default; the
+#     ProxyPreserveHost + Header directives keep that off.
+
+<VirtualHost *:80>
+    ServerName  ticketscad.example.com
+    # ServerAlias other.example.com
+
+    DocumentRoot /var/www/newui
+
+    # Index priority — index.php first, then the auth check that flips to
+    # login.php for unauthenticated users.
+    DirectoryIndex index.php login.php
+
+    <Directory /var/www/newui>
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    # Defense-in-depth on the uploads directory — never execute PHP from
+    # there even if a file lands with the wrong extension somehow.
+    <Directory /var/www/newui/uploads>
+        Options -ExecCGI
+        php_admin_flag engine off
+    </Directory>
+
+    # Same for cache — assets only, no execution.
+    <Directory /var/www/newui/cache>
+        Options -ExecCGI
+        php_admin_flag engine off
+    </Directory>
+
+    # ── Server-Sent Events for live dispatch updates ──
+    # Long-lived HTTP connections; disable Apache's response buffering so
+    # events reach the browser as fast as PHP writes them.
+    <Location /api/stream.php>
+        SetEnv no-gzip 1
+        SetEnv proxy-nokeepalive 1
+        Header set Cache-Control "no-cache, no-transform"
+        Header set X-Accel-Buffering "no"
+    </Location>
+
+    # ── DMR radio WebSocket reverse-proxy ──
+    # Browser radio widget connects to wss://<host>/dmr-ws.
+    # Apache forwards to the local dmr-proxy.php daemon listening on
+    # TCP 8092 (started by the newui-dmr-proxy.service systemd unit).
+    # Comment this out if you're not running the DMR feature.
+    <Location /dmr-ws>
+        ProxyPass        ws://127.0.0.1:8092/ keepalive=On
+        ProxyPassReverse ws://127.0.0.1:8092/
+    </Location>
+
+    # ── Zello WebSocket reverse-proxy ──
+    # Same pattern, separate proxy daemon on port 8090.
+    # Comment this out if you're not running the Zello integration.
+    <Location /zello-ws>
+        ProxyPass        ws://127.0.0.1:8090/ keepalive=On
+        ProxyPassReverse ws://127.0.0.1:8090/
+    </Location>
+
+    # ── Security headers ──
+    # set_security_headers() in inc/security-headers.php sets these on
+    # API responses but static assets bypass PHP entirely; setting them
+    # at the vhost level covers both.
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    # HSTS only on TLS vhosts — if you're terminating with Cloudflare or
+    # nginx in front, set this there instead.
+    # Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+    ErrorLog  ${APACHE_LOG_DIR}/newui-error.log
+    CustomLog ${APACHE_LOG_DIR}/newui-access.log combined
+</VirtualHost>

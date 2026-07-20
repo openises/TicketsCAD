@@ -1,0 +1,33 @@
+[Unit]
+Description=TicketsCAD DMR echo bot — listen, transcribe with Whisper, reply via hbp_client
+# hbp_client must be up first (we POST to its /tx/text and tcpdump its socket).
+After=network-online.target ticketscad-hbp-client.service
+Wants=network-online.target
+PartOf=ticketscad-hbp-client.service
+
+[Service]
+Type=simple
+User=ticketscad
+Group=ticketscad
+# Bot needs sudo for tcpdump (passive capture on eth0). Sudoers must
+# grant ticketscad NOPASSWD for /usr/bin/tcpdump — see deployment notes
+# in services/dvswitch/echo_bot.py. The bot itself runs as ticketscad.
+EnvironmentFile=/etc/ticketscad/echo-bot.env
+ExecStart=/opt/ticketscad-dvswitch/venv/bin/python3 /opt/ticketscad-dvswitch/echo_bot.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Hardening — bot only needs to read inbound UDP via tcpdump, write
+# transient WAVs under /tmp, and POST to localhost:18091.
+ProtectSystem=strict
+ReadWritePaths=/tmp /var/cache/ticketscad-dvswitch
+NoNewPrivileges=no
+# tcpdump needs CAP_NET_RAW and CAP_NET_ADMIN. The sudo path is cleaner
+# than granting capabilities to the Python interpreter (which would
+# elevate every faster-whisper / urllib / etc. dependency).
+PrivateTmp=no
+
+[Install]
+WantedBy=multi-user.target

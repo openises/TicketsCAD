@@ -1,0 +1,122 @@
+/**
+ * NewUI v4.0 - Internal Messaging Styles
+ *
+ * Uses Bootstrap CSS variables for theme compatibility (dark/light).
+ */
+
+/* ── Message rows ─────────────────────────────────────────── */
+.msg-row {
+    transition: background-color 0.15s ease;
+}
+
+.msg-row-unread {
+    font-weight: 600;
+    background-color: rgba(var(--bs-primary-rgb), 0.06);
+}
+
+.msg-row-unread td {
+    font-weight: 600;
+}
+
+.msg-subject-cell:hover {
+    text-decoration: underline;
+    color: var(--bs-primary);
+}
+
+/* ── Message detail body ──────────────────────────────────── */
+.msg-detail-body {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: inherit;
+    line-height: 1.6;
+    min-height: 80px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+/* ── HAS Broadcast alert toast ────────────────────────────── */
+.has-alert-toast {
+    min-width: 400px;
+    max-width: 600px;
+    box-shadow: 0 4px 24px rgba(220, 53, 69, 0.4);
+    animation: hasPulse 0.6s ease-in-out 3;
+}
+
+@keyframes hasPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+}
+
+.has-alert-toast .toast-header {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.has-alert-toast .toast-body {
+    font-size: 0.95rem;
+    padding: 0.75rem 1rem;
+}
+
+/* ── HAS page border flash ────────────────────────────────── */
+.has-alert-flash {
+    animation: hasFlash 1s ease-in-out 3;
+}
+
+@keyframes hasFlash {
+    0%, 100% { box-shadow: inset 0 0 0 0 transparent; }
+    50% { box-shadow: inset 0 0 0 4px rgba(220, 53, 69, 0.5); }
+}
+
+/* ── Compose tab ──────────────────────────────────────────── */
+#composeTo option {
+    padding: 2px 6px;
+}
+
+/* ── Priority badges (already styled by Bootstrap, but small tweaks) ── */
+.badge {
+    font-size: 0.7rem;
+    font-weight: 500;
+}
+
+/* ── Navbar message badge ─────────────────────────────────── */
+.nav-msg-badge {
+    font-size: 0.6rem;
+    padding: 2px 5px;
+    position: relative;
+    top: -2px;
+}
+
+/* ── Navbar HAS button ────────────────────────────────────── */
+.has-broadcast-btn {
+    border-color: var(--bs-danger);
+    color: var(--bs-danger);
+}
+
+.has-broadcast-btn:hover {
+    background-color: var(--bs-danger);
+    color: #fff;
+}
+
+/* ── Table adjustments ────────────────────────────────────── */
+#inboxTable th,
+#sentTable th {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--bs-secondary);
+}
+
+#inboxTable td,
+#sentTable td {
+    font-size: 0.85rem;
+    vertical-align: middle;
+}
+
+/* ── Responsive ───────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .has-alert-toast {
+        min-width: 300px;
+        max-width: calc(100vw - 2rem);
+    }
+}

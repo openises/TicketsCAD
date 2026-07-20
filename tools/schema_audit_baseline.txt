@@ -1,0 +1,6 @@
+col:member.owntracks_overrides
+col:member_comm_identifiers.sort_order
+col:responder.hide
+table:facility_bed_auto_log
+table:permission_review_dismissals
+table:responder_notes

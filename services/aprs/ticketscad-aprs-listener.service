@@ -1,0 +1,27 @@
+[Unit]
+Description=TicketsCAD APRS-IS Listener
+Documentation=https://github.com/openises/TicketsCAD
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+ExecStart=/usr/bin/python3 /var/www/newui/services/aprs/aprs_listener.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+# Keep the env minimal — config comes from /etc/ticketscad-aprs.conf
+Environment=APRS_LISTENER_CONFIG=/etc/ticketscad-aprs.conf
+
+# Tighter sandbox — listener only needs network out + DB socket access
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+NoNewPrivileges=true
+ReadOnlyPaths=/var/www/newui/services/aprs
+
+[Install]
+WantedBy=multi-user.target

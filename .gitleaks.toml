@@ -1,0 +1,29 @@
+# gitleaks configuration for TicketsCAD.
+# Extends the built-in ruleset and allowlists known non-secrets so scans (and
+# GitHub secret-scanning / CI) stay clean and meaningful.
+title = "TicketsCAD gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documentation examples + placeholder values that are not real secrets"
+
+# docs/EXTERNAL-API.md shows example `curl -H "Authorization: Bearer <token>"`
+# commands and a `--prefix=` example against the placeholder host
+# dispatch.example.org. These are illustrative, not real credentials.
+paths = [
+    '''docs/EXTERNAL-API\.md''',
+]
+
+regexes = [
+    # placeholder hostnames used throughout the docs/examples
+    '''(dispatch|cad)\.example\.(org|com)''',
+    '''your-server\.example\.com''',
+    # the config template's obvious placeholder DB password
+    '''CHANGE-ME''',
+    # legacy 'wp_key' default apikey — public in openises/tickets since 2008,
+    # unused by NewUI, and blanked in the current seed. Allowlisted so history
+    # scans stay clean.
+    '''729c1a751fd3d2428cfe2a7b43442c64''',
+]

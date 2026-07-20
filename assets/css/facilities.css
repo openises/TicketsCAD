@@ -1,0 +1,132 @@
+/**
+ * NewUI v4.0 - Facilities Styles
+ */
+
+/* ── Facility type badges ── */
+.badge.bg-info {
+    font-size: 0.7rem;
+}
+
+/* ── Collapsible section headers (shared with incident-detail) ── */
+.form-section {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s;
+}
+.form-section:hover {
+    background-color: rgba(var(--bs-emphasis-color-rgb), 0.05);
+}
+.form-section .collapse-icon {
+    transition: transform 0.2s;
+}
+.form-section[aria-expanded="false"] .collapse-icon,
+.form-section.collapsed .collapse-icon {
+    transform: rotate(-90deg);
+}
+
+/* ── Form elements (edit page) ── */
+.form-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 0.15rem;
+}
+.form-text {
+    font-size: 0.75rem;
+}
+.required-badge {
+    font-size: 0.65rem;
+    font-weight: 500;
+    padding: 0.15rem 0.4rem;
+}
+.form-section .card-header {
+    cursor: pointer;
+    padding: 0.5rem 0.75rem;
+    user-select: none;
+    transition: background-color 0.15s;
+}
+.form-section .card-header:hover {
+    filter: brightness(0.95);
+}
+.form-section .card-body {
+    padding: 0.75rem;
+}
+.collapse-icon {
+    transition: transform 0.2s ease;
+}
+.collapsed .collapse-icon,
+[aria-expanded="false"] .collapse-icon {
+    transform: rotate(-90deg);
+}
+
+/* ── Facility table ── */
+.facility-row {
+    cursor: pointer;
+    transition: background-color 0.1s;
+}
+.facility-row:hover {
+    background-color: rgba(var(--bs-primary-rgb), 0.08) !important;
+}
+
+/* ── Facility map markers ── */
+.facility-marker {
+    background: transparent;
+    border: none;
+}
+.facility-marker-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Bed capacity indicators ── */
+.progress {
+    border-radius: 0.25rem;
+}
+
+/* ── Header card accent ── */
+#headerCard .card-body {
+    border-left: 4px solid var(--bs-primary);
+}
+
+/* ── Map containers ── */
+#facilitiesMap,
+#facilityMap {
+    border-radius: 0 0 0.375rem 0.375rem;
+    z-index: 0;
+}
+
+/* ── Dark mode Leaflet overrides ── */
+[data-bs-theme="dark"] .leaflet-control-zoom a {
+    background-color: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    border-color: var(--bs-border-color);
+}
+[data-bs-theme="dark"] .leaflet-popup-content-wrapper,
+[data-bs-theme="dark"] .leaflet-popup-tip {
+    background-color: var(--bs-body-bg);
+    color: var(--bs-body-color);
+}
+[data-bs-theme="dark"] .leaflet-control-attribution {
+    background-color: rgba(var(--bs-body-bg-rgb), 0.7);
+    color: var(--bs-body-color);
+}
+
+/* ── Print styles ── */
+@media print {
+    header, #themeToggle, .btn-outline-secondary, .btn-outline-danger,
+    #mainMenu, .navbar, #typeFilters, #facilitySearch, .form-switch,
+    .btn-success, .btn-outline-primary, #btnDelete { display: none !important; }
+    #facilitiesMap, #facilityMap { height: 200px !important; }
+    .card { break-inside: avoid; }
+    .collapse:not(.show) { display: block !important; height: auto !important; }
+    .sticky-top { position: static !important; }
+    body { font-size: 11pt; }
+}
+
+/* ── Responsive ── */
+@media (max-width: 991.98px) {
+    .sticky-top { position: static !important; }
+    #facilitiesMap { height: 300px !important; }
+}

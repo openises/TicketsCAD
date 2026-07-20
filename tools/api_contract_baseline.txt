@@ -1,0 +1,5 @@
+customs
+in_use
+mqtt_topic
+radioid
+radar

@@ -1,0 +1,24 @@
+[Unit]
+Description=TicketsCAD mesh bridge (dual-protocol Meshtastic + MeshCore)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ejosterberg
+Group=ejosterberg
+Environment=PYTHONIOENCODING=utf-8
+EnvironmentFile=/etc/ticketscad/meshbridge.env
+WorkingDirectory=/home/ejosterberg
+ExecStart=/home/ejosterberg/mesh-venv/bin/python /home/ejosterberg/bridge_v2.py \
+  --port /dev/ttyUSB0 --protocol ${PORT0_PROTOCOL} \
+  --port /dev/ttyUSB1 --protocol ${PORT1_PROTOCOL} \
+  --cad-url ${CAD_URL} --cad-token ${CAD_TOKEN}
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

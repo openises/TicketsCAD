@@ -1,0 +1,640 @@
+/* NewUI v4.0 - Dashboard Layout */
+
+body {
+    overflow-x: hidden;
+    background-color: #e9ecef;
+}
+
+[data-bs-theme="dark"] body {
+    background-color: #1a1d21;
+}
+
+/* Header */
+#appHeader {
+    z-index: 1030;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* Row 1: Main nav */
+.nav-main {
+    background-color: #2c3e50;
+    color: #ecf0f1;
+    padding: 0.25rem 0;
+}
+
+.nav-main .navbar-brand,
+.nav-main .navbar-brand span {
+    color: #ecf0f1 !important;
+}
+
+/* Logo hover preview — shows 4x enlarged logo below the navbar */
+.nav-main .navbar-brand {
+    position: relative;
+}
+.nav-main .navbar-brand img {
+    cursor: zoom-in;
+}
+.logo-hover-preview {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 1080;
+    padding: 10px;
+    background: var(--bs-body-bg, #fff);
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+}
+.logo-hover-preview img {
+    display: block;
+    height: 144px;
+    width: auto;
+}
+
+.nav-main .text-body-secondary,
+.nav-main .text-body-tertiary,
+.nav-main #currentUser {
+    color: #bdc3c7 !important;
+}
+
+/* 24-hour clock */
+.toolbar-clock {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #ecf0f1;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    min-width: 5.5em;
+    text-align: center;
+}
+
+/* Main menu buttons — compact mode by default (icons only) */
+.nav-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+    padding: 0.3rem 0.4rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #bdc3c7;
+    text-decoration: none;
+    border-radius: 0.25rem;
+    transition: background-color 0.15s, color 0.15s;
+    white-space: nowrap;
+}
+
+.nav-menu-btn i {
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+
+/* Text labels hidden by default — smooth reveal on hover/active/expanded */
+.nav-menu-btn span {
+    display: inline-block;
+    max-width: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: max-width 0.3s ease, opacity 0.3s ease, margin-left 0.3s ease;
+    white-space: nowrap;
+    margin-left: 0;
+}
+
+/* Show text on individual hover or peek (stays visible 10s after mouse leaves) */
+.nav-menu-btn:hover span,
+.nav-menu-btn.peek span {
+    max-width: 7rem;
+    opacity: 1;
+    margin-left: 0.3rem;
+}
+
+/* Active page label always visible */
+.nav-menu-btn.active span {
+    max-width: 7rem;
+    opacity: 1;
+    margin-left: 0.3rem;
+}
+
+/* Dropdown open — show its label */
+.dropdown.show .nav-menu-btn span {
+    max-width: 7rem;
+    opacity: 1;
+    margin-left: 0.3rem;
+}
+
+.nav-menu-btn:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+    color: #ecf0f1;
+}
+
+.nav-menu-btn.active {
+    background-color: #2980b9;
+    color: #fff;
+}
+
+/* Ensure navbar never wraps to a second row */
+.nav-main .container-fluid {
+    flex-wrap: nowrap !important;
+}
+
+/* Main menu — compact icons keep it narrow enough to not wrap */
+#mainMenu {
+    flex-shrink: 1;
+    min-width: 0;
+    flex-wrap: nowrap;
+}
+
+/* Webkit thin scrollbar for main menu */
+#mainMenu::-webkit-scrollbar {
+    height: 3px;
+}
+#mainMenu::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+}
+
+/* Personnel dropdown toggle */
+.nav-main .dropdown {
+    display: inline-flex;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+ * Phase 47 (2026-06-14) — Mobile navbar.
+ *
+ * The default styles above keep the navbar on one tight row for
+ * desktop dispatch consoles. Below the xl breakpoint (<1200px) the
+ * Bootstrap collapse kicks in and we want a usable vertical drawer
+ * instead. The wins:
+ *   - Container can wrap (overriding the nowrap !important above)
+ *   - Each menu item gets its full label, sized for a fingertip
+ *   - Right-side controls wrap to their own row and stay tappable
+ *   - Toggler icon themed to the dark navbar
+ * ───────────────────────────────────────────────────────────────── */
+@media (max-width: 1199.98px) {
+    /* The desktop "single tight row" rule has to give. */
+    .nav-main .container-fluid { flex-wrap: wrap !important; }
+
+    /* Hamburger button visible + readable on the dark navbar. */
+    .nav-main .navbar-toggler {
+        color: #ecf0f1;
+        border-color: rgba(255, 255, 255, 0.35);
+        padding: 0.25rem 0.5rem;
+        font-size: 0.9rem;
+    }
+    .nav-main .navbar-toggler:focus { box-shadow: 0 0 0 0.15rem rgba(255,255,255,0.25); }
+    .nav-main .navbar-toggler-icon {
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(236,240,241,0.85)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+    }
+
+    /* Once collapse is open, stack the two groups (menu + controls)
+     * vertically inside the drawer. */
+    .nav-main #mainNavCollapse { width: 100%; }
+    .nav-main #mainNavCollapse > div { width: 100%; }
+    .nav-main #mainMenu,
+    .nav-main .nav-right-controls {
+        flex-wrap: wrap !important;
+        margin: 0.5rem 0;
+    }
+    .nav-main #mainMenu { gap: 0.25rem !important; margin-inline-start: 0 !important; }
+    .nav-main .nav-right-controls { gap: 0.5rem !important; }
+
+    /* Inside the drawer, every menu item shows its label — the
+     * icon-only collapse-on-hover trick above only makes sense when
+     * users can mouse-hover. Touch users need persistent text. */
+    .nav-main .nav-menu-btn {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.9rem;
+    }
+    .nav-main .nav-menu-btn span {
+        max-width: none;
+        opacity: 1;
+        margin-left: 0.4rem;
+    }
+    .nav-main .nav-menu-btn i { font-size: 1rem; }
+
+    /* The clock just wastes horizontal space on a phone. Hide it
+     * inside the drawer; the lock-screen clock works fine. */
+    .nav-main .toolbar-clock { display: none; }
+}
+
+/* On very narrow screens (typical phone portrait) also tighten the
+ * brand text and dropdown menus so they don't push past the edge. */
+@media (max-width: 575.98px) {
+    .nav-main .navbar-brand { font-size: 0.95rem; }
+    .nav-main .navbar-brand img { height: 28px; }
+    .nav-main .dropdown-menu { max-width: 92vw; }
+}
+.nav-main .nav-menu-btn.dropdown-toggle::after {
+    font-size: 0.6rem;
+    vertical-align: 0.15em;
+    margin-left: 0.2rem;
+}
+.nav-main .dropdown-menu {
+    font-size: 0.8rem;
+    min-width: 10rem;
+    margin-top: 0.25rem;
+    /* 2026-06-11 — sit above any in-page absolutely-positioned
+       elements (situation.php overlays, map controls, GridStack
+       widget headers). Bootstrap's default is 1000; Leaflet
+       controls run at 1000-1100 too. Bump well above. */
+    z-index: 1090;
+}
+.nav-main .dropdown-item {
+    padding: 0.35rem 0.75rem;
+}
+.nav-main .dropdown-item i {
+    font-size: 0.85rem;
+    width: 1.25rem;
+    text-align: center;
+}
+
+/* Row 2: Widget toolbar */
+.nav-widgets {
+    background-color: #34495e;
+    padding: 0.2rem 0;
+    min-height: 0;
+}
+
+.nav-widgets .text-body-secondary {
+    color: #95a5a6 !important;
+}
+
+/* GridStack overrides */
+.grid-stack {
+    min-height: calc(100vh - 90px);
+    padding: 6px;
+}
+
+.grid-stack-item-content {
+    border: 0 !important;
+    overflow: hidden;
+}
+
+.grid-stack-item-content .card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #adb5bd;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    border-radius: 4px;
+}
+
+[data-bs-theme="dark"] .grid-stack-item-content .card {
+    border-color: #495057;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.grid-stack-item-content .card-header {
+    flex-shrink: 0;
+    background-color: #34495e;
+    color: #ecf0f1;
+    border-bottom: 2px solid #2980b9;
+    cursor: move;
+    font-size: 0.8rem;
+    padding: 0.35rem 0.5rem;
+}
+
+[data-bs-theme="dark"] .grid-stack-item-content .card-header {
+    background-color: #2c3e50;
+    border-bottom-color: #3498db;
+}
+
+.grid-stack-item-content .card-header .widget-refresh {
+    color: #95a5a6 !important;
+}
+
+.grid-stack-item-content .card-header .widget-refresh:hover {
+    color: #3498db !important;
+}
+
+.grid-stack-item-content .card-body {
+    flex: 1 1 auto;
+    overflow: auto;
+    min-height: 0;
+    background-color: #ffffff;
+}
+
+[data-bs-theme="dark"] .grid-stack-item-content .card-body {
+    background-color: #212529;
+}
+
+/* Widget toggle buttons */
+.widget-toggle {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.4rem;
+    transition: all 0.15s;
+    border-color: #7f8c8d !important;
+    color: #bdc3c7 !important;
+}
+
+.widget-toggle.active {
+    background-color: #2980b9 !important;
+    border-color: #2980b9 !important;
+    color: white !important;
+}
+
+.widget-toggle:hover:not(.active) {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Refresh icon */
+.widget-refresh:hover {
+    color: var(--bs-primary) !important;
+}
+
+/* Table styles */
+.widget-body table {
+    font-size: 0.8rem;
+    margin-bottom: 0;
+}
+
+.widget-body table th {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background-color: #f1f3f5;
+    border-bottom: 2px solid #adb5bd;
+    color: #495057;
+    padding: 0.4rem 0.5rem;
+    font-weight: 600;
+}
+
+[data-bs-theme="dark"] .widget-body table th {
+    background-color: #2b3035;
+    border-bottom-color: #495057;
+    color: #adb5bd;
+}
+
+.widget-body table th.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.widget-body table th.sortable:hover {
+    background-color: #e2e6ea;
+}
+
+[data-bs-theme="dark"] .widget-body table th.sortable:hover {
+    background-color: #343a40;
+}
+
+.widget-body table th.sort-active {
+    color: var(--bs-primary);
+}
+
+.widget-body table th.sort-asc::after {
+    content: " \25B4";
+    font-size: 0.6rem;
+}
+
+.widget-body table th.sort-desc::after {
+    content: " \25BE";
+    font-size: 0.6rem;
+}
+
+.widget-body table tbody tr {
+    cursor: pointer;
+    transition: background-color 0.1s;
+}
+
+.widget-body table tbody tr:hover {
+    background-color: #dbeafe !important;
+}
+
+[data-bs-theme="dark"] .widget-body table tbody tr:hover {
+    background-color: #1e3a5f !important;
+}
+
+/* Map container */
+.widget-map {
+    height: 100%;
+}
+
+#mapContainer {
+    border-radius: 0.25rem;
+}
+
+/* Statistics widget color overrides */
+.widget-statistics .stat-card {
+    border: 1px solid #dee2e6;
+}
+
+[data-bs-theme="dark"] .widget-statistics .stat-card {
+    border-color: #495057;
+}
+
+/* Phase 99l (Eric beta 2026-06-29) — Controls + Comms button grid.
+   Previously the buttons used flex-wrap, which let them wrap to
+   whatever fit but produced ragged rows. Eric reported that at
+   2 grid units wide he expected 4 buttons per row but got 3 rows
+   plus a scrollbar. Switch to CSS grid auto-fit: buttons size to
+   fill columns of >=70px each, so 1-unit wide = 2 cols, 2-unit
+   wide = 4 cols, 4-unit wide = 8 cols (single row). Buttons
+   stretch vertically when the widget is taller than its content,
+   so a 2-tall widget no longer feels like wasted space. */
+.widget-controls > .d-flex,
+.widget-comms > .d-flex {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+    gap: 4px;
+    align-content: start;
+    height: 100%;
+    overflow-y: auto;
+}
+.widget-controls .ctrl-btn,
+.widget-comms .ctrl-btn {
+    /* Buttons size to fill their grid cell. Icon over text stacked,
+       text small enough that 70px wide still reads. */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 4px;
+    min-height: 48px;
+    font-size: 0.7rem;
+    line-height: 1.1;
+    gap: 2px;
+}
+.widget-controls .ctrl-btn i,
+.widget-comms .ctrl-btn i {
+    font-size: 1.1rem;
+}
+
+/* Responsive: tablet — already compact by default, no extra hiding needed */
+
+/* Responsive: tablet — collapse widget bar */
+@media (max-width: 992px) {
+    .nav-widgets {
+        display: none !important;
+    }
+}
+
+/* Responsive: mobile */
+@media (max-width: 576px) {
+    .grid-stack {
+        min-height: auto;
+    }
+}
+
+/* ── Command Bar (available on all pages via navbar.php) ── */
+.command-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.3);
+    display: flex;
+    justify-content: center;
+    padding-top: 15vh;
+}
+
+.command-bar-inner {
+    display: flex;
+    align-items: center;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.5rem;
+    padding: 0.5rem 1rem;
+    width: 400px;
+    max-width: 90vw;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    height: 48px;
+}
+
+.command-bar-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--bs-body-color);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.95rem;
+}
+
+.command-bar-input::placeholder {
+    color: var(--bs-body-tertiary);
+    font-size: 0.8rem;
+}
+
+.command-bar-input.is-invalid {
+    color: var(--bs-danger);
+}
+
+/* Phase 86b — prefix-match autocomplete dropdown.
+   Inserted right after .command-bar-inner; visually attaches to it. */
+.command-bar-suggest {
+    width: 400px;
+    max-width: 90vw;
+    margin-top: 6px;
+    max-height: 50vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    border-radius: 0.5rem;
+}
+
+.command-bar-suggest .command-bar-suggest-item {
+    cursor: pointer;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+}
+
+.command-bar-suggest .command-bar-suggest-item code {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.85rem;
+}
+
+/* ── Notification Tray ── */
+.nav-notify-badge {
+    font-size: 0.6rem !important;
+    padding: 0.15em 0.4em !important;
+    min-width: 16px;
+}
+
+.notify-item {
+    transition: background-color 0.15s;
+}
+
+.notify-item:hover {
+    background-color: var(--bs-secondary-bg) !important;
+}
+
+.notify-item[data-link]:hover {
+    cursor: pointer;
+}
+
+#navNotifyDropdown {
+    font-size: 0.85rem;
+}
+
+#navNotifyDropdown .border-bottom:last-child {
+    border-bottom: none !important;
+}
+
+/* Phase 43 — permanent center label on a map zone polygon/circle.
+   Plain text floats over the fill; subtle shadow keeps it readable on
+   light + dark map tiles without a background box that hides the fill. */
+.leaflet-tooltip.map-zone-label {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #1a1a1a;
+    text-shadow:
+        0 0 3px #fff,
+        0 0 6px #fff,
+        0 0 9px #fff;
+    pointer-events: none;
+}
+.leaflet-tooltip.map-zone-label::before { display: none !important; }
+[data-bs-theme="dark"] .leaflet-tooltip.map-zone-label {
+    color: #f5f5f5;
+    text-shadow:
+        0 0 3px #000,
+        0 0 6px #000,
+        0 0 9px #000;
+}
+
+/* Road-conditions overlay marker (maps-comprehensive-2026-06).
+   A small round badge carrying the condition's Bootstrap Icon. The divIcon
+   wrapper has no background; this inner element draws the badge. */
+.road-condition-divicon { background: transparent; border: none; }
+.road-condition-marker {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #fd7e14;
+    color: #fff;
+    border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.95rem;
+    line-height: 1;
+}
+[data-bs-theme="dark"] .road-condition-marker {
+    border-color: #2b2b2b;
+}
+
+/* Map Overlays editor: permanent center label inside the settings editor map.
+   Same look as dispatcher-side so the admin sees exactly what dispatchers will. */
+.leaflet-tooltip.mo-shape-label {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    font-weight: 600;
+    color: #1a1a1a;
+    text-shadow: 0 0 3px #fff, 0 0 6px #fff;
+    pointer-events: none;
+}
+.leaflet-tooltip.mo-shape-label::before { display: none !important; }
+[data-bs-theme="dark"] .leaflet-tooltip.mo-shape-label {
+    color: #f5f5f5;
+    text-shadow: 0 0 3px #000, 0 0 6px #000;
+}

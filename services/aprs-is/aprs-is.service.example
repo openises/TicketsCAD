@@ -1,0 +1,39 @@
+# systemd unit for the TicketsCAD APRS-IS listener.
+#
+# Install:
+#   1. Copy this file to /etc/systemd/system/aprs-is.service
+#   2. Adjust paths if your install isn't at /var/www/newui
+#   3. Create /etc/ticketscad/aprs-is.ini from listener.ini.example
+#   4. pip install requests aprslib  (as the ejosterberg user, or system-wide)
+#   5. systemctl daemon-reload
+#   6. systemctl enable --now aprs-is
+#   7. journalctl -u aprs-is -f   # watch logs
+#
+# Verify health:
+#   - In the TicketsCAD UI: Settings → System Health → Location Providers card
+#   - The APRS row should flip to green and show recent receive counts.
+
+[Unit]
+Description=TicketsCAD APRS-IS persistent listener
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ejosterberg
+Group=www-data
+WorkingDirectory=/var/www/newui/services/aprs-is
+ExecStart=/usr/bin/python3 /var/www/newui/services/aprs-is/listener.py --config /etc/ticketscad/aprs-is.ini
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

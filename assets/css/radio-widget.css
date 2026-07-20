@@ -1,0 +1,363 @@
+/*
+ * Radio Widget — DMR live audio + DVR + PTT
+ * Phase 84s. Modeled on zello-widget.css but tuned for the DVR/transport
+ * controls a dispatcher needs while monitoring a TG.
+ */
+
+.radio-widget {
+    position: fixed;
+    z-index: 1055;
+    width: 360px;
+    min-width: 280px;
+    max-width: 90vw;
+    height: 480px;
+    min-height: 320px;
+    max-height: 90vh;
+    background: var(--bs-body-bg, #fff);
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.5rem;
+    box-shadow: 0 0.5rem 1.5rem rgba(0,0,0,.25);
+    display: flex;
+    flex-direction: column;
+    font-size: 0.9rem;
+    overflow: hidden;
+}
+
+.radio-hidden { display: none !important; }
+.radio-minimized {
+    height: auto !important;
+    min-height: 0;
+}
+.radio-minimized .radio-transport,
+.radio-minimized .radio-feed,
+.radio-minimized .radio-ptt-bar,
+.radio-minimized .radio-resize-handle { display: none; }
+
+.radio-header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    background: var(--bs-tertiary-bg, #f8f9fa);
+    border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+    cursor: move;
+    user-select: none;
+}
+
+.radio-status-badge {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.radio-status-badge.status-disconnected { background: #6c757d; }
+.radio-status-badge.status-idle         { background: #198754; }
+.radio-status-badge.status-live         { background: #dc3545; box-shadow: 0 0 6px rgba(220,53,69,.7); animation: radio-pulse 1.2s infinite; }
+.radio-status-badge.status-tx           { background: #ffc107; box-shadow: 0 0 6px rgba(255,193,7,.7); }
+
+@keyframes radio-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.4; }
+}
+
+.radio-header-icon { color: var(--bs-danger, #dc3545); }
+.radio-header-title { font-weight: 600; }
+.radio-header-channel {
+    font-size: 0.75rem;
+    color: var(--bs-secondary-color, #6c757d);
+    margin-left: 0.25rem;
+}
+.radio-header-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 0.25rem;
+}
+
+.radio-banner {
+    flex: 0 0 auto;
+    padding: 0.4rem 0.625rem;
+    font-size: 0.78rem;
+    border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+    background: #fff3cd;
+    color: #664d03;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+.radio-banner > span { flex: 1; word-break: break-word; }
+.radio-banner-dismiss {
+    flex: 0 0 auto;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    opacity: 0.65;
+}
+.radio-banner-dismiss:hover { opacity: 1; }
+.radio-banner[data-kind="err"] {
+    background: #f8d7da;
+    color: #58151c;
+}
+.radio-banner[data-kind="info"] {
+    background: #cff4fc;
+    color: #055160;
+}
+
+.radio-transport {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.5rem;
+    /* GH #55 — transport now sits below the feed (just above the PTT), so the
+       separator moves to the top edge to divide it from the message list. */
+    border-top: 1px solid var(--bs-border-color, #dee2e6);
+    background: var(--bs-body-bg, #fff);
+}
+.radio-transport-btn {
+    padding: 0.2rem 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+.radio-transport-btn.active {
+    background: var(--bs-danger, #dc3545);
+    color: #fff;
+    border-color: var(--bs-danger, #dc3545);
+}
+.radio-transport-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+.radio-position {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+}
+.radio-position input[type="range"] {
+    flex: 1;
+    min-width: 0;
+}
+.radio-position-label {
+    font-size: 0.7rem;
+    color: var(--bs-secondary-color, #6c757d);
+    min-width: 3.5em;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.radio-settings-pop {
+    flex: 0 0 auto;
+    padding: 0.6rem 0.625rem 0.7rem;
+    border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+    background: var(--bs-tertiary-bg, #f8f9fa);
+}
+
+.radio-feed {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 0.5rem;
+    background: var(--bs-secondary-bg, #f1f3f5);
+}
+.radio-feed-empty {
+    text-align: center;
+    color: var(--bs-secondary-color, #6c757d);
+    padding: 1rem;
+    font-size: 0.85rem;
+}
+
+.radio-call {
+    background: var(--bs-body-bg, #fff);
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.625rem;
+    margin-bottom: 0.4rem;
+    font-size: 0.85rem;
+}
+.radio-call.radio-call-live {
+    border-color: var(--bs-danger, #dc3545);
+    background: color-mix(in srgb, var(--bs-danger, #dc3545) 6%, transparent);
+}
+.radio-call-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+}
+.radio-call-time {
+    margin-left: auto;
+    font-size: 0.7rem;
+    font-weight: normal;
+    color: var(--bs-secondary-color, #6c757d);
+    font-variant-numeric: tabular-nums;
+}
+.radio-call-replay {
+    margin-left: 0.4rem;
+    padding: 0 0.2rem;
+    border: none;
+    background: transparent;
+    color: var(--bs-secondary-color, #6c757d);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 0.25rem;
+}
+.radio-call-replay:hover {
+    color: var(--bs-primary, #0d6efd);
+    background: var(--bs-secondary-bg, #f1f3f5);
+}
+.radio-call-replay:focus-visible {
+    outline: 2px solid var(--bs-primary, #0d6efd);
+    outline-offset: 1px;
+}
+
+.radio-call-transcript {
+    margin-top: 0.25rem;
+    font-size: 0.85rem;
+    color: var(--bs-body-color);
+    word-break: break-word;
+}
+.radio-call-transcript.radio-call-pending {
+    color: var(--bs-secondary-color, #6c757d);
+    font-style: italic;
+}
+
+.radio-ptt-bar {
+    flex: 0 0 auto;
+    padding: 0.5rem;
+    border-top: 1px solid var(--bs-border-color, #dee2e6);
+    background: var(--bs-tertiary-bg, #f8f9fa);
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    align-items: stretch;
+}
+/* GH #55 — idle color shared with the Zello widget via --ptt-color so
+   the config color picker recolors both consoles at once. Active
+   (transmitting) stays amber below. */
+.radio-ptt-btn {
+    background: var(--ptt-color, #dc3545);
+    color: #fff;
+    border: 1px solid var(--ptt-color, #dc3545);
+    border-radius: 0.375rem;
+    padding: 0.55rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.1s, transform 0.05s;
+}
+.radio-ptt-btn:hover:not(.radio-ptt-active) {
+    background: color-mix(in srgb, var(--ptt-color, #dc3545) 85%, black);
+}
+.radio-ptt-btn.radio-ptt-active {
+    background: #ffc107;
+    border-color: #ffc107;
+    color: #000;
+    transform: scale(0.98);
+    box-shadow: 0 0 8px rgba(255,193,7,.7);
+}
+.radio-vu {
+    height: 6px;
+    background: var(--bs-body-bg, #fff);
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 999px;
+    overflow: hidden;
+}
+.radio-vu-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(to right, #198754 0%, #ffc107 70%, #dc3545 100%);
+    transition: width 0.08s linear;
+}
+.radio-ptt-hint {
+    font-size: 0.7rem;
+    color: var(--bs-secondary-color, #6c757d);
+    text-align: center;
+}
+
+.radio-resize-handle {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 14px;
+    height: 14px;
+    cursor: nwse-resize;
+    background: linear-gradient(
+        135deg,
+        transparent 0%,
+        transparent 40%,
+        var(--bs-secondary-color, #adb5bd) 40%,
+        var(--bs-secondary-color, #adb5bd) 60%,
+        transparent 60%
+    );
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Phase 85f-5: AI approval panel.
+   Slotted between the call feed and the PTT bar. Hidden when the
+   queue is empty so it doesn't take up space.
+   ───────────────────────────────────────────────────────────────── */
+.radio-ai-panel {
+    border-top: 1px solid var(--bs-border-color, rgba(0,0,0,.1));
+    background: var(--bs-tertiary-bg, rgba(0,0,0,.02));
+    padding: 0.4rem 0.5rem;
+    max-height: 38vh;
+    overflow-y: auto;
+    font-size: 0.8125rem;
+}
+.radio-ai-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.35rem;
+}
+.radio-ai-panel-title { font-weight: 600; }
+.radio-ai-dry-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--bs-secondary-color, #6c757d);
+    cursor: pointer;
+    margin: 0;
+}
+.radio-ai-card {
+    border: 1px solid var(--bs-border-color, rgba(0,0,0,.1));
+    border-radius: 4px;
+    padding: 0.4rem 0.5rem;
+    margin-bottom: 0.4rem;
+    background: var(--bs-body-bg, #fff);
+}
+.radio-ai-card.status-filtered { border-color: var(--bs-warning, #ffc107); }
+.radio-ai-card.status-error    { border-color: var(--bs-danger,  #dc3545); }
+.radio-ai-card-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+}
+.radio-ai-caller { font-weight: 600; }
+.radio-ai-status {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    color: var(--bs-secondary-color, #6c757d);
+    background: var(--bs-tertiary-bg, rgba(0,0,0,.05));
+    padding: 1px 6px;
+    border-radius: 8px;
+}
+.radio-ai-age { margin-left: auto; }
+.radio-ai-transcript { margin-bottom: 0.25rem; }
+.radio-ai-draft      { margin-bottom: 0.35rem; }
+.radio-ai-actions    { display: flex; gap: 0; flex-wrap: wrap; }
+.radio-ai-edit-ta    { font-size: 0.8125rem; }

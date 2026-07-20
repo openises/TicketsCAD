@@ -1,0 +1,457 @@
+/**
+ * NewUI v4.0 - Zello Network Radio Widget Styles
+ *
+ * Floating widget positioned above GridStack (z-index 1100).
+ * Uses Bootstrap CSS variables for theme support (dark/light).
+ */
+
+/* ── Widget Container ────────────────────────────────────────── */
+.zello-widget {
+    position: fixed;
+    z-index: 1100;
+    width: 360px;
+    height: 480px;
+    min-width: 280px;
+    min-height: 300px;
+    max-width: 600px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    border-radius: 8px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--bs-border-color);
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    font-size: 0.85rem;
+    overflow: hidden;
+    transition: box-shadow 0.15s ease;
+}
+
+.zello-widget:focus-within {
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35), 0 0 0 2px var(--bs-primary);
+}
+
+.zello-widget.zello-hidden {
+    display: none;
+}
+
+/* ── Header / Title Bar ──────────────────────────────────────── */
+.zello-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: var(--bs-secondary-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+    cursor: move;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.zello-header-icon {
+    font-size: 1rem;
+}
+
+.zello-header-title {
+    font-weight: 600;
+    font-size: 0.82rem;
+    white-space: nowrap;
+}
+
+.zello-header-channel {
+    font-size: 0.75rem;
+    opacity: 0.7;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+
+.zello-header-actions {
+    display: flex;
+    gap: 2px;
+    margin-left: auto;
+}
+
+.zello-header-actions .btn {
+    padding: 2px 5px;
+    font-size: 0.75rem;
+    line-height: 1;
+}
+
+/* ── Status Badge ────────────────────────────────────────────── */
+.zello-status-badge {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.zello-status-badge.status-connected,
+.zello-status-badge.status-authenticated {
+    background-color: var(--bs-success);
+}
+
+.zello-status-badge.status-connecting,
+.zello-status-badge.status-reconnecting {
+    background-color: var(--bs-warning);
+    animation: zello-pulse 1.2s ease-in-out infinite;
+}
+
+.zello-status-badge.status-disconnected,
+.zello-status-badge.status-failed {
+    background-color: var(--bs-danger);
+}
+
+.zello-status-badge.status-error {
+    background-color: var(--bs-danger);
+}
+
+@keyframes zello-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* ── Toolbar Row (transmit mode, channel selector) ───────────── */
+.zello-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--bs-tertiary-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+    flex-shrink: 0;
+    font-size: 0.75rem;
+}
+
+.zello-toolbar select {
+    font-size: 0.75rem;
+    padding: 1px 4px;
+    height: auto;
+}
+
+.zello-toolbar label {
+    font-size: 0.72rem;
+    opacity: 0.7;
+    white-space: nowrap;
+}
+
+/* ── Message Feed ────────────────────────────────────────────── */
+.zello-feed {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.zello-feed::-webkit-scrollbar {
+    width: 5px;
+}
+
+.zello-feed::-webkit-scrollbar-thumb {
+    background: var(--bs-border-color);
+    border-radius: 3px;
+}
+
+.zello-feed-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    opacity: 0.4;
+    font-size: 0.8rem;
+    text-align: center;
+    padding: 20px;
+}
+
+/* ── Message Bubbles ─────────────────────────────────────────── */
+.zello-msg {
+    max-width: 85%;
+    padding: 5px 8px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    line-height: 1.35;
+    word-wrap: break-word;
+}
+
+.zello-msg-incoming {
+    align-self: flex-start;
+    background: var(--bs-secondary-bg);
+    border: 1px solid var(--bs-border-color);
+    border-bottom-left-radius: 2px;
+}
+
+.zello-msg-outgoing {
+    align-self: flex-end;
+    background: var(--bs-primary);
+    color: #fff;
+    border-bottom-right-radius: 2px;
+}
+
+.zello-msg-sender {
+    font-weight: 600;
+    font-size: 0.72rem;
+    margin-bottom: 1px;
+}
+
+.zello-msg-incoming .zello-msg-sender {
+    color: var(--bs-primary);
+}
+
+.zello-msg-outgoing .zello-msg-sender {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.zello-msg-text {
+    margin: 0;
+}
+
+.zello-msg-time {
+    font-size: 0.65rem;
+    opacity: 0.6;
+    text-align: right;
+    margin-top: 2px;
+}
+
+.zello-msg-outgoing .zello-msg-time {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+/* ── Voice Message Styles ──────────────────────────────────── */
+.zello-msg-voice {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+}
+
+.zello-msg-voice .bi {
+    font-size: 1rem;
+}
+
+/* "Talking..." indicator with pulsing mic icon */
+.zello-voice-talking {
+    color: var(--bs-success);
+    font-weight: 600;
+}
+
+.zello-voice-pulse {
+    animation: zello-voice-pulse-anim 0.8s ease-in-out infinite;
+    color: var(--bs-success);
+}
+
+@keyframes zello-voice-pulse-anim {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.15); }
+}
+
+/* Play button */
+.zello-voice-play {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: var(--bs-primary);
+    color: #fff;
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0;
+    flex-shrink: 0;
+    transition: background 0.15s, transform 0.1s;
+}
+
+.zello-voice-play:hover {
+    background: var(--bs-primary-text-emphasis);
+    transform: scale(1.08);
+}
+
+.zello-voice-play.playing {
+    background: var(--bs-success);
+}
+
+/* Outgoing voice play button — lighter to contrast with primary bg */
+.zello-msg-outgoing .zello-voice-play {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.zello-msg-outgoing .zello-voice-play:hover {
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.zello-msg-outgoing .zello-voice-progress {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.zello-msg-outgoing .zello-voice-progress-bar {
+    background: rgba(255, 255, 255, 0.7);
+}
+
+.zello-voice-label {
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+/* Progress bar inside voice bubble */
+.zello-voice-progress {
+    flex: 1;
+    height: 4px;
+    background: var(--bs-border-color);
+    border-radius: 2px;
+    overflow: hidden;
+    min-width: 40px;
+}
+
+.zello-voice-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--bs-primary);
+    border-radius: 2px;
+    transition: width 0.15s linear;
+}
+
+.zello-voice-play.playing ~ .zello-voice-progress .zello-voice-progress-bar {
+    background: var(--bs-success);
+}
+
+/* Streaming audio — speaker icon pulsing green */
+.zello-voice-streaming {
+    color: var(--bs-info);
+    font-weight: 600;
+}
+
+.zello-voice-streaming .bi {
+    animation: zello-voice-pulse-anim 0.8s ease-in-out infinite;
+    color: var(--bs-success);
+}
+
+/* Alert / system messages */
+.zello-msg-alert {
+    align-self: center;
+    max-width: 90%;
+    background: var(--bs-warning-bg-subtle);
+    color: var(--bs-warning-text-emphasis);
+    border: 1px solid var(--bs-warning-border-subtle);
+    border-radius: 4px;
+    text-align: center;
+    font-size: 0.75rem;
+    padding: 4px 10px;
+}
+
+/* ── Text Input Row ──────────────────────────────────────────── */
+.zello-input-row {
+    display: flex;
+    gap: 4px;
+    padding: 6px 10px;
+    border-top: 1px solid var(--bs-border-color);
+    background: var(--bs-body-bg);
+    flex-shrink: 0;
+}
+
+.zello-input-row input {
+    flex: 1;
+    font-size: 0.8rem;
+    padding: 4px 8px;
+}
+
+.zello-input-row .btn {
+    font-size: 0.8rem;
+    padding: 4px 10px;
+}
+
+/* ── PTT Button (Phase 2) ───────────────────────────────────── */
+.zello-ptt-bar {
+    padding: 6px 10px;
+    border-top: 1px solid var(--bs-border-color);
+    background: var(--bs-tertiary-bg);
+    flex-shrink: 0;
+    text-align: center;
+}
+
+/* GH #55 (Eric 2026-07-04) — unified PTT styling with the DMR Radio
+   widget: red idle by default, driven by --ptt-color so the config color
+   picker recolors both consoles at once. Transmitting flips to the same
+   amber the DMR widget uses so idle-vs-transmitting reads clearly even
+   though idle is now red. */
+.zello-ptt-btn {
+    width: 100%;
+    padding: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border: 2px solid var(--ptt-color, #dc3545);
+    border-radius: 6px;
+    background: var(--ptt-color, #dc3545);
+    color: #fff;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.1s, border-color 0.1s;
+}
+
+.zello-ptt-btn:hover:not(.transmitting) {
+    background: color-mix(in srgb, var(--ptt-color, #dc3545) 85%, black);
+    border-color: color-mix(in srgb, var(--ptt-color, #dc3545) 85%, black);
+}
+
+.zello-ptt-btn.transmitting {
+    --vu-level: 0%;
+    border-color: #ffc107;
+    color: #000;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(
+        to right,
+        #ffc107 var(--vu-level),
+        rgba(255, 193, 7, 0.3) var(--vu-level)
+    );
+    animation: zello-transmit-pulse 0.6s ease-in-out infinite;
+}
+
+@keyframes zello-transmit-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.5); }
+    50% { box-shadow: 0 0 0 6px rgba(255, 193, 7, 0); }
+}
+
+.zello-ptt-hint {
+    font-size: 0.65rem;
+    opacity: 0.5;
+    margin-top: 3px;
+}
+
+/* ── Dragging state ──────────────────────────────────────────── */
+.zello-widget.dragging {
+    opacity: 0.9;
+    cursor: move;
+}
+
+.zello-widget.dragging * {
+    pointer-events: none;
+}
+
+/* ── Resize Handle ───────────────────────────────────────────── */
+.zello-resize-handle {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 14px;
+    height: 14px;
+    cursor: nwse-resize;
+    opacity: 0.3;
+}
+
+.zello-resize-handle::after {
+    content: '';
+    position: absolute;
+    bottom: 3px;
+    right: 3px;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid var(--bs-body-color);
+    border-bottom: 2px solid var(--bs-body-color);
+}

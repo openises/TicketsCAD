@@ -1,0 +1,34 @@
+[Unit]
+Description=TicketsCAD HBP client — BrandMeister HomeBrew Protocol bridge (RX + TX)
+Documentation=https://github.com/openises/TicketsCAD/blob/main/services/dvswitch/hbp_client.py
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ticketscad
+Group=ticketscad
+EnvironmentFile=/etc/ticketscad/hbp-client.env
+WorkingDirectory=/opt/ticketscad-dvswitch
+ExecStart=/opt/ticketscad-dvswitch/venv/bin/python3 /opt/ticketscad-dvswitch/hbp_client.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Hardening — bridge needs to bind UDP 62032 (HBP) + TCP 18091 (HTTP
+# control), read MMDVM_Bridge.ini + the env file, and write recording
+# WAVs under /var/cache/ticketscad-dvswitch/recordings.
+ProtectSystem=strict
+ReadWritePaths=/var/cache/ticketscad-dvswitch /tmp
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

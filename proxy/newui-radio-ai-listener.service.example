@@ -1,0 +1,26 @@
+[Unit]
+Description=NewUI Radio-AI Wake-Word Listener (Phase 85f)
+Documentation=https://github.com/openises/TicketsCAD/blob/main/newui-dev/newui/specs/phase-85f-claude-on-radio/spec.md
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/newui
+ExecStart=/usr/bin/php /var/www/newui/inc/radio_ai_listener.php
+Restart=on-failure
+RestartSec=10s
+StandardOutput=append:/var/log/newui/radio-ai-listener.log
+StandardError=append:/var/log/newui/radio-ai-listener.log
+
+# Sandboxing
+ProtectSystem=strict
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+ReadWritePaths=/var/log/newui
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,18 @@
+-- NewUI v4.0 - Upgrade Notes for Tickets Users
+--
+-- When users upgrade from the current Tickets UI to NewUI, they need to:
+--
+-- 1. Run the dashboard_tables.sql script against their existing tickets database
+--    to add the `dashboard_layouts` table.
+--
+-- 2. Update their config.php to point to their existing tickets database
+--    (or rename their database to match the newui config).
+--
+-- 3. No schema changes to existing tables are required — NewUI reads the same
+--    table structures (ticket, user, responder, facility, etc.) as current Tickets.
+--
+-- Future schema changes during NewUI development should be documented here
+-- with ALTER TABLE statements that can be run against an existing Tickets DB.
+--
+-- Example (placeholder for future changes):
+-- ALTER TABLE `user` ADD COLUMN `dashboard_theme` VARCHAR(10) DEFAULT 'Day' AFTER `level`;

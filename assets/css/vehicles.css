@@ -1,0 +1,57 @@
+/* NewUI v4.0 - Vehicles page styles */
+
+/* Compact table rows */
+#vehicleTable tbody tr {
+    cursor: pointer;
+}
+#vehicleTable tbody tr:hover {
+    background-color: var(--bs-tertiary-bg);
+}
+#vehicleTable tbody tr.selected {
+    background-color: var(--bs-primary-bg-subtle) !important;
+    border-left: 3px solid var(--bs-primary);
+}
+
+/* Sticky headers */
+#vehicleTable thead {
+    position: sticky;
+    top: 0;
+    background: var(--bs-body-bg);
+    z-index: 2;
+}
+
+/* Edit form labels */
+.form-label-sm {
+    font-size: 0.7rem;
+    color: var(--bs-secondary);
+}
+
+/* Redacted field */
+.redacted-field {
+    color: var(--bs-secondary);
+    font-style: italic;
+}
+
+/* Sort icons */
+.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+.sort-icon {
+    font-size: 0.7rem;
+    opacity: 0.5;
+}
+
+/* Filter buttons */
+.filter-btn {
+    font-size: 0.75rem;
+    padding: 0.1rem 0.4rem;
+}
+.filter-btn.active {
+    font-weight: 600;
+}
+
+/* Privacy lock icon */
+.privacy-badge {
+    font-size: 0.7rem;
+}
