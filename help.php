@@ -686,6 +686,11 @@ default; an admin can grant it to other roles under Config &raquo; Roles).</p>
     <li>If found, click <strong>Apply to Form</strong> to auto-fill name and license details.</li>
 </ol>
 <p>Works for both amateur radio and GMRS callsigns.</p>
+<p>The lookup source is set under <em>Settings &rarr; FCC Lookup</em>. The default,
+<strong>OpenCallbook</strong>, is a free public service that covers both the amateur
+and GMRS databases. Other choices are a local offline copy of the FCC data, the
+amateur-only callook.info, or a self-hosted FCC-ULS-API. You can also choose how much
+detail an internet lookup service is told about who is querying (the User-Agent).</p>
 '
             ],
         ],

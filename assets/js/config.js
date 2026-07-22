@@ -9546,6 +9546,12 @@
                 urlInput.value = config.fcc_uls_api_url;
             }
 
+            // Set User-Agent detail level
+            var uaSel = document.getElementById('lookupUaDetail');
+            if (uaSel && config.ua_detail) {
+                uaSel.value = config.ua_detail;
+            }
+
             // Toggle URL field visibility
             toggleFccUrlField();
 
@@ -9592,9 +9598,11 @@
     }
 
     function saveLookupConfig() {
+        var uaSel = document.getElementById('lookupUaDetail');
         var data = {
             callsign_provider: document.getElementById('lookupProvider').value,
-            fcc_uls_api_url: document.getElementById('fccUlsApiUrl').value
+            fcc_uls_api_url: document.getElementById('fccUlsApiUrl').value,
+            ua_detail: uaSel ? uaSel.value : 'full'
         };
 
         var statusEl = document.getElementById('lookupSaveStatus');

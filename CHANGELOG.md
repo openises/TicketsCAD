@@ -3,6 +3,28 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.0.2] - 2026-07-21
+
+### Added
+- Call-sign lookup: a new **OpenCallbook** provider ([opencallbook.com](https://opencallbook.com))
+  that resolves both amateur radio **and GMRS** call signs in a single query, and
+  is now the default provider. Configurable under Settings → FCC Lookup, alongside
+  the existing local-database, callook.info (amateur-only), and self-hosted
+  FCC-ULS-API options.
+- A configurable **lookup identity (User-Agent)** for internet call-sign lookups:
+  send this site's name along with the software name and version (full), or the
+  software name and version only (minimal).
+
+### Fixed
+- GMRS call-sign lookups returned "No Record Found" because the previous default
+  (callook.info) only covers the amateur database. Installs still on that default
+  are automatically migrated to OpenCallbook; deliberate offline choices (local
+  database / self-hosted FCC-ULS-API / disabled) are left unchanged.
+
+### Changed
+- docs/DOCKER.md: expanded the "Upgrading" section — back up first, pin to a
+  release tag, verify migrations ran, and how to roll back.
+
 ## [4.0.1] - 2026-07-20
 
 ### Added

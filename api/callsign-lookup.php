@@ -3,9 +3,11 @@
  * NewUI v4.0 API - Callsign & License Lookup
  *
  * Supports multiple backends (configurable in Settings > Integrations):
+ *   opencallbook — OpenCallbook public API (DEFAULT). Amateur AND GMRS by call
+ *                  sign in one call, https://opencallbook.com. Internet required.
  *   disabled    — Lookups disabled
- *   local       — Local MySQL tables (fcc_amateur / fcc_gmrs)
- *   callook     — callook.info public API (internet required)
+ *   local       — Local MySQL tables (fcc_amateur / fcc_gmrs). No internet needed.
+ *   callook     — callook.info public API (amateur only; internet required)
  *   fcc_uls_api — Self-hosted FCC-ULS-API (Flask, https://github.com/porcej/FCC-ULS-API)
  *
  * GET ?action=callsign&q=W1AW
@@ -33,10 +35,15 @@ $action = trim($_GET['action'] ?? $_POST['action'] ?? '');
 function getLookupConfig() {
     global $prefix;
     $defaults = [
-        'callsign_provider'  => 'callook',     // disabled | local | callook | fcc_uls_api
-        'fcc_uls_api_url'    => 'http://localhost:5000',
-        'callook_timeout'    => 5,
-        'fcc_uls_api_timeout'=> 5,
+        'callsign_provider'   => 'opencallbook', // opencallbook | disabled | local | callook | fcc_uls_api
+        'opencallbook_url'    => 'https://opencallbook.com',
+        'opencallbook_timeout'=> 5,
+        'fcc_uls_api_url'     => 'http://localhost:5000',
+        'callook_timeout'     => 5,
+        'fcc_uls_api_timeout' => 5,
+        // User-Agent detail on outbound lookups: 'full' adds this install's host
+        // so the lookup service can attribute traffic; 'minimal' omits it.
+        'ua_detail'           => 'full',
     ];
 
     try {
@@ -98,6 +105,9 @@ if ($action === 'callsign') {
 
     // Try primary provider
     switch ($provider) {
+        case 'opencallbook':
+            $result = lookupOpenCallbook($callsign, $config['opencallbook_url'], (int) $config['opencallbook_timeout']);
+            break;
         case 'local':
             $result = lookupLocalAmateur($callsign);
             break;
@@ -232,34 +242,39 @@ elseif ($action === 'config') {
         json_error('Invalid CSRF token', 403);
     }
 
-    $allowed = ['callsign_provider', 'fcc_uls_api_url', 'callook_timeout', 'fcc_uls_api_timeout'];
+    $allowed = ['callsign_provider', 'opencallbook_url', 'opencallbook_timeout',
+                'fcc_uls_api_url', 'callook_timeout', 'fcc_uls_api_timeout', 'ua_detail'];
     $saved   = 0;
 
     foreach ($allowed as $key) {
         if (isset($input[$key])) {
             // Validate provider
             if ($key === 'callsign_provider') {
-                $valid = ['disabled', 'local', 'callook', 'fcc_uls_api'];
+                $valid = ['disabled', 'local', 'callook', 'fcc_uls_api', 'opencallbook'];
                 if (!in_array($input[$key], $valid)) {
                     continue;
                 }
             }
-            // Validate fcc_uls_api_url — must be http(s) and not target internal
+            // Validate the User-Agent detail level.
+            if ($key === 'ua_detail' && !in_array($input[$key], ['full', 'minimal'], true)) {
+                continue;
+            }
+            // Validate provider URLs — must be http(s) and not target internal
             // services (basic SSRF defense; admins can still point at LAN hosts
             // if they really mean to, but link-local / metadata is rejected).
-            if ($key === 'fcc_uls_api_url') {
+            if ($key === 'fcc_uls_api_url' || $key === 'opencallbook_url') {
                 $url = trim((string) $input[$key]);
                 if ($url === '') { continue; }
                 $parts = parse_url($url);
                 if (!$parts
                     || !isset($parts['scheme'], $parts['host'])
                     || !in_array(strtolower($parts['scheme']), ['http', 'https'], true)) {
-                    json_error('fcc_uls_api_url must be a valid http(s) URL', 400);
+                    json_error($key . ' must be a valid http(s) URL', 400);
                 }
                 $host = strtolower($parts['host']);
                 $blockedHosts = ['169.254.169.254', 'metadata.google.internal', 'metadata'];
                 if (in_array($host, $blockedHosts, true)) {
-                    json_error('fcc_uls_api_url targets a blocked host', 400);
+                    json_error($key . ' targets a blocked host', 400);
                 }
             }
             if (saveLookupConfig($key, $input[$key])) {
@@ -281,6 +296,88 @@ else {
 // ═══════════════════════════════════════════════════════════════
 // PROVIDER FUNCTIONS
 // ═══════════════════════════════════════════════════════════════
+
+/**
+ * Build the outbound User-Agent for lookup requests. 'full' detail (default)
+ * appends this install's host so the lookup service can attribute traffic in
+ * its logs; 'minimal' sends only the software name + version.
+ */
+function buildLookupUserAgent() {
+    $ver = defined('NEWUI_VERSION') ? NEWUI_VERSION : '4.0';
+    $ua  = 'TicketsCAD/' . $ver . ' (+https://github.com/openises/TicketsCAD)';
+    $cfg = getLookupConfig();
+    if (($cfg['ua_detail'] ?? 'full') !== 'minimal') {
+        $host = '';
+        $base = (string) ($GLOBALS['base_url'] ?? '');
+        if ($base !== '') {
+            $host = (string) (parse_url($base, PHP_URL_HOST) ?: '');
+        }
+        if ($host === '' && !empty($_SERVER['HTTP_HOST'])) {
+            $host = preg_replace('/[^A-Za-z0-9.\-:]/', '', (string) $_SERVER['HTTP_HOST']);
+        }
+        if ($host !== '') {
+            $ua .= '; site ' . $host;
+        }
+    }
+    return $ua;
+}
+
+/**
+ * Look up a call sign (amateur OR GMRS) via the OpenCallbook public API.
+ * One endpoint covers both services: GET {base}/api/v1/licenses/{callsign}.
+ * This is what makes GMRS call-sign lookup work out of the box (GH openises/TicketsCAD#1).
+ */
+function lookupOpenCallbook($callsign, $baseUrl, $timeout = 5) {
+    $base = ($baseUrl !== '') ? $baseUrl : 'https://opencallbook.com';
+    $url  = rtrim($base, '/') . '/api/v1/licenses/' . urlencode($callsign);
+
+    $ctx = stream_context_create([
+        'http' => [
+            'timeout'       => $timeout,
+            'ignore_errors' => true,               // read the 404 body, don't fatal
+            'header'        => "Accept: application/json\r\n",
+            'user_agent'    => buildLookupUserAgent(),
+        ],
+        'ssl' => ['verify_peer' => true, 'verify_peer_name' => true],
+    ]);
+
+    $json = @file_get_contents($url, false, $ctx);
+    if ($json === false) {
+        return null;
+    }
+    $data = json_decode($json, true);
+    if (!is_array($data) || empty($data['callsign'])) {   // not-found bodies have no callsign
+        return null;
+    }
+
+    $lic      = $data['licensee'] ?? [];
+    $am       = $data['amateur'] ?? [];
+    $fn       = $lic['first_name'] ?? '';
+    $ln       = $lic['last_name'] ?? '';
+    $isPerson = (($lic['applicant_type_code'] ?? '') === 'I') || $fn !== '' || $ln !== '';
+
+    return [
+        'first_name'     => $fn,
+        'last_name'      => $ln,
+        'middle_initial' => substr((string) ($lic['mi'] ?? ''), 0, 1),
+        'suffix'         => $lic['suffix'] ?? '',
+        'entity_name'    => $isPerson ? '' : ($lic['name'] ?? ''),
+        'entity_type'    => $isPerson ? 'I' : 'B',
+        'oper_class'     => $am['operator_class'] ?? '',
+        'street'         => $lic['street_address'] ?? '',
+        'city'           => $lic['city'] ?? '',
+        'state'          => $lic['state'] ?? '',
+        'zip'            => $lic['zip_code'] ?? '',
+        'frn'            => $data['frn'] ?? '',
+        'grant_date'     => parseApiDate($data['grant_date'] ?? ''),
+        'expiry_date'    => parseApiDate($data['expired_date'] ?? ''),
+        'last_action'    => parseApiDate($data['last_action_date'] ?? ''),
+        'grid_square'    => '',
+        'lat'            => null,
+        'lng'            => null,
+        'service'        => $data['service'] ?? '',   // "AM" amateur | "GM" GMRS
+    ];
+}
 
 /**
  * Look up amateur callsign in local fcc_amateur table
@@ -331,7 +428,7 @@ function lookupCallook($callsign, $timeout = 5) {
         'http' => [
             'timeout'       => $timeout,
             'ignore_errors' => true,
-            'user_agent'    => 'NewUI-CAD/4.0 (callsign-lookup)',
+            'user_agent'    => buildLookupUserAgent(),
         ],
         'ssl' => [
             'verify_peer' => false,  // Some XAMPP setups lack CA certs
@@ -442,7 +539,7 @@ function lookupFccUlsApi($callsign, $baseUrl, $timeout = 5) {
         'http' => [
             'timeout'       => $timeout,
             'ignore_errors' => true,
-            'user_agent'    => 'NewUI-CAD/4.0',
+            'user_agent'    => buildLookupUserAgent(),
         ],
         'ssl' => [
             'verify_peer' => false,
@@ -546,7 +643,7 @@ function lookupFccUlsApiByName($lastName, $zip, $baseUrl, $timeout = 5) {
     $url = rtrim($baseUrl, '/') . '/api/zipcode/' . urlencode($zip);
 
     $ctx = stream_context_create([
-        'http' => ['timeout' => $timeout, 'ignore_errors' => true],
+        'http' => ['timeout' => $timeout, 'ignore_errors' => true, 'user_agent' => buildLookupUserAgent()],
         'ssl'  => ['verify_peer' => false],
     ]);
 

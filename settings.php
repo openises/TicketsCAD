@@ -2319,14 +2319,18 @@ foreach ($personnelSections as $sec) {
                     <div class="col-md-6">
                         <label for="lookupProvider" class="form-label form-label-sm">Provider</label>
                         <select class="form-select form-select-sm" id="lookupProvider">
+                            <option value="opencallbook" selected>OpenCallbook — Amateur + GMRS (Internet)</option>
                             <option value="disabled">Disabled</option>
                             <option value="local">Local Database (MySQL)</option>
-                            <option value="callook" selected>callook.info (Internet)</option>
+                            <option value="callook">callook.info — Amateur only (Internet)</option>
                             <option value="fcc_uls_api">FCC-ULS-API (Self-hosted)</option>
                         </select>
                         <div class="form-text">
-                            <strong>Local:</strong> Import FCC data with <code>php tools/import-fcc.php</code><br>
-                            <strong>callook.info:</strong> Free public API, requires internet<br>
+                            <strong>OpenCallbook:</strong> Free public API covering amateur <em>and</em> GMRS
+                            by call sign, requires internet
+                            (<a href="https://opencallbook.com" target="_blank">opencallbook.com</a>)<br>
+                            <strong>Local:</strong> Import FCC data with <code>php tools/import-fcc.php</code> — works offline<br>
+                            <strong>callook.info:</strong> Free public API, amateur only, requires internet<br>
                             <strong>FCC-ULS-API:</strong> Self-hosted Flask service
                             (<a href="https://github.com/porcej/FCC-ULS-API" target="_blank">GitHub</a>)
                         </div>
@@ -2336,6 +2340,16 @@ foreach ($personnelSections as $sec) {
                         <input type="url" class="form-control form-control-sm" id="fccUlsApiUrl"
                                placeholder="http://localhost:5000" value="http://localhost:5000">
                         <div class="form-text">Base URL of the FCC-ULS-API Flask server</div>
+                    </div>
+                </div>
+                <div class="row g-2 mt-1">
+                    <div class="col-md-6">
+                        <label for="lookupUaDetail" class="form-label form-label-sm">Lookup identity (User-Agent)</label>
+                        <select class="form-select form-select-sm" id="lookupUaDetail">
+                            <option value="full" selected>Full — include this site's name</option>
+                            <option value="minimal">Minimal — software + version only</option>
+                        </select>
+                        <div class="form-text">What an internet lookup service records about who is querying.</div>
                     </div>
                 </div>
             </div>

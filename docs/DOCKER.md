@@ -117,14 +117,44 @@ docker compose exec db sh -c 'exec mariadb-dump -uroot -p"$MARIADB_ROOT_PASSWORD
 
 ## 5. Upgrading
 
+Schema migrations run **automatically** on container start — so an upgrade is just
+"get the newer code, rebuild the image, restart." **Back up your database first**
+(a migration changes the schema in place):
+
 ```bash
-git pull
+# 1. Back up first (see §4).
+docker compose exec db sh -c 'exec mariadb-dump -uroot -p"$MARIADB_ROOT_PASSWORD" "$MARIADB_DATABASE"' > backup-$(date +%F).sql
+
+# 2. Get the new version. For production, pin to a released tag (a known-good
+#    version) rather than bleeding-edge main:
+git fetch --tags
+git checkout v4.0.1                       # newest tag: git tag -l | sort -V | tail -1
+#   (or, to track the latest development: git pull)
+
+# 3. Rebuild + restart. The --build is REQUIRED — a plain `git pull` alone does
+#    NOT update the running container (it keeps the old built image).
 docker compose up -d --build
 ```
 
-On start the app re-runs the idempotent migrations, so a newer image brings the
-schema up to date automatically. Nothing is dropped; already-applied migrations
-are skipped.
+**How migrations are handled:** the container entrypoint runs `tools/install_fresh.php`
+on every start. On an empty database it installs the full schema; on an existing
+one it applies only the pending migrations. Every migration is tracked in the
+`_migrations` table, so already-applied ones are skipped and **nothing is dropped**.
+It's idempotent and safe to re-run on every restart.
+
+**Confirm it worked:** migrations are non-fatal by design (a failure never blocks
+the app from starting), so after any upgrade check the log:
+
+```bash
+docker compose logs app | grep -iE 'migration|install|error'
+```
+
+**If an upgrade misbehaves,** roll back to your backup and the previous tag:
+
+```bash
+docker compose exec -T db sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" "$MARIADB_DATABASE"' < backup-YYYY-MM-DD.sql
+git checkout v4.0.0 && docker compose up -d --build
+```
 
 ---
 

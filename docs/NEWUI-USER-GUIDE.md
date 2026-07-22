@@ -596,6 +596,17 @@ When adding a member who has an amateur radio or GMRS license:
 
 This works for both amateur radio callsigns and GMRS callsigns registered with the FCC.
 
+### Lookup source
+
+The lookup source is configured under **Settings → FCC Lookup**:
+
+- **OpenCallbook** (default) — a free public service ([opencallbook.com](https://opencallbook.com)) that resolves **both** amateur and GMRS call signs in a single query. This is the recommended default and the only internet provider that returns GMRS records.
+- **Local Database** — an offline copy of the FCC data imported with `php tools/import-fcc.php`. Best for installs with no internet access (e.g. AREDN mesh).
+- **callook.info** — a free public service, **amateur only** (it cannot return GMRS records).
+- **FCC-ULS-API** — a self-hosted Flask service you run yourself.
+
+You can also set the **lookup identity (User-Agent)** — whether an internet lookup service is told this site's name along with the software name and version (*Full*), or only the software name and version (*Minimal*).
+
 ## Certifications and Training Records
 
 Each member can have certifications and training records attached to their profile:
