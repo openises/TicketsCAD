@@ -165,6 +165,33 @@ if ($method === 'POST') {
         $id = intval($input['id'] ?? 0);
 
         $catId = intval($input['category_id'] ?? 0);
+        // GH TicketsCAD#3 — column => the request key that supplies it.
+        // $fields below is the FULL set, with defaults, and is what an INSERT
+        // writes. An UPDATE must write only the columns the caller actually
+        // sent: a partial save (Rename posts id + name only) previously wrote
+        // the whole defaulted set, blanking line_data — the geometry — which
+        // left a row no renderer can draw, so the shape silently vanished from
+        // every map and its coordinates were unrecoverable.
+        $srcKey = [
+            'line_name'     => 'name',
+            'line_status'   => 'visible',
+            'line_type'     => 'type',
+            'line_ident'    => 'ident',
+            'line_cat_id'   => 'category_id',
+            'line_data'     => 'coordinates',
+            'line_color'    => 'color',
+            'line_opacity'  => 'opacity',
+            'line_width'    => 'width',
+            'fill_color'    => 'fill_color',
+            'fill_opacity'  => 'fill_opacity',
+            'filled'        => 'filled',
+            'use_with_bm'   => 'use_with_bm',
+            'use_with_r'    => 'use_with_r',
+            'use_with_f'    => 'use_with_f',
+            'use_with_u_ex' => 'use_with_u_ex',
+            'use_with_u_rf' => 'use_with_u_rf',
+            'category_id'   => 'category_id',
+        ];
         $fields = [
             'line_name'   => $name,
             'line_status' => $input['visible'] ?? 1,
@@ -205,9 +232,15 @@ if ($method === 'POST') {
 
         try {
             if ($id > 0) {
+                // Only touch columns the caller actually supplied (GH #3).
+                // line_name is always written — it is required and validated above.
                 $sets = [];
                 $vals = [];
                 foreach ($fields as $col => $val) {
+                    $key = $srcKey[$col] ?? $col;
+                    if ($col !== 'line_name' && !array_key_exists($key, $input)) {
+                        continue;
+                    }
                     $sets[] = "`{$col}` = ?";
                     $vals[] = $val;
                 }

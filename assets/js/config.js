@@ -1995,7 +1995,8 @@
         drawPoints: [],          // latlng list for polygon/line
         circleCenter: null,      // first click for circle
         activeCatId: 0,
-        cats:       []           // mirror of customTonesState pattern
+        cats:       [],          // mirror of customTonesState pattern
+        shapes:     []           // shapes last loaded for the active category
     };
 
     function _moStatus(txt) {
@@ -2006,6 +2007,14 @@
     function _moActiveCat() {
         for (var i = 0; i < moEditor.cats.length; i++) {
             if (moEditor.cats[i].id === moEditor.activeCatId) return moEditor.cats[i];
+        }
+        return null;
+    }
+
+    function _moShapeById(id) {
+        var list = moEditor.shapes || [];
+        for (var i = 0; i < list.length; i++) {
+            if (parseInt(list[i].id, 10) === parseInt(id, 10)) return list[i];
         }
         return null;
     }
@@ -2150,7 +2159,10 @@
             html += '<tr>'
                   + '<td class="text-body-secondary small">' + esc(typ) + '</td>'
                   + '<td><strong>' + esc(s.line_name || ('Shape ' + s.id)) + '</strong></td>'
-                  + '<td><span class="badge" style="background:' + esc(s.line_color || '#999') + '">' + esc(s.line_color || '') + '</span></td>'
+                  + '<td><input type="color" class="form-control form-control-sm form-control-color"'
+                  +      ' value="' + esc(s.line_color || '#1976d2') + '"'
+                  +      ' title="Shape colour — applies as soon as you pick one"'
+                  +      ' onchange="__mo_setcolor(' + s.id + ', this.value)"></td>'
                   + '<td class="text-end">'
                   + ' <button type="button" class="btn btn-xs btn-outline-secondary" onclick="__mo_rename(' + s.id + ')" title="Rename"><i class="bi bi-pencil"></i></button>'
                   + ' <button type="button" class="btn btn-xs btn-outline-danger"    onclick="__mo_delete(' + s.id + ')" title="Delete"><i class="bi bi-trash"></i></button>'
@@ -2173,6 +2185,7 @@
                 var shapes = (d.markups || []).filter(function (s) {
                     return parseInt(s.category_id || s.line_cat_id || 0, 10) === moEditor.activeCatId;
                 });
+                moEditor.shapes = shapes;
                 _moRenderShapesList(shapes);
                 shapes.forEach(_moRenderShapeOnMap);
                 // Fit bounds to category if any shapes have coords.
@@ -2378,14 +2391,43 @@
     }
 
     window.__mo_rename = function (id) {
-        var name = prompt('New name for this shape:');
+        var s = _moShapeById(id);
+        var name = prompt('New name for this shape:', s ? (s.line_name || '') : '');
+        if (name === null) return;              // Cancel — distinct from an empty box
+        name = name.replace(/^\s+|\s+$/g, '');
         if (!name) return;
+        // Send ONLY id + name. The endpoint updates just the keys it receives,
+        // so the geometry, type, radius and colour are left untouched (GH #3).
         fetch('api/map-markups.php', {
             method: 'POST', credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'save', csrf_token: getCsrfToken(), id: id, name: name, category_id: moEditor.activeCatId })
+            body: JSON.stringify({ action: 'save', csrf_token: getCsrfToken(), id: id, name: name })
         }).then(function (r) { return r.json(); })
-          .then(function () { _moLoadShapesForActiveCat(); });
+          .then(function (d) {
+              if (d && d.error) { alert('Rename failed: ' + d.error); return; }
+              _moLoadShapesForActiveCat();
+          })
+          .catch(function (e) { alert('Rename failed: ' + e.message); });
+    };
+
+    window.__mo_setcolor = function (id, color) {
+        var s = _moShapeById(id);
+        if (!s) return;
+        // name is required by the endpoint — resend the current one unchanged.
+        fetch('api/map-markups.php', {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'save', csrf_token: getCsrfToken(), id: id,
+                name: s.line_name || ('Shape ' + id),
+                color: color, fill_color: color
+            })
+        }).then(function (r) { return r.json(); })
+          .then(function (d) {
+              if (d && d.error) { alert('Colour change failed: ' + d.error); return; }
+              _moLoadShapesForActiveCat();
+          })
+          .catch(function (e) { alert('Colour change failed: ' + e.message); });
     };
 
     window.__mo_delete = function (id) {

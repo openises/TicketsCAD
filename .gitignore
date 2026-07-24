@@ -93,3 +93,7 @@ Thumbs.db
 
 # Docker Compose local environment (holds DB passwords) — never commit
 .env
+
+# Upgrade orchestrator artifacts — DB dumps + run logs (may contain live data)
+tools/upgrade/backups/
+tools/upgrade/upgrade-*.log

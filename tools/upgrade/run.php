@@ -71,25 +71,36 @@ if (!$skipBackup) {
         if (!is_dir($dir)) mkdir($dir, 0755, true);
         $sqlPath = $dir . "/{$stamp}.sql";
 
-        // Use mysqldump if available; fall back to PHP-based dump otherwise.
+        // Prefer mysqldump when it works (fast, streams to disk); otherwise use
+        // the built-in PDO dump, which reuses the exact credentials the preflight
+        // already verified. On Windows/XAMPP mysqldump frequently can't
+        // authenticate even when PDO can (different auth path), so the fallback
+        // is the reliable path there — it must actually work.
+        $errFile = $sqlPath . '.mysqldump-err';
         $cmd = sprintf(
-            'mysqldump -h%s -u%s %s %s > %s',
+            'mysqldump -h%s -u%s %s %s 2>%s > %s',
             escapeshellarg($GLOBALS['db_host'] ?? 'localhost'),
             escapeshellarg($GLOBALS['db_user'] ?? 'root'),
             !empty($GLOBALS['db_pass']) ? '-p' . escapeshellarg($GLOBALS['db_pass']) : '',
             escapeshellarg($GLOBALS['db_name'] ?? ''),
+            escapeshellarg($errFile),
             escapeshellarg($sqlPath)
         );
         $rc = 0;
         @system($cmd, $rc);
         if ($rc !== 0 || !file_exists($sqlPath) || filesize($sqlPath) < 100) {
-            // Fallback: PHP-based dump via the existing backup helper.
+            // mysqldump missing or couldn't authenticate — use the built-in
+            // PDO-based dump (inc/backup.php). This is the SAME connection the
+            // preflight proved works, so it succeeds where the mysqldump CLI
+            // could not. (The old code called a non-existent function name and
+            // silently produced an empty file — GH upgrade backup failure.)
+            logmsg('  mysqldump unavailable or could not authenticate — using the built-in database backup instead');
             require_once __DIR__ . '/../../inc/backup.php';
-            if (function_exists('newui_backup_dump_sql')) {
-                $sql = newui_backup_dump_sql();
-                file_put_contents($sqlPath, $sql);
+            if (function_exists('backup_dump_sql')) {
+                backup_dump_sql($sqlPath);
             }
         }
+        @unlink($errFile);
         if (!file_exists($sqlPath) || filesize($sqlPath) < 100) {
             throw new RuntimeException('backup produced empty file: ' . $sqlPath);
         }
@@ -107,20 +118,33 @@ if (!$noConfirm && !$skipBackup) {
     if (php_sapi_name() === 'cli') @fgets(STDIN);
 }
 
+// Steps 4-6 run their scripts as ISOLATED SUBPROCESSES (like steps 7-8 below),
+// not via require(). Each of these scripts is written to run standalone (it
+// requires config.php itself) and declares its own top-level helpers — notably
+// install_fresh.php declares a global step() with a different signature than the
+// orchestrator's. require()-ing it into this scope fatals with "Cannot redeclare
+// step()", which broke every upgrade at step 4. A subprocess has its own symbol
+// table, so no collision is possible now or in future.
+function run_php_script(string $path, string $label): void {
+    $rc = 0;
+    passthru('"' . PHP_BINARY . '" "' . $path . '"', $rc);
+    if ($rc !== 0) throw new RuntimeException("$label failed (exit code $rc)");
+}
+
 // Step 4 — install_fresh.php (idempotent ALTERs)
 step(4, $total, 'install_fresh.php (column patches)', function () {
-    require __DIR__ . '/../install_fresh.php';
+    run_php_script(__DIR__ . '/../install_fresh.php', 'install_fresh.php');
 });
 
 // Step 5 — settings_migrate
 step(5, $total, 'settings translator', function () {
-    require __DIR__ . '/settings_migrate.php';
+    run_php_script(__DIR__ . '/settings_migrate.php', 'settings_migrate.php');
 });
 
 // Step 6 — migrate legacy users to RBAC roles
 step(6, $total, 'level → role migration', function () {
     if (file_exists(__DIR__ . '/../migrate_rbac.php')) {
-        require __DIR__ . '/../migrate_rbac.php';
+        run_php_script(__DIR__ . '/../migrate_rbac.php', 'migrate_rbac.php');
     } else {
         logmsg('  (legacy migrate_rbac.php not present — already covered by run_rbac_v2.php step A9)');
     }

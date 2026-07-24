@@ -185,6 +185,8 @@ You should see one row per report. If you don't:
 | Row exists, lat/lng populated, but the dispatch map shows nothing | `unit_identifier` doesn't match any personnel's comm-identifier binding | Open the personnel record, add a comm-identifier with the exact value from `unit_identifier` |
 | 401 response from the endpoint | `location_ingest_require_token=1` is set but the device isn't sending the right token | Either set the token correctly on the device, or temporarily set `location_ingest_require_token=0` while you bring things up |
 | 429 response from the endpoint | Rate limit hit (600 req/60s/IP default) | The device is configured too chatty, or you're behind a single NAT with many devices — talk to me about raising the limit |
+| **404** from Traccar's forwarder (`HTTP code 404`) | The `forward.url` path doesn't resolve to `api/location.php` — a typo, a missing subdirectory, or the app isn't at the path you think | Run the `curl` POST test above from the Traccar host and confirm you get `{"ok":true,...}`. Make the `forward.url` **exactly** the URL that curl succeeds on. |
+| Opening the ingest URL in a **browser** shows `{"error":"Not authenticated"}` (or, on v4.0.3+, a `405` "POST only" note) | Not a problem. The ingest endpoint accepts **POST only**; a browser sends a GET, which is not the ingest path. | Ignore it — it does **not** mean auth is broken. Verify with the `curl -X POST` test, which uses the correct method. |
 
 ---
 

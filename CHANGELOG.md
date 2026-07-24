@@ -3,6 +3,25 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.0.3] - 2026-07-24
+
+### Fixed
+- Map overlays: renaming a map markup (marker, line, circle, or polygon) no
+  longer erases its shape. A rename now updates only the name and leaves the
+  geometry and colour intact. (GH #3)
+- Location ingest (Traccar / OwnTracks / OpenGTS): opening the ingest URL in a
+  web browser to test it used to return `{"error":"Not authenticated"}`, sending
+  people to chase a non-existent authentication problem. The endpoint now answers
+  a browser with a clear "this URL is correct — it accepts POST only, and this is
+  not an auth failure" message. Position forwarding itself was always POST and is
+  unaffected.
+- Upgrade orchestrator (`tools/upgrade/run.php`): the one-command legacy → v4
+  upgrade could fail two ways — the pre-upgrade database backup silently produced
+  an empty file, and the schema-migration steps aborted with
+  "Cannot redeclare step()". Both are fixed: the backup falls back to the built-in
+  PDO dump when `mysqldump` can't authenticate, and each migration step now runs
+  as an isolated subprocess.
+
 ## [4.0.2] - 2026-07-21
 
 ### Added

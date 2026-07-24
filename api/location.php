@@ -687,6 +687,32 @@ if ($method === 'POST' && isset($_GET['provider']) &&
     exit;
 }
 
+// ── Friendly GET on an INGEST url ───────────────────────────────
+// The three ingest paths above (owntracks / traccar / opengts) are POST-only.
+// When someone opens the forwarder/device URL in a browser to test it, the GET
+// falls through to the auth-gated admin handler below and returns a scary
+// {"error":"Not authenticated"} — which has NOTHING to do with the ingest and
+// sends people chasing a phantom auth problem (Traccar beta report, 2026-07-24:
+// "going to that web page I get Not authenticated"). Answer with a plain,
+// helpful note instead so a browser sanity-check reads as "right URL, wrong
+// method" rather than "auth is broken".
+if ($method === 'GET' && isset($_GET['provider'])
+    && in_array($_GET['provider'], ['owntracks', 'traccar', 'opengts'], true)) {
+    http_response_code(405);
+    header('Allow: POST');
+    header('Content-Type: application/json');
+    echo json_encode([
+        'ok'       => false,
+        'endpoint' => $_GET['provider'] . ' position-ingest',
+        'method'   => 'POST',
+        'note'     => 'This is the ' . $_GET['provider'] . ' position-ingest endpoint. '
+                    . 'It accepts POST only — configure your device or Traccar '
+                    . 'forward.url to POST here. Seeing this in a browser means the '
+                    . 'URL is correct; it is NOT an authentication failure.',
+    ]);
+    exit;
+}
+
 // ── Standard auth + CSRF for all other endpoints ────────────────
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
