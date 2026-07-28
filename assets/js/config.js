@@ -6071,10 +6071,16 @@
         var input = document.getElementById('setFeedApiKey');
         var banner = document.getElementById('feedKeyMissingBanner');
         if (!input || !banner) return;
-        if (input.value.trim() === '') {
-            banner.classList.remove('d-none');
-        } else {
+        // feed_api_key is a data-secret field: a blank value on load doesn't
+        // mean "not configured", it means "stored, not shown". Trust the
+        // configured flag set by loadApiKeys() unless the admin has typed
+        // a new value this session.
+        var hasTypedValue = input.value.trim() !== '';
+        var isConfigured = input.dataset.configured === '1';
+        if (hasTypedValue || isConfigured) {
             banner.classList.add('d-none');
+        } else {
+            banner.classList.remove('d-none');
         }
     }
 
@@ -6082,6 +6088,19 @@
         apiGet('settings').then(function (data) {
             var settings = data.settings || {};
             applySettingsToForm(document.getElementById('apiKeysForm'), settings);
+            // feed_api_key is data-secret — the server never sends the real
+            // value, only a feed_api_key_set boolean. applySettingsToForm
+            // can't fill a field it wasn't given a value for, so handle the
+            // placeholder here (same "stored / not set" pattern as Slack's
+            // secret fields).
+            var feedInput = document.getElementById('setFeedApiKey');
+            if (feedInput) {
+                feedInput.value = '';
+                feedInput.dataset.configured = settings.feed_api_key_set ? '1' : '0';
+                feedInput.placeholder = settings.feed_api_key_set
+                    ? '•••• stored — leave blank to keep, type to replace'
+                    : '(empty — feed disabled)';
+            }
             updateFeedKeyBanner();
         }).catch(function (err) {
             showAlert('Failed to load API keys: ' + err.message, 'danger');
