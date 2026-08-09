@@ -1252,6 +1252,10 @@
         }
 
         // Bind delete handlers
+        // GH#45 -- this must call delete_binding (a real DELETE), not
+        // unbind (which only sets active=0, same as the toggle switch
+        // above). Reusing unbind here meant "Remove" on an already-off
+        // row was a no-op indistinguishable from doing nothing at all.
         var delBtns = body.querySelectorAll('.loc-source-delete');
         for (var d = 0; d < delBtns.length; d++) {
             delBtns[d].addEventListener('click', function () {
@@ -1261,7 +1265,7 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'same-origin',
-                    body: JSON.stringify({ action: 'unbind', id: bindId, csrf_token: getCsrfToken() })
+                    body: JSON.stringify({ action: 'delete_binding', id: bindId, csrf_token: getCsrfToken() })
                 }).then(function () { loadLocationSources(getEditId()); });
             });
         }

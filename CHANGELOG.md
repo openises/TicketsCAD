@@ -3,6 +3,26 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.14] — 2026-08-09
+
+### Fixed
+
+- **The command bar's `/s` status shortcut could reject a status that was
+  genuinely configured, just spelled differently.** `/s <unit> os` only
+  recognized installs using the exact label "On Scene" — an install using
+  "At Scene" for the same real-world state (a wording choice, not a typo)
+  got "not configured on this install" and had to add a duplicate status
+  to work around it. The matcher now tries multiple known synonyms for a
+  handful of common statuses ("On Scene"/"At Scene" today), so either
+  spelling resolves correctly. Reported by Chris Byrd, GitHub #44.
+- **Removing a unit's location provider didn't remove it.** The unit-edit
+  "Remove" (✕) button on a Location Sources row called the same action as
+  the enable/disable toggle switch — which only ever deactivates a
+  binding, never deletes it. Clicking Remove on an already-disabled
+  provider was a true no-op: the row stayed in the list, strikethrough
+  and all, forever. Remove now actually deletes the binding. Reported by
+  Chris Byrd, GitHub #45.
+
 ## [4.2.13] — 2026-08-08
 
 ### Added

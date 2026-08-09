@@ -141,10 +141,19 @@
         'enroute':      'Enroute',
         'resp':         'Responding',
         'responding':   'Responding',
-        'os':           'On Scene',
-        'onscene':      'On Scene',
-        'on-scene':     'On Scene',
-        'on_scene':     'On Scene',
+        // GH#44 (Chris Byrd, 2026-08-08): '/s 7152 os' failed with
+        // "not configured on this install" on a site whose un_status
+        // table used "At Scene" for this state instead of "On Scene" —
+        // same class of problem as issue #18's 'en'/'enroute' gap
+        // (a real, spelled-out synonym different sites use for the same
+        // concept, which no amount of substring matching against a single
+        // hardcoded canonical name can bridge: "On Scene" and "At Scene"
+        // don't contain each other). An alias may now map to an ARRAY of
+        // canonical candidates, tried in order through every tier below.
+        'os':           ['On Scene', 'At Scene'],
+        'onscene':      ['On Scene', 'At Scene'],
+        'on-scene':     ['On Scene', 'At Scene'],
+        'on_scene':     ['On Scene', 'At Scene'],
         'tx':           'Transporting',
         'transp':       'Transporting',
         'transport':    'Transporting',
@@ -558,9 +567,14 @@
         }
         if (!rawStatus && tokens.length >= 2) {
             var twoTokens = (tokens[tokens.length - 2] + ' ' + tokens[tokens.length - 1]).toLowerCase();
-            // Manual two-token names not in the alias map.
+            // Manual two-token names not in the alias map. GH#44: 'at
+            // scene' added alongside 'on scene' -- same "different sites,
+            // same real-world state, different label" reasoning as the
+            // STATUS_ALIASES entries above, for operators who type the
+            // two-word form directly instead of the 'os' shorthand.
             var twoTokenMap = {
-                'on scene':       'On Scene',
+                'on scene':       ['On Scene', 'At Scene'],
+                'at scene':       ['On Scene', 'At Scene'],
                 'at facility':    'At Facility',
                 'in quarters':    'In Quarters'
             };
@@ -583,6 +597,15 @@
         if (!canonStatus) {
             canonStatus = rawStatus;
         }
+        // GH#44 — an alias may resolve to one canonical name or several
+        // (different sites spell the same real-world status differently:
+        // "On Scene" vs "At Scene"). Normalize to an array here so the
+        // matcher below always deals with a candidate LIST, trying every
+        // candidate at each tier before moving to the next tier -- an
+        // exact match on the second candidate still beats a substring
+        // match on the first, which matters (see the tier-ordering
+        // comment on issue #18 below).
+        var canonCandidates = Array.isArray(canonStatus) ? canonStatus : [canonStatus];
         if (!handleStr) {
             return statusError('Usage: /s <handle> ' + tokens[tokens.length - 1]);
         }
@@ -629,14 +652,22 @@
             //      status_val OR vice-versa (covers 'On Scene' vs
             //      'On-Scene', 'Available' vs 'Available Unit',
             //      'Transporting' vs 'TX Transporting')
-            var canonLower = canonStatus.toLowerCase();
-            var rawLower   = (rawStatus || '').toLowerCase();
-            var statusOpt = statuses.find(function (s) {
-                return (s.status_val || '').toLowerCase() === canonLower;
-            });
-            if (!statusOpt) {
+            var canonLowers = canonCandidates.map(function (c) { return (c || '').toLowerCase(); });
+            var rawLower    = (rawStatus || '').toLowerCase();
+            var statusOpt = null;
+            // Tier 1/2/4 each try EVERY candidate before falling through
+            // to the next tier — an exact match on candidate #2 ("At
+            // Scene") must win over a substring match on candidate #1
+            // ("On Scene") landing on some unrelated status_val.
+            var i;
+            for (i = 0; i < canonLowers.length && !statusOpt; i++) {
                 statusOpt = statuses.find(function (s) {
-                    return (s.status_val || '').trim().toLowerCase() === canonLower;
+                    return (s.status_val || '').toLowerCase() === canonLowers[i];
+                });
+            }
+            for (i = 0; i < canonLowers.length && !statusOpt; i++) {
+                statusOpt = statuses.find(function (s) {
+                    return (s.status_val || '').trim().toLowerCase() === canonLowers[i];
                 });
             }
             if (!statusOpt && rawLower) {
@@ -652,10 +683,10 @@
                     });
                 }
             }
-            if (!statusOpt) {
+            for (i = 0; i < canonLowers.length && !statusOpt; i++) {
                 statusOpt = statuses.find(function (s) {
                     var v = (s.status_val || '').toLowerCase();
-                    return v.indexOf(canonLower) !== -1 || canonLower.indexOf(v) !== -1;
+                    return v.indexOf(canonLowers[i]) !== -1 || canonLowers[i].indexOf(v) !== -1;
                 });
             }
             if (!statusOpt) {
@@ -667,7 +698,7 @@
                 }
                 var available = statuses.map(function (s) { return s.status_val; }).join(', ');
                 return statusError(
-                    'Status "' + canonStatus + '" not configured on this install. '
+                    'Status "' + canonCandidates.join('" or "') + '" not configured on this install. '
                     + 'Available: ' + available
                 );
             }
@@ -678,7 +709,7 @@
                 && statusOpt.extra_data_type
                 && statusOpt.extra_data_type !== 'none') {
                 return statusError(
-                    canonStatus + ' needs ' + statusOpt.extra_data_type
+                    canonCandidates[0] + ' needs ' + statusOpt.extra_data_type
                     + ' info — open the unit and use the Status modal instead'
                 );
             }

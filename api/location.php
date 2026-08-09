@@ -1285,6 +1285,46 @@ if ($method === 'POST') {
         }
     }
 
+    // ── delete_binding — actually remove a binding row ────────
+    // GH#45 (Chris Byrd, 2026-08-09): the unit-edit "Remove" (X) button
+    // called the SAME action as the enable/disable toggle -- 'unbind',
+    // which only ever does UPDATE ... SET active = 0. Clicking Remove on
+    // an already-inactive row re-set active=0 to 0 (a no-op) and the row
+    // never left the table, so "delete" appeared to do nothing. This is
+    // the action the Remove button actually needs: a real DELETE.
+    // unit_location_bindings has no foreign keys pointing at it (verified
+    // via SHOW CREATE TABLE), so a hard delete is safe -- nothing else
+    // references a binding by id once it's gone.
+    if ($action === 'delete_binding') {
+        // Require admin
+        if (!is_admin()) {
+            json_error('Admin access required', 403);
+        }
+
+        $bindId = isset($input['id']) ? (int) $input['id'] : 0;
+        if (!$bindId) {
+            json_error('Binding id is required');
+        }
+
+        try {
+            $existing = db_fetch_one(
+                "SELECT `responder_id`, `provider_id`, `unit_identifier`
+                 FROM `{$prefix}unit_location_bindings` WHERE `id` = ?",
+                [$bindId]
+            );
+            if (!$existing) {
+                json_error('Binding not found', 404);
+            }
+            db_query("DELETE FROM `{$prefix}unit_location_bindings` WHERE `id` = ?", [$bindId]);
+            audit_log('config', 'delete', 'location_binding', $bindId,
+                "Removed location binding #{$bindId} (responder #{$existing['responder_id']}, "
+                . "provider #{$existing['provider_id']}, identifier '{$existing['unit_identifier']}')");
+            json_response(['deleted' => true, 'id' => $bindId]);
+        } catch (Exception $e) {
+            json_error('Delete failed: ' . $e->getMessage(), 500);
+        }
+    }
+
     json_error('Unknown action: ' . $action, 400);
 }
 
