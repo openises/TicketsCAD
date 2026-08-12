@@ -233,7 +233,14 @@
         var g = (u.status_group || '').toLowerCase().replace(/[^a-z]/g, '');
         var n = (u.status_name || '').toLowerCase().replace(/[^a-z]/g, '');
         function isUnavail(s) {
-            return s.indexOf('un') === 0 || s.indexOf('off') === 0 || s.indexOf('out') === 0
+            // GH #48 (Chris Byrd 2026-08-11): a bare 'un' prefix false-positives
+            // on group names that start with "Unit" (e.g. the seed group
+            // "1-Unit Status", normalized to "unitstatus") -- so every status
+            // in that group, INCLUDING "Available" itself, was misclassified as
+            // unavailable before the name was ever consulted. 'una' still
+            // matches the real seed/intended values ("unav", "unavailable")
+            // but no longer collides with "unit".
+            return s.indexOf('una') === 0 || s.indexOf('off') === 0 || s.indexOf('out') === 0
                 || s === 'na' || s.indexOf('oos') === 0;
         }
         function isInServ(s) {
@@ -247,9 +254,24 @@
         function isAvail(s) {
             return s.indexOf('av') === 0 || s.indexOf('avail') === 0 || s === 'a' || s === 'rdy' || s.indexOf('ready') === 0;
         }
-        if (isUnavail(g) || (g === '' && isUnavail(n))) return 'unavailable';
-        if (isInServ(g)  || (g === '' && isInServ(n)))  return 'in_service';
-        if (isAvail(g)   || (g === '' && isAvail(n)))   return 'available';
+        // GH #48 round 2 (rjonesbsink 2026-08-11): the name fallback was
+        // gated on the group being the EMPTY STRING, not on the group
+        // failing to classify. A purely organizational group name like
+        // "1-Unit Status" (holding both Available and Unavailable statuses)
+        // is non-empty but carries no availability signal at all -- so
+        // every status in it fell through to the unclassified '' case
+        // instead of ever reaching its own status name. Try the group in
+        // priority order; only if the GROUP resolves to nothing at all does
+        // the status name get consulted, in that same priority order. Any
+        // group that already matches (av/unav/inserv seeds, or a name-
+        // derived group like "2-Call") is completely unaffected -- it still
+        // wins immediately, same as before.
+        if (isUnavail(g)) return 'unavailable';
+        if (isInServ(g))  return 'in_service';
+        if (isAvail(g))   return 'available';
+        if (isUnavail(n)) return 'unavailable';
+        if (isInServ(n))  return 'in_service';
+        if (isAvail(n))   return 'available';
         return '';
     }
 

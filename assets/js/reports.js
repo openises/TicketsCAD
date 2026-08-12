@@ -206,9 +206,11 @@
             params += '&responder_id=' + rid;
         }
 
-        var iid = parseInt(incidentFilter.value, 10) || 0;
-        if (iid > 0) {
-            params += '&incident_id=' + iid;
+        // GH#51 — send the dispatcher's own case number as typed (e.g.
+        // "26-0091"); the server resolves it to the internal ticket id.
+        var iid = (incidentFilter.value || '').trim();
+        if (iid !== '') {
+            params += '&incident_number=' + encodeURIComponent(iid);
         }
 
         showLoading();
@@ -377,14 +379,29 @@
         }
 
         var rows = reportData.rows.slice(); // copy
+
+        // Eric 2026-08-12 — parseFloat() only reads a LEADING number, so
+        // "26-0091" (Incident #) and "2026-06-15 14:22:09" (Dispatched /
+        // Clear) both parsed to their shared year prefix for every row.
+        // Every comparison "tied" at the same number, so the visible
+        // order barely moved in either sort direction. Only take the
+        // numeric path when the WHOLE trimmed value is a number; anything
+        // else (dates, case numbers, "M:SS" durations) falls through to
+        // string comparison, which sorts ISO-style dates correctly by
+        // construction (lexicographic order = chronological order for
+        // "YYYY-MM-DD HH:MM:SS").
+        var REPORTS_NUMERIC_RE = /^-?\d+(\.\d+)?$/;
+        function isWhollyNumeric(v) {
+            return v !== null && v !== undefined && REPORTS_NUMERIC_RE.test(String(v).trim());
+        }
+
         rows.sort(function (a, b) {
             var va = a[colIdx];
             var vb = b[colIdx];
 
-            // Try numeric comparison
-            var na = parseFloat(va);
-            var nb = parseFloat(vb);
-            if (!isNaN(na) && !isNaN(nb)) {
+            if (isWhollyNumeric(va) && isWhollyNumeric(vb)) {
+                var na = parseFloat(va);
+                var nb = parseFloat(vb);
                 return sortAsc ? na - nb : nb - na;
             }
 

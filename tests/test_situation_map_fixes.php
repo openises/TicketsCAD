@@ -129,5 +129,20 @@ t("#58: settings.php#map-defaults exposes the reset-on-offscreen toggle",
     strpos($setpg, 'data-key="situation_reset_on_offscreen"') !== false &&
     (bool) preg_match('/setSitResetOffscreen[\s\S]{0,400}Reset the locked view/', $setpg));
 
+// ── GH#47 — Units (EOC) / Facilities (EOC) never appeared in the layer
+// control. Both ensureUnitLayer() and ensureFacilityLayer() gated their
+// addOverlay() call on window._mapLayersControl -- a global only the
+// dashboard's app.js ever sets, and situation.php doesn't load app.js. The
+// markers were still added to the map (line above each check), so the
+// symptom was "no way to turn them off", not "they don't show". Fixed to
+// use the local sitLayersControl every other overlay on this page already
+// registers against (MapImageOverlays, event zones, weather alerts, etc.).
+t("GH#47: ensureUnitLayer registers Units (EOC) against the local sitLayersControl, not window._mapLayersControl",
+    (bool) preg_match('/function ensureUnitLayer\(\)[\s\S]{0,600}?if \(sitLayersControl && !window\._eocUnitsInCtl\)[\s\S]{0,200}?sitLayersControl\.addOverlay\(unitMarkers/', $s));
+t("GH#47: ensureFacilityLayer registers Facilities (EOC) against the local sitLayersControl, not window._mapLayersControl",
+    (bool) preg_match('/function ensureFacilityLayer\(\)[\s\S]{0,400}?if \(sitLayersControl && !window\._eocFacsInCtl\)[\s\S]{0,200}?sitLayersControl\.addOverlay\(facMarkers/', $s));
+t("GH#47: window._mapLayersControl is no longer referenced anywhere in situation.php",
+    strpos($s, 'window._mapLayersControl') === false);
+
 echo "\n=== $passed passed, $failed failed ===\n";
 exit($failed === 0 ? 0 : 1);

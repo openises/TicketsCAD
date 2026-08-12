@@ -7,8 +7,13 @@
  *   period:       today | this_week | last_week | this_month | last_month | this_year | last_year | custom
  *   start_date:   Y-m-d (required if period=custom)
  *   end_date:     Y-m-d (required if period=custom)
- *   responder_id: filter by responder (0=all)
- *   incident_id:  filter by incident (0=all, used for after_action)
+ *   responder_id:     filter by responder (0=all)
+ *   incident_number:  filter by incident (used for after_action) — the
+ *                      dispatcher's own case number (e.g. "26-0091"),
+ *                      resolved server-side via incnum_resolve_input().
+ *   incident_id:       legacy alias, still accepted for old bookmarks/
+ *                      links — also resolved via incnum_resolve_input()
+ *                      so a raw internal id still works.
  *
  * Returns JSON with report_title, period_label, columns, rows, summary.
  */
@@ -85,7 +90,14 @@ $period       = $_GET['period'] ?? 'this_month';
 $start_date   = $_GET['start_date'] ?? '';
 $end_date     = $_GET['end_date'] ?? '';
 $responder_id = max(0, (int) ($_GET['responder_id'] ?? 0));
-$incident_id  = max(0, (int) ($_GET['incident_id'] ?? 0));
+
+// GH#51 — accept the dispatcher's own case number, not the internal id.
+// incident_number is what the new UI sends; incident_id is kept for old
+// bookmarks/links and resolved the same way (a raw numeric id still
+// works as a fallback inside incnum_resolve_input()).
+require_once __DIR__ . '/../inc/incident-number.php';
+$incident_input = trim((string) ($_GET['incident_number'] ?? ($_GET['incident_id'] ?? '')));
+$incident_id    = $incident_input !== '' ? incnum_resolve_input($incident_input) : 0;
 
 $valid_reports = [
     'unit_log', 'dispatch_log', 'incident_summary', 'incident_report',
@@ -662,7 +674,10 @@ switch ($report) {
         $report_title = 'After Action Report';
 
         if ($incident_id <= 0) {
-            json_error('incident_id is required for after_action report', 400);
+            if ($incident_input !== '') {
+                json_error("No incident found matching '{$incident_input}'", 404);
+            }
+            json_error('Enter an incident number for the After Action report', 400);
         }
 
         // Incident details

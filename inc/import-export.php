@@ -651,49 +651,60 @@ function execute_import(array $validRows, array $config, int $userId, string $mo
         }
 
         try {
-            if ($mode === 'upsert') {
-                // Try to find existing record by match columns
-                $matchFound = false;
-                foreach ($config['match_columns'] as $matchExpr) {
-                    $matchCols = explode('+', $matchExpr);
-                    $where = [];
-                    $params = [];
-                    $allPresent = true;
-                    foreach ($matchCols as $mc) {
-                        $actualCol = isset($columns[$mc]['legacy']) ? $columns[$mc]['legacy'] : $mc;
-                        if (!isset($row[$mc]) || $row[$mc] === null || $row[$mc] === '') {
-                            $allPresent = false;
-                            break;
-                        }
-                        $where[] = "`{$actualCol}` = ?";
-                        $params[] = $row[$mc];
-                    }
-                    if (!$allPresent) continue;
-
-                    $existing = db_fetch_all(
-                        "SELECT {$idCol} FROM {$table} WHERE " . implode(' AND ', $where) . " LIMIT 1",
-                        $params
-                    );
-                    if (!empty($existing)) {
-                        // Update
-                        $existingId = $existing[0][$idCol];
-                        $setParts = [];
-                        $updateParams = [];
-                        foreach ($insertRow as $col => $val) {
-                            $setParts[] = "`{$col}` = ?";
-                            $updateParams[] = $val;
-                        }
-                        $updateParams[] = $existingId;
-                        db_query(
-                            "UPDATE {$table} SET " . implode(', ', $setParts) . " WHERE `{$idCol}` = ?",
-                            $updateParams
-                        );
-                        $updated++;
-                        $matchFound = true;
+            // GH#54 (cbyrdmo, 2026-08-12): 'insert' mode's own UI label
+            // reads "skip rows that match existing records", but this
+            // block used to run the match lookup ONLY for 'upsert' — an
+            // 'insert' row fell straight through to the unconditional
+            // INSERT below regardless of whether a match existed. Every
+            // facility already present on the target (e.g. re-importing
+            // a CSV exported from a test copy into the live install)
+            // silently duplicated. Both modes now share one match
+            // lookup; they differ only in what happens on a match.
+            $matchedId = null;
+            foreach ($config['match_columns'] as $matchExpr) {
+                $matchCols = explode('+', $matchExpr);
+                $where = [];
+                $params = [];
+                $allPresent = true;
+                foreach ($matchCols as $mc) {
+                    $actualCol = isset($columns[$mc]['legacy']) ? $columns[$mc]['legacy'] : $mc;
+                    if (!isset($row[$mc]) || $row[$mc] === null || $row[$mc] === '') {
+                        $allPresent = false;
                         break;
                     }
+                    $where[] = "`{$actualCol}` = ?";
+                    $params[] = $row[$mc];
                 }
-                if ($matchFound) continue;
+                if (!$allPresent) continue;
+
+                $existing = db_fetch_all(
+                    "SELECT {$idCol} FROM {$table} WHERE " . implode(' AND ', $where) . " LIMIT 1",
+                    $params
+                );
+                if (!empty($existing)) {
+                    $matchedId = $existing[0][$idCol];
+                    break;
+                }
+            }
+
+            if ($matchedId !== null) {
+                if ($mode === 'upsert') {
+                    $setParts = [];
+                    $updateParams = [];
+                    foreach ($insertRow as $col => $val) {
+                        $setParts[] = "`{$col}` = ?";
+                        $updateParams[] = $val;
+                    }
+                    $updateParams[] = $matchedId;
+                    db_query(
+                        "UPDATE {$table} SET " . implode(', ', $setParts) . " WHERE `{$idCol}` = ?",
+                        $updateParams
+                    );
+                    $updated++;
+                } else {
+                    $skipped++;
+                }
+                continue;
             }
 
             // Insert new record

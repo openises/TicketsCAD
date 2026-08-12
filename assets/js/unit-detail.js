@@ -814,6 +814,11 @@
 
     // GH #75 — recent unit notes (added from dashboard quick-action or the
     // unit-detail title bar; now persisted to responder_notes and shown here).
+    // GH#46 — append-a-correction: a correction is a normal note whose
+    // corrects_id points at the note it corrects. The original is never
+    // edited or hidden; the correction renders directly beneath it. Every
+    // note carries server-computed can_correct/can_delete flags (see
+    // api/responder-detail.php) so no permission logic lives in this file.
     function renderNotes(notes) {
         notes = notes || [];
         var card = document.getElementById('notesCard');
@@ -827,18 +832,125 @@
             return;
         }
         if (card) card.classList.remove('d-none');
-        var html = '';
-        for (var i = 0; i < notes.length; i++) {
+
+        // Group corrections under the note they correct. notes[] arrives
+        // newest-first overall; corrections of a given note are re-sorted
+        // oldest-first underneath it so they read in the order they were
+        // made ("original", then "correction 1", then "correction 2"...).
+        var byId = {};
+        var childrenOf = {};
+        var i;
+        for (i = 0; i < notes.length; i++) { byId[notes[i].id] = notes[i]; }
+        for (i = 0; i < notes.length; i++) {
             var n = notes[i];
+            if (n.corrects_id && byId[n.corrects_id]) {
+                (childrenOf[n.corrects_id] = childrenOf[n.corrects_id] || []).push(n);
+            }
+        }
+        Object.keys(childrenOf).forEach(function (pid) {
+            childrenOf[pid].sort(function (a, b) {
+                return (a.created_at || '') < (b.created_at || '') ? -1 : 1;
+            });
+        });
+
+        function noteItem(n, isCorrection) {
             var meta = [];
             if (n.by_username) { meta.push(escHtml(n.by_username)); }
             if (n.created_at) { meta.push(escHtml(n.created_at)); }
-            html += '<li class="list-group-item py-2">'
-                  + '<div>' + escHtml(n.note || '') + '</div>'
-                  + '<div class="text-body-secondary" style="font-size:0.75rem">' + meta.join(' &middot; ') + '</div>'
-                  + '</li>';
+            var actions = '';
+            if (n.can_correct) {
+                actions += '<button type="button" class="btn btn-link btn-sm p-0 me-2 note-correct" data-id="' + n.id + '">Correct</button>';
+            }
+            if (n.can_delete) {
+                actions += '<button type="button" class="btn btn-link btn-sm p-0 text-danger note-delete" data-id="' + n.id + '">Delete</button>';
+            }
+            var cls = 'list-group-item py-2' + (isCorrection ? ' ps-4 border-start border-3 border-warning-subtle' : '');
+            return '<li class="' + cls + '" data-note-id="' + n.id + '">'
+                 + (isCorrection ? '<span class="badge bg-warning-subtle text-warning-emphasis mb-1">Correction</span><br>' : '')
+                 + '<div>' + escHtml(n.note || '') + '</div>'
+                 + '<div class="text-body-secondary" style="font-size:0.75rem">' + meta.join(' &middot; ')
+                 + (actions ? ' &middot; ' + actions : '') + '</div>'
+                 + '<div class="note-correct-form d-none mt-2"></div>'
+                 + '</li>';
+        }
+
+        var html = '';
+        for (i = 0; i < notes.length; i++) {
+            var note = notes[i];
+            if (note.corrects_id) continue; // rendered under its parent, below
+            html += noteItem(note, false);
+            var kids = childrenOf[note.id] || [];
+            for (var k = 0; k < kids.length; k++) { html += noteItem(kids[k], true); }
         }
         body.innerHTML = html;
+        bindNoteActions(body);
+    }
+
+    function bindNoteActions(body) {
+        var correctBtns = body.querySelectorAll('.note-correct');
+        for (var i = 0; i < correctBtns.length; i++) {
+            correctBtns[i].addEventListener('click', function () {
+                var id = this.getAttribute('data-id');
+                var li = body.querySelector('[data-note-id="' + id + '"]');
+                var formDiv = li ? li.querySelector('.note-correct-form') : null;
+                if (!formDiv) return;
+                var opening = formDiv.classList.contains('d-none');
+                // Close any other open correction form first.
+                var open = body.querySelectorAll('.note-correct-form:not(.d-none)');
+                for (var j = 0; j < open.length; j++) { open[j].classList.add('d-none'); open[j].innerHTML = ''; }
+                if (!opening) return;
+                formDiv.classList.remove('d-none');
+                formDiv.innerHTML =
+                    '<textarea class="form-control form-control-sm mb-2" rows="2" maxlength="2000"'
+                    + ' placeholder="Correction text&hellip;"></textarea>'
+                    + '<button type="button" class="btn btn-sm btn-success note-correct-save">Save correction</button>'
+                    + ' <button type="button" class="btn btn-sm btn-outline-secondary note-correct-cancel">Cancel</button>';
+                var ta = formDiv.querySelector('textarea');
+                if (ta) ta.focus();
+                formDiv.querySelector('.note-correct-cancel').addEventListener('click', function () {
+                    formDiv.classList.add('d-none');
+                    formDiv.innerHTML = '';
+                });
+                formDiv.querySelector('.note-correct-save').addEventListener('click', function () {
+                    var txt = ta ? ta.value.trim() : '';
+                    if (!txt) { alert('Correction text is required.'); return; }
+                    fetch('api/unit-history.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'add_note',
+                            responder_id: getUnitId(),
+                            note: txt,
+                            corrects_id: id,
+                            csrf_token: getCsrfToken()
+                        })
+                    }).then(function (r) { return r.json(); })
+                      .then(function (data) {
+                          if (data.error) { showAlert(escHtml(data.error), 'danger'); return; }
+                          loadUnit(getUnitId());
+                      })
+                      .catch(function (err) { showAlert(escHtml(err.message || String(err)), 'danger'); });
+                });
+            });
+        }
+
+        var deleteBtns = body.querySelectorAll('.note-delete');
+        for (var d = 0; d < deleteBtns.length; d++) {
+            deleteBtns[d].addEventListener('click', function () {
+                var id = this.getAttribute('data-id');
+                if (!confirm('Delete this note?')) return;
+                fetch('api/unit-history.php?id=' + encodeURIComponent(id)
+                    + '&csrf_token=' + encodeURIComponent(getCsrfToken()), {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' }
+                }).then(function (r) { return r.json(); })
+                  .then(function (data) {
+                      if (data.error) { showAlert(escHtml(data.error), 'danger'); return; }
+                      loadUnit(getUnitId());
+                  })
+                  .catch(function (err) { showAlert(escHtml(err.message || String(err)), 'danger'); });
+            });
+        }
     }
 
     function renderUnitPersonnel(personnel) {

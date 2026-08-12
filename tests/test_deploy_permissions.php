@@ -164,12 +164,26 @@ test('BACKUP_DIR_LEGACY is never created — that would restore a web-served dir
     }));
 
 $root = defined('NEWUI_ROOT') ? NEWUI_ROOT : dirname(__DIR__);
-foreach (['uploads', 'cache', 'cache/weather', 'cache/zello-audio'] as $rel) {
+foreach (['uploads', 'cache', 'cache/weather'] as $rel) {
     test("$rel is classified web-server-only",
         isset($byPath[$norm($root . '/' . $rel)])
         && $byPath[$norm($root . '/' . $rel)]['role'] === INSTALL_PERM_WEB,
         'every writer is a request path; a second owner would only widen access');
 }
+
+// GHSA-x9x6-w4fg-pmcc — Zello recordings now live in a private directory
+// outside $root (inc/zello_audio_dir.php), still web-server-only (one
+// writer, the proxy daemon, running as the web user per its systemd unit).
+require_once __DIR__ . '/../inc/zello_audio_dir.php';
+test('zello_audio_dir() (private) is classified web-server-only',
+    isset($byPath[$norm(zello_audio_dir())])
+    && $byPath[$norm(zello_audio_dir())]['role'] === INSTALL_PERM_WEB,
+    'one writer (the proxy daemon, running as the web user) — no shared group needed');
+test('cache/zello-audio (legacy) is NOT unconditionally created',
+    !array_filter($targets, function ($t) use ($root, $norm) {
+        return $norm($t['path']) === $norm($root . '/cache/zello-audio') && !empty($t['create']);
+    }),
+    'creating it would put a served directory back on disk for no reason');
 
 // The exclusions. Private key material is 0700 owner-only by the code that
 // creates it (inc/field-encrypt.php); giving it a shared group would be a

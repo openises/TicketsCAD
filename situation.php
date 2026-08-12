@@ -424,7 +424,7 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
 <script src="assets/vendor/leaflet/leaflet.js"></script>
 <script src="assets/js/leaflet-mobile-fit.js?v=<?php echo function_exists("asset_v")?asset_v("assets/js/leaflet-mobile-fit.js"):newui_version(); ?>"></script>
 <script src="assets/js/leaflet-quadkey.js"></script>
-<script src="assets/js/map-prefs.js"></script>
+<script src="assets/js/map-prefs.js?v=<?php echo asset_v('assets/js/map-prefs.js'); ?>"></script>
 <script src="assets/js/map-image-overlays.js?v=<?php echo function_exists('asset_v') ? asset_v('assets/js/map-image-overlays.js') : newui_version(); ?>"></script>
 <script src="assets/js/screen-prefs.js?v=<?php echo newui_version(); ?>"></script>
 <script src="assets/js/unit-tracking.js"></script>
@@ -1159,8 +1159,10 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
             // Added per the shipped default; MapLayerPrefs.register below
             // reconciles it against this user's saved choice.
             unitMarkers.addTo(mapVar());
-            if (window._mapLayersControl && !window._eocUnitsInCtl) {
-                window._mapLayersControl.addOverlay(unitMarkers,
+            // GH#47: used to gate on a dashboard-only global that's never set
+            // on this page. Every other overlay here uses sitLayersControl.
+            if (sitLayersControl && !window._eocUnitsInCtl) {
+                sitLayersControl.addOverlay(unitMarkers,
                     '<span style="color:#198754">&#9679;</span> Units (EOC)');
                 window._eocUnitsInCtl = true;
             }
@@ -1173,8 +1175,9 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
         if (!facMarkers) {
             facMarkers = L.layerGroup();
             facMarkers.addTo(mapVar());
-            if (window._mapLayersControl && !window._eocFacsInCtl) {
-                window._mapLayersControl.addOverlay(facMarkers,
+            // GH#47: same fix as ensureUnitLayer() above.
+            if (sitLayersControl && !window._eocFacsInCtl) {
+                sitLayersControl.addOverlay(facMarkers,
                     '<span style="color:#0d6efd">&#9679;</span> Facilities (EOC)');
                 window._eocFacsInCtl = true;
             }

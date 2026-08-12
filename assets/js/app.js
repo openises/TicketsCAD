@@ -2309,14 +2309,16 @@
                     // a facility, Out of Service wants a reason note,
                     // etc.), open the extra-data sub-prompt before
                     // submitting. Otherwise submit immediately.
-                    var edType = statusOpt && statusOpt.extra_data_type;
-                    if (edType && edType !== 'none') {
-                        _openExtraDataPrompt(resp, statusOpt, function (extraData) {
-                            _postUnitStatus(resp, statusOpt, extraData);
-                        });
-                    } else {
-                        _postUnitStatus(resp, statusOpt, null);
-                    }
+                    // GH#52 — a status may configure a SECOND, independent
+                    // extra-data slot (e.g. "Transporting" wants both a
+                    // destination facility and a starting mileage reading).
+                    // _collectExtraData chains slot 1 then slot 2 (each only
+                    // if configured), then submits with whatever was
+                    // collected -- unchanged behavior for every status that
+                    // only uses slot 1 or neither.
+                    _collectExtraData(resp, statusOpt, function (extraData, extraData2) {
+                        _postUnitStatus(resp, statusOpt, extraData, extraData2);
+                    });
                 });
             });
         });
@@ -2387,19 +2389,45 @@
                         // Available shouldn't require extra data — but if
                         // an admin configured it that way we need to
                         // prompt or the change will fail server-side).
+                        // GH#52 — same "only prompt when required" gate as
+                        // before, extended to slot 2. Clear is a bulk/
+                        // automatic transition (walks every open assign),
+                        // so an optional extra-data slot stays silent here
+                        // exactly as it always has for slot 1; only a
+                        // required slot interrupts the flow.
                         var edType = clearStatus.extra_data_type;
                         var edRequired = parseInt(clearStatus.extra_data_required, 10) === 1;
+                        var edType2 = clearStatus.extra_data_type_2;
+                        var edRequired2 = parseInt(clearStatus.extra_data_required_2, 10) === 1;
+                        function _finishClear(extra, extra2) {
+                            _postUnitStatus(resp, clearStatus, extra, extra2);
+                            showBriefToast(handle + ' → ' + clearStatus.status_val);
+                            EventBus.emit('widget:refresh', { widget: 'responders' });
+                        }
+                        function _maybePromptSlot2(extra) {
+                            if (edType2 && edType2 !== 'none' && edRequired2) {
+                                return _openExtraDataPrompt(resp, clearStatus, {
+                                    type: edType2,
+                                    label: clearStatus.extra_data_label_2 || clearStatus.status_val,
+                                    required: true
+                                }, function (extra2) {
+                                    if (extra2 === null) { btn.disabled = false; return; }
+                                    _finishClear(extra, extra2);
+                                });
+                            }
+                            _finishClear(extra, null);
+                        }
                         if (edType && edType !== 'none' && edRequired) {
-                            return _openExtraDataPrompt(resp, clearStatus, function (extra) {
+                            return _openExtraDataPrompt(resp, clearStatus, {
+                                type: edType,
+                                label: clearStatus.extra_data_label || clearStatus.status_val,
+                                required: true
+                            }, function (extra) {
                                 if (extra === null) { btn.disabled = false; return; }
-                                _postUnitStatus(resp, clearStatus, extra);
-                                showBriefToast(handle + ' → ' + clearStatus.status_val);
-                                EventBus.emit('widget:refresh', { widget: 'responders' });
+                                _maybePromptSlot2(extra);
                             });
                         }
-                        _postUnitStatus(resp, clearStatus, null);
-                        showBriefToast(handle + ' → ' + clearStatus.status_val);
-                        EventBus.emit('widget:refresh', { widget: 'responders' });
+                        _maybePromptSlot2(null);
                     });
                     return;
                 }
@@ -2486,13 +2514,14 @@
             .catch(function () { return []; });
     }
 
-    function _postUnitStatus(resp, statusOpt, extraData) {
+    function _postUnitStatus(resp, statusOpt, extraData, extraData2) {
         var body = {
             responder_id: resp.id,
             status_id: statusOpt.id,
             csrf_token: _csrf()
         };
         if (extraData) body.extra_data = extraData;
+        if (extraData2) body.extra_data_2 = extraData2; // GH#52
         fetch('api/responder-status.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2515,18 +2544,52 @@
     }
 
     /**
-     * Open a secondary input collection on the same modal for the
-     * status's extra_data_type. done(extraDataPayload) is invoked
-     * with {type, value} on Apply. Cancel re-renders the status
-     * picker so the dispatcher can pick a different status.
+     * GH#52 — chain slot 1 then slot 2's extra-data prompts, each only if
+     * the status actually configures it, then call done(extraData, extraData2).
+     * A status using only slot 1 (the overwhelming majority) behaves exactly
+     * as before -- this is the single call site both slots route through.
      */
-    function _openExtraDataPrompt(resp, statusOpt, done) {
+    function _collectExtraData(resp, statusOpt, done) {
+        var type1 = statusOpt && statusOpt.extra_data_type;
+        var type2 = statusOpt && statusOpt.extra_data_type_2;
+        function collectSlot2(extraData) {
+            if (type2 && type2 !== 'none') {
+                _openExtraDataPrompt(resp, statusOpt, {
+                    type: type2,
+                    label: statusOpt.extra_data_label_2 || statusOpt.status_val,
+                    required: !!statusOpt.extra_data_required_2
+                }, function (extraData2) {
+                    done(extraData, extraData2);
+                });
+            } else {
+                done(extraData, null);
+            }
+        }
+        if (type1 && type1 !== 'none') {
+            _openExtraDataPrompt(resp, statusOpt, {
+                type: type1,
+                label: statusOpt.extra_data_label || statusOpt.status_val,
+                required: !!statusOpt.extra_data_required
+            }, collectSlot2);
+        } else {
+            collectSlot2(null);
+        }
+    }
+
+    /**
+     * Open a secondary input collection on the same modal for the given
+     * extra-data config ({type, label, required} -- either slot 1 or slot
+     * 2's, GH#52). done(extraDataPayload) is invoked with {type, value} on
+     * Apply. Cancel re-renders the status picker so the dispatcher can pick
+     * a different status.
+     */
+    function _openExtraDataPrompt(resp, statusOpt, cfg, done) {
         var bodyEl = document.getElementById('responderActionModalBody');
         var titleEl = document.getElementById('responderActionModalTitle');
         if (!bodyEl) return;
-        var label = statusOpt.extra_data_label || statusOpt.status_val;
-        var required = !!statusOpt.extra_data_required;
-        var type = statusOpt.extra_data_type;
+        var label = cfg.label;
+        var required = cfg.required;
+        var type = cfg.type;
         var handle = resp.handle || resp.name || 'Unit';
         if (titleEl) titleEl.textContent = handle + ' → ' + statusOpt.status_val;
 

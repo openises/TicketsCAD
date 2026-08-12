@@ -233,12 +233,22 @@ if ($method === 'POST' && $action === 'set_override') {
 }
 
 // Phase 16d — incident PAR history.
+// GH#51 — 'ticket' now accepts the dispatcher's own case number (e.g.
+// "26-0091"), not just the internal ticket id; resolved the same way
+// as the Reports After Action filter.
 if ($method === 'GET' && $action === 'history') {
     if (!rbac_can('action.view_incident') && !rbac_can('action.manage_par')) {
         json_error('Forbidden', 403);
     }
-    $ticketId = (int) ($_GET['ticket'] ?? 0);
-    if ($ticketId <= 0) json_error('ticket required');
+    require_once __DIR__ . '/../inc/incident-number.php';
+    $ticketInput = trim((string) ($_GET['ticket'] ?? ''));
+    $ticketId    = $ticketInput !== '' ? incnum_resolve_input($ticketInput) : 0;
+    if ($ticketId <= 0) {
+        if ($ticketInput !== '') {
+            json_error("No incident found matching '{$ticketInput}'", 404);
+        }
+        json_error('ticket required');
+    }
     try {
         $rows = db_fetch_all(
             "SELECT c.id, c.initiated_at, c.initiated_kind, c.status, c.completed_at,
@@ -254,7 +264,7 @@ if ($method === 'GET' && $action === 'history') {
               LIMIT 50",
             [$ticketId]
         );
-        json_response(['history' => $rows]);
+        json_response(['history' => $rows, 'incident_number' => incnum_display($ticketId)]);
     } catch (Exception $e) { json_error($e->getMessage()); }
 }
 

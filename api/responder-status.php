@@ -55,6 +55,10 @@ $status_about = trim($input['status_about'] ?? '');
 $extra_data = $input['extra_data'] ?? null;
 if ($extra_data !== null && !is_array($extra_data)) $extra_data = null;
 
+// GH#52 (2026-08-12) — an independent second slot, same shape.
+$extra_data_2 = $input['extra_data_2'] ?? null;
+if ($extra_data_2 !== null && !is_array($extra_data_2)) $extra_data_2 = null;
+
 if ($responder_id <= 0) {
     json_error('Invalid responder ID');
 }
@@ -68,7 +72,8 @@ try {
         $status_id,
         (int) $current_user_id,
         $status_about,
-        $extra_data
+        $extra_data,
+        $extra_data_2
     );
 } catch (Exception $e) {
     json_error('Database error: ' . $e->getMessage(), 500);
@@ -122,6 +127,22 @@ if (!empty($result['errors'])) {
             'error' => 'Extra data required for this status: ' . ($label ?: 'value missing'),
             'code'  => 'extra_data_required',
             'label' => $label,
+        ], 422);
+    }
+    // GH#52 — the same structured error for slot 2, distinct `code` so the
+    // UI can tell which prompt to (re)open.
+    if (in_array('extra_data_2_required', $errs, true)) {
+        $label2 = '';
+        foreach ($errs as $e) {
+            if (strpos((string) $e, 'label:') === 0) {
+                $label2 = substr((string) $e, 6);
+                break;
+            }
+        }
+        json_response([
+            'error' => 'Extra data required for this status: ' . ($label2 ?: 'value missing'),
+            'code'  => 'extra_data_2_required',
+            'label' => $label2,
         ], 422);
     }
     json_error('Status update failed: ' . implode(', ', $errs), 422);

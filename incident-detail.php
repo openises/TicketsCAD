@@ -82,15 +82,30 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
 
     <!-- Page title + action buttons -->
     <div class="d-flex align-items-center justify-content-between mb-3">
-        <h5 class="mb-0 d-flex align-items-center" id="pageTitle">
-            <i class="bi bi-file-earmark-text text-primary me-2"></i><?php echo e(t('incdetail.page_title', 'Incident Detail')); ?>
+        <div class="d-flex align-items-center">
+            <h5 class="mb-0 d-flex align-items-center" id="pageTitle">
+                <i class="bi bi-file-earmark-text text-primary me-2"></i><?php echo e(t('incdetail.page_title', 'Incident Detail')); ?>
+            </h5>
             <!-- Phase 18 — Security label badge. Populated by JS from
                  api/security-labels.php?action=resolve. Clickable for users
-                 with action.set_incident_security. -->
+                 with action.set_incident_security.
+                 Eric (2026-08-12) — this used to live INSIDE #pageTitle. Every
+                 renderHeader() call (incident-detail.js) does
+                 `pageTitle.innerHTML = ...` unconditionally to update the
+                 title text, which silently destroyed this badge on every
+                 single load/refresh -- the security label picker has been
+                 completely unreachable in the deployed product since the
+                 Phase 99m/99o/99p title-rendering rewrite. Moved to a sibling
+                 of #pageTitle (still inside a shared flex wrapper so it stays
+                 visually adjacent to the title rather than being pushed apart
+                 by the outer row's justify-content-between) so nothing that
+                 rewrites the title can touch it — matching how
+                 severityBadge/statusBadge already coexist safely (updated via
+                 .textContent, never a parent .innerHTML replace). -->
             <span class="badge ms-3 d-none" id="secLabelBadge"
                   style="cursor:pointer" title="Click to change security label">
             </span>
-        </h5>
+        </div>
         <div class="d-flex gap-2 align-items-center">
             <!-- 2026-06-11 — Mayday is an EMERGENCY button. It is
                  always visible regardless of par_enabled state. If
@@ -212,8 +227,20 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
 
             <!-- Description -->
             <div class="card mb-3">
+                <!-- Eric (2026-08-12) — deliberately NOT data-bs-toggle="collapse".
+                     Bootstrap 5's collapse data-api listens on document in the
+                     CAPTURE phase, which fires before a click ever reaches the
+                     .edit-section-btn pencil nested inside this header -- so
+                     the pencil's own e.stopPropagation() could never prevent
+                     the section from also collapsing. assets/js/incident-
+                     detail.js's bindManualSectionCollapse() drives the same
+                     bootstrap.Collapse instance from data-bs-target instead,
+                     via our own bubble-phase listener that can actually check
+                     "was this click inside .edit-section-btn?" before toggling.
+                     Every .form-section header in this file follows this same
+                     pattern now -- don't add data-bs-toggle="collapse" back. -->
                 <div class="card-header d-flex align-items-center py-1 form-section"
-                     data-bs-toggle="collapse" data-bs-target="#collapseDesc" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
+                     data-bs-target="#collapseDesc" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
                     <i class="bi bi-card-text me-2"></i>
                     <span class="fw-semibold small"><?php echo e(t('incdetail.section.description', 'Description')); ?></span>
                     <button type="button" class="btn btn-link btn-sm p-0 ms-2 edit-section-btn d-none"
@@ -259,7 +286,7 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
             <!-- Location -->
             <div class="card mb-3">
                 <div class="card-header d-flex align-items-center py-1 form-section"
-                     data-bs-toggle="collapse" data-bs-target="#collapseLoc" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
+                     data-bs-target="#collapseLoc" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
                     <i class="bi bi-geo-alt me-2"></i>
                     <span class="fw-semibold small"><?php echo e(t('incdetail.section.location', 'Location')); ?></span>
                     <button type="button" class="btn btn-link btn-sm p-0 ms-2 edit-section-btn d-none"
@@ -377,7 +404,7 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
             <!-- Contact -->
             <div class="card mb-3">
                 <div class="card-header d-flex align-items-center py-1 form-section"
-                     data-bs-toggle="collapse" data-bs-target="#collapseContact" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
+                     data-bs-target="#collapseContact" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
                     <i class="bi bi-person me-2"></i>
                     <span class="fw-semibold small"><?php echo e(t('incdetail.section.contact', 'Caller / Contact')); ?></span>
                     <button type="button" class="btn btn-link btn-sm p-0 ms-2 edit-section-btn d-none"
@@ -438,7 +465,7 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
                  is reachable even when no facility is attached. -->
             <div class="card mb-3" id="facilitiesCard">
                 <div class="card-header d-flex align-items-center py-1 form-section"
-                     data-bs-toggle="collapse" data-bs-target="#collapseFac" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
+                     data-bs-target="#collapseFac" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
                     <i class="bi bi-hospital me-2"></i>
                     <span class="fw-semibold small"><?php echo e(t('incdetail.section.facilities', 'Facilities')); ?></span>
                     <button type="button" class="btn btn-link btn-sm p-0 ms-2 edit-section-btn d-none"
@@ -492,7 +519,7 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
             <!-- Time & Status -->
             <div class="card mb-3">
                 <div class="card-header d-flex align-items-center py-1 form-section"
-                     data-bs-toggle="collapse" data-bs-target="#collapseTime" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
+                     data-bs-target="#collapseTime" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
                     <i class="bi bi-clock me-2"></i>
                     <span class="fw-semibold small"><?php echo e(t('incdetail.section.time_status', 'Time & Status')); ?></span>
                     <i class="bi bi-chevron-down ms-auto collapse-icon"></i>
@@ -527,7 +554,7 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
                  new-incident search panel. -->
             <div class="card mb-3" id="callHistoryCard">
                 <div class="card-header d-flex align-items-center py-1 form-section"
-                     data-bs-toggle="collapse" data-bs-target="#collapseCallHistory"
+                     data-bs-target="#collapseCallHistory"
                      role="button" tabindex="0"
                      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
                     <i class="bi bi-telephone me-2"></i>
@@ -556,7 +583,7 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
                  is a separate follow-up bug. -->
             <div class="card mb-3" id="patientsCard">
                 <div class="card-header d-flex align-items-center py-1 form-section"
-                     data-bs-toggle="collapse" data-bs-target="#collapsePatients"
+                     data-bs-target="#collapsePatients"
                      role="button" tabindex="0"
                      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
                     <i class="bi bi-heart-pulse me-2 text-danger"></i>
@@ -579,7 +606,7 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
             <!-- Additional Details -->
             <div class="card mb-3" id="additionalCard">
                 <div class="card-header d-flex align-items-center py-1 form-section"
-                     data-bs-toggle="collapse" data-bs-target="#collapseAdditional" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
+                     data-bs-target="#collapseAdditional" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
                     <i class="bi bi-journal-text me-2"></i>
                     <span class="fw-semibold small"><?php echo e(t('incdetail.section.additional', 'Additional Details')); ?></span>
                     <button type="button" class="btn btn-link btn-sm p-0 ms-2 edit-section-btn d-none"
@@ -888,7 +915,7 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
 <script src="assets/vendor/leaflet/leaflet.js"></script>
 <script src="assets/js/leaflet-mobile-fit.js?v=<?php echo function_exists("asset_v")?asset_v("assets/js/leaflet-mobile-fit.js"):newui_version(); ?>"></script>
 <script src="assets/js/leaflet-quadkey.js"></script>
-<script src="assets/js/map-prefs.js"></script>
+<script src="assets/js/map-prefs.js?v=<?php echo asset_v('assets/js/map-prefs.js'); ?>"></script>
 <script src="assets/js/map-image-overlays.js?v=<?php echo function_exists('asset_v') ? asset_v('assets/js/map-image-overlays.js') : newui_version(); ?>"></script>
 
 <!-- App JS -->

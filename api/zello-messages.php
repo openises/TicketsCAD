@@ -14,6 +14,14 @@
 ini_set('display_errors', '0');
 
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/../inc/rbac.php';
+
+// GHSA-x9x6-w4fg-pmcc — this endpoint required only a session, no RBAC
+// check, so any authenticated account (any role) could harvest media_url
+// for every retained recording. Same gate as api/zello-audio.php.
+if (!is_admin() && !(function_exists('rbac_can') && rbac_can('action.zello_receive'))) {
+    json_error('Missing required permission: action.zello_receive', 403);
+}
 
 $prefix = $GLOBALS['db_prefix'] ?? '';
 

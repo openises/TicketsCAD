@@ -272,6 +272,48 @@ function incident_create_internal(array $input, int $userId): array {
         } catch (Exception $e) { /* patient table may be missing on very old installs */ }
     }
 
+    // ── Stamp a creation-time security label override, if one was chosen
+    // (Eric, 2026-08-12) ──
+    //
+    // This MUST run before the audit_log() call below. That call is what
+    // drives push_fire() -> router_evaluate() -> seclabel_resolve($ticket_id)
+    // for the incident's first broadcast (GH #8's central-audit comment,
+    // just below). If the dispatcher already knows this call is sensitive,
+    // the override needs to exist in `ticket` BEFORE that first resolve, not
+    // after — a label applied afterward via incident-detail.php's badge only
+    // protects broadcasts from that point on. Without this, a new incident
+    // ALWAYS resolves to whichever label is `in_types.default_security_label_id`
+    // for its type, or the system default if that's not configured — and on
+    // an install where no admin has set a type default, that's the most
+    // permissive label there is, for every single new incident's first
+    // broadcast, with no exception.
+    //
+    // No reason is required here even if the chosen label has
+    // audit_required_reason=1 — the creation form doesn't collect one, by
+    // design (this is the "phone rings, start typing" path; a reason can be
+    // added afterward via the normal override-apply flow if needed). An
+    // invalid/unknown label id is silently ignored, same tolerance as every
+    // other optional field on this form.
+    $securityLabelId = (int) ($input['security_label_id'] ?? 0);
+    if ($securityLabelId > 0) {
+        try {
+            $labelExists = (int) db_fetch_value(
+                "SELECT COUNT(*) FROM `{$prefix}security_labels` WHERE `id` = ?",
+                [$securityLabelId]
+            );
+            if ($labelExists > 0) {
+                db_query(
+                    "UPDATE `{$prefix}ticket`
+                        SET `security_label_override_id` = ?,
+                            `security_set_by` = ?,
+                            `security_set_at` = ?
+                      WHERE `id` = ?",
+                    [$securityLabelId, $userId, $now, $ticket_id]
+                );
+            }
+        } catch (Exception $e) { /* security_labels/ticket columns missing — pre-Phase-18a install */ }
+    }
+
     // ── Audit the create CENTRALLY (GH #8, 2026-07-14) ──
     // The audit row is what drives the outbound webhook + Web Push fan-out
     // (inc/audit.php maps incident|create|ticket → incident.created → push_fire).

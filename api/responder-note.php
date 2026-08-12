@@ -6,18 +6,16 @@
  * active assignment, the previous behavior was an alert + redirect
  * ("open the unit detail page to assign first"). That's hostile UX.
  *
- * Instead: the dispatcher can record a unit-level note. We don't
- * have a dedicated responder_notes table, so we lean on audit_log:
+ * Instead: the dispatcher can record a unit-level note.
  *
- *   entity_type = 'asset'
- *   action      = 'note'
- *   entity_table = 'responder'
- *   entity_id    = $responder_id
- *   summary      = the note text
- *   details      = { user_id, ip, note }
- *
- * The unit-detail page can render these via a recent-audit-log
- * lookup keyed by entity_table='responder' AND entity_id=N.
+ * GH#75 (2026-07-xx) gave notes a real home: the note itself is
+ * INSERTed into responder_notes (created here if missing — see
+ * below), the same table api/unit-history.php's add_note action and
+ * unit-detail.js's renderNotes() already read from. This comment
+ * used to say "we don't have a dedicated table, so we lean on
+ * audit_log" -- that stopped being true here, but the audit_log()
+ * call below is kept too, as the standing audit trail for the
+ * action (not the note's storage).
  *
  * POST  JSON: { responder_id, note, csrf_token }
  * Auth: any logged-in user with action.add_note (same RBAC gate

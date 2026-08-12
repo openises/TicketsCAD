@@ -130,7 +130,16 @@ $paths = array_column($dirs['dirs'] ?? [], 'path');
 test('dirs check covers uploads/', in_array('uploads', $paths, true));
 test('dirs check covers uploads/overlays/', in_array('uploads/overlays', $paths, true));
 test('dirs check covers cache/', in_array('cache', $paths, true));
-test('dirs check covers cache/zello-audio (recordings dir)', in_array('cache/zello-audio', $paths, true));
+
+// GHSA-x9x6-w4fg-pmcc — Zello recordings live outside $root now, so they're
+// no longer in the plain root-relative set above; health_check_all() passes
+// zello_audio_dir() via $extraDirs instead. Confirm that end to end.
+$all = health_check_all();
+$allPaths = array_column($all['dirs']['dirs'] ?? [], 'abs');
+require_once __DIR__ . '/../inc/zello_audio_dir.php';
+test('health_check_all() covers zello_audio_dir() (private) via $extraDirs',
+    in_array(rtrim(str_replace('\\', '/', zello_audio_dir()), '/'),
+        array_map(function ($p) { return rtrim(str_replace('\\', '/', $p), '/'); }, $allPaths), true));
 
 $shapeOk = true;
 foreach (($dirs['dirs'] ?? []) as $d) {

@@ -47,7 +47,11 @@
  *
  *   uploads, uploads/overlays   api/upload.php, api/map-image-overlays.php
  *   cache, cache/weather        api/weather-proxy.php, health-check cache
- *   cache/zello-audio           proxy/ZelloProxyApp.php
+ *   zello_audio_dir() (private) proxy/ZelloProxyApp.php -- outside the web
+ *                               root since GHSA-x9x6-w4fg-pmcc; the legacy
+ *                               in-tree cache/zello-audio is tracked too,
+ *                               but only if it still exists, and is never
+ *                               (re-)created.
  *   TILE_CACHE_DIR              inc/tile-proxy.php
  *   GEOCODE_CACHE_DIR           inc/geocode.php
  *
@@ -134,10 +138,33 @@ function install_perm_targets(): array
         [$root . '/uploads/overlays',  'uploads/overlays',  'map image overlays (api/map-image-overlays.php)'],
         [$root . '/cache',             'cache',             'general cache root'],
         [$root . '/cache/weather',     'cache/weather',     'weather tiles (api/weather-proxy.php)'],
-        [$root . '/cache/zello-audio', 'cache/zello-audio', 'Zello recordings (proxy/ZelloProxyApp.php)'],
     ] as $d) {
         $t[] = ['path' => $d[0], 'label' => $d[1], 'role' => INSTALL_PERM_WEB,
                 'purpose' => $d[2], 'create' => true];
+    }
+
+    // GHSA-x9x6-w4fg-pmcc — recordings now live outside the web root.
+    // Created here like every other web-only cache dir; not derived from a
+    // require, because zello_audio_dir.php has no other dependents that
+    // would justify pulling it in unconditionally.
+    if (!function_exists('zello_audio_dir')) {
+        try { require_once __DIR__ . '/zello_audio_dir.php'; } catch (Throwable $e) { /* optional */ }
+    }
+    if (function_exists('zello_audio_dir')) {
+        $t[] = ['path' => zello_audio_dir(), 'label' => 'zello-audio (private)',
+                'role' => INSTALL_PERM_WEB,
+                'purpose' => 'Zello recordings (proxy/ZelloProxyApp.php), outside the served tree',
+                'create' => true];
+    }
+    // Pre-fix recordings, still readable (api/zello-audio.php falls back to
+    // it) until sql/run_zello_audio_relocate.php moves them. Only tracked if
+    // it already exists -- never re-created, since that would put a served
+    // directory back on disk for no reason (same reasoning as BACKUP_DIR_LEGACY).
+    if (function_exists('zello_audio_dir_legacy') && @is_dir(zello_audio_dir_legacy())) {
+        $t[] = ['path' => zello_audio_dir_legacy(), 'label' => 'cache/zello-audio (legacy)',
+                'role' => INSTALL_PERM_WEB,
+                'purpose' => 'pre-fix Zello recordings, readable until relocated',
+                'create' => false];
     }
 
     if (defined('TILE_CACHE_DIR')) {

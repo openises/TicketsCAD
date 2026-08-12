@@ -35,10 +35,13 @@ StandardError=append:/var/log/newui/zello-proxy.log
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-# cache/ MUST be writable: the proxy saves voice recordings to
-# cache/zello-audio/*.ogg for replay. Without it, ProtectSystem=strict makes
-# the write fail ("Read-only file system") and replay shows "playback error".
-ReadWritePaths=/var/www/newui/proxy /var/www/newui/cache /var/log/newui /tmp
+# cache/ MUST be writable: the proxy still reads pre-upgrade recordings from
+# cache/zello-audio/ (GHSA-x9x6-w4fg-pmcc moved the WRITE target out of the
+# web root, but old recordings stay there until relocated). The sibling
+# ../zello-audio path is the new write target -- it MUST be listed here too,
+# edited to match WorkingDirectory above, or new recordings fail to save
+# with "Read-only file system" the moment this directory isn't writable.
+ReadWritePaths=/var/www/newui/proxy /var/www/newui/cache /var/www/zello-audio /var/log/newui /tmp
 PrivateTmp=true
 ProtectKernelTunables=true
 ProtectKernelModules=true

@@ -196,7 +196,7 @@ $active_page = 'settings';
 <script src="assets/vendor/leaflet/leaflet.js"></script>
 <script src="assets/js/leaflet-mobile-fit.js?v=<?php echo asset_v('assets/js/leaflet-mobile-fit.js'); ?>"></script>
 <script src="assets/js/leaflet-quadkey.js"></script>
-<script src="assets/js/map-prefs.js"></script>
+<script src="assets/js/map-prefs.js?v=<?php echo asset_v('assets/js/map-prefs.js'); ?>"></script>
 <script src="assets/js/map-defaults.js?v=<?php echo asset_v('assets/js/map-defaults.js'); ?>"></script>
 <script src="assets/js/map-image-overlays.js?v=<?php echo asset_v('assets/js/map-image-overlays.js'); ?>"></script>
 

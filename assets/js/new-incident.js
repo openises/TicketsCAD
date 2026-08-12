@@ -19,6 +19,7 @@
         initTheme();
         initMap();
         loadFormData();
+        loadSecurityLabels();
         bindEvents();
         setDefaultTimes();
 
@@ -66,7 +67,19 @@
             : Promise.resolve({ lat: 44.9778, lng: -93.2650, zoom: 10 });
         loader.then(function (d) {
             map = L.map('incidentMap', { zoomControl: true }).setView([d.lat, d.lng], d.zoom);
-            if (window.MapPrefs) { window.MapPrefs.addDefaultBasemap(map); }
+            // Eric (2026-08-12) — a caller reporting "west edge of that heavy
+            // radar echo" or "north of the soccer field" needs the same
+            // basemap/weather layer control every other map page already
+            // has (situation, incident-detail, unit-detail) — addDefaultBasemap
+            // alone gave a fixed basemap with no way to switch to satellite
+            // or toggle radar while taking the call.
+            if (window.MapPrefs) {
+                var bl = window.MapPrefs.addDefaultBasemap(map);
+                window.MapPrefs.addLayerControl(map, {
+                    currentBase: bl,
+                    includeMarkupOverlays: true
+                });
+            }
             else { L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM', maxZoom: 19 }).addTo(map); }
             map.on('click', function (e) {
                 setMarker(e.latlng.lat, e.latlng.lng);
@@ -74,6 +87,29 @@
             });
             setTimeout(function () { map.invalidateSize(); }, 200);
         });
+    }
+
+    // Eric (2026-08-12) — populate the Sensitivity picker so a dispatcher
+    // can flag a call as sensitive AT creation time. This matters because
+    // incident_create_internal() fires the incident-create audit event
+    // (which drives push notifications / broadcast routing) synchronously
+    // right after the INSERT — a label applied later, via the badge on
+    // incident-detail.php, cannot protect that first broadcast. Whatever
+    // is selected here is written into the SAME insert as the ticket row.
+    function loadSecurityLabels() {
+        var sel = document.getElementById('security_label_id');
+        if (!sel) return;
+        fetch('api/security-labels.php', { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var labels = data.labels || [];
+                var html = '<option value="">— Use incident type default —</option>';
+                for (var i = 0; i < labels.length; i++) {
+                    html += '<option value="' + labels[i].id + '">' + escHtml(labels[i].name) + '</option>';
+                }
+                sel.innerHTML = html;
+            })
+            .catch(function () { /* field stays at its single default option */ });
     }
 
     function setMarker(lat, lng) {

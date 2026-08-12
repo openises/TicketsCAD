@@ -3,6 +3,25 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.15] — 2026-08-12
+
+### Security
+
+- **Recorded Zello voice traffic was served without authentication.**
+  `cache/zello-audio/` held one Opus file per transmission, and the archive
+  UI played them by pointing straight at the static file — no session, no
+  permission check, no audit entry — unlike the equivalent DMR recording
+  path, which already required `action.dmr_receive`. `api/zello-messages.php`
+  also had no permission check at all, so any authenticated account, any
+  role, could enumerate and download every retained recording. New
+  `api/zello-audio.php` mirrors the DMR pattern: requires a new
+  `action.zello_receive` permission, resolves recordings by database id
+  rather than a client-supplied path, and audit-logs each playback. New
+  recordings now write to a private directory outside the web root; a
+  migration relocates existing ones, and web-server rules deny the legacy
+  in-tree path as defense-in-depth. Reported by @rjonesbsink with a full
+  CVSS derivation (High, 7.5). GHSA-x9x6-w4fg-pmcc.
+
 ## [4.2.14] — 2026-08-09
 
 ### Fixed

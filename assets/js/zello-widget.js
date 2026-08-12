@@ -1245,8 +1245,12 @@
             incrementUnread();
         }
 
-        // Wire up audio playback
-        var audioUrl = data.audio_url || '';
+        // Wire up audio playback.
+        // GHSA-x9x6-w4fg-pmcc — data.audio_url (live broadcast) and
+        // m.media_url (history, below) are both bare filenames now, not
+        // web-servable paths. Route playback through the RBAC + audit
+        // gated endpoint, keyed by the message id rather than the filename.
+        var audioUrl = data.id ? ('api/zello-audio.php?id=' + encodeURIComponent(data.id)) : '';
         if (audioUrl) {
             var audio = new Audio(audioUrl);
             var isPlaying = false;

@@ -44,11 +44,13 @@ function _uh_ensure_notes_table(): void {
             `note`         TEXT NOT NULL,
             `by_user`      INT NOT NULL DEFAULT 0,
             `by_username`  VARCHAR(64) NOT NULL DEFAULT '',
+            `corrects_id`  INT NULL,
             `created_at`   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             `deleted_at`   DATETIME NULL,
             `deleted_by`   INT NULL,
             KEY `idx_responder_time` (`responder_id`, `created_at`),
-            KEY `idx_category`       (`category`)
+            KEY `idx_category`       (`category`),
+            KEY `idx_corrects`       (`corrects_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         $done = true;
     } catch (Exception $e) {
@@ -56,9 +58,23 @@ function _uh_ensure_notes_table(): void {
     }
 }
 
+// GH#46 — this endpoint had no CSRF check on its state-changing actions
+// (add_note, delete) before this change; the note-correction UI is the
+// first thing to expose a Delete button here, so close the gap while
+// touching the file rather than ship a new, unprotected mutation path.
+// Query string (DELETE has no body in the current JS) first, then JSON
+// body / form POST — mirrors api/file-upload.php's _file_upload_csrf_ok().
+function _uh_csrf_ok(array $input = []): bool {
+    $tok = $_GET['csrf_token'] ?? ($input['csrf_token'] ?? '');
+    return csrf_verify((string) $tok);
+}
+
 _uh_ensure_notes_table();
 
 if ($method === 'DELETE') {
+    if (!_uh_csrf_ok()) {
+        json_error('Invalid CSRF token', 403);
+    }
     if (!rbac_can('action.change_unit_status') && !is_admin()) {
         json_error('Forbidden', 403);
     }
@@ -81,6 +97,9 @@ $input = ($method === 'POST')
 $action = $input['action'] ?? '';
 
 if ($method === 'POST' && $action === 'add_note') {
+    if (!_uh_csrf_ok($input)) {
+        json_error('Invalid CSRF token', 403);
+    }
     if (!rbac_can('action.change_unit_status') && !is_admin()) {
         json_error('Forbidden', 403);
     }
@@ -89,12 +108,35 @@ if ($method === 'POST' && $action === 'add_note') {
     $cat = substr(trim((string) ($input['category'] ?? 'general')), 0, 32) ?: 'general';
     if ($rid <= 0) json_error('Invalid responder_id');
     if ($note === '') json_error('Note text required');
+
+    // GH#46 — append-a-correction. A correction is a normal note that
+    // references the one it corrects; the original is never edited or
+    // hidden. Restricted to the original note's own author, or an admin
+    // (Eric + cbyrdmo, 2026-08-12) -- deliberately narrower than the
+    // general action.change_unit_status gate above, which still governs
+    // plain (non-correcting) notes and delete.
+    $correctsId = (int) ($input['corrects_id'] ?? 0);
+    if ($correctsId > 0) {
+        $target = db_fetch_one(
+            "SELECT id, responder_id, by_user FROM `{$prefix}responder_notes`
+             WHERE id = ? AND deleted_at IS NULL",
+            [$correctsId]
+        );
+        if (!$target) json_error('The note being corrected no longer exists', 404);
+        if ((int) $target['responder_id'] !== $rid) json_error('Invalid correction target', 400);
+        if ((int) $target['by_user'] !== (int) $current_user_id && !is_admin()) {
+            json_error('Only the original author or an admin can correct this note', 403);
+        }
+    } else {
+        $correctsId = null;
+    }
+
     try {
         db_query("INSERT INTO `{$prefix}responder_notes`
-                  (responder_id, category, note, by_user, by_username, created_at)
-                  VALUES (?, ?, ?, ?, ?, NOW())",
+                  (responder_id, category, note, by_user, by_username, corrects_id, created_at)
+                  VALUES (?, ?, ?, ?, ?, ?, NOW())",
                  [$rid, $cat, $note, (int) $current_user_id,
-                  substr($_SESSION['user'] ?? '', 0, 64)]);
+                  substr($_SESSION['user'] ?? '', 0, 64), $correctsId]);
         json_response(['id' => (int) db_insert_id()]);
     } catch (Exception $e) {
         json_error('Save failed: ' . $e->getMessage(), 500);
@@ -111,16 +153,39 @@ if ($rid <= 0) {
 if ($action === 'notes') {
     try {
         $notes = db_fetch_all(
-            "SELECT id, category, note, by_user, by_username, created_at
+            "SELECT id, category, note, by_user, by_username, corrects_id, created_at
              FROM `{$prefix}responder_notes`
              WHERE responder_id = ? AND deleted_at IS NULL
              ORDER BY created_at DESC LIMIT ?",
             [$rid, $limit]
         );
-        json_response(['notes' => $notes]);
+        json_response(['notes' => _uh_annotate_note_perms($notes)]);
     } catch (Exception $e) {
         json_response(['notes' => [], 'error' => $e->getMessage()]);
     }
+}
+
+/**
+ * GH#46 — attach the two UI-affordance flags per note, computed server-side
+ * so the frontend never has to reason about permissions itself:
+ *   can_correct — only the note's own author, or an admin (narrower; see
+ *                 the add_note corrects_id check above, which is the real
+ *                 enforcement -- this flag only controls whether the
+ *                 button renders).
+ *   can_delete  — the existing, broader gate already used by the DELETE
+ *                 handler above (unchanged scope; just newly surfaced so a
+ *                 button can be shown for it).
+ */
+function _uh_annotate_note_perms(array $notes): array {
+    global $current_user_id;
+    $canDelete = rbac_can('action.change_unit_status') || is_admin();
+    $isAdmin   = is_admin();
+    foreach ($notes as &$n) {
+        $n['can_correct'] = $isAdmin || ((int) ($n['by_user'] ?? 0) === (int) $current_user_id);
+        $n['can_delete']  = $canDelete;
+    }
+    unset($n);
+    return $notes;
 }
 
 // Full merged timeline

@@ -11,6 +11,7 @@
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/access.php';
+require_once __DIR__ . '/../inc/rbac.php';
 
 $prevDisplay = ini_get('display_errors');
 ini_set('display_errors', '0');
@@ -362,13 +363,27 @@ ini_set('display_errors', $prevDisplay);
 $notes = [];
 try {
     $notes = db_fetch_all(
-        "SELECT `note`, `category`, `by_username`, `created_at`
+        "SELECT `id`, `note`, `category`, `by_user`, `by_username`, `corrects_id`, `created_at`
            FROM `{$prefix}responder_notes`
           WHERE `responder_id` = ? AND `deleted_at` IS NULL
           ORDER BY `created_at` DESC, `id` DESC
           LIMIT 50",
         [$id]
     );
+    // GH#46 — append-a-correction. Two UI-affordance flags, computed here
+    // rather than in the frontend so a permission decision is never made
+    // client-side: can_correct is narrower (only the note's own author, or
+    // an admin -- the real enforcement lives in api/unit-history.php's
+    // add_note handler, this only controls whether the button renders);
+    // can_delete mirrors the existing, broader DELETE gate unchanged.
+    $canDeleteNote = rbac_can('action.change_unit_status') || is_admin();
+    $isAdminUser   = is_admin();
+    $selfUserId    = (int) ($_SESSION['user_id'] ?? 0);
+    foreach ($notes as &$_n) {
+        $_n['can_correct'] = $isAdminUser || ((int) ($_n['by_user'] ?? 0) === $selfUserId);
+        $_n['can_delete']  = $canDeleteNote;
+    }
+    unset($_n);
 } catch (Throwable $e) {
     $notes = [];
 }

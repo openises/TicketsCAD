@@ -53,13 +53,25 @@ ti_ok("ReadWritePaths still includes proxy dir (PID file)",
     strpos($rwpLine, '/var/www/newui/proxy') !== false);
 ti_ok("ReadWritePaths still includes the log dir",
     strpos($rwpLine, '/var/log/newui') !== false);
+// GHSA-x9x6-w4fg-pmcc — new recordings write to a sibling-of-webroot
+// directory (inc/zello_audio_dir.php), which needs its OWN grant: being
+// under /var/www/newui/cache does not cover a path outside /var/www/newui
+// at all. Without this line, new recordings fail with the exact "Read-only
+// file system" error this file was originally written to guard against.
+ti_ok("ReadWritePaths includes the private zello-audio dir (new recordings writable)",
+    strpos($rwpLine, '/var/www/zello-audio') !== false,
+    "got: {$rwpLine}");
 
-// The proxy writes recordings under cache/zello-audio — make sure the path the
-// code uses sits under the granted cache dir (guards against the dir moving
-// out from under ReadWritePaths in a future refactor).
+// The proxy writes NEW recordings to the private directory now, and only
+// reads (never writes) the legacy cache/zello-audio path.
 $appSrc = file_get_contents(__DIR__ . '/../proxy/ZelloProxyApp.php');
-ti_ok("proxy writes recordings under cache/zello-audio",
-    strpos($appSrc, "/cache/zello-audio") !== false);
+ti_ok("proxy resolves its write dir via zello_audio_write_dir(), not a hardcoded cache/zello-audio path",
+    strpos($appSrc, 'zello_audio_write_dir()') !== false
+    && strpos($appSrc, "dirname(__DIR__) . '/cache/zello-audio'") === false);
+ti_ok("proxy requires inc/zello_audio_dir.php",
+    strpos($appSrc, "require_once __DIR__ . '/../inc/zello_audio_dir.php'") !== false);
+ti_ok("proxy no longer stores a web-servable cache/zello-audio/ path in media_url",
+    strpos($appSrc, "'cache/zello-audio/' . \$filename") === false);
 
 // ──────────────────────────────────────────────────────────────────────
 // BUG 2 — zello_messages voice columns + idempotent migration
@@ -138,8 +150,10 @@ try {
              `sender_username`, `sender_display`, `content`, `incident_id`,
              `duration_ms`, `media_url`, `created`)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())",
+        // GHSA-x9x6-w4fg-pmcc — media_url is a bare filename now, not a
+        // web-servable path (api/zello-audio.php resolves it server-side).
         ['ZTEST_CH', '', 'outgoing', 'voice', 'ztest_user', 'ZTest User',
-         null, null, 4200, 'cache/zello-audio/ztest_999.ogg']
+         null, null, 4200, 'ztest_999.ogg']
     );
     $id = (int) db_insert_id();
     $insertOk = $id > 0;
@@ -155,7 +169,7 @@ try {
 ti_ok("voice-message INSERT (duration_ms + media_url) succeeds", $insertOk);
 ti_ok("duration_ms round-trips", $readBack && (int) $readBack['duration_ms'] === 4200);
 ti_ok("media_url round-trips",
-    $readBack && $readBack['media_url'] === 'cache/zello-audio/ztest_999.ogg');
+    $readBack && $readBack['media_url'] === 'ztest_999.ogg');
 
 // Make sure no stray test rows survive.
 db_query("DELETE FROM `{$prefix}zello_messages` WHERE sender_username = 'ztest_user'");

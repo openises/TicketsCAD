@@ -310,7 +310,18 @@
     }
 
     function makeRadarLayer() {
-        var layer = L.tileLayer('', { opacity: 0.7, maxZoom: 19, errorTileUrl: '' });
+        // GH (Eric, 2026-08-12) — RainViewer's radar mosaic only renders
+        // through zoom 7; z8+ returns a "Zoom Level Not Supported" placeholder
+        // tile everywhere, which read as a broken layer with no indication
+        // radar specifically was the problem. situation.php solved this for
+        // its own radar layer on 2026-07-05 (#53 follow-up) with
+        // maxNativeZoom: 7 -- Leaflet stops requesting native tiles past that
+        // zoom and upscales the z7 tile instead (coarse but continuous, no
+        // error tiles; the blur itself signals "approximate" at this zoom).
+        // This shared layer (incident-detail, unit-detail, and every other
+        // map-prefs.js consumer) never got the same cap. maxZoom stays 19 so
+        // the base map + markers still zoom in fully.
+        var layer = L.tileLayer('', { opacity: 0.7, maxZoom: 19, maxNativeZoom: 7, errorTileUrl: '' });
         _radarLayers.push(layer);
 
         // Leaflet fires 'add'/'remove' on the LAYER when it joins or leaves a

@@ -341,9 +341,11 @@ function _health_web_user_from_runtime_owner(?string $root = null): ?array
         $sep  = DIRECTORY_SEPARATOR;
 
         // Artefacts first (proof the web server wrote here), then the
-        // directories themselves.
+        // directories themselves. GHSA-x9x6-w4fg-pmcc moved Zello recordings
+        // to a private directory OUTSIDE $root, added separately below since
+        // it can't be expressed as a root-relative path like the others.
         $artefacts = [];
-        foreach (['cache/weather', 'cache/zello-audio', 'uploads', 'uploads/overlays', 'cache'] as $rel) {
+        foreach (['cache/weather', 'uploads', 'uploads/overlays', 'cache'] as $rel) {
             $dir = $root . $sep . str_replace('/', $sep, $rel);
             if (!@is_dir($dir)) {
                 continue;
@@ -356,10 +358,28 @@ function _health_web_user_from_runtime_owner(?string $root = null): ?array
             }
         }
         $dirs = [];
-        foreach (['uploads', 'cache', 'cache/weather', 'cache/zello-audio', 'uploads/overlays'] as $rel) {
+        foreach (['uploads', 'cache', 'cache/weather', 'uploads/overlays'] as $rel) {
             $dir = $root . $sep . str_replace('/', $sep, $rel);
             if (@is_dir($dir)) {
                 $dirs[] = ['path' => $dir, 'rel' => $rel];
+            }
+        }
+        // Derived from the SAME $root this function was called with, not the
+        // global zello_audio_dir() helper (which always answers for the real
+        // NEWUI_ROOT). This function is also called with a throwaway fixture
+        // root by tests/test_health_web_user.php to prove an empty install
+        // yields no answer -- calling the global helper there would have
+        // reached past the fixture and found the real host's actual private
+        // directory, which exists once GHSA-x9x6-w4fg-pmcc has shipped, and
+        // broken that isolation.
+        $zDir = dirname($root) . $sep . 'zello-audio';
+        if (@is_dir($zDir)) {
+            $dirs[] = ['path' => $zDir, 'rel' => 'zello-audio (private)'];
+            $found = @glob(rtrim($zDir, '/\\') . '/*') ?: [];
+            foreach (array_slice($found, 0, 5) as $f) {
+                if (@is_file($f)) {
+                    $artefacts[] = ['path' => $f, 'rel' => 'zello-audio (private)/' . basename($f)];
+                }
             }
         }
 
@@ -703,16 +723,15 @@ function health_check_dirs(array $extraDirs = [], ?array $webUser = null): array
         $root    = health_check_root();
         $webUser = $webUser ?? health_check_web_user();
 
-        // Root-relative required-writable dirs. cache/zello-audio is the
-        // Zello proxy recordings dir (hardcoded in proxy/ZelloProxyApp.php
-        // as dirname(__DIR__) . '/cache/zello-audio') — this is the exact
-        // dir that broke for the git-pull-as-root beta install.
+        // Root-relative required-writable dirs. This is the exact set that
+        // broke for the git-pull-as-root beta install. Zello's recordings
+        // dir is OUTSIDE $root since GHSA-x9x6-w4fg-pmcc, so it travels via
+        // $extraDirs (see the call site) rather than living in this list.
         $relDirs = [
             'uploads'           => 'file attachments (api/upload.php)',
             'uploads/overlays'  => 'map image overlays (api/map-image-overlays.php)',
             'cache'             => 'general cache root',
             'cache/weather'     => 'weather tile cache (api/weather-proxy.php)',
-            'cache/zello-audio' => 'Zello voice recordings (proxy/ZelloProxyApp.php)',
         ];
 
         $entries = [];
@@ -2596,7 +2615,16 @@ function health_check_geocoding(bool $probe = false): array
 function health_check_all(): array
 {
     try {
-        $dirs       = health_check_dirs();
+        // GHSA-x9x6-w4fg-pmcc — Zello recordings now live outside $root, so
+        // the writability check travels via $extraDirs.
+        $zelloExtra = [];
+        if (!function_exists('zello_audio_dir')) {
+            try { require_once __DIR__ . '/zello_audio_dir.php'; } catch (Throwable $e) { /* optional */ }
+        }
+        if (function_exists('zello_audio_dir')) {
+            $zelloExtra[] = zello_audio_dir();
+        }
+        $dirs       = health_check_dirs($zelloExtra);
         $unreadable = health_check_unreadable();
         $opcache    = health_check_opcache();
         $version    = health_check_version_match();

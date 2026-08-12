@@ -57,7 +57,8 @@
         facTypes: [],
         facilities: [],
         users: [],
-        warnLocations: []
+        warnLocations: [],
+        secLabels: null // null = not yet fetched; [] = fetched, none defined
     };
 
     // SearchableSelect instance for the Link-to-Member picker on the
@@ -4287,6 +4288,38 @@
         }
     }
 
+    // Eric (2026-08-12) — populate the "Default Security Label" select on
+    // the incident-type edit form. Fetched once and cached; the labels
+    // list rarely changes within a single settings session.
+    function loadSecLabelOptions(done) {
+        var sel = document.getElementById('typeDefaultSecLabel');
+        if (!sel) { if (done) done(); return; }
+        if (cache.secLabels !== null) {
+            renderSecLabelOptions(sel, cache.secLabels);
+            if (done) done();
+            return;
+        }
+        fetch('api/security-labels.php', { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                cache.secLabels = data.labels || [];
+                renderSecLabelOptions(sel, cache.secLabels);
+                if (done) done();
+            })
+            .catch(function () {
+                cache.secLabels = [];
+                if (done) done();
+            });
+    }
+
+    function renderSecLabelOptions(sel, labels) {
+        var html = '<option value="">Use system default</option>';
+        for (var i = 0; i < labels.length; i++) {
+            html += '<option value="' + labels[i].id + '">' + esc(labels[i].name) + '</option>';
+        }
+        sel.innerHTML = html;
+    }
+
     function openTypeForm(item) {
         var panel = document.getElementById('typeEditPanel');
         var deleteBtn = document.getElementById('btnDeleteType');
@@ -4335,6 +4368,13 @@
         document.getElementById('typeMatchPattern').value = item ? (item.match_pattern || '') : '';
         document.getElementById('patternTestInput').value = '';
         document.getElementById('patternTestResult').innerHTML = '<i class="bi bi-dash text-body-secondary"></i>';
+
+        // Eric (2026-08-12) — options must be loaded before the value can
+        // be set on them; loadSecLabelOptions caches after the first call.
+        loadSecLabelOptions(function () {
+            var secSel = document.getElementById('typeDefaultSecLabel');
+            secSel.value = item && item.default_security_label_id ? String(item.default_security_label_id) : '';
+        });
 
         if (item) {
             deleteBtn.classList.remove('d-none');
@@ -6221,6 +6261,28 @@
         var feedInput = document.getElementById('setFeedApiKey');
         if (feedInput) {
             feedInput.addEventListener('input', updateFeedKeyBanner);
+        }
+
+        // GH#49 — rotate an already-configured key. Distinct from
+        // btnGenerateFeedKey above: that button lives inside the "no key
+        // configured" banner and disappears once one exists, so there was no
+        // way back to it short of clearing the key first. This one is always
+        // visible. Regenerating invalidates whatever's currently consuming
+        // the feed, so it confirms before touching the field — same as it
+        // always did, still requires Save to actually take effect.
+        var regenBtn = document.getElementById('btnRegenerateFeedKey');
+        if (regenBtn) {
+            regenBtn.addEventListener('click', function () {
+                var input = document.getElementById('setFeedApiKey');
+                if (!input) return;
+                var msg = _feedKeyStored
+                    ? 'Generate a new feed key? The current key will stop working for anyone using it as soon as you Save.'
+                    : 'Generate a new feed key?';
+                if (!confirm(msg)) return;
+                input.value = randomHex(48);
+                updateFeedKeyBanner();
+                showAlert('New key generated — click Save API Keys to apply.', 'info');
+            });
         }
     }
 

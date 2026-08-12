@@ -594,6 +594,61 @@ function incnum_check_collision(string $template, int $candidateSeq, ?int $times
 }
 
 /**
+ * GH#51 (cbyrdmo/rjonesbsink, 2026-08-12) — resolve user-typed input to
+ * an internal ticket.id. Every "Incident #" filter in the app (Reports'
+ * After Action filter, PAR's per-incident timeline) used to demand the
+ * internal `ticket.id` directly — a number the dispatcher never sees or
+ * uses. Their own case number (e.g. "26-0091", rendered by their
+ * configured template) is what they actually have, so that's what these
+ * inputs must accept.
+ *
+ *   1. Primary: exact match against `ticket.incident_number` — the
+ *      rendered case number, via the existing incnum_find_existing()
+ *      collision-check helper.
+ *   2. Fallback: purely-numeric input that didn't match a case number is
+ *      tried as a raw ticket id. This covers two real cases without
+ *      creating ambiguity — it only fires when step 1 found nothing, so
+ *      a case number that happens to look like a bare integer is always
+ *      resolved by step 1 first:
+ *        - tickets created before Phase 15 shipped, whose
+ *          incident_number is NULL (incnum_display() already falls back
+ *          to "#<id>" for exactly these rows)
+ *        - an admin who already knows the internal id
+ *
+ * Returns 0 if nothing matches (including empty input).
+ */
+function incnum_resolve_input(string $input): int
+{
+    $input = trim($input);
+    if ($input === '') return 0;
+
+    $id = incnum_find_existing($input);
+    if ($id !== null) return $id;
+
+    if (ctype_digit($input)) {
+        $tid = (int) $input;
+        if ($tid <= 0) return 0;
+        $prefix = $GLOBALS['db_prefix'] ?? '';
+        try {
+            // Soft-delete audit gate — a deleted incident must not become
+            // reachable again just because its raw internal id was typed
+            // into a filter. Callers downstream (e.g. after_action's own
+            // ticket fetch) may re-check deleted_at themselves, but this
+            // resolver is the shared front door for several of them (PAR's
+            // history action does NOT re-check), so the exclusion belongs
+            // here, not repeated per-caller.
+            $exists = db_fetch_value(
+                "SELECT `id` FROM `{$prefix}ticket`
+                  WHERE `id` = ?
+                    AND (`deleted_at` IS NULL OR `deleted_at` = '0000-00-00 00:00:00')
+                  LIMIT 1", [$tid]);
+            if ($exists !== false && $exists !== null) return $tid;
+        } catch (Exception $e) { /* ticket table missing */ }
+    }
+    return 0;
+}
+
+/**
  * Reset mode helpers (Phase 15b).
  */
 function incnum_get_reset_mode(): string

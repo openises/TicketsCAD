@@ -26,6 +26,14 @@ rbac_require_screen('screen.reports');
 require_once __DIR__ . '/inc/force-pw-change.php';
 force_pw_change_redirect();
 
+// GH#51 — the After Action filter takes the dispatcher's own case
+// number, not the internal ticket id. Build a sample from the live
+// template so the placeholder shows what THEIR numbers actually look
+// like, not a generic example.
+require_once __DIR__ . '/inc/incident-number.php';
+$incidentNumberSample = incnum_render(incnum_get_template(), 91);
+$incidentNumberLabel  = incnum_get_label();
+
 
 $user     = e($_SESSION['user']);
 $level = current_role_name();
@@ -170,9 +178,11 @@ $csrf     = csrf_token();
 
                 <!-- Incident Filter (for after-action) -->
                 <div class="col-auto d-none" id="incidentFilterCol">
-                    <label class="form-label small mb-1">Incident #</label>
-                    <input type="number" class="form-control form-control-sm" id="incidentFilter"
-                           placeholder="Incident ID" min="1" style="width: 130px;">
+                    <label class="form-label small mb-1"><?php echo e($incidentNumberLabel); ?> #</label>
+                    <input type="text" class="form-control form-control-sm" id="incidentFilter"
+                           placeholder="e.g. <?php echo e($incidentNumberSample); ?>"
+                           title="Enter the incident number as shown on the incident (not the internal database id)."
+                           style="width: 150px;">
                 </div>
 
                 <!-- Run Button -->

@@ -18,6 +18,10 @@ use React\EventLoop\LoopInterface;
 // exercised by the test suite, which cannot load this class (Ratchet is a
 // composer dependency and CI does not install vendor/).
 require_once __DIR__ . '/tts_pacer.php';
+// GHSA-x9x6-w4fg-pmcc — recordings move to a directory the web server never
+// serves. proxy/zello-proxy.php requires config.php before constructing this
+// class, so NEWUI_ROOT is already defined by the time the constructor runs.
+require_once __DIR__ . '/../inc/zello_audio_dir.php';
 
 class ZelloProxyApp implements MessageComponentInterface
 {
@@ -227,11 +231,10 @@ class ZelloProxyApp implements MessageComponentInterface
         $this->dbUser  = $dbUser;
         $this->dbPass  = $dbPass;
 
-        // Ensure audio cache directory exists
-        $this->audioDir = dirname(__DIR__) . '/cache/zello-audio';
-        if (!is_dir($this->audioDir)) {
-            @mkdir($this->audioDir, 0755, true);
-        }
+        // GHSA-x9x6-w4fg-pmcc — private, non-served directory. Falls back to
+        // the legacy in-tree cache/zello-audio only if the private one isn't
+        // writable yet (e.g. a systemd unit not updated for this host).
+        $this->audioDir = zello_audio_write_dir();
 
         // Phase 100 (2026-07-01) — image cache directory. Same
         // pattern as audioDir. Files land here as in_z_<image_id>.jpg
@@ -1618,7 +1621,10 @@ class ZelloProxyApp implements MessageComponentInterface
         // $packetDurationMs so granule is correct on both browsers.
         $filename = 'out_' . $localStreamId . '_' . time() . '.ogg';
         $filepath = $this->audioDir . '/' . $filename;
-        $audioUrl = 'cache/zello-audio/' . $filename;
+        // GHSA-x9x6-w4fg-pmcc — store the bare filename, not a web-servable
+        // path. api/zello-audio.php resolves it (checking both the private
+        // and legacy directories) instead of the browser fetching it directly.
+        $audioUrl = $filename;
 
         try {
             $writer  = new OggOpusWriter(48000, 1, $packetDurationMs);
@@ -1974,7 +1980,10 @@ class ZelloProxyApp implements MessageComponentInterface
         // Build complete .ogg file from all packets for replay/archive
         $filename = $streamId . '_' . time() . '.ogg';
         $filepath = $this->audioDir . '/' . $filename;
-        $audioUrl = 'cache/zello-audio/' . $filename;
+        // GHSA-x9x6-w4fg-pmcc — store the bare filename, not a web-servable
+        // path. api/zello-audio.php resolves it (checking both the private
+        // and legacy directories) instead of the browser fetching it directly.
+        $audioUrl = $filename;
 
         try {
             // Phase 99al — packet_ms for the OGG writer's granule math.

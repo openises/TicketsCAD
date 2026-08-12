@@ -575,6 +575,18 @@ foreach ($personnelSections as $sec) {
                                 </div>
                             </div>
                         </div>
+                        <div class="col-md-6">
+                            <label for="typeDefaultSecLabel" class="form-label form-label-sm">
+                                Default Security Label
+                                <i class="bi bi-question-circle text-body-secondary" tabindex="0"
+                                   data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                                   data-bs-content="Applied automatically to every NEW incident of this type, from the moment it's created — before a dispatcher has a chance to apply one by hand. Incidents get no protection until this is set: with no default here, a new incident starts under the system default label (routing/broadcast fully open) and stays that way until someone manually changes it. Use this for types that are sensitive by their nature (e.g. Suicide, Domestic Violence, Mental Health Crisis) so the very first broadcast is already restricted."
+                                   title="Default security label help"></i>
+                            </label>
+                            <select class="form-select form-select-sm" id="typeDefaultSecLabel" name="default_security_label_id">
+                                <option value="">Use system default</option>
+                            </select>
+                        </div>
                         <div class="col-12">
                             <label for="typeProtocol" class="form-label form-label-sm">Protocol</label>
                             <textarea class="form-control form-control-sm" id="typeProtocol" name="protocol" rows="3"
@@ -2900,6 +2912,14 @@ foreach ($personnelSections as $sec) {
                                 <button class="btn btn-outline-secondary secret-copy" type="button"
                                         data-target="setFeedApiKey" title="Copy to clipboard">
                                     <i class="bi bi-clipboard"></i>
+                                </button>
+                                <!-- GH#49 — the banner's Generate button only exists while no key is
+                                     configured, hiding itself the moment one is; this one is always
+                                     visible so a configured key can be rotated without editing the
+                                     database by hand. -->
+                                <button class="btn btn-outline-warning" type="button" id="btnRegenerateFeedKey"
+                                        title="Generate a new key, replacing the current one">
+                                    <i class="bi bi-arrow-repeat me-1"></i>Regenerate
                                 </button>
                             </div>
                             <div class="form-text">Pass via <code>?key=</code> or <code>X-Feed-Key</code> header. Anyone with this key can read every open incident, including PII — keep it secret.</div>
@@ -10030,7 +10050,7 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
 <script src="assets/vendor/leaflet/leaflet.js"></script>
 <script src="assets/js/leaflet-mobile-fit.js?v=<?php echo function_exists("asset_v")?asset_v("assets/js/leaflet-mobile-fit.js"):newui_version(); ?>"></script>
 <script src="assets/js/leaflet-quadkey.js"></script>
-<script src="assets/js/map-prefs.js"></script>
+<script src="assets/js/map-prefs.js?v=<?php echo asset_v('assets/js/map-prefs.js'); ?>"></script>
 
 <!-- App JS -->
 <script src="assets/js/event-bus.js?v=<?php echo asset_v('assets/js/event-bus.js'); ?>"></script>

@@ -549,7 +549,7 @@ window.INCIDENT_NUMBER_LABEL = <?php echo json_encode($incNumLabel); ?>;
 <script src="assets/vendor/leaflet/plugins/leaflet-openweathermap.js"></script>
 <script src="assets/vendor/leaflet/plugins/L.Graticule.js"></script>
 <script src="assets/js/leaflet-quadkey.js"></script>
-<script src="assets/js/map-prefs.js"></script>
+<script src="assets/js/map-prefs.js?v=<?php echo asset_v('assets/js/map-prefs.js'); ?>"></script>
 <script src="assets/js/map-image-overlays.js?v=<?php echo function_exists('asset_v') ? asset_v('assets/js/map-image-overlays.js') : newui_version(); ?>"></script>
 <script src="assets/js/unit-tracking.js"></script>
 

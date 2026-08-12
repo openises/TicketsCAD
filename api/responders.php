@@ -583,6 +583,10 @@ foreach ($statuses as $sid => $s) {
     $statusOptions[] = [
         'id'                  => (int) $s['id'],
         'status_val'          => $s['status_val'],
+        // GH#44 — the command bar's status matcher also tries this,
+        // since an install may show the dispatcher this column while
+        // status_val is a short code the alias table can't anticipate.
+        'description'         => $s['description'] ?? '',
         'bg_color'            => $s['bg_color']  ?? '',
         'text_color'          => $s['text_color'] ?? '',
         'group'               => $s['group']     ?? '',
@@ -596,6 +600,12 @@ foreach ($statuses as $sid => $s) {
         'extra_data_required' => (int) ($s['extra_data_required'] ?? 0),
         'extra_data_label'    => $s['extra_data_label']    ?? null,
         'extra_data_target'   => $s['extra_data_target']   ?? 'action_log',
+        // GH#52 — independent second slot; 'none' on every install until
+        // the status editor is used to configure one.
+        'extra_data_type_2'     => $s['extra_data_type_2']     ?? 'none',
+        'extra_data_required_2' => (int) ($s['extra_data_required_2'] ?? 0),
+        'extra_data_label_2'    => $s['extra_data_label_2']    ?? null,
+        'extra_data_target_2'   => $s['extra_data_target_2']   ?? 'action_log',
     ];
 }
 usort($statusOptions, function ($a, $b) {

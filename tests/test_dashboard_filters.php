@@ -33,12 +33,16 @@ t('filter uses the classifier + keeps on-call = in_service',
 function _cls(string $group, string $name): string {
     $g = preg_replace('/[^a-z]/', '', strtolower($group));
     $n = preg_replace('/[^a-z]/', '', strtolower($name));
-    $isUn = fn($s) => strpos($s, 'un') === 0 || strpos($s, 'off') === 0 || strpos($s, 'out') === 0 || $s === 'na' || strpos($s, 'oos') === 0;
-    $isIs = fn($s) => strpos($s, 'inserv') === 0 || strpos($s, 'service') === 0 || $s === 'is' || $s === 'en';
+    $isUn = fn($s) => strpos($s, 'una') === 0 || strpos($s, 'off') === 0 || strpos($s, 'out') === 0 || $s === 'na' || strpos($s, 'oos') === 0;
+    $isIs = fn($s) => strpos($s, 'inserv') === 0 || strpos($s, 'service') === 0 || $s === 'is' || $s === 'en'
+        || $s === 'call' || strpos($s, 'busy') === 0 || strpos($s, 'disp') === 0;
     $isAv = fn($s) => strpos($s, 'av') === 0 || strpos($s, 'avail') === 0 || $s === 'a' || $s === 'rdy' || strpos($s, 'ready') === 0;
-    if ($isUn($g) || ($g === '' && $isUn($n))) return 'unavailable';
-    if ($isIs($g) || ($g === '' && $isIs($n))) return 'in_service';
-    if ($isAv($g) || ($g === '' && $isAv($n))) return 'available';
+    if ($isUn($g)) return 'unavailable';
+    if ($isIs($g)) return 'in_service';
+    if ($isAv($g)) return 'available';
+    if ($isUn($n)) return 'unavailable';
+    if ($isIs($n)) return 'in_service';
+    if ($isAv($n)) return 'available';
     return '';
 }
 t('seed group "av" → available (old code returned nothing)',  _cls('av', 'available') === 'available');
@@ -46,6 +50,19 @@ t('seed group "unav" → unavailable (not misread as available)', _cls('unav', '
 t('seed group "inserv" → in_service',                          _cls('inserv', 'in_service') === 'in_service');
 t('no group, short name "AV" → available (a beta tester\'s case)',     _cls('', 'AV') === 'available');
 t('no group, "Off Shift" → unavailable',                       _cls('', 'Off Shift') === 'unavailable');
+
+// GH #48 (Chris Byrd 2026-08-11): "1-Unit Status" normalizes to "unitstatus",
+// which starts with "un" -- a bare 'un' prefix check misclassified EVERY
+// status in that group (including "Available" itself) as unavailable before
+// the status name was ever consulted, so the Available button returned zero
+// units and Unavailable returned everything except in-service. Pin the fix
+// against his exact real group/status names.
+t('GH#48 "1-Unit Status" group does not false-positive as unavailable (regression)',
+    _cls('1-Unit Status', 'Available') === 'available');
+t('GH#48 "1-Unit Status" group + "Unavailable" status still correctly unavailable',
+    _cls('1-Unit Status', 'Unavailable') === 'unavailable');
+t('GH#48 "2-Call" group + "Enroute" status still correctly in_service',
+    _cls('2-Call', 'Enroute') === 'in_service');
 
 // ── #65: dashboard text filter wiring ───────────────────────────────────────
 $wm = rd($base . '/assets/js/widget-manager.js');

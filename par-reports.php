@@ -111,7 +111,9 @@ $active_page = 'par-reports';
                     <div class="row g-2 align-items-end mb-3">
                         <div class="col-md-3">
                             <label class="form-label form-label-sm">Incident #</label>
-                            <input type="number" class="form-control form-control-sm" id="tlTicket" min="1" placeholder="123">
+                            <input type="text" class="form-control form-control-sm" id="tlTicket"
+                                   placeholder="e.g. 26-0091"
+                                   title="Enter the incident number as shown on the incident (not the internal database id).">
                         </div>
                         <div class="col-md-2">
                             <button type="button" class="btn btn-sm btn-primary" id="btnRunTimeline">
@@ -185,19 +187,22 @@ $active_page = 'par-reports';
     });
 
     document.getElementById('btnRunTimeline').addEventListener('click', function () {
-        var tid = parseInt(document.getElementById('tlTicket').value, 10);
+        // GH#51 — send the dispatcher's own case number as typed; the
+        // server resolves it to the internal ticket id.
+        var tid = (document.getElementById('tlTicket').value || '').trim();
         var results = document.getElementById('timelineResults');
         if (!tid) { results.innerHTML = '<div class="alert alert-warning small">Enter an incident number.</div>'; return; }
         results.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></div>';
-        fetch('api/par.php?action=history&ticket=' + tid, { credentials: 'same-origin' })
+        fetch('api/par.php?action=history&ticket=' + encodeURIComponent(tid), { credentials: 'same-origin' })
             .then(function (r) { return r.json(); }).then(function (data) {
                 if (data.error) { results.innerHTML = '<div class="alert alert-danger small">' + esc(data.error) + '</div>'; return; }
                 var cycles = data.history || [];
+                var displayNum = data.incident_number || tid;
                 if (cycles.length === 0) {
-                    results.innerHTML = '<div class="alert alert-info small">No PAR cycles for incident #' + tid + '.</div>';
+                    results.innerHTML = '<div class="alert alert-info small">No PAR cycles for incident #' + esc(displayNum) + '.</div>';
                     return;
                 }
-                var html = '<h6 class="small fw-semibold mb-2">Incident #' + tid + ' — ' + cycles.length + ' cycle(s)</h6>';
+                var html = '<h6 class="small fw-semibold mb-2">Incident #' + esc(displayNum) + ' — ' + cycles.length + ' cycle(s)</h6>';
                 html += '<table class="table table-sm"><thead><tr><th>Started</th><th>Kind</th><th>Status</th><th class="text-end">Units</th><th class="text-end">Acked</th><th class="text-end">Missed</th></tr></thead><tbody>';
                 for (var i = 0; i < cycles.length; i++) {
                     var c = cycles[i];

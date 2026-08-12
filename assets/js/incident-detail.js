@@ -2907,6 +2907,47 @@
         if (params.get('tab') === 'edit') {
             enterEditMode('description');
         }
+
+        bindManualSectionCollapse();
+    }
+
+    // Eric (2026-08-12) — clicking the pencil (.edit-section-btn) inside a
+    // section header also collapsed the section, hiding the very fields the
+    // user wanted to edit until they clicked the header a second time.
+    //
+    // The button's own click handler above already calls e.stopPropagation()
+    // ("Don't toggle collapse") but that cannot work: Bootstrap 5's collapse
+    // data-api listens on `document` in the CAPTURE phase, which runs before
+    // the click reaches the button/icon at all -- stopPropagation() during
+    // the later bubble phase can't undo a capture-phase listener on an
+    // ancestor that already fired on the way down. Confirmed live: a
+    // document-level capture listener sees the click; the header's own
+    // bubble listener and this button's stopPropagation never get a chance
+    // to matter, because Bootstrap has already toggled by then.
+    //
+    // Fix: stop using data-bs-toggle="collapse" on these headers at all
+    // (removed in incident-detail.php) and drive the same
+    // bootstrap.Collapse instance from our OWN bubble-phase click listener,
+    // which can trivially exclude clicks inside .edit-section-btn before
+    // ever calling .toggle(). data-bs-target stays as the id source; the
+    // existing .show() calls elsewhere in this file (getOrCreateInstance)
+    // are unaffected -- they don't depend on data-bs-toggle.
+    function bindManualSectionCollapse() {
+        var headers = document.querySelectorAll('.form-section[data-bs-target]');
+        for (var i = 0; i < headers.length; i++) {
+            (function (header) {
+                if (header.dataset.manualCollapseBound === '1') return; // idempotent
+                header.dataset.manualCollapseBound = '1';
+                var targetSel = header.getAttribute('data-bs-target');
+                var targetEl = targetSel ? document.querySelector(targetSel) : null;
+                if (!targetEl) return;
+                var collapse = bootstrap.Collapse.getOrCreateInstance(targetEl, { toggle: false });
+                header.addEventListener('click', function (e) {
+                    if (e.target.closest('.edit-section-btn')) return;
+                    collapse.toggle();
+                });
+            })(headers[i]);
+        }
     }
 
     function enterEditMode(section) {

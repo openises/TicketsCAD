@@ -638,7 +638,7 @@
         // Look up the un_status row matching canonStatus.
         window.DashboardActions.loadUnStatusOptions().then(function (statuses) {
             // Phase 103b + Issue #18 reopen (a beta tester, 2026-07-02) —
-            // Four-tier match against status_val:
+            // Four-tier match against status_val AND description:
             //   1. Exact (case-insensitive) — 'Available' == 'available'
             //   2. Trimmed exact — trailing space / hyphenation
             //   3. Raw-alias exact — the user typed 'tx' and the site
@@ -652,8 +652,30 @@
             //      status_val OR vice-versa (covers 'On Scene' vs
             //      'On-Scene', 'Available' vs 'Available Unit',
             //      'Transporting' vs 'TX Transporting')
+            //
+            // GH#44 (rjonesbsink, 2026-08-09): a real install split the
+            // short code and the human label across two columns —
+            // status_val='ONS', description='On Scene'. The substring
+            // tiers compared raw strings, so the space in 'on scene'
+            // sat exactly where it would need to align with 'ONS' to
+            // match, and neither string contained the other. Same
+            // shape of bug as GH#48's group-name collision. Fixed the
+            // same way: strip everything but letters before comparing
+            // in the substring tiers (norm()), mirroring
+            // classifyAvailability()'s .replace(/[^a-z]/g, '') in
+            // units.js. Additive only — normalizing can't fail a match
+            // that already passed unnormalized, so every install that
+            // already worked keeps working.
+            //
+            // Also try `description`, not just `status_val`, at every
+            // tier — an install may show the dispatcher one column
+            // (description, the human label) while the alias table can
+            // only ever be written against the other.
+            function norm(s) { return (s || '').toLowerCase().replace(/[^a-z]/g, ''); }
             var canonLowers = canonCandidates.map(function (c) { return (c || '').toLowerCase(); });
+            var canonNorms  = canonCandidates.map(norm);
             var rawLower    = (rawStatus || '').toLowerCase();
+            var rawNorm     = norm(rawStatus);
             var statusOpt = null;
             // Tier 1/2/4 each try EVERY candidate before falling through
             // to the next tier — an exact match on candidate #2 ("At
@@ -662,31 +684,39 @@
             var i;
             for (i = 0; i < canonLowers.length && !statusOpt; i++) {
                 statusOpt = statuses.find(function (s) {
-                    return (s.status_val || '').toLowerCase() === canonLowers[i];
+                    return (s.status_val || '').toLowerCase() === canonLowers[i]
+                        || (s.description || '').toLowerCase() === canonLowers[i];
                 });
             }
             for (i = 0; i < canonLowers.length && !statusOpt; i++) {
                 statusOpt = statuses.find(function (s) {
-                    return (s.status_val || '').trim().toLowerCase() === canonLowers[i];
+                    return (s.status_val || '').trim().toLowerCase() === canonLowers[i]
+                        || (s.description || '').trim().toLowerCase() === canonLowers[i];
                 });
             }
             if (!statusOpt && rawLower) {
                 // Try the operator's exact typed alias as-is against
-                // status_val (exact then substring).
+                // status_val / description (exact then normalized substring).
                 statusOpt = statuses.find(function (s) {
-                    return (s.status_val || '').trim().toLowerCase() === rawLower;
+                    return (s.status_val || '').trim().toLowerCase() === rawLower
+                        || (s.description || '').trim().toLowerCase() === rawLower;
                 });
-                if (!statusOpt) {
+                if (!statusOpt && rawNorm) {
                     statusOpt = statuses.find(function (s) {
-                        var v = (s.status_val || '').toLowerCase();
-                        return v.indexOf(rawLower) !== -1;
+                        var v = norm(s.status_val);
+                        var d = norm(s.description);
+                        return (v && v.indexOf(rawNorm) !== -1) || (d && d.indexOf(rawNorm) !== -1);
                     });
                 }
             }
-            for (i = 0; i < canonLowers.length && !statusOpt; i++) {
+            for (i = 0; i < canonNorms.length && !statusOpt; i++) {
                 statusOpt = statuses.find(function (s) {
-                    var v = (s.status_val || '').toLowerCase();
-                    return v.indexOf(canonLowers[i]) !== -1 || canonLowers[i].indexOf(v) !== -1;
+                    var v = norm(s.status_val);
+                    var d = norm(s.description);
+                    var c = canonNorms[i];
+                    if (!c) return false;
+                    return (v && (v.indexOf(c) !== -1 || c.indexOf(v) !== -1))
+                        || (d && (d.indexOf(c) !== -1 || c.indexOf(d) !== -1));
                 });
             }
             if (!statusOpt) {

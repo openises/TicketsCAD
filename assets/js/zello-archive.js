@@ -101,7 +101,10 @@
             var audio = document.createElement('audio');
             audio.className = 'z-arch-audio';
             audio.controls = true;
-            audio.src = m.media_url;
+            // GHSA-x9x6-w4fg-pmcc — recordings are no longer served as
+            // static files; media_url is a bare filename now, resolved
+            // server-side by api/zello-audio.php behind an RBAC + audit gate.
+            audio.src = 'api/zello-audio.php?id=' + encodeURIComponent(m.id);
             // Phase 101 (Eric beta 2026-07-01) — single-playback lock.
             // When this clip starts, pause every OTHER <audio> on the
             // page so voices don't stack. Mirrors the widget's Phase

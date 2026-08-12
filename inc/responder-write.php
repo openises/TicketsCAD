@@ -375,7 +375,8 @@ function responder_set_status_internal(
     int $statusId,
     int $userId,
     string $statusAbout = '',
-    $extraData = null
+    $extraData = null,
+    $extraData2 = null
 ): array {
     // $extraData (Phase 95, 2026-06-28) — optional payload collected
     // by the UI when the status has un_status.extra_data_type !=
@@ -391,8 +392,17 @@ function responder_set_status_internal(
     //   - 'unit' → stamp on responder row (location => responder.lat/lng)
     //   - 'action_log' → just goes in the action note text (always)
     //
-    // Universal: every extra_data value is appended to the action log
-    // entry's description text so the audit trail captures it
+    // $extraData2 (Phase 95b / GH#52, 2026-08-12) — a SECOND, independent
+    // payload for un_status.extra_data_type_2/required_2/label_2/target_2
+    // (e.g. a status collecting both a destination facility AND a starting
+    // mileage reading at once). Same shape, validated and routed the same
+    // way, entirely independent of slot 1 -- a status can use one slot,
+    // both, or neither. Slot 2 is additive only: every column defaults to
+    // the same "off" state slot 1 always had, so no existing status or
+    // caller is affected by its mere existence.
+    //
+    // Universal: every extra_data value (both slots) is appended to the
+    // action log entry's description text so the audit trail captures it
     // regardless of target.
     $prefix = $GLOBALS['db_prefix'] ?? '';
 
@@ -421,28 +431,55 @@ function responder_set_status_internal(
     // assigns timestamp column on every open assignment below.
     // Phase 95 (2026-06-28): also pull extra_data_* config so we can
     // validate the optional $extraData payload + route it correctly.
-    // Wrapped in try/catch: installs pre-Phase-95 won't have the
-    // extra_data_* columns; the catch fetches the legacy column set
-    // and synthesizes 'none' defaults.
+    // GH#52 (2026-08-12): also try the slot-2 columns. Three-tier
+    // fallback, each catching only "that tier's columns are missing":
+    //   1. Both slots (current installs, after run_gh52_second_extra_data.php)
+    //   2. Slot 1 only (installs with Phase 95 but not yet GH#52 -- must
+    //      NOT fall all the way to "no extra_data at all", or slot 1
+    //      would silently stop working on every install until the
+    //      migration runs)
+    //   3. Neither (installs from before Phase 95 entirely)
     try {
         $status = db_fetch_one(
             "SELECT `id`, `status_val`, `incident_action`,
                     `extra_data_type`, `extra_data_required`,
-                    `extra_data_label`, `extra_data_target`
+                    `extra_data_label`, `extra_data_target`,
+                    `extra_data_type_2`, `extra_data_required_2`,
+                    `extra_data_label_2`, `extra_data_target_2`
              FROM `{$prefix}un_status` WHERE `id` = ?",
             [$statusId]
         );
     } catch (Exception $e) {
-        $status = db_fetch_one(
-            "SELECT `id`, `status_val`, `incident_action`
-             FROM `{$prefix}un_status` WHERE `id` = ?",
-            [$statusId]
-        );
-        if ($status) {
-            $status['extra_data_type']     = 'none';
-            $status['extra_data_required'] = 0;
-            $status['extra_data_label']    = null;
-            $status['extra_data_target']   = 'action_log';
+        try {
+            $status = db_fetch_one(
+                "SELECT `id`, `status_val`, `incident_action`,
+                        `extra_data_type`, `extra_data_required`,
+                        `extra_data_label`, `extra_data_target`
+                 FROM `{$prefix}un_status` WHERE `id` = ?",
+                [$statusId]
+            );
+            if ($status) {
+                $status['extra_data_type_2']     = 'none';
+                $status['extra_data_required_2'] = 0;
+                $status['extra_data_label_2']    = null;
+                $status['extra_data_target_2']   = 'action_log';
+            }
+        } catch (Exception $e2) {
+            $status = db_fetch_one(
+                "SELECT `id`, `status_val`, `incident_action`
+                 FROM `{$prefix}un_status` WHERE `id` = ?",
+                [$statusId]
+            );
+            if ($status) {
+                $status['extra_data_type']     = 'none';
+                $status['extra_data_required'] = 0;
+                $status['extra_data_label']    = null;
+                $status['extra_data_target']   = 'action_log';
+                $status['extra_data_type_2']     = 'none';
+                $status['extra_data_required_2'] = 0;
+                $status['extra_data_label_2']    = null;
+                $status['extra_data_target_2']   = 'action_log';
+            }
         }
     }
     if (!$status) {
@@ -471,6 +508,28 @@ function responder_set_status_internal(
         }
         if (!$isEmpty) {
             $extraValue = $supplied;
+        }
+    }
+
+    // GH#52 — slot 2, validated identically and independently of slot 1.
+    $extraType2   = (string) ($status['extra_data_type_2']   ?? 'none');
+    $extraReq2    = (int)    ($status['extra_data_required_2'] ?? 0);
+    $extraTarget2 = (string) ($status['extra_data_target_2'] ?? 'action_log');
+    $extraValue2  = null;
+    if ($extraType2 !== 'none') {
+        $supplied2 = (is_array($extraData2) && isset($extraData2['value']))
+            ? $extraData2['value']
+            : null;
+        $isEmpty2 = ($supplied2 === null || $supplied2 === ''
+                     || (is_array($supplied2) && empty($supplied2)));
+        if ($extraReq2 && $isEmpty2) {
+            return ['updated' => false, 'status_name' => '',
+                    'incidents_logged' => 0, 'timestamps_set' => 0,
+                    'errors' => ['extra_data_2_required',
+                                 'label:' . (string) ($status['extra_data_label_2'] ?? $extraType2)]];
+        }
+        if (!$isEmpty2) {
+            $extraValue2 = $supplied2;
         }
     }
 
@@ -561,6 +620,11 @@ function responder_set_status_internal(
         if ($extraSummary !== '') {
             $desc .= ' [' . $extraSummary . ']';
         }
+        // GH#52 — slot 2's summary, appended the same way.
+        $extraSummary2 = _phase95_summarize_extra($extraType2, $extraValue2, (string) ($status['extra_data_label_2'] ?? ''));
+        if ($extraSummary2 !== '') {
+            $desc .= ' [' . $extraSummary2 . ']';
+        }
 
         foreach ($openAssigns as $oa) {
             try {
@@ -623,6 +687,14 @@ function responder_set_status_internal(
                     (int) $responderId, (int) $userId  // QA #14 — were out of scope
                 );
             }
+            // GH#52 — slot 2, same rule (facility is never incident-level
+            // from a unit's status change; see the per-unit note below).
+            if ($extraTarget2 === 'incident' && $extraValue2 !== null && $extraType2 !== 'facility') {
+                _phase95_route_to_incident(
+                    $prefix, (int) $oa['ticket_id'], $extraType2, $extraValue2,
+                    (int) $responderId, (int) $userId
+                );
+            }
 
             // Phase 116: route a destination facility to THIS unit's assignment
             // row (assigns.rec_facility_id). This is the per-unit receiving
@@ -642,6 +714,17 @@ function responder_set_status_internal(
             if ($extraValue !== null && ($extraTarget === 'assignment' || $extraType === 'facility')) {
                 _phase95_route_to_assignment(
                     $prefix, (int) $oa['id'], $extraType, $extraValue, (int) $userId
+                );
+            }
+            // GH#52 — slot 2, same rule. Note _phase95_route_to_assignment()
+            // itself still only acts on type==='facility' (see its own
+            // docblock) -- a slot configured as mileage+target=assignment
+            // is a documented no-op today, identically to slot 1's existing
+            // limitation. Wiring mileage all the way to assigns.*_miles is
+            // tracked separately (GH#52's "option 1"), not part of this change.
+            if ($extraValue2 !== null && ($extraTarget2 === 'assignment' || $extraType2 === 'facility')) {
+                _phase95_route_to_assignment(
+                    $prefix, (int) $oa['id'], $extraType2, $extraValue2, (int) $userId
                 );
             }
         }
@@ -720,6 +803,10 @@ function responder_set_status_internal(
     if ($extraTarget === 'unit' && $extraValue !== null) {
         _phase95_route_to_unit($prefix, $responderId, $extraType, $extraValue);
     }
+    // GH#52 — slot 2.
+    if ($extraTarget2 === 'unit' && $extraValue2 !== null) {
+        _phase95_route_to_unit($prefix, $responderId, $extraType2, $extraValue2);
+    }
 
     // Phase 103 (a beta tester GH #20) — facility bed-count automation.
     // When a unit assigned to a facility as its rec_facility_id
@@ -748,6 +835,8 @@ function responder_set_status_internal(
         'timestamps_set'   => $timestampsSet,
         'extra_data_type'  => $extraType,
         'extra_data_logged'=> $extraValue !== null,
+        'extra_data_2_type'   => $extraType2,
+        'extra_data_2_logged' => $extraValue2 !== null,
         'bed_auto'         => $bedAutoSummary,
         'errors'           => [],
     ];

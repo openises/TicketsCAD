@@ -282,8 +282,19 @@ test('nginx snippet uses ^~ so the denies beat the PHP regex location',
     'a plain prefix location loses to `location ~ \\.php$` and run_migrations.php '
     . 'would still execute');
 foreach ($mustServe as $dir) {
-    test("nginx snippet does NOT deny $dir/",
-        strpos($ngx, 'location ^~ /' . $dir . '/') === false);
+    // A plain substring check would false-positive on a scoped, narrower deny
+    // under a must-serve directory (GHSA-x9x6-w4fg-pmcc added exactly one:
+    // `location ^~ /cache/zello-audio/` denies ONLY that subdirectory, not
+    // cache/ as a whole — nginx's own location matching is per-path, so this
+    // does not touch cache/weather or any other cache/ content). The check
+    // has to tell "the whole directory is denied" apart from "a subdirectory
+    // of it is," the same distinction this project got burned on before with
+    // the `vendor` .htaccess rule matching assets/vendor/ by name alone. A
+    // whole-directory deny's location path ends exactly at the trailing
+    // slash (whitespace follows); a narrower deny has another path segment
+    // there instead.
+    test("nginx snippet does NOT deny $dir/ as a whole (a narrower deny under it is fine)",
+        preg_match('#location \^~ /' . preg_quote($dir, '#') . '/\s#', $ngx) !== 1);
 }
 
 $hard = (string) @file_get_contents($root . '/docs/WEB-SERVER-HARDENING.md');

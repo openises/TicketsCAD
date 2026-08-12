@@ -154,6 +154,18 @@ $csrf     = csrf_token();
                                         </button>
                                     </div>
                                 </div>
+                                <div class="col-md-6">
+                                    <label for="security_label_id" class="form-label">
+                                        <?php echo e(t('newinc.label.security_label', 'Sensitivity')); ?>
+                                        <i class="bi bi-question-circle text-body-secondary" tabindex="-1"
+                                           data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                                           data-bs-content="<?php echo e(t('newinc.help.security_label', 'Set this NOW if you already know this call is sensitive. A label applied after Save does not protect the very first broadcast — that already went out under whatever label applied at the moment of creation (the incident type\'s configured default, or the system default if none is set).')); ?>"
+                                           title="<?php echo e(t('newinc.label.security_label', 'Sensitivity')); ?>"></i>
+                                    </label>
+                                    <select class="form-select form-select-sm" id="security_label_id" name="security_label_id" tabindex="-1">
+                                        <option value=""><?php echo e(t('newinc.option_use_type_default', '— Use incident type default —')); ?></option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -502,7 +514,7 @@ $csrf     = csrf_token();
 <script src="assets/vendor/leaflet/leaflet.js"></script>
 <script src="assets/js/leaflet-mobile-fit.js?v=<?php echo function_exists("asset_v")?asset_v("assets/js/leaflet-mobile-fit.js"):newui_version(); ?>"></script>
 <script src="assets/js/leaflet-quadkey.js"></script>
-<script src="assets/js/map-prefs.js"></script>
+<script src="assets/js/map-prefs.js?v=<?php echo asset_v('assets/js/map-prefs.js'); ?>"></script>
 
 <!-- App JS -->
 <script src="assets/js/theme-manager.js?v=<?php echo asset_v('assets/js/theme-manager.js'); ?>"></script>

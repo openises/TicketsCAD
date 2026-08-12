@@ -53,12 +53,13 @@ if ($section === 'types') {
     if ($method === 'GET') {
         try {
             $rows = db_fetch_all(
-                "SELECT `id`, `type`, `description`, `protocol`, `set_severity`, `group`, `radius`, `color`, `sort`, `match_pattern`
+                "SELECT `id`, `type`, `description`, `protocol`, `set_severity`, `group`, `radius`, `color`, `sort`, `match_pattern`, `default_security_label_id`
                  FROM `{$prefix}in_types`
                  ORDER BY `sort`, `type`"
             );
         } catch (Exception $e) {
-            // match_pattern column may not exist yet
+            // match_pattern / default_security_label_id may not exist yet
+            // on an install that hasn't run the Phase 15 / 18a migrations.
             $rows = db_fetch_all(
                 "SELECT `id`, `type`, `description`, `protocol`, `set_severity`, `group`, `radius`, `color`, `sort`
                  FROM `{$prefix}in_types`
@@ -125,6 +126,14 @@ if ($section === 'types') {
         $color       = trim($input['color'] ?? '#0d6efd');
         $sort        = (int) ($input['sort'] ?? 0);
         $pattern     = trim($input['match_pattern'] ?? '');
+        // Eric (2026-08-12) — the type's default Security Label. NULL means
+        // "use system default" (the permissive fallback every incident of
+        // this type gets until a dispatcher manually overrides it). This is
+        // what lets a type known to be sensitive by nature (Suicide, DV,
+        // Mental Health Crisis) start protected from the moment it's
+        // created, instead of only after someone remembers to apply a label.
+        $defaultSecLabelId = isset($input['default_security_label_id']) && $input['default_security_label_id'] !== ''
+            ? (int) $input['default_security_label_id'] : null;
 
         if ($typeName === '') {
             json_error('Type name is required');
@@ -135,15 +144,16 @@ if ($section === 'types') {
                 // Update
                 $sql = "UPDATE `{$prefix}in_types` SET
                     `type` = ?, `description` = ?, `protocol` = ?, `set_severity` = ?,
-                    `group` = ?, `radius` = ?, `color` = ?, `sort` = ?, `match_pattern` = ?
+                    `group` = ?, `radius` = ?, `color` = ?, `sort` = ?, `match_pattern` = ?,
+                    `default_security_label_id` = ?
                     WHERE `id` = ?";
-                db_query($sql, [$typeName, $description, $protocol, $severity, $group, $radius, $color, $sort, $pattern, $id]);
+                db_query($sql, [$typeName, $description, $protocol, $severity, $group, $radius, $color, $sort, $pattern, $defaultSecLabelId, $id]);
             } else {
                 // Insert
                 $sql = "INSERT INTO `{$prefix}in_types`
-                    (`type`, `description`, `protocol`, `set_severity`, `group`, `radius`, `color`, `sort`, `match_pattern`)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-                db_query($sql, [$typeName, $description, $protocol, $severity, $group, $radius, $color, $sort, $pattern]);
+                    (`type`, `description`, `protocol`, `set_severity`, `group`, `radius`, `color`, `sort`, `match_pattern`, `default_security_label_id`)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                db_query($sql, [$typeName, $description, $protocol, $severity, $group, $radius, $color, $sort, $pattern, $defaultSecLabelId]);
                 $id = (int) db_insert_id();
             }
             audit_log('config', $id ? 'update' : 'create', 'incident_type', $id, ($id ? "Updated" : "Created") . " incident type '{$typeName}'");

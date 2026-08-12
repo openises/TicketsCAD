@@ -99,6 +99,29 @@
     RewriteRule \.(sql|log|bak|old|orig|rej|swp|pem|p8)$ - [F,L]
 </IfModule>
 
+# ─────────────────────────────────────────────────────────────────────────────
+# GHSA-x9x6-w4fg-pmcc — deny cache/zello-audio/ specifically.
+#
+# Recordings are now written outside the web root (proxy/ZelloProxyApp.php,
+# inc/zello_audio_dir.php) and served only via the authenticated
+# api/zello-audio.php — this directory should have nothing new land in it.
+# The rule stays anyway as defense-in-depth for whatever the relocation
+# migration (sql/run_zello_audio_relocate.php) hasn't yet moved, or any file
+# that ends up here by some path this fix didn't anticipate.
+#
+# The match is the full nested path, not the bare "zello-audio" name — the
+# lesson from the `vendor` rule above (which matched the name ANYWHERE and
+# took out assets/vendor/ with it) is to always anchor on the real location,
+# never a directory's own name alone. cache/ itself is untouched: everything
+# else under it (weather tiles, zello-images) stays reachable.
+<IfModule mod_alias.c>
+    RedirectMatch 404 (^|/)cache/zello-audio(/|$)
+</IfModule>
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule (^|/)cache/zello-audio(/|$) - [F,L]
+</IfModule>
+
 # Phase 90 — pretty URL for the beta-tester registration page.
 # /beta-tester  ->  /beta-tester.php
 # Keep the rule narrow: don't blanket-rewrite the whole site.

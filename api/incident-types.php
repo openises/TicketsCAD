@@ -28,12 +28,24 @@ function safe_fetch_all($sql, $params = []) {
     }
 }
 
-// Incident types
-$types = safe_fetch_all(
-    "SELECT `id`, `type`, `description`, `protocol`, `set_severity`, `group`, `radius`, `color`, `match_pattern`
-     FROM `{$prefix}in_types`
-     ORDER BY `sort`, `type`"
-);
+// Incident types. default_security_label_id (Phase 18a) drives the
+// creation-form sensitivity hint (Eric, 2026-08-12) — two-tier query
+// because safe_fetch_all() returns [] on ANY error, and an empty type
+// list here means a dispatcher cannot create an incident at all. Never
+// let an optional column's absence take down the whole list.
+try {
+    $types = db_fetch_all(
+        "SELECT `id`, `type`, `description`, `protocol`, `set_severity`, `group`, `radius`, `color`, `match_pattern`, `default_security_label_id`
+         FROM `{$prefix}in_types`
+         ORDER BY `sort`, `type`"
+    );
+} catch (Exception $e) {
+    $types = safe_fetch_all(
+        "SELECT `id`, `type`, `description`, `protocol`, `set_severity`, `group`, `radius`, `color`, `match_pattern`
+         FROM `{$prefix}in_types`
+         ORDER BY `sort`, `type`"
+    );
+}
 
 // Facilities — exclude soft-deleted rows. The legacy `hide` column
 // never made it into the v4.0 schema; soft-delete via `deleted_at`
