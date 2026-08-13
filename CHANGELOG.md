@@ -3,6 +3,47 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.16] — 2026-08-13
+
+### Fixed
+
+- **A table with a GENERATED column made every automatic backup silently
+  unrestorable.** The dump named columns from `SHOW COLUMNS` (which lists
+  generated columns) but read row values from `SELECT *` (which excludes an
+  invisible generated column while still including a visible one MySQL will
+  not accept back via `INSERT`). Backups reported success and produced a
+  plausible file either way; restoring one hit "Column count doesn't match
+  value count" or "value specified for generated column... is not allowed."
+  The dump now names columns explicitly and excludes anything generated, so
+  the column list and the row values always match. Affects `user_roles`,
+  `teams`, `member`, `member_time_entries`, `mileage_log`, and
+  `newui_facility_capacity` on any install using MySQL 8 or MariaDB with
+  generated columns. Reported by @rjonesbsink, GitHub #53.
+- **A security label's code silently lost its first letter, or vanished
+  entirely for an all-caps code.** The sanitizer lowercased the input
+  *after* already stripping every character outside `[a-z0-9_]` -- so
+  `strtolower()` never had anything left to lower, `Medical` saved as
+  `edical`, and `HIPAA` sanitized to an empty string and was dropped from
+  the write with no error. Lowercase now happens first. Reported by
+  @rjonesbsink, GitHub #55.
+- **The "Save to Server Filesystem" button on Settings → Backup / Maintenance
+  ignored your configured backup directory.** The field's value was
+  hardcoded to the pre-4.2.3 in-tree path regardless of what `backup_dir`
+  was actually set to, so a manual save landed in a different place than
+  scheduled backups -- the one place a web server might still reach. The
+  field now shows the real configured directory, and an emptied field
+  falls back to it server-side instead of refusing to submit. Reported by
+  @rjonesbsink, GitHub #56.
+- **The After Action Report never showed the incident number you actually
+  recognize.** The report header and summary card showed only the internal
+  database id ("Incident #53"), with no way to confirm you pulled the report
+  you meant to -- risky on any install more than a year old, where the
+  yearly incident-number reset can make small numbers collide with old
+  internal ids. The report now leads with the incident number, with the
+  internal id alongside for cross-referencing. (The input field itself was
+  already fixed under GH#51 to accept the incident number directly.)
+  Reported by @rjonesbsink, GitHub #57.
+
 ## [4.2.15] — 2026-08-12
 
 ### Security

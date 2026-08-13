@@ -128,6 +128,36 @@ if (!empty($delDef['error']) && strpos($delDef['error'], 'default') !== false) {
     bad('delete(): should have refused default', var_export($delDef, true));
 }
 
+// GitHub #55 — code sanitizer must lowercase THEN strip, not the reverse.
+// The reverse order made strtolower() unreachable (preg_replace had already
+// discarded every uppercase char), so 'Medical' silently mangled to 'edical'
+// and an all-caps code like 'HIPAA' sanitized to '' and dropped the column.
+$caseMatrix = [
+    'Medical'  => 'medical',
+    'FireDept' => 'firedept',
+    'MEDICAL'  => 'medical',
+    'HIPAA'    => 'hipaa',
+];
+foreach ($caseMatrix as $typed => $expected) {
+    $cid = seclabel_create([
+        'code' => $typed,
+        'name' => "GH55 test {$typed}",
+        'sort_order' => 900,
+    ]);
+    if ($cid <= 0) {
+        bad("GH#55: create('{$typed}') should succeed", "returned {$cid}");
+        continue;
+    }
+    $row = seclabel_get($cid);
+    if ($row && $row['code'] === $expected) {
+        ok("GH#55: code '{$typed}' sanitizes to '{$expected}'");
+    } else {
+        bad("GH#55: code '{$typed}' sanitized wrong",
+            "expected '{$expected}', got '" . ($row['code'] ?? '<null>') . "'");
+    }
+    seclabel_delete($cid);
+}
+
 // RBAC permissions seeded
 foreach (['action.set_incident_security','action.kill_pending_message',
           'action.recall_routed_message','action.manage_security_labels',

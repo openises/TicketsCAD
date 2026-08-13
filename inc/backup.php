@@ -237,17 +237,36 @@ function backup_dump_sql(string $outputPath): bool
             continue;
         }
 
-        // Get column metadata for BLOB detection
+        // Get column metadata for BLOB detection. GENERATED columns (VIRTUAL or
+        // STORED -- e.g. user_roles.scope_key, teams.name, member.phone) are
+        // excluded: MySQL computes them and refuses an explicit INSERT value,
+        // and an INVISIBLE generated column additionally vanishes from a bare
+        // `SELECT *` while still being named by SHOW COLUMNS -- a column-count
+        // mismatch that made every dump containing one entirely unrestorable
+        // (SQLSTATE 21S01 "Column count doesn't match value count", or 3105 for
+        // a visible generated column). The SELECT below now names columns
+        // explicitly -- the same list used for the INSERT's column list -- so
+        // there is no reliance on `SELECT *`'s implicit visibility behaviour,
+        // which also differs between MySQL and MariaDB. Reported by
+        // @rjonesbsink, GitHub #53, with the exact reproduction and table list.
         $colStmt = $pdo->query("SHOW COLUMNS FROM `{$table}`");
         $columns = $colStmt->fetchAll(PDO::FETCH_ASSOC);
         $colNames = [];
         $blobCols = [];
-        foreach ($columns as $idx => $col) {
+        foreach ($columns as $col) {
+            if (stripos($col['Extra'] ?? '', 'GENERATED') !== false) {
+                continue;
+            }
+            $idx = count($colNames);
             $colNames[] = $col['Field'];
             $type = strtolower($col['Type']);
             if (strpos($type, 'blob') !== false || strpos($type, 'binary') !== false) {
                 $blobCols[$idx] = true;
             }
+        }
+        if (empty($colNames)) {
+            fwrite($fh, "-- (no storable columns -- every column is generated)\n\n");
+            continue;
         }
 
         $colList = '`' . implode('`, `', $colNames) . '`';
@@ -257,8 +276,9 @@ function backup_dump_sql(string $outputPath): bool
         fwrite($fh, "/*!40000 ALTER TABLE `{$table}` DISABLE KEYS */;\n");
 
         // Stream rows with unbuffered query.
-        // SQL injection: $table validated as [A-Za-z0-9_$]+ above (Sonar S2077).
-        $dataStmt = $unbuffered->query("SELECT * FROM `{$table}`"); // NOSONAR
+        // SQL injection: $table validated as [A-Za-z0-9_$]+ above (Sonar S2077);
+        // $colList is built only from names SHOW COLUMNS returned for this table.
+        $dataStmt = $unbuffered->query("SELECT {$colList} FROM `{$table}`"); // NOSONAR
 
         $batchSize = 0;
         $maxBatch = 1048576; // 1 MB per INSERT statement

@@ -3541,9 +3541,9 @@ foreach ($personnelSections as $sec) {
                             <label for="setBackupDir" class="form-label form-label-sm">Backup directory</label>
                             <input type="text" class="form-control form-control-sm" id="setBackupDir"
                                    data-key="backup_dir" maxlength="255"
-                                   placeholder="<?php echo e(NEWUI_ROOT . '/backups'); ?>">
+                                   placeholder="<?php echo e(backup_dir()); ?>">
                             <div class="form-text">
-                                Leave blank for <code><?php echo e(NEWUI_ROOT . '/backups'); ?></code>.
+                                Leave blank for <code><?php echo e(backup_dir()); ?></code>.
                                 Only files this app created (<code>ticketscad-*</code>) are ever deleted from it.
                             </div>
                         </div>
@@ -3599,7 +3599,7 @@ foreach ($personnelSections as $sec) {
                     <div class="col-md-7">
                         <label class="form-label form-label-sm">Backup Directory</label>
                         <input type="text" class="form-control form-control-sm" id="backupPath"
-                               value="<?php echo e(NEWUI_ROOT . '/backups'); ?>"
+                               value="<?php echo e(backup_dir()); ?>"
                                placeholder="Server path for backup storage">
                     </div>
                     <div class="col-md-3">

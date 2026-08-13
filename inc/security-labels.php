@@ -290,7 +290,12 @@ function _seclabel_normalize_input(array $f): array {
                 if (!in_array($v, ['full','dim','hide'], true)) $v = 'full';
                 break;
             case 'code':
-                $v = strtolower(preg_replace('/[^a-z0-9_]/', '', (string) $v));
+                // Lowercase FIRST, then strip -- the reverse order left strtolower()
+                // unreachable (preg_replace had already discarded every uppercase
+                // character), so any mixed- or all-caps code silently mangled or,
+                // for an all-caps code, sanitized to '' and dropped the column
+                // entirely. Reported by @rjonesbsink, GitHub #55.
+                $v = preg_replace('/[^a-z0-9_]/', '', strtolower((string) $v));
                 if ($v === '') continue 2;
                 break;
             default:

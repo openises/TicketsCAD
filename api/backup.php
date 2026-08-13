@@ -124,12 +124,13 @@ if ($action === 'filesystem' && $method === 'POST') {
 
     // backup_dir(), not the raw BACKUP_DIR constant: it honours the operator's
     // `backup_dir` setting and the compatibility fallback, so a manual "save to
-    // server" lands in the same place as the scheduled runs.
-    $destDir = trim($input['path'] ?? backup_dir());
-
-    // Validate path
-    if (empty($destDir)) {
-        json_error('Backup path is required');
+    // server" lands in the same place as the scheduled runs. GH#56: fall back
+    // for an explicitly empty/whitespace path too, not just a missing key --
+    // the settings.php field now pre-fills with backup_dir() itself, but a
+    // cleared box should mean "use the configured directory", not an error.
+    $destDir = trim((string) ($input['path'] ?? ''));
+    if ($destDir === '') {
+        $destDir = backup_dir();
     }
 
     // Create directory if needed

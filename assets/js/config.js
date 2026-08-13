@@ -13269,9 +13269,12 @@
         var fsBtn = document.getElementById('btnBackupFilesystem');
         if (fsBtn) {
             fsBtn.addEventListener('click', function () {
+                // GH#56: an empty box is not an error -- it means "use the
+                // configured backup directory", same as the setting above.
+                // Falls back server-side too (api/backup.php); this just
+                // avoids sending a path key at all so there's no ambiguity.
                 var path = document.getElementById('backupPath').value.trim();
                 var statusEl = document.getElementById('backupFsStatus');
-                if (!path) { showAlert('Enter a backup path', 'warning'); return; }
 
                 fsBtn.disabled = true;
                 fsBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...';
@@ -13281,7 +13284,7 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'same-origin',
-                    body: JSON.stringify({ action: 'filesystem', path: path, csrf_token: csrfToken })
+                    body: JSON.stringify({ action: 'filesystem', path: path || null, csrf_token: csrfToken })
                 }).then(function (r) { return r.json(); })
                   .then(function (data) {
                       fsBtn.disabled = false;

@@ -514,8 +514,13 @@
         afterActionPanel.classList.remove('d-none');
         afterActionInfo.innerHTML = '';
 
+        // GH#57 — lead with the number an operator actually recognizes;
+        // the internal id rides along in parentheses for cross-referencing.
+        var incidentLabel = summary.incident_number
+            ? summary.incident_number + ' (#' + summary.incident_id + ')'
+            : '#' + summary.incident_id;
         var fields = [
-            { label: 'Incident', value: '#' + summary.incident_id + ' - ' + (summary.scope || '') },
+            { label: 'Incident', value: incidentLabel + ' - ' + (summary.scope || '') },
             { label: 'Type', value: summary.incident_type || '' },
             { label: 'Severity', value: summary.severity || '' },
             { label: 'Status', value: summary.status || '' },

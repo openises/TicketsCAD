@@ -771,7 +771,8 @@ switch ($report) {
         ]));
 
         $summary = [
-            'incident_id'   => $incident_id,
+            'incident_id'     => $incident_id,
+            'incident_number' => $ticket['incident_number'] ?? '',
             'scope'          => $ticket['scope'] ?? '',
             'incident_type'  => $ticket['incident_type'] ?? '',
             'severity'       => $sev_labels[(int) ($ticket['severity'] ?? 0)] ?? 'Low',
@@ -785,7 +786,13 @@ switch ($report) {
             'actions_count'  => count($actions_data)
         ];
 
-        $period_label = 'Incident #' . $incident_id;
+        // GH#57 — the internal id is never the number an operator recognizes.
+        // Lead with incident_number when the install has one; keep the raw id
+        // as a parenthetical so the report still cross-references cleanly with
+        // anything (logs, the database) that only knows the internal id.
+        $period_label = !empty($ticket['incident_number'])
+            ? $ticket['incident_number'] . ' (#' . $incident_id . ')'
+            : 'Incident #' . $incident_id;
         break;
 
     // ─────────────────────────────────────────────────────────────────────
