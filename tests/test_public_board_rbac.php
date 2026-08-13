@@ -135,12 +135,25 @@ t('Board admin who ALSO holds org-self: install-wide branch wins (any org reacha
 
 echo "\n--- pb_valid_public_board_slug() (C5) ---\n\n";
 
-t('valid: lowercase letters', pb_valid_public_board_slug('your deployment'));
-t('valid: with digits and hyphens', pb_valid_public_board_slug('your-server-2'));
+// Synthetic fixture values only, deliberately -- not any real install's
+// name. tools/release-snapshot.sh scrubs one beta tester's real install
+// name out of every file it publishes to the public repo (privacy, on
+// purpose), including string literals inside test files -- and this
+// test used to pass that real name as fixture data, which the scrub
+// rewrote into a value containing a space. A regex-validity assertion
+// (this one) breaks when its input value is altered post-scrub; a
+// value-echo assertion (seed and expectation both containing the same
+// name) does not, because both sides get rewritten identically. Caught
+// by the public repo's own CI -- exactly the gate meant to catch
+// scrub-induced breakage -- not by anything local, which is why
+// tools/release-snapshot.sh now also runs the test suite against its
+// OWN staged output before anything is published.
+t('valid: lowercase letters', pb_valid_public_board_slug('example-agency'));
+t('valid: with digits and hyphens', pb_valid_public_board_slug('example-agency-2'));
 t('valid: empty string (no slug set)', pb_valid_public_board_slug(''));
-t('invalid: uppercase letters rejected', !pb_valid_public_board_slug('your deployment'));
-t('invalid: spaces rejected', !pb_valid_public_board_slug('blooming ton'));
-t('invalid: underscore rejected', !pb_valid_public_board_slug('blooming_ton'));
+t('invalid: uppercase letters rejected', !pb_valid_public_board_slug('ExampleAgency'));
+t('invalid: spaces rejected', !pb_valid_public_board_slug('example agency'));
+t('invalid: underscore rejected', !pb_valid_public_board_slug('example_agency'));
 t('invalid: slashes rejected (path traversal shape)', !pb_valid_public_board_slug('../etc'));
 t('invalid: query-string-shaped input rejected', !pb_valid_public_board_slug('org?x=1'));
 
