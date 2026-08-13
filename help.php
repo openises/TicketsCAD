@@ -626,6 +626,17 @@ geocoder. If that matters for your deployment, host geocoding internally.</p>
 <p>See the <a href="docs/WEATHER-ALERTS-GUIDE.md" target="_blank">Weather Alerts administrator guide</a> for setup.</p>
 '
             ],
+            [
+                'slug'  => 'public-incident-board',
+                'title' => 'Public Incident Board',
+                'body'  => '
+<p>If your administrator has enabled it, TicketsCAD can publish a credential-free, read-only board of currently active incidents &mdash; for a public website or a lobby display. This is <strong>off by default</strong> and most agencies will never turn it on.</p>
+<p><strong>Nothing new to configure per-incident.</strong> The board respects whatever Security Label is already applied to an incident &mdash; a call marked with a label that disallows broadcast simply never appears on the public board, the same way it is already kept off other broadcast-facing surfaces. Apply Security Labels the way you normally would for a sensitive call and this is handled automatically.</p>
+<p>Administrators can also mark specific incident <em>types</em> (not individual incidents) as never publishing, or as showing only a generic label with no address &mdash; a one-time setup decision, not something chosen per call.</p>
+<p>Address detail is capped by a board-wide precision setting (exact / street-only / city-only / hidden) configured at <strong>Settings &gt; Communications &amp; Integrations &gt; Public Board</strong>. Not sure whether the board is currently enabled? Check <strong>Settings &gt; System Health</strong>, which reports its status.</p>
+<p>See <code>docs/PUBLIC-INCIDENT-BOARD.md</code> in the repository for the full setup and security details.</p>
+'
+            ],
         ],
     ],
 

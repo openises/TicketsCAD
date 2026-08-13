@@ -288,6 +288,23 @@ if ($section === 'statuses') {
     if ($method === 'GET') {
         try {
             try {
+                // GH#52 — include the second, independent extra_data_*_2 slot.
+                // Tried first so an installed-but-unmigrated column falls back
+                // cleanly to the Phase 95 (single-slot) query below, the same
+                // way that query already falls back further for older installs.
+                $rows = db_fetch_all(
+                    "SELECT `id`, `status_val`, `description`, `dispatch`, `watch`, `hide`,
+                            `excl_from_reset`, `group`, `sort`, `bg_color`, `text_color`,
+                            `incident_action`, `resets_par`,
+                            `extra_data_type`, `extra_data_required`,
+                            `extra_data_label`, `extra_data_target`,
+                            `extra_data_type_2`, `extra_data_required_2`,
+                            `extra_data_label_2`, `extra_data_target_2`
+                     FROM `{$prefix}un_status`
+                     ORDER BY `sort`, `id`"
+                );
+            } catch (Exception $eSlot2) {
+              try {
                 // Phase 95 (2026-06-28): include extra_data_* columns
                 $rows = db_fetch_all(
                     "SELECT `id`, `status_val`, `description`, `dispatch`, `watch`, `hide`,
@@ -298,7 +315,14 @@ if ($section === 'statuses') {
                      FROM `{$prefix}un_status`
                      ORDER BY `sort`, `id`"
                 );
-            } catch (Exception $e95) {
+                foreach ($rows as &$r) {
+                    $r['extra_data_type_2']     = 'none';
+                    $r['extra_data_required_2'] = 0;
+                    $r['extra_data_label_2']    = null;
+                    $r['extra_data_target_2']   = 'action_log';
+                }
+                unset($r);
+              } catch (Exception $e95) {
                 // Phase 95 columns missing — drop them and retry
                 try {
                     $rows = db_fetch_all(
@@ -326,6 +350,17 @@ if ($section === 'statuses') {
                     $r['extra_data_required'] = 0;
                     $r['extra_data_label']    = null;
                     $r['extra_data_target']   = 'action_log';
+                }
+                unset($r);
+              }
+                // Every fallback above this point predates GH#52's second slot.
+                foreach ($rows as &$r) {
+                    if (!array_key_exists('extra_data_type_2', $r)) {
+                        $r['extra_data_type_2']     = 'none';
+                        $r['extra_data_required_2'] = 0;
+                        $r['extra_data_label_2']    = null;
+                        $r['extra_data_target_2']   = 'action_log';
+                    }
                 }
                 unset($r);
             }
@@ -492,6 +527,28 @@ if ($section === 'statuses') {
                         [$ufVal, $id]
                     );
                 } catch (Exception $eUf) { /* pre-migration schema — ignore */ }
+            }
+            // GH#52 — second, independent extra_data slot. Same guarded
+            // follow-up UPDATE pattern as bed_delivery/hide_from_board above,
+            // so the fragile Phase-95/Phase-31 fallback chain never has to
+            // know this column set exists.
+            if ($id) {
+                $extraType2 = trim($input['extra_data_type_2'] ?? 'none');
+                if (!in_array($extraType2, $allowedExtraTypes, true)) $extraType2 = 'none';
+                $extraReq2   = !empty($input['extra_data_required_2']) ? 1 : 0;
+                $extraLabel2 = trim($input['extra_data_label_2'] ?? '');
+                if ($extraLabel2 === '') $extraLabel2 = null;
+                $extraTarget2 = trim($input['extra_data_target_2'] ?? 'action_log');
+                if (!in_array($extraTarget2, $allowedExtraTargets, true)) $extraTarget2 = 'action_log';
+                try {
+                    db_query(
+                        "UPDATE `{$prefix}un_status` SET
+                            `extra_data_type_2` = ?, `extra_data_required_2` = ?,
+                            `extra_data_label_2` = ?, `extra_data_target_2` = ?
+                         WHERE `id` = ?",
+                        [$extraType2, $extraReq2, $extraLabel2, $extraTarget2, $id]
+                    );
+                } catch (Exception $eSlot2) { /* pre-GH#52 schema — ignore */ }
             }
             audit_log('config', $id ? 'update' : 'create', 'unit_status', $id, ($id ? "Updated" : "Created") . " unit status '{$desc}'");
             json_response(['saved' => true, 'id' => $id]);

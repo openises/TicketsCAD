@@ -1,6 +1,6 @@
 # TicketsCAD NewUI — Schema Reference
 
-**Generated:** 2026-08-04 13:01 by `tools/gen_schema_reference.php` — do not hand-edit, regenerate instead.
+**Generated:** 2026-08-13 05:37 by `tools/gen_schema_reference.php` — do not hand-edit, regenerate instead.
 
 Purely informational — every column on every table in this live database, for an agent to `Read` or `Grep` instead of running a one-off `SHOW COLUMNS`/`SHOW INDEX` query. NOT load-bearing: nothing checks this file against the live schema (that job belongs to `sql/schema_manifest.json` + `inc/schema-verify.php`, which cover columns the code actually writes to). A stale copy here is misleading, not breaking — regenerate when the schema changes meaningfully.
 
@@ -1910,10 +1910,12 @@ Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
 | `incident_id` | int(11) | YES | MUL | NULL |  |
 | `is_broadcast` | tinyint(1) | NO | MUL | 0 |  |
 | `created_at` | datetime | NO | MUL | current_timestamp() |  |
+| `deleted_by_sender_at` | datetime | YES |  | NULL |  |
 
 Indexes:
 - `KEY idx_im_broadcast` (is_broadcast)
 - `KEY idx_im_created` (created_at)
+- `KEY idx_im_deleted_by_sender` (from_user_id, deleted_by_sender_at)
 - `KEY idx_im_from_user` (from_user_id)
 - `KEY idx_im_incident` (incident_id)
 
@@ -1939,6 +1941,10 @@ Engine: MyISAM · Collation: latin1_swedish_ci
 | `notify_when` | int(1) | NO |  | 1 |  |
 | `match_pattern` | text | YES |  | NULL |  |
 | `default_security_label_id` | int(10) unsigned | YES |  | NULL |  |
+| `public_board_never_publish` | tinyint(1) | NO |  | 0 |  |
+| `public_board_publish_delay_secs` | int(10) unsigned | YES |  | NULL |  |
+| `public_board_visibility` | enum('full','presence_only') | NO |  | 'full' |  |
+| `public_board_stub_label` | varchar(64) | YES |  | NULL |  |
 
 Indexes:
 - `UNIQUE KEY ID` (id)
@@ -3070,6 +3076,7 @@ Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
 | `status` | enum('Available','Checked Out','In Repair','Lost','Disposed') | YES | MUL | 'Available' |  |
 | `created_at` | datetime | YES |  | NULL |  |
 | `updated_at` | datetime | YES |  | NULL |  |
+| `org_id` | int(11) | YES |  | NULL |  |
 
 Indexes:
 - `KEY asset_tag` (asset_tag)
@@ -3096,10 +3103,13 @@ Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
 | `new_condition` | varchar(32) | YES |  | NULL |  |
 | `notes` | text | YES |  | NULL |  |
 | `created_at` | datetime | NO | MUL | current_timestamp() |  |
+| `deleted_at` | datetime | YES | MUL | NULL |  |
+| `deleted_by` | int(11) | YES |  | NULL |  |
 
 Indexes:
 - `KEY created_at` (created_at)
 - `KEY equipment_id` (equipment_id)
+- `KEY idx_deleted_at` (deleted_at)
 - `KEY member_id` (member_id)
 
 ### `newui_equipment_types`
@@ -3344,6 +3354,7 @@ Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
 |---|---|---|---|---|---|
 | `id` | int(11) | NO | PRI |  | auto_increment |
 | `member_id` | int(11) | YES | MUL | NULL |  |
+| `owner_org_id` | int(11) | YES | MUL | NULL |  |
 | `vehicle_type_id` | int(11) | YES | MUL | NULL |  |
 | `callsign` | varchar(24) | YES | MUL | NULL |  |
 | `year` | smallint(6) | YES |  | NULL |  |
@@ -3367,6 +3378,7 @@ Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
 
 Indexes:
 - `KEY callsign` (callsign)
+- `KEY idx_vehicle_owner_org` (owner_org_id)
 - `KEY member_id` (member_id)
 - `KEY vehicle_type_id` (vehicle_type_id)
 
@@ -3514,10 +3526,13 @@ Engine: InnoDB · Collation: utf8mb4_unicode_ci
 | `sort_order` | int(11) | NO |  | 0 |  |
 | `created_at` | datetime | YES |  | NULL |  |
 | `updated_at` | datetime | YES |  | NULL |  |
+| `public_board_enabled` | tinyint(1) | NO |  | 0 |  |
+| `public_board_slug` | varchar(64) | YES | UNI | NULL |  |
 
 Indexes:
 - `KEY idx_active` (active)
 - `KEY idx_org_parent` (parent_org_id)
+- `UNIQUE KEY uk_public_board_slug` (public_board_slug)
 
 ### `owntracks_outbox`
 
@@ -4024,19 +4039,25 @@ Indexes:
 
 ### `responder_notes`
 
-Engine: InnoDB · Collation: utf8mb4_general_ci
+Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
 
 | Column | Type | Null | Key | Default | Extra |
 |---|---|---|---|---|---|
 | `id` | int(11) | NO | PRI |  | auto_increment |
-| `responder_id` | int(11) | NO |  |  |  |
-| `category` | varchar(32) | NO |  | 'general' |  |
+| `responder_id` | int(11) | NO | MUL |  |  |
+| `category` | varchar(32) | NO | MUL | 'general' |  |
 | `note` | text | NO |  |  |  |
 | `by_user` | int(11) | NO |  | 0 |  |
 | `by_username` | varchar(64) | NO |  | '' |  |
+| `corrects_id` | int(11) | YES | MUL | NULL |  |
 | `created_at` | datetime | NO |  | current_timestamp() |  |
 | `deleted_at` | datetime | YES |  | NULL |  |
 | `deleted_by` | int(11) | YES |  | NULL |  |
+
+Indexes:
+- `KEY idx_category` (category)
+- `KEY idx_corrects` (corrects_id)
+- `KEY idx_responder_time` (responder_id, created_at)
 
 ### `responder_rota`
 
@@ -4531,7 +4552,7 @@ Engine: InnoDB · Collation: latin1_swedish_ci
 | Column | Type | Null | Key | Default | Extra |
 |---|---|---|---|---|---|
 | `id` | int(7) | NO | PRI |  | auto_increment |
-| `team` | varchar(48) | NO |  | '' |  |
+| `team` | varchar(48) | NO | UNI | '' |  |
 | `sub-group` | varchar(48) | NO |  | '' |  |
 | `ttypes_id` | int(7) | NO |  | 0 |  |
 | `mission` | varchar(48) | NO |  | '' |  |
@@ -4548,8 +4569,13 @@ Engine: InnoDB · Collation: latin1_swedish_ci
 | `updated_at` | datetime | YES |  | NULL |  |
 | `active` | tinyint(1) | YES |  | 1 |  |
 | `name` | varchar(48) | YES |  | NULL | VIRTUAL GENERATED |
+| `org_id` | int(11) | YES |  | NULL |  |
+| `description` | text | YES |  | NULL |  |
+| `team_type` | varchar(64) | YES |  | NULL |  |
 | `leader_id` | int(11) | YES |  | NULL |  |
-| `deputy_id` | int(11) | YES |  | NULL |  |
+
+Indexes:
+- `UNIQUE KEY uk_teams_team_name` (team)
 
 ### `teams_x_user`
 
@@ -4967,6 +4993,10 @@ Engine: MyISAM · Collation: latin1_swedish_ci
 | `bed_delivery` | tinyint(1) | NO |  | 0 |  |
 | `hide_from_board` | tinyint(1) | NO |  | 0 |  |
 | `units_filter` | enum('available','in_service','unavailable') | YES |  | NULL |  |
+| `extra_data_type_2` | enum('none','facility','mileage','location','note','numeric') | NO |  | 'none' |  |
+| `extra_data_required_2` | tinyint(1) | NO |  | 0 |  |
+| `extra_data_label_2` | varchar(64) | YES |  | NULL |  |
+| `extra_data_target_2` | enum('incident','unit','action_log','assignment') | NO |  | 'action_log' |  |
 
 Indexes:
 - `UNIQUE KEY ID` (id)

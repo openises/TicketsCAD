@@ -894,6 +894,59 @@ foreach ($personnelSections as $sec) {
                         </div>
                     </div>
 
+                    <!-- GH#52 — a second, independent prompt. Same fields, same
+                         semantics, just "_2". Lets one status collect two things
+                         at once (e.g. destination Facility + starting Mileage),
+                         each free to target a different place. -->
+                    <div class="row g-2 mt-1">
+                        <div class="col-12">
+                            <h6 class="small fw-semibold text-body-secondary mb-1">
+                                <i class="bi bi-collection me-1"></i>Second Extra Data Prompt
+                                <i class="bi bi-question-circle text-body-secondary" tabindex="0"
+                                   data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                                   data-bs-html="true"
+                                   data-bs-content="Optional. Collect a second, independent piece of information on the same status change — e.g. a destination Facility above and starting Mileage here. Leave Type as None to skip this."
+                                   title="Second prompt help"></i>
+                            </h6>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="statusExtraDataType2" class="form-label form-label-sm">Type</label>
+                            <select class="form-select form-select-sm" id="statusExtraDataType2" name="extra_data_type_2">
+                                <option value="none">None — no prompt</option>
+                                <option value="facility">Facility (dropdown)</option>
+                                <option value="mileage">Mileage (number, miles)</option>
+                                <option value="location">Location (lat/lng)</option>
+                                <option value="note">Note (freetext)</option>
+                                <option value="numeric">Numeric (any number)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="statusExtraDataTarget2" class="form-label form-label-sm">Send To</label>
+                            <select class="form-select form-select-sm" id="statusExtraDataTarget2" name="extra_data_target_2">
+                                <option value="action_log">Action Log (default — shown in incident log)</option>
+                                <option value="incident">Incident record (stored on the ticket)</option>
+                                <option value="unit">Unit record (stored on the responder — see Unit History)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="statusExtraDataLabel2" class="form-label form-label-sm">Prompt Label</label>
+                            <input type="text" class="form-control form-control-sm"
+                                   id="statusExtraDataLabel2" name="extra_data_label_2" maxlength="64"
+                                   placeholder="e.g. Starting Mileage">
+                            <div class="form-text">Shown to the user as the prompt question.</div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="form-check form-switch small mt-4">
+                                <input class="form-check-input" type="checkbox"
+                                       id="statusExtraDataRequired2" name="extra_data_required_2" value="1">
+                                <label class="form-check-label" for="statusExtraDataRequired2">
+                                    Required
+                                </label>
+                                <div class="form-text">Block save without a value.</div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="d-flex gap-2 mt-3">
                         <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-check-lg me-1"></i>Save</button>
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="btnCancelStatus"><i class="bi bi-x-lg me-1"></i>Cancel</button>
@@ -2599,6 +2652,40 @@ foreach ($personnelSections as $sec) {
 
             <div id="pendingMsgsTable">
                 <div class="text-body-secondary small text-center py-3">Loading…</div>
+            </div>
+
+            <!-- GH#42 — retention for the outbound message log (the SMS /
+                 email / Slack delivery rows shown in Messages → Sent).
+                 Off by default; a scheduled sweep purges anything older once
+                 configured, same "off unless you turn it on" discipline as
+                 Audit Log retention. Uses the plain settings form/data-key
+                 mechanism (action.manage_config) rather than a dedicated
+                 permission -- these are delivery-status log rows, not the
+                 CJIS-relevant audit trail Phase 133 built the heavier
+                 archive-before-delete machinery for. -->
+            <hr class="my-3">
+            <div class="settings-group">
+                <div class="settings-group-title">Message Log Retention</div>
+                <p class="text-body-secondary small mb-2">
+                    The outbound message log (SMS, e-mail, Slack, and other system
+                    deliveries shown in Messages &rarr; Sent) grows without bound by default.
+                    Set a retention window to purge rows older than it on a daily sweep.
+                    Internal chat messages are never affected by this setting.
+                </p>
+                <form id="messageLogRetentionForm" class="row g-2 align-items-end">
+                    <div class="col-md-3">
+                        <label for="setMessageLogRetentionDays" class="form-label form-label-sm">
+                            Purge rows older than (days)
+                        </label>
+                        <input type="number" min="0" max="36500" class="form-control form-control-sm"
+                               id="setMessageLogRetentionDays" data-key="message_log_retention_days">
+                        <div class="form-text">0 = disabled (keep forever).</div>
+                    </div>
+                    <div class="col-md-4 d-flex gap-2">
+                        <button type="submit" class="btn btn-sm btn-success">Save</button>
+                        <span class="small" id="messageLogRetentionStatus"></span>
+                    </div>
+                </form>
             </div>
         </div>
 

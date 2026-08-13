@@ -16,6 +16,24 @@
  *     when the key is unset.
  *   - With a key configured, requests must pass it via ?key= or X-Feed-Key header.
  *   - A logged-in browser session is still accepted as a fallback (admin testing).
+ *
+ * Security Label awareness (Phase 138, plan.md §8 — added 2026-08-13):
+ * this feed requires a shared secret and its threat model is "trusted
+ * external system," not "any stranger on the internet" — so it is NOT
+ * subject to the public board's own eligibility rules (in_types
+ * never-publish / excluded-groups / publish-delay / presence-only stub —
+ * those are a v1 public-board feature, not a retroactive change to what
+ * this trusted feed has always shown). The ONE thing this feed always
+ * respects now is a dispatcher's Security Label: an incident whose
+ * resolved label sets `routing_allow_broadcast = 0` (e.g. Restricted /
+ * Confidential) is dropped from every format entirely, and a surviving
+ * row's address/map-marker detail is capped by that label's own
+ * eoc_show_address / eoc_show_map_marker rules (never loosened, only
+ * possibly coarser) via the SAME inc/public-board.php redaction function
+ * the public board uses — called here with $applyTypeVisibility = false
+ * so a type an admin marked "presence-only" for the PUBLIC board is NOT
+ * silently stubbed out for this feed's trusted, keyed consumers (security
+ * review finding #2). See inc/public-board.php's pb_build_public_record().
  */
 
 require_once __DIR__ . '/../inc/https.php';   // is_https(), is_https_verified()
@@ -27,6 +45,8 @@ require_once __DIR__ . '/../inc/api_guard.php';
 api_guard_install();
 
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../inc/security-labels.php';
+require_once __DIR__ . '/../inc/public-board.php';
 
 $prevDisplay = ini_get('display_errors');
 ini_set('display_errors', '0');
@@ -136,28 +156,82 @@ try {
     $severity_labels = [0 => 'Low', 1 => 'Medium', 2 => 'High'];
 
     foreach ($rows as $row) {
-        $address = trim(($row['street'] ?: '') . ', ' . ($row['city'] ?: '') . ', ' . ($row['state'] ?: ''), ', ');
+        // Phase 138 — Security Label gate. routing_allow_broadcast = 0
+        // already means "don't broadcast this" everywhere else in the app
+        // (chat/SMS/webhook routing, the public board); this closes the
+        // one place it wasn't honored. Dropped entirely — no count/hint
+        // that anything was withheld, same rule the public board follows.
+        $sec = seclabel_resolve((int) $row['id']);
+        if ((int) ($sec['routing_allow_broadcast'] ?? 1) === 0) {
+            continue;
+        }
+
+        // Redact address/map-marker detail via the SAME function the
+        // public board uses. $precisionCeiling = 'exact' is this feed's
+        // existing baseline (full detail for a trusted, keyed consumer);
+        // the label's own eoc_show_address/eoc_show_map_marker can still
+        // cap it coarser, never finer. $applyTypeVisibility = false is
+        // REQUIRED (security review finding #2) — without it, an
+        // in_types row an admin marked presence-only for the PUBLIC
+        // board would also silently stub out here.
+        $pub = pb_build_public_record($row, $sec, 'exact', false);
+
+        $streetDisplay = (string) ($pub['street_display'] ?? '');
+        $cityDisplay   = (string) ($pub['city'] ?? '');
+        $stateDisplay  = (string) ($pub['state'] ?? '');
+        $address = trim($streetDisplay . ', ' . $cityDisplay . ', ' . $stateDisplay, ', ');
+        $typeDisplay = (string) ($pub['type'] ?? '');
+        if ($typeDisplay === '') $typeDisplay = 'Unknown';
+
+        // Correctness review finding (2026-08-13) — eoc_show_address /
+        // eoc_show_scope are TWO INDEPENDENT Security Label flags (see
+        // api/incidents.php's $maskScope / $maskAddress, and
+        // inc/security-labels.php). pb_build_public_record() only reads
+        // eoc_show_address; the docblock comment there claiming
+        // eoc_show_address "implicitly" redacts the scope narrative
+        // "elsewhere" was describing api/incidents.php's OWN masking, not
+        // anything this feed does — a dispatcher can set eoc_show_address=1
+        // (address visible) but eoc_show_scope=0 (narrative hidden), and
+        // that combination reached this trusted-but-keyed feed's scope/
+        // description fields completely unredacted. Mask them here using
+        // the SAME placeholder convention api/incidents.php's
+        // scope_display already uses, so the two surfaces agree.
+        $maskScope = ((int) ($sec['eoc_show_scope'] ?? 1)) === 0;
+        $scopeDisplay = $row['scope'] ?: '';
+        $descriptionDisplay = $row['description'] ?: '';
+        if ($maskScope) {
+            $placeholder = trim((string) ($sec['eoc_placeholder_text'] ?? ''));
+            if ($placeholder === '') $placeholder = 'Location withheld';
+            $scopeDisplay = $placeholder;
+            $descriptionDisplay = $placeholder;
+        }
+
         $incidents[] = [
             'id'             => (int) $row['id'],
-            'type'           => $row['type_name'] ?: 'Unknown',
-            'type_group'     => $row['type_group'] ?: '',
-            'scope'          => $row['scope'] ?: '',
-            'description'    => $row['description'] ?: '',
+            'type'           => $typeDisplay,
+            'type_group'     => (string) ($pub['type_group'] ?? ($row['type_group'] ?: '')),
+            'scope'          => $scopeDisplay,
+            'description'    => $descriptionDisplay,
             'address'        => $address,
-            'street'         => $row['street'] ?: '',
-            'city'           => $row['city'] ?: '',
-            'state'          => $row['state'] ?: '',
-            'lat'            => $row['lat'] ? (float) $row['lat'] : null,
-            'lng'            => $row['lng'] ? (float) $row['lng'] : null,
+            'street'         => $streetDisplay,
+            'city'           => $cityDisplay,
+            'state'          => $stateDisplay,
+            'lat'            => $pub['lat'] ?? null,
+            'lng'            => $pub['lng'] ?? null,
             'severity'       => (int) $row['severity'],
-            'severity_text'  => $severity_labels[(int) $row['severity']] ?? 'Unknown',
+            'severity_text'  => (string) ($pub['severity_text'] ?? ($severity_labels[(int) $row['severity']] ?? 'Unknown')),
             'status'         => 'Open',
+            // Raw local-time DB strings, unchanged here — the atom/rss
+            // branches below compute their own gmdate(strtotime(...))
+            // from these as they always have. Phase 138's ISO-8601 fix
+            // (plan.md §8 change 2) is applied ONLY in the json branch's
+            // own output step, via pb_iso8601() — see below.
             'opened'         => $row['opened'],
             'updated'        => $row['updated'],
             // Phase 132 Step 5 (GH #16) — null/absent, not an error, on the
             // (usual) OPEN incident that has no disposition recorded yet.
             'disposition_code' => $row['disposition_code'] ?? null,
-            'assigned_units' => (int) $row['assigned_units'],
+            'assigned_units' => (int) ($pub['assigned_units'] ?? $row['assigned_units']),
         ];
     }
 } catch (Exception $e) {
@@ -197,15 +271,30 @@ ini_set('display_errors', $prevDisplay);
 if ($format === 'json') {
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-cache, max-age=60');
+    // Phase 138 (plan.md §8 change 2) — the json branch used to emit
+    // opened/updated as the raw LOCAL-time DB string while atom/rss both
+    // already converted via gmdate(strtotime(...)). Route json through the
+    // SAME pb_iso8601() helper the public board uses (inc/public-board.php)
+    // so all three formats share one timestamp implementation instead of
+    // json alone drifting. Applied here, not in the shared row loop above,
+    // so the atom/rss branches' existing gmdate(strtotime($inc['opened']))
+    // calls keep parsing the original raw string unchanged (byte-identical
+    // output — strtotime() also accepts an ISO-8601 string, but there is no
+    // reason to make that branch depend on it).
+    $jsonIncidents = array_map(function ($inc) {
+        $inc['opened']  = pb_iso8601($inc['opened']);
+        $inc['updated'] = pb_iso8601($inc['updated']);
+        return $inc;
+    }, $incidents);
     echo json_encode([
         'feed' => [
             'title'       => $feedTitle,
             'description' => $feedDescription,
             'link'        => $baseUrl,
             'generated'   => $now,
-            'count'       => count($incidents),
+            'count'       => count($jsonIncidents),
         ],
-        'incidents' => $incidents,
+        'incidents' => $jsonIncidents,
     ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     exit;
 }

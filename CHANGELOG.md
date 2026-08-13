@@ -3,6 +3,35 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.17] — 2026-08-13
+
+### Added
+
+- **Public Incident Board** — a credential-free, read-only board of an
+  agency's currently active incidents, for a public website or a lobby
+  display. Off by default on every install. Configure it from
+  Settings → Public Incident Board: a per-incident-type visibility rule
+  (full detail, address-precision-limited, presence-only, or never
+  publish), an address-precision ceiling a Security Label can only make
+  coarser, and a per-organization board URL. Two permission levels: an
+  install-wide administrator manages the master switch and the default
+  rules; an Org Admin can enable and configure only their own
+  organization's board. Enabling either the master switch or an
+  organization's board requires checking an explicit acknowledgment that
+  some incident types (medical, mental health, welfare check, domestic
+  violence, and similar) default to presence-only for this reason — the
+  checkbox is enforced on both the page and the save request, not just
+  client-side. See `docs/PUBLIC-INCIDENT-BOARD.md` for the full setup and
+  redaction model.
+- **Outbound message log retention** — Settings → Pending Messages gained
+  a configurable retention window (in days) for the outbound message log,
+  enforced by a systemd-timer-driven cleanup job alongside the project's
+  other scheduled jobs (GH#42).
+- **A second configurable extra-data prompt on unit statuses** — a status
+  can now collect two pieces of information from a responder (e.g. a
+  destination facility AND a reason) instead of one, configured from the
+  same status-edit form (GH#52).
+
 ## [4.2.16] — 2026-08-13
 
 ### Fixed

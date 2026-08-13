@@ -787,6 +787,11 @@ $csrf     = csrf_token();
         // "Could not tell" is its own answer. Rendering it green would be the
         // same mistake in the other direction as the CLI's old false criticals.
         if (sev === 'unknown')  return '<span class="badge bg-secondary">Not determined</span>';
+        // Informational, not a fault (Phase 138's org-not-empty diagnostic:
+        // "0 open incidents tagged to this org" is a legitimate quiet state,
+        // not a defect) — distinct from both "OK" and "Not determined" so it
+        // doesn't read as either a clean pass or an incomplete check.
+        if (sev === 'info')     return '<span class="badge bg-info text-dark">Info</span>';
         return '<span class="badge bg-success">OK</span>';
     }
 
@@ -882,6 +887,40 @@ $csrf     = csrf_token();
                 }
                 html += '</span></div>';
             }
+        }
+
+        // ── Public incident board (Phase 138, 2026-08-13) ───────────
+        // Same File & Code Health card as web exposure above, one more row —
+        // never a new card, so an admin checking system health sees it in
+        // the place they already look. Disabled (the default on every
+        // install until an admin opts in) reports 'ok', not grey/unknown —
+        // the same "absent, not merely untested" distinction the backups
+        // probe introduced, so this row is never a permanent unread grey
+        // tick on the overwhelming majority of installs that never turn the
+        // feature on.
+        var pb = data.public_board || {};
+        if (pb.checked) {
+            html += '<div class="status-detail-row">';
+            html += '<span class="status-detail-label">Public incident board ' +
+                    '<small class="text-body-secondary">(exclusion + address-masking self-check)</small></span>';
+            html += '<span class="status-detail-value">';
+            if (!pb.enabled) {
+                html += esc(pb.summary || 'Public incident board is disabled; nothing to check.') +
+                        ' ' + sevBadge('ok');
+            } else {
+                html += esc(pb.summary || '') + ' ' + sevBadge(pb.severity || 'ok');
+                (pb.checks || []).forEach(function (c) {
+                    // OK rows are folded into the passed-count summary above;
+                    // only the ones worth reading individually get printed.
+                    if (c.severity === 'ok') return;
+                    var icon = c.severity === 'critical' ? 'bi-exclamation-octagon-fill'
+                             : (c.severity === 'unknown' ? 'bi-question-circle'
+                             : (c.severity === 'warn' ? 'bi-exclamation-triangle-fill' : 'bi-info-circle'));
+                    html += '<br><small class="text-body-secondary"><i class="bi ' + icon +
+                            ' me-1"></i>' + esc(c.message || '') + '</small>';
+                });
+            }
+            html += '</span></div>';
         }
 
         // ── Address lookup (2026-07-31) ────────────────────────────

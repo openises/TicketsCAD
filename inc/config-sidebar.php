@@ -232,6 +232,16 @@ $canCfg   = (!function_exists('rbac_can') || rbac_can('action.manage_config'));
               if (!function_exists('rbac_can') || rbac_can('screen.message_tray')) {
                   _cfg_link('message-tray', 'message-tray.php', t('sidebar.tab.message_tray', 'Message Tray'), 'message tray dispatcher ics-214 log'); } ?>
 
+        <?php _cfg_sub(t('sidebar.sub.public_board', 'Public Board')); ?>
+        <?php // Phase 138 — public incident board (standalone page). Gated on
+              // EITHER permission (plan.md §9, revised for the two-permission
+              // split, security review finding #1): an Org Admin holding only
+              // action.manage_public_board_org still needs to reach the page
+              // to use their own org's panel. The page itself hides the
+              // install-wide panels from anyone without action.manage_public_board.
+              if (!function_exists('rbac_can') || rbac_can('action.manage_public_board') || rbac_can('action.manage_public_board_org')) {
+                  _cfg_link('public-board-admin', 'public-board-admin.php', t('sidebar.tab.public_board', 'Public Incident Board'), 'public board embed website lobby display feed'); } ?>
+
         <?php _cfg_sub(t('sidebar.sub.voice', 'Voice')); ?>
         <?php // Phase 113 — pluggable text-to-speech engines (standalone page).
               if (!function_exists('rbac_can') || rbac_can('action.manage_tts')) {

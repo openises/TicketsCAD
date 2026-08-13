@@ -359,6 +359,33 @@ A major incident groups several related calls together under one umbrella. For e
 - **Command structure** fields let you record Gold, Silver, and Bronze command positions with names and locations.
 - **Navigate** between linked incidents from any call in the group.
 
+## Public Incident Board
+
+If your agency has enabled it (Config → Communications & Integrations →
+Public Board — an administrator does this, not a dispatcher), a filtered
+and redacted version of currently active incidents may be visible on a
+public website or lobby display. This is **off by default** and most
+agencies will never turn it on, but if yours has, there is one thing worth
+knowing as a dispatcher:
+
+**There is nothing new for you to configure per-incident.** The board
+respects whatever Security Label is already applied to an incident — if a
+call is marked with a label that disallows broadcast (Restricted,
+Confidential, or similar, depending on how your agency has configured
+Security Labels), that incident simply never appears on the public board,
+the same way it's already kept off other broadcast-facing surfaces. You
+don't need to do anything extra beyond applying the Security Label you'd
+normally apply to a sensitive call.
+
+An administrator can also mark specific incident *types* (not individual
+incidents) as never appearing on the board at all, or as showing only a
+generic "Response" label with no address or details — this is a one-time
+setup decision made in Settings, not something you choose per call.
+
+If you're ever unsure whether an incident you're working is visible on a
+public board, ask your administrator, or check Settings → System Health,
+which reports whether the board is enabled at all.
+
 ## Full-Screen Situation View
 
 Click the **Full Screen** button (the expand icon next to "Situation" in the navigation bar) to open a dedicated display in a new browser tab.

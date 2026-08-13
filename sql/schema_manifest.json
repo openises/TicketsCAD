@@ -404,6 +404,10 @@
             "group",
             "match_pattern",
             "protocol",
+            "public_board_never_publish",
+            "public_board_publish_delay_secs",
+            "public_board_stub_label",
+            "public_board_visibility",
             "radius",
             "set_severity",
             "sort",
@@ -755,6 +759,10 @@
             "status",
             "subject",
             "ticket_id"
+        ],
+        "organizations": [
+            "public_board_enabled",
+            "public_board_slug"
         ],
         "owntracks_outbox": [
             "created_by",
@@ -1122,9 +1130,13 @@
             "dispatch",
             "excl_from_reset",
             "extra_data_label",
+            "extra_data_label_2",
             "extra_data_required",
+            "extra_data_required_2",
             "extra_data_target",
+            "extra_data_target_2",
             "extra_data_type",
+            "extra_data_type_2",
             "group",
             "hide",
             "hide_from_board",
@@ -1510,8 +1522,8 @@
     "_meta": {
         "generated_by": "tools/gen_schema_manifest.php",
         "purpose": "columns this code writes to + tables it references; checked by inc/schema-verify.php",
-        "tables": 136,
-        "columns": 1058,
+        "tables": 137,
+        "columns": 1068,
         "required_tables": 174
     }
 }

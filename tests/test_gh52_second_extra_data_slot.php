@@ -175,5 +175,35 @@ t('_collectExtraData chains slot 2 only after slot 1 resolves', strpos($appJsSrc
 t('_postUnitStatus() forwards extra_data_2 to the API', strpos($appJsSrc, 'body.extra_data_2 = extraData2') !== false);
 t('the Clear-status flow also chains slot 2 (not just the primary status picker)', strpos($appJsSrc, 'function _maybePromptSlot2(') !== false);
 
+// ── 12. The admin UI to CONFIGURE a second slot -- until this was added,
+//      the write/read path above was fully built and tested but had no way
+//      to be reached from Settings: no form fields, and api/config-admin.php's
+//      statuses GET didn't even SELECT the _2 columns, so a directly-DB-edited
+//      row would show slot 1 correctly and slot 2 as blank/reset every time
+//      the status was opened for editing again.
+$settingsSrc = file_get_contents(__DIR__ . '/../settings.php');
+t('settings.php has the second-slot Type field', strpos($settingsSrc, 'id="statusExtraDataType2"') !== false
+    && strpos($settingsSrc, 'name="extra_data_type_2"') !== false);
+t('settings.php has the second-slot Target field', strpos($settingsSrc, 'id="statusExtraDataTarget2"') !== false
+    && strpos($settingsSrc, 'name="extra_data_target_2"') !== false);
+t('settings.php has the second-slot Label field', strpos($settingsSrc, 'id="statusExtraDataLabel2"') !== false
+    && strpos($settingsSrc, 'name="extra_data_label_2"') !== false);
+t('settings.php has the second-slot Required checkbox', strpos($settingsSrc, 'id="statusExtraDataRequired2"') !== false
+    && strpos($settingsSrc, 'name="extra_data_required_2"') !== false);
+
+$configJsSrc = file_get_contents(__DIR__ . '/../assets/js/config.js');
+t('config.js loads extra_data_type_2 into the form when editing a status', strpos($configJsSrc, "item.extra_data_type_2") !== false);
+t('config.js explicitly reads the second-slot Required checkbox on save (unchecked boxes are absent from FormData)',
+    strpos($configJsSrc, "getElementById('statusExtraDataRequired2')") !== false
+    && strpos($configJsSrc, 'data.extra_data_required_2') !== false);
+
+$configAdminSrc = file_get_contents(__DIR__ . '/../api/config-admin.php');
+t('api/config-admin.php statuses GET selects extra_data_type_2', strpos($configAdminSrc, '`extra_data_type_2`') !== false);
+t('api/config-admin.php statuses GET has a pre-GH#52-schema default backfill (array_key_exists guard)',
+    strpos($configAdminSrc, "array_key_exists('extra_data_type_2', \$r)") !== false);
+t('api/config-admin.php statuses POST writes extra_data_type_2 back', strpos($configAdminSrc, '`extra_data_type_2` = ?') !== false);
+t('api/config-admin.php statuses POST validates extra_data_type_2 against the same allowlist as slot 1',
+    (bool) preg_match('/\$extraType2\s*=.*;\s*\n\s*if \(!in_array\(\$extraType2, \$allowedExtraTypes, true\)\)/', $configAdminSrc));
+
 echo "\n=== $pass passed, $fail failed ===\n";
 exit($fail > 0 ? 1 : 0);

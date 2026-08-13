@@ -112,11 +112,40 @@ foreach ($testFiles as $file) {
     $basename = basename($file);
 
     // NEWUI_TEST_NO_HTTP=1 → skip HTTP-integration tests. The marker is
-    // a literal `@requires-http` anywhere in the file's first 60 lines
-    // (docblock convention).
+    // `@requires-http` as an actual docblock TAG — i.e. the first token on
+    // a line, after stripping a leading `*`/`/` comment prefix — not a
+    // literal substring anywhere in the file.
+    //
+    // Found during Phase 138's final adversarial review (2026-08-13): the
+    // old check was `strpos($head, '@requires-http') !== false` — a bare
+    // substring search over the whole head block. Several files' OWN
+    // docblocks explain a design decision by writing prose like "NOT
+    // @requires-http: this spins up its own local server..." — that prose
+    // contains the literal substring "@requires-http" too, so the old
+    // check skipped them anyway, silently inverting the sentence's actual
+    // meaning. Confirmed live: tests/test_public_board_frontend_safety.php
+    // and tests/test_public_board_org_scope.php — both self-contained (one
+    // drives static source through Node with no server at all, the other
+    // spins up its own local PHP server via tests/_pb_test_server.php,
+    // exactly like the already-established tests/test_web_exposure_
+    // backups_probe.php pattern) — were skipped under NEWUI_TEST_NO_HTTP=1,
+    // which is the exact flag `.github/workflows/qa.yml` runs the whole
+    // suite under on every push. Both ran clean (39/0 and 11/0) the moment
+    // they were driven directly instead of through this runner. This is
+    // the same "test runner scored silence as success" disease this file's
+    // own history already names (see CLAUDE.md) — a smaller, quieter
+    // instance of it, but the same root cause: string-matching stood in
+    // for actually parsing the thing being checked.
     if ($noHttp) {
-        $head = implode('', array_slice(file($file), 0, 60));
-        if (strpos($head, '@requires-http') !== false) {
+        $isRequiresHttp = false;
+        foreach (array_slice(file($file), 0, 60) as $line) {
+            $tagStart = ltrim(rtrim($line), "*/ \t\r\n");
+            if (strpos($tagStart, '@requires-http') === 0) {
+                $isRequiresHttp = true;
+                break;
+            }
+        }
+        if ($isRequiresHttp) {
             $skippedFiles[] = $basename;
             echo "Skipping " . str_pad($basename, 35) . " (@requires-http, NEWUI_TEST_NO_HTTP=1)\n";
             continue;

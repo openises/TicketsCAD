@@ -58,6 +58,9 @@
  *   api/mesh.php, api/owntracks-config.php   (auth.php only on the admin path)
  *   api/atak-ingest.php, api/dmr-ingest.php, api/feed.php,
  *   api/push-vapid-public-key.php            (no auth.php at all)
+ *   api/public-board.php (Phase 138)         — public, unauthenticated by
+ *                                               design (specs/security/
+ *                                               constitution.md rule 2)
  *
  * A NEW api/*.php that does not require auth.php MUST call api_guard_install()
  * itself. tests/test_api_guard.php fails the suite if one forgets.

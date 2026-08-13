@@ -178,6 +178,18 @@ function sched_job_registry(): array {
             'command'    => $win ? 'php tools\\audit_log_purge_tick.php' : 'php tools/audit_log_purge_tick.php',
             'purpose'    => 'Archives and removes audit-log rows older than the configured retention window',
         ],
+        // GH#42 (2026-08-13). Daily, same grace as audit_log_purge above --
+        // this is a lower-stakes table (delivery-status log, not the audit
+        // trail), so it skips the archive step but keeps the same cadence.
+        'message_log_purge' => [
+            'label'      => 'Message log retention purge',
+            'interval_s' => 86400,
+            'grace_mult' => 3,
+            'unit'       => $win ? 'TicketsCAD Background Jobs' : 'ticketscad-message-log-purge.timer',
+            'unit_kind'  => $win ? 'schtasks' : 'systemd',
+            'command'    => $win ? 'php tools\\message_log_purge_tick.php' : 'php tools/message_log_purge_tick.php',
+            'purpose'    => 'Removes outbound message-log rows (SMS/e-mail/Slack deliveries) older than the configured retention window',
+        ],
         // Phase 134 (2026-08, GH #23 Model 3). 60s, same grace as par_tick /
         // pending_messages_tick — polls whichever broker channels have both
         // declared themselves 'pollable' AND been opted in via Settings
@@ -357,6 +369,21 @@ function sched_job_required(string $jobKey): array {
         return $on
             ? ['required' => true,  'why' => 'Audit log retention is enabled']
             : ['required' => false, 'why' => 'Audit log retention is disabled (Settings → Audit Log → Retention & Purge)'];
+    }
+
+    if ($jobKey === 'message_log_purge') {
+        // Same "shipped default is not usage" discipline as audit_log_purge
+        // above: message_log_retention_days defaults to 0 (disabled) on every
+        // install, so a fresh/CI install must never report this job critical
+        // just because nothing is scheduling it.
+        $on = false;
+        try {
+            require_once __DIR__ . '/message-log-retention.php';
+            $on = message_log_retention_days() > 0;
+        } catch (Exception $e) {}
+        return $on
+            ? ['required' => true,  'why' => 'Message log retention is enabled']
+            : ['required' => false, 'why' => 'Message log retention is disabled (Settings → Pending Messages → Message Log Retention)'];
     }
 
     if ($jobKey === 'channel_receive_tick') {

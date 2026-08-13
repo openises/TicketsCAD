@@ -2280,11 +2280,14 @@ function health_check_dir_probe(string $dir, string $slug, string $label, bool $
 }
 
 /**
- * GET a URL and return at most the first few KB of the body, or null when the
- * request could not be made. Bounded because a wrong guess may land on a full
- * HTML page, and this is only ever looking for a 40-character token.
+ * GET a URL and return at most the first $maxBytes of the body, or null when
+ * the request could not be made. Bounded because a wrong guess may land on a
+ * full HTML page — the default (8 KB) is sized for the backups canary, which
+ * is only ever looking for a 40-character token. Phase 138's public-board
+ * health check passes a larger cap (still bounded, never unlimited) because
+ * its target is a real JSON array of incidents, not a token.
  */
-function _health_probe_body(string $url): ?string
+function _health_probe_body(string $url, int $maxBytes = 8192): ?string
 {
     try {
         if (function_exists('curl_init')) {
@@ -2298,9 +2301,9 @@ function _health_probe_body(string $url): ?string
                 CURLOPT_SSL_VERIFYPEER => false,
                 CURLOPT_SSL_VERIFYHOST => 0,
                 CURLOPT_USERAGENT      => 'TicketsCAD-health-check',
-                CURLOPT_WRITEFUNCTION  => function ($ch, $chunk) use (&$buf) {
+                CURLOPT_WRITEFUNCTION  => function ($ch, $chunk) use (&$buf, $maxBytes) {
                     $buf .= $chunk;
-                    if (strlen($buf) > 8192) { return -1; }   // abort the transfer
+                    if (strlen($buf) > $maxBytes) { return -1; }   // abort the transfer
                     return strlen($chunk);
                 },
             ]);
@@ -2318,7 +2321,7 @@ function _health_probe_body(string $url): ?string
             'ignore_errors'   => true,
             'header'          => "User-Agent: TicketsCAD-health-check\r\n",
         ], 'ssl' => ['verify_peer' => false, 'verify_peer_name' => false]]);
-        $body = @file_get_contents($url, false, $ctx, 0, 8192);
+        $body = @file_get_contents($url, false, $ctx, 0, $maxBytes);
         if ($body === false) { return null; }
         // $http_response_header is populated by the stream wrapper.
         $status = 0;
@@ -2612,6 +2615,337 @@ function health_check_geocoding(bool $probe = false): array
     }
 }
 
+/**
+ * ── Public incident board (Phase 138, 2026-08-13) ──────────────────────────
+ *
+ * The 2026-08-02 lesson, applied here on purpose: a reassuring status code
+ * proves nothing. `health_check_web_exposure()` learned this the hard way —
+ * a 403 on a directory answered "safe" while a named file inside it served
+ * the whole database. The public board's own redaction is the same shape of
+ * risk: an admin can configure a never-publish type, an excluded group, or
+ * an address-precision ceiling, and NONE of that is worth anything unless
+ * the live endpoint is actually honouring it. So this check never merely
+ * asks "did the request succeed" — it asks the database what SHOULD be true,
+ * fetches the live public response, and structurally compares the two.
+ *
+ * THREE independent, deterministic checks against the live database (never
+ * synthetic/fabricated rows — the install's own open incidents are the test
+ * material, compared structurally, never displayed in the check's own
+ * output beyond an id number):
+ *
+ *   1. Exclusion is active — an open incident subject to a never-publish
+ *      type or an excluded group must be ABSENT from the live response.
+ *   2. Address masking is active — when precision is not 'exact', a sampled
+ *      open incident's real street must NOT appear byte-identical in the
+ *      live response's street_display for that same incident id.
+ *   3. An org-scoped board isn't silently empty by misconfiguration — for
+ *      every org with its own board enabled, 0 open incidents tagged to
+ *      that org_id is reported as an 'info' diagnostic (never critical —
+ *      a quiet org board is a legitimate, common state, not a defect).
+ *
+ * If the board is disabled entirely (no global switch, no org switch),
+ * this reports 'ok' with an explicit "disabled; nothing to check" note —
+ * the same "absent, not merely untested" distinction the backups-probe fix
+ * introduced (health_check_backups()) — so this row never renders as a
+ * permanent grey unknown on the overwhelming majority of installs that
+ * simply have never turned the feature on.
+ *
+ * Never probes with a fabricated/synthetic incident, and never echoes real
+ * street text back into this check's own output — checks 1/2 assert facts
+ * (present/absent, identical/not-identical) about data the caller already
+ * has full authenticated access to (this runs behind Settings → System
+ * Health, which is is_admin()/action.manage_config-gated) rather than
+ * reprinting the sensitive value itself.
+ */
+function health_check_public_board(): array
+{
+    try {
+        if (!function_exists('get_variable') || !function_exists('db_fetch_all')) {
+            return ['checked' => false, 'severity' => 'ok', 'enabled' => false,
+                    'error' => 'settings/database are not available in this context'];
+        }
+
+        $globalEnabled = ((string) (get_variable('public_board_enabled') ?: '0')) === '1';
+
+        $orgs = [];
+        try {
+            // Security review finding #2 (2026-08-13): a deactivated org
+            // (active = 0) no longer resolves on the public board (see
+            // api/public-board.php's own org lookup, which now requires
+            // active = 1 too) — exclude it here as well, otherwise this
+            // check would probe a URL that correctly 404s and misreport a
+            // healthy, intentionally-deactivated org as a broken board.
+            $orgs = db_fetch_all(
+                "SELECT `id`, `name`, `public_board_slug`
+                   FROM " . db_table('organizations') . "
+                  WHERE `public_board_enabled` = 1 AND `active` = 1"
+            );
+        } catch (Throwable $e) {
+            $orgs = [];
+        }
+
+        if (!$globalEnabled && empty($orgs)) {
+            return [
+                'checked'  => true,
+                'enabled'  => false,
+                'severity' => 'ok',
+                'checks'   => [],
+                'summary'  => 'Public incident board is disabled; nothing to check.',
+            ];
+        }
+
+        $checks   = [];
+        $severity = 'ok';
+        // critical beats warn beats unknown beats info beats ok — a single
+        // row must report the worst thing any one of its sub-checks found.
+        $rank = ['ok' => 0, 'info' => 1, 'unknown' => 2, 'warn' => 3, 'critical' => 4];
+        $bump = function (string $s) use (&$severity, $rank) {
+            if (($rank[$s] ?? 0) > ($rank[$severity] ?? 0)) { $severity = $s; }
+        };
+
+        $base = _health_self_base_url();
+
+        // Pick ONE primary probe target for checks 1/2 — the shared board
+        // when it's on (it covers every org's incidents at once, the most
+        // direct test of the board-wide never-publish/excluded-group rules),
+        // otherwise the first org-scoped board with a usable slug.
+        $primaryUrl   = null;
+        $primaryLabel = null;
+        $primaryOrgId = null; // null = the shared/unscoped board
+
+        if ($base !== null) {
+            if ($globalEnabled) {
+                $primaryUrl   = $base . '/api/public-board.php';
+                $primaryLabel = 'the shared public board';
+            } else {
+                foreach ($orgs as $o) {
+                    $slug = trim((string) ($o['public_board_slug'] ?? ''));
+                    if ($slug !== '') {
+                        $primaryUrl   = $base . '/api/public-board.php?org=' . rawurlencode($slug);
+                        $primaryLabel = 'the "' . (string) $o['name'] . '" public board';
+                        $primaryOrgId = (int) $o['id'];
+                        break;
+                    }
+                }
+            }
+        }
+
+        if ($base === null) {
+            $checks[] = ['name' => 'self_probe', 'severity' => 'unknown',
+                'message' => 'Cannot determine this install\'s own URL from the command line — '
+                           . 'open Settings → System Health in a browser to run this check.'];
+            $bump('unknown');
+        } elseif ($primaryUrl === null) {
+            // Enabled somewhere, but no reachable URL could be built — e.g.
+            // an org's board is switched on but has no slug saved yet. A
+            // config gap for the admin UI to surface, not a redaction defect.
+            $checks[] = ['name' => 'self_probe', 'severity' => 'warn',
+                'message' => 'The public board is enabled but no organization has a usable slug '
+                           . 'yet, so no live URL could be probed.'];
+            $bump('warn');
+        } else {
+            $openNotDeleted = "t.status = 2 AND (t.deleted_at IS NULL OR t.deleted_at = '0000-00-00 00:00:00')";
+            $orgFilterSql   = $primaryOrgId !== null ? ' AND t.org_id = ?' : '';
+
+            // ── Check 1: exclusion is active ──────────────────────────
+            $excludedIds = [];
+            try {
+                $excludedGroupsRaw = get_variable('public_board_excluded_groups');
+                $excludedGroups = [];
+                if (is_string($excludedGroupsRaw) && trim($excludedGroupsRaw) !== '') {
+                    $excludedGroups = array_values(array_filter(
+                        array_map('trim', explode(',', $excludedGroupsRaw)),
+                        function ($g) { return $g !== ''; }
+                    ));
+                }
+                $groupSql = '';
+                $params   = [];
+                if (!empty($excludedGroups)) {
+                    $ph = implode(',', array_fill(0, count($excludedGroups), '?'));
+                    $groupSql = " OR (it.`group` IS NOT NULL AND it.`group` IN ($ph))";
+                    $params   = array_merge($params, $excludedGroups);
+                }
+                if ($primaryOrgId !== null) { $params[] = $primaryOrgId; }
+                $rows = db_fetch_all(
+                    "SELECT t.id
+                       FROM " . db_table('ticket') . " t
+                       INNER JOIN " . db_table('in_types') . " it ON t.in_types_id = it.id
+                      WHERE {$openNotDeleted}
+                        AND (it.public_board_never_publish = 1{$groupSql})
+                        {$orgFilterSql}
+                      LIMIT 50",
+                    $params
+                );
+                foreach ($rows as $r) { $excludedIds[] = (int) $r['id']; }
+            } catch (Throwable $e) {
+                $excludedIds = [];
+            }
+
+            if (empty($excludedIds)) {
+                $checks[] = ['name' => 'exclusion_active', 'severity' => 'info',
+                    'message' => 'No currently-open incident is subject to a never-publish/'
+                               . 'excluded-group rule right now, so exclusion could not be '
+                               . 'exercised against live data this pass. Not a defect.'];
+                $bump('info');
+            } else {
+                $body    = _health_probe_body($primaryUrl, 262144);
+                $decoded = $body !== null ? json_decode($body, true) : null;
+                if (!is_array($decoded) || !isset($decoded['incidents']) || !is_array($decoded['incidents'])) {
+                    $checks[] = ['name' => 'exclusion_active', 'severity' => 'unknown',
+                        'message' => 'Could not fetch or parse the live response from ' . $primaryLabel
+                                   . ' to verify exclusion this pass.'];
+                    $bump('unknown');
+                } else {
+                    $seenIds = array_map(function ($i) { return (int) ($i['id'] ?? 0); }, $decoded['incidents']);
+                    $leaked  = array_values(array_intersect($excludedIds, $seenIds));
+                    if (!empty($leaked)) {
+                        $checks[] = ['name' => 'exclusion_active', 'severity' => 'critical',
+                            'message' => 'Incident id(s) ' . implode(', ', $leaked) . ' appear on '
+                                       . $primaryLabel . ' despite a never-publish or excluded-group '
+                                       . 'rule configured for their type.'];
+                        $bump('critical');
+                    } else {
+                        $checks[] = ['name' => 'exclusion_active', 'severity' => 'ok',
+                            'message' => count($excludedIds) . ' excluded incident(s) confirmed '
+                                       . 'absent from ' . $primaryLabel . '.'];
+                    }
+                }
+            }
+
+            // ── Check 2: address masking is active ────────────────────
+            $precision = (string) (get_variable('public_board_address_precision') ?: 'block');
+            if (!in_array($precision, ['exact', 'block', 'city', 'hidden'], true)) {
+                $precision = 'block';
+            }
+            if ($precision === 'exact') {
+                $checks[] = ['name' => 'masking_active', 'severity' => 'ok',
+                    'message' => 'Board precision is set to "exact" — masking is intentionally '
+                               . 'off, so there is nothing to verify.'];
+            } else {
+                $sample = null;
+                try {
+                    $params2 = $primaryOrgId !== null ? [$primaryOrgId] : [];
+                    $sample = db_fetch_one(
+                        "SELECT t.id, t.street
+                           FROM " . db_table('ticket') . " t
+                           INNER JOIN " . db_table('in_types') . " it ON t.in_types_id = it.id
+                          WHERE {$openNotDeleted}
+                            AND it.public_board_never_publish = 0
+                            AND t.street IS NOT NULL AND t.street <> ''
+                            {$orgFilterSql}
+                          ORDER BY t.date DESC LIMIT 1",
+                        $params2
+                    );
+                } catch (Throwable $e) {
+                    $sample = null;
+                }
+
+                if (empty($sample)) {
+                    $checks[] = ['name' => 'masking_active', 'severity' => 'info',
+                        'message' => 'No currently-open, eligible incident with a street address '
+                                   . 'is available to verify masking against this pass. Not a defect.'];
+                    $bump('info');
+                } else {
+                    $body2    = _health_probe_body($primaryUrl, 262144);
+                    $decoded2 = $body2 !== null ? json_decode($body2, true) : null;
+                    $found    = null;
+                    if (is_array($decoded2) && isset($decoded2['incidents']) && is_array($decoded2['incidents'])) {
+                        foreach ($decoded2['incidents'] as $inc) {
+                            if ((int) ($inc['id'] ?? 0) === (int) $sample['id']) { $found = $inc; break; }
+                        }
+                    }
+                    if ($found === null) {
+                        // The sample may simply not have cleared its publish delay yet,
+                        // or the live response could not be fetched/parsed — either way
+                        // this is "could not verify", never a false pass or false fail.
+                        $checks[] = ['name' => 'masking_active', 'severity' => 'unknown',
+                            'message' => 'Sampled incident #' . (int) $sample['id'] . ' did not appear '
+                                       . 'in the live response from ' . $primaryLabel . ' this pass '
+                                       . '(publish delay not yet elapsed, or the response could not be '
+                                       . 'fetched/parsed) — masking could not be verified this time.'];
+                        $bump('unknown');
+                    } else {
+                        $realStreet = (string) $sample['street'];
+                        $shown      = (string) ($found['street_display'] ?? '');
+                        if ($shown !== '' && $shown === $realStreet) {
+                            $checks[] = ['name' => 'masking_active', 'severity' => 'critical',
+                                'message' => 'Incident #' . (int) $sample['id'] . '\'s full street '
+                                           . 'address is showing unmasked on ' . $primaryLabel
+                                           . ' even though the configured precision is "' . $precision . '".'];
+                            $bump('critical');
+                        } else {
+                            $checks[] = ['name' => 'masking_active', 'severity' => 'ok',
+                                'message' => 'Incident #' . (int) $sample['id'] . '\'s address is masked '
+                                           . 'on ' . $primaryLabel . ' as configured.'];
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Check 3: an org-scoped board isn't silently empty ────────────
+        // Independent of checks 1/2 above (pure DB counts, no HTTP) — runs
+        // for EVERY org with its own board enabled, not just the primary one
+        // probed above.
+        foreach ($orgs as $o) {
+            $oid = (int) $o['id'];
+            $cnt = 0;
+            try {
+                $cnt = (int) db_fetch_value(
+                    "SELECT COUNT(*) FROM " . db_table('ticket') . "
+                      WHERE org_id = ? AND status = 2
+                        AND (deleted_at IS NULL OR deleted_at = '0000-00-00 00:00:00')",
+                    [$oid]
+                );
+            } catch (Throwable $e) {
+                $cnt = 0;
+            }
+            $orgName = (string) ($o['name'] ?? ('organization ' . $oid));
+            if ($cnt === 0) {
+                $checks[] = ['name' => 'org_not_empty', 'org_id' => $oid, 'severity' => 'info',
+                    'message' => 'Public board enabled for "' . $orgName . '", but 0 open incidents '
+                               . 'are tagged org_id = ' . $oid . ' — confirm incidents are being '
+                               . 'assigned to this organization if you expect this board to show '
+                               . 'activity.'];
+                $bump('info');
+            } else {
+                $checks[] = ['name' => 'org_not_empty', 'org_id' => $oid, 'severity' => 'ok',
+                    'message' => '"' . $orgName . '" has ' . $cnt . ' open incident(s) tagged to it.'];
+            }
+        }
+
+        // One-line summary for the Status page row — names the worst thing
+        // found, or a clean "N checks passed" when nothing did.
+        $worstMsg = null;
+        foreach (['critical', 'warn', 'unknown'] as $wantSev) {
+            foreach ($checks as $c) {
+                if (($c['severity'] ?? '') === $wantSev) { $worstMsg = $c['message']; break 2; }
+            }
+        }
+        if ($worstMsg === null && $severity === 'info') {
+            foreach ($checks as $c) {
+                if (($c['severity'] ?? '') === 'info') { $worstMsg = $c['message']; break; }
+            }
+        }
+        $okCount = 0;
+        foreach ($checks as $c) { if (($c['severity'] ?? '') === 'ok') { $okCount++; } }
+        $summary = $worstMsg ?? ($okCount . ' check' . ($okCount === 1 ? '' : 's') . ' passed.');
+
+        return [
+            'checked'  => true,
+            'enabled'  => true,
+            'severity' => $severity,
+            'checks'   => $checks,
+            'summary'  => $summary,
+        ];
+    } catch (Throwable $e) {
+        // Never let this be the thing that breaks the health page. "Could
+        // not tell" must not read as either "fine" or "broken".
+        return ['checked' => false, 'severity' => 'ok', 'enabled' => false,
+                'error' => 'public board health check failed'];
+    }
+}
+
 function health_check_all(): array
 {
     try {
@@ -2635,6 +2969,7 @@ function health_check_all(): array
         $keys       = health_check_keys();
         $exposure   = health_check_web_exposure();
         $geocoding  = health_check_geocoding();
+        $publicBoard = health_check_public_board();
 
         $critical = 0;
         $warn     = 0;
@@ -2675,7 +3010,7 @@ function health_check_all(): array
         } elseif (($jobs['severity'] ?? '') === 'warn') {
             $warn++;
         }
-        foreach ([$backups, $keys, $exposure, $geocoding] as $sec) {
+        foreach ([$backups, $keys, $exposure, $geocoding, $publicBoard] as $sec) {
             if (($sec['severity'] ?? '') === 'critical') {
                 $critical++;
             } elseif (($sec['severity'] ?? '') === 'warn') {
@@ -2686,6 +3021,10 @@ function health_check_all(): array
                 // false all-clear this bucket exists for.
                 $unknown++;
             }
+            // 'info' (public-board's org-not-empty/no-sample-available notes)
+            // is deliberately NOT counted here — an install that simply has
+            // no open incidents to test against, or a genuinely quiet org
+            // board, is not a fault and must not turn the overall badge amber.
         }
 
         return [
@@ -2705,6 +3044,7 @@ function health_check_all(): array
             'keys'         => $keys,
             'web_exposure' => $exposure,
             'geocoding'    => $geocoding,
+            'public_board' => $publicBoard,
             'summary'      => ['critical' => $critical, 'warn' => $warn, 'unknown' => $unknown],
         ];
     } catch (Throwable $e) {

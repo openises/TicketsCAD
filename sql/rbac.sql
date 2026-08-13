@@ -154,6 +154,29 @@ INSERT IGNORE INTO `permissions` (`code`, `name`, `category`, `description`) VAL
     -- reach both through their broad grants. Operator/Read-Only do not get it (their
     -- grants name action.* codes explicitly); grant it per-install via the Roles UI.
     ('action.net_checkin',     'Use Net-Control Check-Ins', 'action', 'Capture and work a personal net-control check-in list via the /net command'),
+    -- Phase 138 (2026-08-13) — public incident board. TWO permissions,
+    -- split by blast radius (security review finding #1: a single flat
+    -- permission let any Org Admin control cross-org, install-wide
+    -- settings with no server-side check). action.manage_public_board is
+    -- install-wide (master switch, precision ceiling, excluded groups,
+    -- default delay, rate limits, and the shared in_types publish rules -
+    -- never-publish/delay/visibility/stub-label - since in_types is one
+    -- shared table, not per-org) and reaches Super Admin ONLY (see the
+    -- Org Admin `NOT IN (...)` exclusion below - deliberately excluded, not
+    -- an oversight; do not "fix" it back to broad). action.manage_public_
+    -- board_org is org-scoped self-service (enable/slug for the caller's
+    -- OWN org only, enforced server-side in api/public-board-admin.php by
+    -- forcing the org id from the session, never the request) and reaches
+    -- Org Admin via this file's broad Org Admin NOT IN grant below (i.e.
+    -- by deliberately NOT being added to that exclusion list). Both are
+    -- added to the Dispatcher `NOT IN (...)` exclusion below, since this
+    -- file's Dispatcher mapping is a broad exclusion list (unlike
+    -- sql/run_00_rbac.php's Dispatcher mapping, which is an ALLOW-list of
+    -- specific codes - neither permission is named there, so absence is
+    -- already correct on that side; see the note on that file's Dispatcher
+    -- block for the asymmetry).
+    ('action.manage_public_board',     'Manage Public Incident Board (install-wide)', 'action', 'Install-wide public-board settings and the shared in_types publish rules. Super Admin only.'),
+    ('action.manage_public_board_org', "Manage Own Org's Public Board URL",           'action', "Org-scoped self-service enable/slug for the caller's own organization's public board URL only."),
     -- Data Visibility (field-level)
     ('field.view_patient',     'View Patient Info',    'field', 'See patient name, DOB, medical details'),
     ('field.view_contact',     'View Contact Info',    'field', 'See caller name and phone number'),
@@ -174,7 +197,11 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
 INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
     SELECT 2, `id` FROM `permissions`
     WHERE `code` NOT IN ('action.manage_config', 'action.manage_roles', 'action.bulk_delete_members',
-                          'action.manage_audit_retention', 'action.manage_dispositions');
+                          'action.manage_audit_retention', 'action.manage_dispositions',
+                          -- Phase 138 (2026-08-13) — install-wide public-board settings are
+                          -- Super-Admin-only; Org Admin gets ONLY action.manage_public_board_org
+                          -- (deliberately absent from this list, so it IS granted below).
+                          'action.manage_public_board');
 
 -- Dispatcher gets EVERYTHING except system admin tasks (60 of 65 permissions)
 -- A dispatcher answering phones needs full operational capability
@@ -203,9 +230,15 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
                                        -- admin-only with no ownership exception (roles 1-2, 2026-08-07)
         'action.manage_audit_retention', -- audit-log retention/purge is admin-only (roles 1 only,
                                        -- 2026-08-03) — same tier as action.manage_config
-        'action.manage_dispositions'  -- managing the incident-disposition list is admin-only
+        'action.manage_dispositions',  -- managing the incident-disposition list is admin-only
                                        -- (role 1 only, 2026-08-03) — same tier as action.manage_config;
                                        -- selecting a disposition on a call needs no permission
+        'action.manage_public_board',     -- Phase 138 (2026-08-13) — install-wide public-board
+                                       -- settings are admin-only (roles 1-2, same tier as
+                                       -- action.manage_config)
+        'action.manage_public_board_org'  -- Phase 138 — even the org-scoped self-service variant
+                                       -- is withheld from Dispatcher; only Super Admin + Org
+                                       -- Admin self-service their own org's public board URL
     );
 
 -- Operator gets all screens/widgets/fields + key operational actions (45 permissions)

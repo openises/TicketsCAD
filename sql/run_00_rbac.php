@@ -221,6 +221,22 @@ $perms = [
     // Read-Only grants below sweep `category IN ('screen','widget')` wholesale, so a
     // screen.* code would have been handed silently to Read-Only.
     ['action.net_checkin',     'Use Net-Control Check-Ins', 'action'],
+    // Phase 138 (2026-08-13) — public incident board. TWO permissions split
+    // by blast radius (security review finding #1): action.manage_public_
+    // board is install-wide (master switch, precision ceiling, excluded
+    // groups, default delay, rate limits, shared in_types publish rules)
+    // and reaches Super Admin ONLY (see the Org Admin `NOT IN` exclusion
+    // below). action.manage_public_board_org is org-scoped self-service
+    // (enable/slug for the caller's OWN org only, enforced server-side by
+    // forcing the org id from the session) and reaches Super Admin + Org
+    // Admin via the broad Org Admin NOT IN grant below (deliberately NOT
+    // added to that exclusion list). Dispatcher/Operator/Read-Only/Field
+    // Unit mappings in THIS file are allow-lists that name neither code, so
+    // both are correctly withheld there with no edit needed — asymmetric
+    // with sql/rbac.sql, whose Dispatcher mapping IS a broad NOT IN and so
+    // must name both explicitly (done there).
+    ['action.manage_public_board', 'Manage Public Incident Board (install-wide)', 'action'],
+    ['action.manage_public_board_org', "Manage Own Org's Public Board URL", 'action'],
     // Data Visibility
     ['field.view_patient',     'View Patient Info',    'field'],
     ['field.view_contact',     'View Contact Info',    'field'],
@@ -264,7 +280,8 @@ try {
     db_query("INSERT IGNORE INTO `{$prefix}role_permissions` (`role_id`, `permission_id`)
               SELECT 2, `id` FROM `{$prefix}permissions`
               WHERE `code` NOT IN ('action.manage_config', 'action.manage_roles', 'action.bulk_delete_members',
-                                    'action.manage_audit_retention', 'action.manage_dispositions')");
+                                    'action.manage_audit_retention', 'action.manage_dispositions',
+                                    'action.manage_public_board')");
     echo "[OK] Org Admin permissions mapped\n";
 } catch (Exception $e) {}
 

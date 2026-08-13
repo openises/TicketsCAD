@@ -117,21 +117,37 @@ function handlePost() {
     $input = json_decode($raw, true) ?: [];
     $action = $input['action'] ?? '';
 
-    // set_active_org — any authenticated user
+    // set_active_org — any authenticated user, but ONLY to an org already
+    // in their own $_SESSION['user_orgs'] list (member_organizations
+    // memberships UNION org-scoped RBAC role grants — see login.php). This
+    // is the exact set inc/navbar.php's org-switcher UI renders links for,
+    // so a legitimate caller never sends an org_id outside it.
+    //
+    // Final adversarial review (2026-08-13, Phase 138) found this endpoint
+    // wrote $_SESSION['active_org_id'] BEFORE validating it, and skipped
+    // validation ENTIRELY whenever $_SESSION['user_orgs'] was empty — the
+    // exact shape of a real, live account (a "global"-scope RBAC role
+    // grant with zero member_organizations rows: users 3 and 218 on this
+    // install today). Such a caller could set active_org_id to ANY org id,
+    // including one that doesn't exist, with success=true and no error.
+    // Several call sites trust $_SESSION['active_org_id'] as meaningful
+    // session state once set (e.g. api/public-board-admin.php's
+    // _pb_admin_caller_org_id() used to read it directly) — poisoning it
+    // to an arbitrary org therefore reached further than this endpoint
+    // alone. Fixed here at the source: validate BEFORE any session write,
+    // and treat an empty user_orgs list as "no org this user may select"
+    // rather than "skip the check".
     if ($action === 'set_active_org') {
         $orgId = intval($input['org_id'] ?? 0);
         if (!$orgId) json_error('org_id required');
-        $_SESSION['active_org_id'] = $orgId;
 
-        // Refresh user_orgs if needed
-        if (!empty($_SESSION['user_orgs'])) {
-            $found = false;
-            foreach ($_SESSION['user_orgs'] as $o) {
-                if ((int)$o['org_id'] === $orgId) { $found = true; break; }
-            }
-            if (!$found) json_error('You are not a member of this organization');
+        $found = false;
+        foreach ((array) ($_SESSION['user_orgs'] ?? []) as $o) {
+            if ((int) $o['org_id'] === $orgId) { $found = true; break; }
         }
+        if (!$found) json_error('You are not a member of this organization', 403);
 
+        $_SESSION['active_org_id'] = $orgId;
         json_response(['success' => true, 'active_org_id' => $orgId]);
     }
 

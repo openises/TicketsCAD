@@ -4445,6 +4445,9 @@
             // needs explicit handling.
             var extReqEl = document.getElementById('statusExtraDataRequired');
             if (extReqEl) data.extra_data_required = extReqEl.checked ? 1 : 0;
+            // GH#52 — second prompt slot's checkbox needs the same explicit handling.
+            var extReqEl2 = document.getElementById('statusExtraDataRequired2');
+            if (extReqEl2) data.extra_data_required_2 = extReqEl2.checked ? 1 : 0;
             // GH #20 round 2 — per-status facility-delivery flag
             var bedDelEl = document.getElementById('statusBedDelivery');
             if (bedDelEl) data.bed_delivery = bedDelEl.checked ? 1 : 0;
@@ -4652,6 +4655,16 @@
         if (extTgt)  extTgt.value  = (item && item.extra_data_target) ? item.extra_data_target : 'action_log';
         if (extLbl)  extLbl.value  = (item && item.extra_data_label) ? item.extra_data_label : '';
         if (extReq)  extReq.checked = item ? (parseInt(item.extra_data_required, 10) === 1) : false;
+
+        // GH#52 — second, independent prompt slot. Same load pattern as above.
+        var extType2 = document.getElementById('statusExtraDataType2');
+        var extTgt2  = document.getElementById('statusExtraDataTarget2');
+        var extLbl2  = document.getElementById('statusExtraDataLabel2');
+        var extReq2  = document.getElementById('statusExtraDataRequired2');
+        if (extType2) extType2.value = (item && item.extra_data_type_2) ? item.extra_data_type_2 : 'none';
+        if (extTgt2)  extTgt2.value  = (item && item.extra_data_target_2) ? item.extra_data_target_2 : 'action_log';
+        if (extLbl2)  extLbl2.value  = (item && item.extra_data_label_2) ? item.extra_data_label_2 : '';
+        if (extReq2)  extReq2.checked = item ? (parseInt(item.extra_data_required_2, 10) === 1) : false;
 
         // GH #20 round 2 — per-status facility-delivery flag
         var bedDel = document.getElementById('statusBedDelivery');
@@ -15784,6 +15797,30 @@
         }
         var refresh = document.getElementById('pmRefresh');
         if (refresh) refresh.addEventListener('click', loadPendingMessages);
+
+        // GH#42 — message log retention setting, same generic
+        // collect/apply-settings helpers the other small settings forms use.
+        var retForm = document.getElementById('messageLogRetentionForm');
+        if (retForm) {
+            apiGet('settings').then(function (data) {
+                applySettingsToForm(retForm, data.settings || {});
+                var el = retForm.querySelector('[data-key="message_log_retention_days"]');
+                if (el && el.value === '') el.value = '0';
+            }).catch(function () {});
+
+            retForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+                var statusEl = document.getElementById('messageLogRetentionStatus');
+                var pairs = collectSettingsFromForm(retForm);
+                apiPost('settings', { settings: pairs }).then(function (data) {
+                    showAlert('Message log retention saved (' + data.saved + ' updated)');
+                    if (statusEl) { statusEl.textContent = ''; }
+                }).catch(function (err) {
+                    showAlert(err.message, 'danger');
+                    if (statusEl) { statusEl.textContent = err.message; statusEl.className = 'small text-danger'; }
+                });
+            });
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════
