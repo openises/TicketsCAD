@@ -144,5 +144,30 @@ t("GH#47: ensureFacilityLayer registers Facilities (EOC) against the local sitLa
 t("GH#47: window._mapLayersControl is no longer referenced anywhere in situation.php",
     strpos($s, 'window._mapLayersControl') === false);
 
+// ── GH#47 ROUND 2 (2026-08-14) — the round-1 fix above still didn't work.
+// It correctly swapped the dead `window._mapLayersControl` reference for
+// `sitLayersControl`, the variable every other overlay on this page uses --
+// but `sitLayersControl` was declared with `var` INSIDE initMap() (a
+// function-scoped local), while ensureUnitLayer()/ensureFacilityLayer() are
+// SIBLING top-level functions that can't see it. Reported unreachable in
+// production (v4.2.17) by cbyrdmo on GH#47; reproduced live via browser on
+// both your-server.example.com and local XAMPP -- calling ensureUnitLayer()
+// threw "sitLayersControl is not defined", silently swallowed by
+// loadUnits()'s empty .catch(). The round-1 test above (checking the RIGHT
+// NAME is referenced) passed the whole time this was broken, because it
+// never checked WHERE that name was declared. Fixed the same way map/
+// tileLayer/markerGroup already work: declare at top-level scope, assign
+// (not re-declare) inside initMap().
+t("GH#47 round 2: sitLayersControl is declared at top-level scope (shared, like map/tileLayer/markerGroup), not just referenced by name",
+    (bool) preg_match('/\n {4}var sitLayersControl;\n/', $s));
+t("GH#47 round 2: initMap() ASSIGNS to the shared sitLayersControl (no `var`), matching how `map = L.map(...)` already works",
+    (bool) preg_match('/\n {8}sitLayersControl = L\.control\.layers\(/', $s));
+t("GH#47 round 2: no local re-declaration (`var sitLayersControl =`) remains anywhere -- that would shadow the shared one again",
+    strpos($s, 'var sitLayersControl =') === false);
+t("GH#47 round 2: loadUnits()'s fetch chain no longer swallows errors silently (this is exactly what hid the bug for 3 days)",
+    (bool) preg_match('/function loadUnits\(\)[\s\S]{0,600}?\.catch\(function\s*\(err\)\s*\{\s*console\.error\(/', $s));
+t("GH#47 round 2: loadFacilities()'s fetch chain no longer swallows errors silently",
+    (bool) preg_match('/function loadFacilities\(\)[\s\S]{0,600}?\.catch\(function\s*\(err\)\s*\{\s*console\.error\(/', $s));
+
 echo "\n=== $passed passed, $failed failed ===\n";
 exit($failed === 0 ? 0 : 1);

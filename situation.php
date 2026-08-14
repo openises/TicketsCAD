@@ -437,6 +437,14 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
 
     // ── State ──
     var map, tileLayer, markerGroup;
+    // Shared with ensureUnitLayer()/ensureFacilityLayer() below — must be
+    // declared here, not with `var` inside initMap(), or those functions
+    // throw "sitLayersControl is not defined" the first time they run (GH
+    // #47): a ReferenceError that loadUnits()/loadFacilities() swallow
+    // silently via their fetch chain's empty .catch(function () {}), so the
+    // Units/Facilities overlay checkboxes never register and no error ever
+    // reaches the console.
+    var sitLayersControl;
     var roadConditionsGroup = null;
     var roadConditionsLoaded = false;
     var incidents = [];
@@ -629,7 +637,7 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
             '● Road Conditions': roadConditionsGroup
         };
 
-        var sitLayersControl = L.control.layers(baseMaps, overlays, { collapsed: true, position: 'topright' }).addTo(map);
+        sitLayersControl = L.control.layers(baseMaps, overlays, { collapsed: true, position: 'topright' }).addTo(map);
 
         // ── Per-user layer visibility ──
         // This screen previously persisted NOTHING: every overlay here was
@@ -1206,7 +1214,7 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
                 renderUnitsList();
                 updateUnitMarkers();
             })
-            .catch(function () {});
+            .catch(function (err) { console.error('loadUnits failed:', err); });
     }
 
     function loadFacilities() {
@@ -1218,7 +1226,7 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
                 renderFacilitiesList();
                 updateFacilityMarkers();
             })
-            .catch(function () {});
+            .catch(function (err) { console.error('loadFacilities failed:', err); });
     }
 
     // GH #78 — recent events feed (log + unit/facility notes, merged

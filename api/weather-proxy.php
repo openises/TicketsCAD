@@ -70,12 +70,21 @@ const WX_BREAKER_THRESHOLD = 3;
 const WX_BREAKER_COOLOFF   = 60;
 const WX_FAIL_MAX_AGE      = 60;
 
-// Breaker state lives ABOVE the web root, beside the other caches: cache/ is
-// documented web-reachable, and this is operational state, not content.
+// Breaker state lives in a platform-aware directory outside the served
+// tree: cache/ is documented web-reachable, and this is operational state,
+// not content. dirname(NEWUI_ROOT) alone is correct on POSIX and inside
+// C:\inetpub\wwwroot on a stock Windows/IIS install — the same mistake
+// GHSA-x9x6-w4fg-pmcc's round 2 made for zello-audio; see served_dir_above_root().
 if (!defined('NEWUI_ROOT')) {
     define('NEWUI_ROOT', dirname(__DIR__));
 }
-$wx_breaker_file = dirname(NEWUI_ROOT) . '/runtime-state/weather-breaker.json';
+require_once __DIR__ . '/../inc/served-dir.php';
+$wx_state_dir = served_dir_above_root(NEWUI_ROOT, 'runtime-state');
+if (!is_dir($wx_state_dir)) {
+    @mkdir($wx_state_dir, 0755, true);
+}
+served_dir_harden($wx_state_dir, 'Runtime state (weather circuit-breaker, bridge health)', true);
+$wx_breaker_file = $wx_state_dir . '/weather-breaker.json';
 
 /**
  * PURE: is this upstream response evidence that OPENWEATHERMAP is down, as

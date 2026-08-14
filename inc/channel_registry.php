@@ -397,15 +397,24 @@ function channel_state_set($channelId, array $fields) {
 
 // ── Where the cross-request bridge-health verdict lives ─────────────────
 //
-// Above the web root, beside the tile and geocode caches, for the same reason
-// they are: the documented install points the web root AT the application
-// root, and this file records the host:port of an agency's internal radio
-// bridges. That is not something to publish to anyone who guesses a URL.
+// A platform-aware directory outside the served tree, beside the tile and
+// geocode caches, for the same reason they are: this file records the
+// host:port of an agency's internal radio bridges, not something to publish
+// to anyone who guesses a URL. dirname(NEWUI_ROOT) alone is correct on
+// POSIX and inside C:\inetpub\wwwroot on a stock Windows/IIS install — the
+// same mistake GHSA-x9x6-w4fg-pmcc's round 2 made for zello-audio; see
+// served_dir_above_root().
 if (!defined('NEWUI_ROOT')) {
     define('NEWUI_ROOT', dirname(__DIR__));
 }
+require_once __DIR__ . '/served-dir.php';
+$_bridgeHealthStateDir = served_dir_above_root(NEWUI_ROOT, 'runtime-state');
+if (!is_dir($_bridgeHealthStateDir)) {
+    @mkdir($_bridgeHealthStateDir, 0755, true);
+}
+served_dir_harden($_bridgeHealthStateDir, 'Runtime state (weather circuit-breaker, bridge health)', true);
 if (!defined('BRIDGE_HEALTH_STATE_FILE')) {
-    define('BRIDGE_HEALTH_STATE_FILE', dirname(NEWUI_ROOT) . '/runtime-state/bridge-health.json');
+    define('BRIDGE_HEALTH_STATE_FILE', $_bridgeHealthStateDir . '/bridge-health.json');
 }
 
 // define(), not const: this whole file is wrapped in

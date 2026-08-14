@@ -90,6 +90,20 @@ services:
                                         # cache away and make the install re-fetch every
                                         # tile at once — a load spike upstream providers
                                         # specifically ask us not to cause.
+      - app_geocode_cache:/var/www/geocode-cache
+                                        # Address lookup cache (inc/geocode.php). Same
+                                        # reasoning as app_tile_cache: outside the web
+                                        # root, and a volume so a rebuild doesn't throw
+                                        # it away and re-hit the geocoding provider for
+                                        # every address at once.
+      - app_zello_audio:/var/www/zello-audio
+                                        # Zello voice-message recordings
+                                        # (GHSA-x9x6-w4fg-pmcc). MUST be a volume for the
+                                        # same reason app_backups must: `up -d --build`
+                                        # destroys the writable layer, and an unmounted
+                                        # recordings dir takes every voice message with
+                                        # it. Outside /var/www/html since these were the
+                                        # advisory's entire subject.
       # To supply your own config.php instead of the env-generated one, mount it:
       # - ./config.php:/var/www/html/config.php:ro
       #
@@ -126,6 +140,7 @@ services:
     entrypoint: ["sh", "-c", "php /var/www/html/docker-config-gen.php && exec php /var/www/html/proxy/zello-proxy.php"]
     volumes:
       - app_keys:/var/www/keys          # shared field-encryption keys (to read stored Zello creds)
+      - app_zello_audio:/var/www/zello-audio   # this is the service that WRITES recordings
 
   dmr-proxy:
     profiles: ["voice"]
@@ -152,3 +167,5 @@ volumes:
   app_backups:
   app_keys:
   app_tile_cache:
+  app_geocode_cache:
+  app_zello_audio:

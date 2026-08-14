@@ -400,7 +400,13 @@ function assign_update_status_internal(int $assignId, $newStatusInput, int $user
                 [$now, $assignId]
             );
             _assign_log_action($ticketId, $respName . ' responding', 21, $userId);
-            _assign_set_responder_status($responderId, _assign_status_id_by_action('responding'));
+            // GH#59: prefer the SPECIFIC status the caller picked (mirrors
+            // the 'clear' branch below) -- falling straight to
+            // _assign_status_id_by_action() discards which of possibly
+            // several statuses mapped to this action was actually chosen,
+            // collapsing every one of them to "whichever sorts first".
+            _assign_set_responder_status($responderId, $newStatusId > 0
+                ? $newStatusId : _assign_status_id_by_action('responding'));
 
         } elseif ($newStatus === 'on_scene') {
             // Auto-back-fill responding if it wasn't set
@@ -416,7 +422,13 @@ function assign_update_status_internal(int $assignId, $newStatusInput, int $user
                 );
             }
             _assign_log_action($ticketId, $respName . ' on scene', 22, $userId);
-            _assign_set_responder_status($responderId, _assign_status_id_by_action('on_scene'));
+            // GH#59: same fix as 'responding' above -- an install with
+            // BOTH "On Scene" and "At Scene" mapped to incident_action=
+            // 'on_scene' always collapsed to whichever sorted first
+            // (reported: always reverted to "In Area"), no matter which
+            // one the dispatcher picked on the Incident page.
+            _assign_set_responder_status($responderId, $newStatusId > 0
+                ? $newStatusId : _assign_status_id_by_action('on_scene'));
 
         } elseif ($newStatus === 'clear') {
             db_query(
@@ -458,14 +470,15 @@ function assign_update_status_internal(int $assignId, $newStatusInput, int $user
             try {
                 $picked = db_fetch_one(
                     "SELECT `id`, `status_val`,
-                            `extra_data_type`, `extra_data_required`, `extra_data_label`
+                            `extra_data_type`, `extra_data_required`, `extra_data_label`,
+                            `extra_data_type_2`, `extra_data_required_2`, `extra_data_label_2`
                      FROM `{$prefix}un_status` WHERE `id` = ? LIMIT 1",
                     [$newStatusId]
                 );
             } catch (Exception $e) {
-                // Older schema without extra_data_* columns — fall
-                // back to the legacy read so pre-Phase-95 installs
-                // still work.
+                // Older schema without extra_data_*/_2 columns — fall
+                // back to the legacy read so pre-Phase-95/pre-GH#52
+                // installs still work.
                 $picked = db_fetch_one(
                     "SELECT `id`, `status_val` FROM `{$prefix}un_status` WHERE `id` = ? LIMIT 1",
                     [$newStatusId]
@@ -474,20 +487,32 @@ function assign_update_status_internal(int $assignId, $newStatusInput, int $user
                     $picked['extra_data_type'] = 'none';
                     $picked['extra_data_required'] = 0;
                     $picked['extra_data_label'] = null;
+                    $picked['extra_data_type_2'] = 'none';
+                    $picked['extra_data_required_2'] = 0;
+                    $picked['extra_data_label_2'] = null;
                 }
             }
             if ($picked) {
                 $edType     = (string) ($picked['extra_data_type'] ?? 'none');
                 $edRequired = (int)    ($picked['extra_data_required'] ?? 0);
                 $edLabel    = (string) ($picked['extra_data_label'] ?? '');
+                $edType2     = (string) ($picked['extra_data_type_2'] ?? 'none');
+                $edRequired2 = (int)    ($picked['extra_data_required_2'] ?? 0);
+                $edLabel2    = (string) ($picked['extra_data_label_2'] ?? '');
 
-                // Extra-data payload (Phase 95) supplied by the caller, if any.
-                // Read it unconditionally (not only when required) so an optional
-                // facility still gets stored below.
+                // Extra-data payload (Phase 95 slot 1, GH#52 slot 2) supplied
+                // by the caller, if any. Read unconditionally (not only when
+                // required) so an optional facility still gets stored below.
+                $input = $GLOBALS['_assign_update_status_input'] ?? [];
                 $supplied = null;
-                if (isset($GLOBALS['_assign_update_status_input']['extra_data'])) {
-                    $ed = $GLOBALS['_assign_update_status_input']['extra_data'];
+                if (isset($input['extra_data'])) {
+                    $ed = $input['extra_data'];
                     if (is_array($ed) && array_key_exists('value', $ed)) $supplied = $ed['value'];
+                }
+                $supplied2 = null;
+                if (isset($input['extra_data_2'])) {
+                    $ed2 = $input['extra_data_2'];
+                    if (is_array($ed2) && array_key_exists('value', $ed2)) $supplied2 = $ed2['value'];
                 }
 
                 if ($edType !== 'none' && $edRequired) {
@@ -500,8 +525,37 @@ function assign_update_status_internal(int $assignId, $newStatusInput, int $user
                         ]];
                     }
                 }
+                // Slot 2 is only asked for once slot 1 is satisfied, mirroring
+                // the dashboard modal's own chain order (app.js _collectExtraData).
+                if ($edType2 !== 'none' && $edRequired2) {
+                    $isEmpty2 = ($supplied2 === null || $supplied2 === ''
+                                 || (is_array($supplied2) && empty($supplied2)));
+                    if ($isEmpty2) {
+                        return ['errors' => [
+                            'extra_data_required_2',
+                            'label2:' . ($edLabel2 !== '' ? $edLabel2 : $edType2),
+                        ]];
+                    }
+                }
                 _assign_set_responder_status($responderId, (int) $picked['id']);
-                _assign_log_action($ticketId, $respName . ' status: ' . $picked['status_val'], 21, $userId);
+
+                // GH#52 follow-up (2026-08-13) — the activity log named only
+                // the status, never what was actually collected. Mirror
+                // responder_set_status_internal()'s summary suffix (inc/
+                // responder-write.php) so a dispatcher reading the log can
+                // see WHICH facility/value was picked, not just that
+                // "something" was. _phase95_summarize_extra() isn't guaranteed
+                // loaded on this path (api/incident-assign.php only requires
+                // THIS file) -- pull it in explicitly rather than assume.
+                require_once __DIR__ . '/responder-write.php';
+                $logDesc = $respName . ' status: ' . $picked['status_val'];
+                if (function_exists('_phase95_summarize_extra')) {
+                    $summary1 = _phase95_summarize_extra($edType, $supplied, $edLabel);
+                    if ($summary1 !== '') $logDesc .= ' [' . $summary1 . ']';
+                    $summary2 = _phase95_summarize_extra($edType2, $supplied2, $edLabel2);
+                    if ($summary2 !== '') $logDesc .= ' [' . $summary2 . ']';
+                }
+                _assign_log_action($ticketId, $logDesc, 21, $userId);
 
                 // Phase 116 — per-unit receiving facility (restore legacy MCI
                 // capability). When the status carries a destination facility,
@@ -510,8 +564,15 @@ function assign_update_status_internal(int $assignId, $newStatusInput, int $user
                 // a multi-casualty incident carries its own destination hospital;
                 // bed_auto resolves COALESCE(assign, ticket) so this per-unit value
                 // takes precedence. See specs/phase-116-per-unit-receiving-facility.
+                //
+                // GH#52 follow-up — either slot may be the one configured as
+                // 'facility' (an install could put mileage in slot 1 and the
+                // destination in slot 2, or vice versa); check both, slot 1
+                // taking precedence if BOTH were somehow configured as facility.
                 if ($edType === 'facility' && $supplied !== null && (int) $supplied > 0) {
                     assign_set_rec_facility($assignId, (int) $supplied, $userId);
+                } elseif ($edType2 === 'facility' && $supplied2 !== null && (int) $supplied2 > 0) {
+                    assign_set_rec_facility($assignId, (int) $supplied2, $userId);
                 }
 
                 // Phase 116 — fire bed automation from THIS path too. The

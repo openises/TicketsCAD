@@ -231,6 +231,24 @@ elseif ($action === 'update_status') {
                 'hint'  => 'Status requires additional data — reopen the status modal to supply it.',
             ], 422);
         }
+        // GH#52 follow-up (2026-08-13) — slot 2's rejection, same shape as
+        // slot 1's above under a distinct error code so the client can tell
+        // them apart and prompt for the right one.
+        if ($first === 'extra_data_required_2') {
+            $label = '';
+            foreach ($result['errors'] as $err) {
+                if (strpos((string) $err, 'label2:') === 0) {
+                    $label = substr((string) $err, 7);
+                    break;
+                }
+            }
+            ini_set('display_errors', $prevDisplay);
+            json_response([
+                'error' => 'extra_data_required_2',
+                'label' => $label,
+                'hint'  => 'Status requires a second piece of data — reopen the status modal to supply it.',
+            ], 422);
+        }
         if (strpos($first, 'not found') !== false) {
             ini_set('display_errors', $prevDisplay);
             json_error($first, 404);

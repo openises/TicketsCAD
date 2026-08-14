@@ -47,7 +47,10 @@ test('docker-entrypoint.sh exists', $entry !== '');
 // ever moves, this test follows it to the new place.
 require_once $root . '/inc/backup.php';
 require_once $root . '/inc/field-encrypt.php';
+require_once $root . '/inc/served-dir.php';
 require_once $root . '/inc/tile-proxy.php';
+require_once $root . '/inc/geocode.php';
+require_once $root . '/inc/zello_audio_dir.php';
 
 $norm = function (string $p): string {
     return rtrim(str_replace('\\', '/', $p), '/');
@@ -84,12 +87,20 @@ $toContainer = function (string $abs) use ($norm, $rootN): ?string {
 // on one without them — a Docker test failing for a reason that has nothing to
 // do with Docker. fe_default_keys_dir_for() is the same function the constant is
 // built from.
+// TILE_CACHE_DIR, GEOCODE_CACHE_DIR, and zello_audio_dir() joined the
+// platform-aware group on 2026-08-14 (the round-2 zello-audio IIS exposure
+// and its sweep of the same pattern elsewhere) — same reasoning, same fix:
+// ask served_dir_above_root() / zello_audio_dir() for the POSIX answer
+// explicitly rather than reading a constant this Windows box has already
+// resolved to %ProgramData%.
 $writePaths = [
-    'uploads'                    => $root . '/uploads',
-    'cache'                      => $root . '/cache',
-    'backups (BACKUP_DIR)'       => backup_default_dir_for($root, false),
-    'keys (FE_KEYS_DIR)'         => fe_default_keys_dir_for($root, false),
-    'tiles (TILE_CACHE_DIR)'     => TILE_CACHE_DIR,
+    'uploads'                        => $root . '/uploads',
+    'cache'                          => $root . '/cache',
+    'backups (BACKUP_DIR)'           => backup_default_dir_for($root, false),
+    'keys (FE_KEYS_DIR)'             => fe_default_keys_dir_for($root, false),
+    'tiles (TILE_CACHE_DIR)'         => served_dir_above_root($root, 'tile-cache', false),
+    'geocode cache (GEOCODE_CACHE_DIR)' => served_dir_above_root($root, 'geocode-cache', false),
+    'zello audio (zello_audio_dir)'  => zello_audio_dir($root, false),
 ];
 
 // Container paths mounted by the `app` service.

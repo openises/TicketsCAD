@@ -63,6 +63,39 @@ function served_dir_program_data(): string
 }
 
 /**
+ * The platform-aware "just needs to be above the web root" default, generic
+ * over the subdirectory name — for the CACHE/STATE directories that don't
+ * carry irreplaceable data (no migration or legacy-preference needed the way
+ * backups/keys/zello-audio do; an empty directory at a new location is a
+ * cache miss, not data loss).
+ *
+ * Four call sites had each hand-rolled `dirname(NEWUI_ROOT) . '/xxx'` before
+ * this existed — GEOCODE_CACHE_DIR, TILE_CACHE_DIR, the weather-proxy
+ * breaker-state file's directory, and the DMR bridge health-state file's
+ * directory — every one of them correct on POSIX and, on a stock Windows/IIS
+ * install, inside `C:\inetpub\wwwroot`: the SAME mistake GHSA-x9x6-w4fg-pmcc's
+ * round 2 made for zello-audio, in four more places, none of them caught by
+ * a report because none of them had a reporter looking at exactly that
+ * directory. See this file's own header for why "one level up" is a belief
+ * about a layout, not a fact about the machine.
+ *
+ * @param string    $appRoot The application root (NEWUI_ROOT).
+ * @param string    $subdir  Bare subdirectory name, e.g. 'geocode-cache'.
+ * @param bool|null $windows NULL = detect from this machine.
+ */
+function served_dir_above_root(string $appRoot, string $subdir, ?bool $windows = null): string
+{
+    if ($windows === null) {
+        $windows = (DIRECTORY_SEPARATOR === '\\');
+    }
+    $subdir = trim(str_replace(['\\', '/'], '', $subdir)); // bare name only
+    if (!$windows) {
+        return served_dir_parent_of($appRoot, false) . '/' . $subdir;
+    }
+    return served_dir_program_data() . '\\TicketsCAD\\' . $subdir;
+}
+
+/**
  * The parent of a path, on a platform given as an argument rather than read
  * from the machine this happens to be running on.
  *

@@ -157,6 +157,32 @@ Settings → Slack ("Poll for inbound messages", off by default on both).
 Installing this timer unconditionally is safe and harmless; nothing is
 polled until an operator turns a specific channel's inbound polling on.
 
+The message-log retention purge (GH #42, 2026-08-13) is the same shape again
+— `ticketscad-message-log-purge.service` running
+`/usr/bin/php /var/www/newui/tools/message_log_purge_tick.php`, and
+`ticketscad-message-log-purge.timer` pointing `Unit=` at it — daily, same
+cadence as the audit-log purge:
+
+```ini
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=1d
+AccuracySec=1h
+Persistent=true
+Unit=ticketscad-message-log-purge.service
+```
+
+**Unlike** the audit-log purge and channel-poll timers above, this one is
+**not** safe to skip once the setting is turned on: the Status page's
+scheduled-jobs check considers a job "required" the moment its governing
+setting is enabled (`message_log_retention_days` > 0 — Settings → Pending
+Messages → Message Log Retention), regardless of whether the timer exists yet. Turn
+the setting on WITHOUT installing this timer and the job is stuck at "never
+run" forever, which the health check correctly reports as **Critical** — it
+is not a false alarm, it is telling you the purge you asked for isn't
+running. Install the timer FIRST, or leave the setting at its default (`0`,
+disabled) until you do.
+
 #### If you use Web Push, SMS, e-mail, Slack or webhooks: run that one every 15 seconds
 
 Since 2026-07-31 the pending-message sweep also **sends the outbound
@@ -197,6 +223,9 @@ sudo systemctl enable --now ticketscad-par-tick.timer ticketscad-pending-msg.tim
   ticketscad-channel-receive-tick.timer
 # Only if you have turned on audit-log retention (Settings → Audit Log → Retention & Purge):
 sudo systemctl enable --now ticketscad-audit-purge.timer
+# Only if you have turned on message-log retention (Settings → Pending Messages → Message Log Retention) --
+# but install this ONE before turning the setting on, not after (see note above):
+sudo systemctl enable --now ticketscad-message-log-purge.timer
 sudo systemctl list-timers --all | grep ticketscad
 sudo journalctl -u ticketscad-par-tick.service -n 20 --no-pager
 
@@ -237,6 +266,7 @@ fresh `scheduled_send_at`. Expiry is reversible by design.
 | `tools/pending_messages_tick.php` | every minute | Delivers routed messages held for their security-label kill window | Held messages never leave the queue; after `sched_stale_cutoff_min` they expire undelivered. **Flagged on the Status page** |
 | `tools/audit_log_purge_tick.php` | daily | Archives (gzip NDJSON, written first) then removes `newui_audit_log` rows older than `audit_log_retention_days`, if that setting is nonzero. Off by default. | Nothing — the job is only *required* once retention is turned on, at which point a missed run is **flagged on the Status page** exactly like the two above. Disabled installs are never nagged about it. |
 | `tools/channel_receive_tick.php` | every minute | Polls opted-in broker channels (Telegram, Slack) for inbound messages; routes them via `broker_receive()` (dedup + logging + whatever routes exist). Off per-channel by default (`telegram_poll_inbound` / `slack_poll_inbound`). | Nothing — required only once at least one channel's inbound polling is turned on (Settings → Telegram / Slack), at which point a missed run is **flagged on the Status page**. Disabled/unconfigured installs are never nagged about it. |
+| `tools/message_log_purge_tick.php` | daily | Removes outbound message-log rows (SMS/e-mail/Slack delivery-status rows) older than `message_log_retention_days`, if that setting is nonzero. Off by default. | Nothing while disabled. Once `message_log_retention_days` is turned on, install the timer BEFORE (not after) — otherwise the job is stuck at "never run" and the Status page reports it **Critical**, correctly. |
 | location-reports trim *(planned)* | daily 03:30 | Same idea for `location_reports`; same workaround | DB bloat; map slowness |
 | backup *(planned)* | daily 02:00 | No all-in-one script yet — use `mysqldump` via cron per [BACKUP-RECOVERY-RUNBOOK.md](BACKUP-RECOVERY-RUNBOOK.md) | No fresh backup if a disaster hits |
 | `certbot renew` | twice daily (auto) | Renews Let's Encrypt cert | TLS cert expires; site breaks |

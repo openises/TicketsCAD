@@ -693,19 +693,33 @@ function tile_proxy_user_agent_is_generic(string $ua): bool
 // a new feature would be inexcusable.
 //
 // So the cache goes ABOVE the web root, following BACKUP_DIR's precedent from
-// that same hardening work. This needs no .htaccess, no nginx block and no IIS
-// config: it is out of reach on any server in any configuration, which is the
-// only kind of fix this project trusts.
+// that same hardening work.
+//
+// 2026-08-14 correction: the claim this comment used to make — "this needs no
+// .htaccess, no nginx block and no IIS config: it is out of reach on any
+// server in any configuration" — was false, and demonstrably so:
+// GHSA-x9x6-w4fg-pmcc's round 2 made the IDENTICAL claim about zello-audio's
+// directory and a reporter proved it wrong on a stock Windows/IIS install,
+// where "above the web root" (C:\inetpub\wwwroot\<app>\..) is
+// C:\inetpub\wwwroot itself — the Default Web Site's own root, bound to port
+// 80. served_dir_above_root() now picks a platform-aware location instead of
+// asserting the layout is safe, AND this directory is hardened with deny
+// files as defense in depth — belt AND suspenders, not "no config needed".
 if (!defined('NEWUI_ROOT')) {
     define('NEWUI_ROOT', dirname(__DIR__));
 }
+require_once __DIR__ . '/served-dir.php';
 if (!defined('TILE_CACHE_DIR')) {
-    define('TILE_CACHE_DIR', dirname(NEWUI_ROOT) . '/tile-cache');
+    define('TILE_CACHE_DIR', served_dir_above_root(NEWUI_ROOT, 'tile-cache'));
 }
 
-/** Root of the tile cache — above the web root. See the note above. */
+/** Root of the tile cache — platform-aware, above the web root. See the note above. */
 function tile_cache_dir(): string
 {
+    if (!is_dir(TILE_CACHE_DIR)) {
+        @mkdir(TILE_CACHE_DIR, 0755, true);
+    }
+    served_dir_harden(TILE_CACHE_DIR, 'Map tile cache', true);
     return TILE_CACHE_DIR;
 }
 

@@ -101,10 +101,12 @@ and image rebuilds:
 |---------------|---------------------------|---------------------------------------------------------|
 | `db_data`     | `/var/lib/mysql`          | The entire database.                                     |
 | `app_uploads` | `/var/www/html/uploads`   | Attachments, photos, uploaded files.                    |
-| `app_cache`   | `/var/www/html/cache`     | Weather-overlay tiles, NWS lookups and Zello audio.       |
+| `app_cache`   | `/var/www/html/cache`     | Weather-overlay tiles and NWS lookups. |
 | `app_tile_cache` | `/var/www/tile-cache`  | Basemap tiles fetched by `api/tile-proxy.php`. **Outside `/var/www/html`** — this cache records which map areas the install has viewed, which inside the webroot would be readable without logging in. Regenerable, but keep it on a volume: a rebuild that empties it makes the install re-fetch every tile at once, which is the load spike tile providers ask us not to cause. |
+| `app_geocode_cache` | `/var/www/geocode-cache` | Address-lookup cache (`inc/geocode.php`). **Outside `/var/www/html`**, same reasoning as `app_tile_cache`; regenerable but worth keeping on a volume so a rebuild doesn't re-hit the geocoding provider for every cached address at once. |
 | `app_backups` | `/var/www/backups`        | Archives written by `tools/backup_run.php` and Settings → Backup / Maintenance. **Outside `/var/www/html`** — that is the Apache DocumentRoot, and an archive inside it was downloadable by anyone who guessed the filename (v4.2.3). |
 | `app_keys`    | `/var/www/keys`           | 2FA + RSA field-encryption keys (kept out of the webroot).|
+| `app_zello_audio` | `/var/www/zello-audio` | Zello voice-message recordings (GHSA-x9x6-w4fg-pmcc). **Outside `/var/www/html`**, mounted on BOTH the `app` service and the `zello-proxy` service (the proxy is what actually writes recordings). Irreplaceable, not regenerable — this is precious data, not a cache. |
 
 **Anything NOT on this list lives in the container's writable layer and is
 destroyed by `docker compose up -d --build`,** which replaces the container.

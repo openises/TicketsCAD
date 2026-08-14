@@ -34,6 +34,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/audit.php';
 require_once __DIR__ . '/../inc/access.php';
+require_once __DIR__ . '/../inc/upload-config.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $prefix = $GLOBALS['db_prefix'] ?? '';
@@ -117,18 +118,7 @@ try {
 } catch (Exception $e) {}
 
 // ── Config helpers ──
-function upload_config($key, $default) {
-    global $prefix;
-    try {
-        // PRE-RELEASE-FIXES #12 — settings column is `name`, not `key`.
-        // Pre-fix this query always failed silently and every config knob
-        // (max file size, disk warn/block %) was stuck on its default.
-        $val = db_fetch_value("SELECT `value` FROM `{$prefix}settings` WHERE `name` = ?", [$key]);
-        return $val !== null ? $val : $default;
-    } catch (Exception $e) {
-        return $default;
-    }
-}
+// upload_config() lives in inc/upload-config.php (GH#58) — required above.
 
 function disk_usage_stats() {
     global $uploadDir;

@@ -33,7 +33,12 @@ fi
 #    by a `docker compose exec app php tools/backup_run.php` run.
 #    ../tile-cache is the map-tile proxy's cache — also outside the webroot,
 #    because it records which map areas this install has viewed.
-for d in "$APP/uploads" "$APP/cache" "$APP/../backups" "$APP/../keys" "$APP/../tile-cache"; do
+#    ../geocode-cache and ../zello-audio joined this list 2026-08-14 (the
+#    same sweep that found round 2 of GHSA-x9x6-w4fg-pmcc): both were
+#    already written outside the webroot but had never been added here,
+#    which only worked by accident because a bind-mounted webroot on a dev
+#    box tolerates a missing parent dir tools/mkdir -p handles later.
+for d in "$APP/uploads" "$APP/cache" "$APP/../backups" "$APP/../keys" "$APP/../tile-cache" "$APP/../geocode-cache" "$APP/../zello-audio"; do
     mkdir -p "$d"
     chown -R www-data:www-data "$d" 2>/dev/null || true
     chmod -R 775 "$d" 2>/dev/null || true

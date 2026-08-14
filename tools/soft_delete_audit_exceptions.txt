@@ -74,10 +74,10 @@ api/incident-list.php:101 | $where is seeded with the deleted_at term as its fir
 api/incident-list.php:114 | same $whereClause as :101 — the count and the row-fetch queries share it.
 api/incident-search.php:127 | same shape as api/incident-list.php:101 — $where seeded first, tainted downstream by org_query_filter() + a ternary/implode() whereClause.
 api/incident-search.php:136 | same $whereClause as :127 — the count and the row-fetch queries share it.
-api/reports.php:253 | 'unit_log' report — $where_parts is seeded with the deleted_at term, but `$where .= $rptTicketFrag;` (org-scope, from a destructuring `[$rptTicketFrag, $rptTicketVars] = org_query_filter(...)` this tool doesn't track) taints the final variable. Line moved from 241 by GH#51 (2026-08-12)'s incident_number resolution block inserted earlier in the same file; same read, same guard.
-api/reports.php:327 | 'dispatch_log' report — same shape as api/reports.php:253. Line moved from 315, same reason.
-api/reports.php:510 | 'incident_report' report — same shape as api/reports.php:253. Line moved from 498, same reason.
-api/reports.php:571 | 'facility_log' report — same shape as api/reports.php:253. Line moved from 559, same reason.
+api/reports.php:295 | 'unit_log' report — $where_parts is seeded with the deleted_at term, but `$where .= $rptTicketFrag;` (org-scope, from a destructuring `[$rptTicketFrag, $rptTicketVars] = org_query_filter(...)` this tool doesn't track) taints the final variable. Line moved from 279 by the 2026-08-13 incident-type-drilldown addition (incident_summary's SELECT/GROUP BY grew, pushing every later case down); same read, same guard.
+api/reports.php:374 | 'dispatch_log' report — same shape as api/reports.php:295. Line moved from 358, same reason (incident-type-drilldown addition shifted later cases).
+api/reports.php:578 | 'incident_report' report — same shape as api/reports.php:295. Line moved from 546, same reason, plus this case's own new `in_types_id` filter block.
+api/reports.php:641 | 'facility_log' report — same shape as api/reports.php:295. Line moved from 609, same reason (incident-type-drilldown addition shifted later cases).
 
 # ── CATEGORY D: downstream of an already-gated query in the same request ────
 # Each of these executes only after an earlier query in the SAME function

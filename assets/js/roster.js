@@ -113,7 +113,7 @@
     }
 
     // ── Load Members ─────────────────────────────────────────────
-    function loadMembers() {
+    function loadMembers(deepLinkMemberId) {
         var url = 'api/members.php';
         if (filterIcsPositionId) {
             url += '?ics_position_id=' + filterIcsPositionId;
@@ -143,6 +143,10 @@
 
             $loading.classList.add('d-none');
             $main.classList.remove('d-none');
+
+            if (deepLinkMemberId) {
+                selectMember(deepLinkMemberId);
+            }
         });
     }
 
@@ -3974,11 +3978,18 @@
             filterIcsPositionId = parseInt(icsMatch[1]);
         }
 
+        // Reports drill-down (GH#51 follow-up, 2026-08-13) — a report row's
+        // linked name (e.g. api/reports.php's member_link_cols) points here
+        // as roster.php?id=<member_id>. Deep-open that member's detail once
+        // the roster has loaded, same pattern as the ICS-position filter above.
+        var idMatch = window.location.search.match(/[?&]id=(\d+)/);
+        var deepLinkMemberId = (idMatch && parseInt(idMatch[1], 10) > 0) ? parseInt(idMatch[1], 10) : 0;
+
         bindEvents();
         bindPhoneFormatting();
         initOrgEditSave();
         initBulkRoster();
-        loadMembers();
+        loadMembers(deepLinkMemberId);
         // Issue #42: member State is a DB-backed <select>.
         if (window.TCADStates) { window.TCADStates.fill(document.getElementById('editState')); }
     }

@@ -3,6 +3,58 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.18] — 2026-08-14
+
+### Added
+
+- **Reports now link through to the record behind each row.** Incident
+  numbers, unit names, facility names, personnel names, and team names
+  across every report open the matching incident/unit/facility/roster/team
+  page directly, instead of being plain text you had to search for by
+  hand. The Incident Summary report's type breakdown also drills through
+  to that type's filtered incident list on click. The visible cell text
+  never changes — the internal database id used to build the link never
+  appears on screen, only in the link target.
+
+### Security
+
+- **Round 2 of GHSA-x9x6-w4fg-pmcc: the Zello-audio relocation could land
+  recordings inside another site's document root on Windows.** The v4.2.15
+  fix moved recordings to "a sibling of the app root" — on a stock
+  Windows/IIS install (`C:\inetpub\wwwroot\<app>`), that sibling is
+  `C:\inetpub\wwwroot` itself, the Default Web Site's own root. Reported
+  live by @rjonesbsink: upgrading and running the documented relocation
+  migration moved 210 recordings from an unfirewalled port onto the port
+  his firewall actually admits. Fixed to the same standard as BACKUP_DIR
+  and FE_KEYS_DIR: the Windows default is now `%ProgramData%\TicketsCAD\
+  zello-audio`, every location that could hold a recording is hardened
+  unconditionally (new default, the old sibling location, the original
+  in-tree location), and the relocation migration rescues files from every
+  earlier location. The same sweep found four more directories with the
+  identical unfenced pattern (weather-proxy circuit-breaker state, DMR
+  bridge health state, the geocode cache, the tile cache) and fixed them
+  the same way; the last two were also missing from `docker-compose.yml`
+  entirely.
+
+### Fixed
+
+- **The Reports page's "(Period)" summary cards could show numbers that
+  looked impossible**, like "32 Closed (Period)" next to "1 Total
+  (Period)". `closed_in_period` filtered on `problemend` (when an
+  incident was closed) while `total_in_period` and the report table below
+  it both filtered on `date` (when it was opened) — two cards on the same
+  panel were answering different questions. Aligned to the same date
+  basis so the cards and the table always reconcile.
+- **The EOC display's Units/Facilities layer toggles still didn't work
+  after the v4.2.17 fix.** That fix correctly swapped a dead global
+  reference for `sitLayersControl`, the variable every other overlay on
+  the page already uses — but `sitLayersControl` was declared with `var`
+  *inside* `initMap()`, invisible to the sibling functions that reference
+  it, so every page load threw a silently-swallowed `ReferenceError`.
+  Fixed by declaring the shared variable at the same top-level scope
+  `map`/`tileLayer`/`markerGroup` already use. Reported by @cbyrdmo,
+  originally traced by @rjonesbsink, GitHub #47.
+
 ## [4.2.17] — 2026-08-13
 
 ### Added

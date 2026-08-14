@@ -239,9 +239,22 @@ if ($mode === 'reports') {
 
     // Soft-delete sweep (issue #25 follow-up) — every ticket-scoped stat in
     // this reports-mode block excludes soft-deleted incidents too.
+    //
+    // GH#(reports-summary-reconcile), 2026-08-13 — this used to filter on
+    // `problemend` (when the incident was CLOSED) while total_in_period and
+    // the incident_summary report below both filter on `date` (when the
+    // incident was OPENED). Two cards on the same "(Period)"-labeled panel
+    // answering different questions produced results that looked broken
+    // (e.g. "32 closed, 1 total") even though neither number was wrong —
+    // an incident opened last month and closed this month counted as
+    // "closed (period)" but not "total (period)". Aligned to the same date
+    // basis as total_in_period so the cards and the table below always
+    // reconcile: this is now "of the incidents OPENED in this period, how
+    // many are now closed" — not "how many closures happened in this
+    // period regardless of when they opened".
     $closed_in_period = (int) safe_fetch_value_stat(
         "SELECT COUNT(*) FROM `{$prefix}ticket`
-         WHERE `status` = 1 AND `problemend` BETWEEN ? AND ?
+         WHERE `status` = 1 AND `date` BETWEEN ? AND ?
            AND (`deleted_at` IS NULL OR `deleted_at` = '0000-00-00 00:00:00')",
         [$ds, $de]
     );

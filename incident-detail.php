@@ -941,6 +941,10 @@ window.DISPOSITION_REQUIRED_MESSAGE = <?php echo json_encode(t('incdetail.dispos
 // thread it through the same way INCIDENT_NUMBER_LABEL is threaded above.
 window.INCDETAIL_DISPOSITION_NONE = <?php echo json_encode(t('incdetail.disposition.none', '— None —')); ?>;
 </script>
+<?php /* GH#52 follow-up — the facility/note/numeric extra-data prompt,
+         must load BEFORE incident-detail.js so window.TCADStatusExtraDataPrompt
+         exists the first time a status change needs it. */ ?>
+<script src="assets/js/status-extra-data-prompt.js?v=<?php echo asset_v('assets/js/status-extra-data-prompt.js'); ?>"></script>
 <script src="assets/js/incident-detail.js?v=<?php echo asset_v('assets/js/incident-detail.js'); ?>"></script>
 <?php /* Phase 131 — prefills the activity-log box when the operator arrived
          here from a net check-in (?net_entry=N). No-op otherwise. */ ?>

@@ -219,6 +219,48 @@ $report_title = '';
 // "second table" concept, and the existing incident-type breakdown (this
 // case's original columns/rows/summary) must not change shape.
 $disposition_breakdown = [];
+// Eric, 2026-08-13 (GH#51 follow-up + drill-down requests) — every report
+// that lists incidents/units/facilities/members/teams should let a user
+// click through to that record's real page. rows[] is a plain positional
+// array with no room for a link target, so each linkable column gets a
+// column-index variable (null = this report has no such column) plus a
+// parallel array (same length/order as $rows) of the INTERNAL id to link
+// to for each row. The visible cell text never changes (incident_number,
+// a person's name, a team's name) -- the internal id appears only in the
+// link target, never on screen, per Eric's stated rule that the number a
+// user sees and the internal id used to locate a database row are two
+// different things. Assembled into one generic 'links' array (see just
+// before json_response) rather than five near-identical top-level
+// response keys.
+// Each *_link_cols is a list of column INDICES (usually one; the personnel
+// reports link both the first-name and last-name columns to the same
+// member, so this must support more than one column per kind).
+$incident_link_cols = [];
+$row_ticket_ids = [];
+$unit_link_cols = [];
+$row_responder_ids = [];
+$facility_link_cols = [];
+$row_facility_ids = [];
+$member_link_cols = [];
+$row_member_ids = [];
+$team_link_cols = [];
+$row_team_ids = [];
+// A cell that lists MULTIPLE teams (roster_snapshot's comma-joined Teams
+// column) can't be expressed as one id per row like every other link kind
+// above -- each name in the cell needs its OWN link. row_team_lists[$r] is
+// an array of ['id'=>teamId,'name'=>teamName] for row $r; the 'team_names'
+// column's flat string value is left alone (still what CSV export and
+// sorting see) and the frontend replaces just that cell's rendering with
+// one <a> per item when a team_multi descriptor names its column.
+$team_multi_link_cols = [];
+$row_team_lists = [];
+// Incident Summary -> type -> filtered Incidents list. Not a same-kind
+// {col,ids} descriptor like the others above -- clicking a type doesn't
+// open one record, it switches report tabs and re-runs filtered by
+// in_types_id, so the frontend handles this kind with a click handler
+// rather than a plain href (see assets/js/reports.js renderRows()).
+$incident_type_link_cols = [];
+$row_type_ids = [];
 
 switch ($report) {
 
@@ -252,6 +294,7 @@ switch ($report) {
 
         $data = safe_fetch_all_rpt(
             "SELECT
+                `r`.`id` AS `responder_id`,
                 `r`.`name` AS `unit_name`,
                 `r`.`handle`,
                 `t`.`id` AS `ticket_id`,
@@ -270,6 +313,8 @@ switch ($report) {
             $params
         );
 
+        $unit_link_cols[] = 0;
+        $incident_link_cols[] = 2;
         $total_response = 0;
         $response_count = 0;
 
@@ -293,6 +338,8 @@ switch ($report) {
                 $row['clear'] ?? '',
                 $resp_time
             ];
+            $row_ticket_ids[] = (int) ($row['ticket_id'] ?? 0);
+            $row_responder_ids[] = (int) ($row['responder_id'] ?? 0);
         }
 
         $avg_response = $response_count > 0 ? round($total_response / $response_count) : 0;
@@ -331,6 +378,7 @@ switch ($report) {
                 `it`.`type` AS `incident_type`,
                 `t`.`severity`,
                 `t`.`scope`,
+                `r`.`id` AS `responder_id`,
                 `r`.`name` AS `unit_name`,
                 `a`.`dispatched`,
                 `a`.`responding`,
@@ -346,6 +394,8 @@ switch ($report) {
             $params
         );
 
+        $incident_link_cols[] = 0;
+        $unit_link_cols[] = 4;
         $sev_labels = [0 => 'Low', 1 => 'Medium', 2 => 'High'];
         $total_time_sum = 0;
         $total_time_count = 0;
@@ -371,6 +421,8 @@ switch ($report) {
                 $row['clear'] ?? '',
                 $total_time
             ];
+            $row_ticket_ids[] = (int) ($row['ticket_id'] ?? 0);
+            $row_responder_ids[] = (int) ($row['responder_id'] ?? 0);
         }
 
         $avg_total = $total_time_count > 0 ? round($total_time_sum / $total_time_count) : 0;
@@ -390,6 +442,7 @@ switch ($report) {
         // counts or the average close-time figure below.
         $data = safe_fetch_all_rpt(
             "SELECT
+                `it`.`id` AS `type_id`,
                 COALESCE(`it`.`type`, 'Unknown') AS `incident_type`,
                 COUNT(*) AS `total`,
                 SUM(CASE WHEN `t`.`severity` = 2 THEN 1 ELSE 0 END) AS `high`,
@@ -401,10 +454,16 @@ switch ($report) {
             LEFT JOIN `{$prefix}in_types` `it` ON `t`.`in_types_id` = `it`.`id`
             WHERE `t`.`date` BETWEEN ? AND ?
               AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')
-            GROUP BY `it`.`type`
+            GROUP BY `it`.`id`, `it`.`type`
             ORDER BY `total` DESC",
             [$date_start_sql, $date_end_sql]
         );
+
+        // Eric, 2026-08-13 — "click on an incident type and view a list of
+        // the incidents of that type". Rows in the 'Unknown' bucket (no
+        // in_types_id, e.g. a deleted type) have no type_id to filter by
+        // and are simply left unclickable — the JS only links ids > 0.
+        $incident_type_link_cols[] = 0;
 
         $grand_total = 0;
         $grand_high = 0;
@@ -423,6 +482,7 @@ switch ($report) {
                 (int) $row['open'],
                 (int) $row['closed']
             ];
+            $row_type_ids[] = (int) ($row['type_id'] ?? 0);
             $grand_total  += (int) $row['total'];
             $grand_high   += (int) $row['high'];
             $grand_medium += (int) $row['medium'];
@@ -502,6 +562,14 @@ switch ($report) {
             $params[] = $incident_id;
         }
 
+        // Incident Summary -> type drill-down (Eric, 2026-08-13): a type
+        // clicked in the Summary report re-runs this report filtered to it.
+        $in_types_filter = max(0, (int) ($_GET['in_types_id'] ?? 0));
+        if ($in_types_filter > 0) {
+            $where_parts[] = "`t`.`in_types_id` = ?";
+            $params[] = $in_types_filter;
+        }
+
         $where = implode(' AND ', $where_parts);
         // Phase 99j-7 — append org-scope filter (empty for Super Admin).
         $where .= $rptTicketFrag;
@@ -527,6 +595,7 @@ switch ($report) {
             $params
         );
 
+        $incident_link_cols[] = 0;
         $sev_labels = [0 => 'Low', 1 => 'Medium', 2 => 'High'];
         $status_labels = [1 => 'Closed', 2 => 'Open', 3 => 'Scheduled'];
 
@@ -543,6 +612,7 @@ switch ($report) {
                 (int) $row['units_assigned'],
                 (int) $row['actions_count']
             ];
+            $row_ticket_ids[] = (int) ($row['id'] ?? 0);
         }
 
         $summary = [
@@ -570,10 +640,12 @@ switch ($report) {
         // Tickets linked to facilities via rec_facility
         $data = safe_fetch_all_rpt(
             "SELECT
+                `f`.`id` AS `facility_id`,
                 `f`.`name` AS `facility_name`,
                 `t`.`id` AS `ticket_id`,
                 `t`.`incident_number`,
                 `t`.`scope`,
+                `r`.`id` AS `responder_id`,
                 `r`.`name` AS `unit_name`,
                 `a`.`dispatched`,
                 `a`.`on_scene` AS `arrived`,
@@ -587,6 +659,10 @@ switch ($report) {
             $params
         );
 
+        $facility_link_cols[] = 0;
+        $incident_link_cols[] = 1;
+        $unit_link_cols[] = 3;
+
         foreach ($data as $row) {
             $rows[] = [
                 $row['facility_name'] ?? '',
@@ -597,6 +673,9 @@ switch ($report) {
                 $row['arrived'] ?? '',
                 $row['notes'] ?? ''
             ];
+            $row_ticket_ids[] = (int) ($row['ticket_id'] ?? 0);
+            $row_responder_ids[] = (int) ($row['responder_id'] ?? 0);
+            $row_facility_ids[] = (int) ($row['facility_id'] ?? 0);
         }
 
         $summary = [
@@ -819,9 +898,20 @@ switch ($report) {
         ];
         $rows = [];
 
+        // Personnel drill-down (GH#51 follow-up, 2026-08-13) — last_name /
+        // first_name are always columns 0/1 across every personnel report;
+        // Eric asked that clicking either name open that member's roster
+        // record. member_id rides along as an extra row key (never a
+        // visible column) and is extracted into row_member_ids AFTER the
+        // switch, from the FINAL row order -- this report usort()s below,
+        // so a parallel array built during these loops would desync from
+        // the sorted result.
+        $member_link_cols[] = 0;
+        $member_link_cols[] = 1;
+
         // FCC amateur + GMRS via member_callsigns
         $fcc = safe_fetch_all_rpt(
-            "SELECT m.field2 AS first_name, m.field1 AS last_name, m.field4 AS callsign,
+            "SELECT m.id AS member_id, m.field2 AS first_name, m.field1 AS last_name, m.field4 AS callsign,
                     mc.callsign AS identifier, mc.license_type, mc.expiry_date
              FROM `{$prefix}member_callsigns` mc
              JOIN `{$prefix}member` m ON mc.member_id = m.id
@@ -843,12 +933,13 @@ switch ($report) {
                 'expiry_date'    => $r['expiry_date'],
                 'days_remaining' => $daysRem,
                 'state'          => $daysRem !== null && $daysRem < 0 ? 'EXPIRED' : 'Expiring',
+                'member_id'      => (int) ($r['member_id'] ?? 0),
             ];
         }
 
         // FEMA + custom certifications via member_certifications
         $certs = safe_fetch_all_rpt(
-            "SELECT m.field2 AS first_name, m.field1 AS last_name, m.field4 AS callsign,
+            "SELECT m.id AS member_id, m.field2 AS first_name, m.field1 AS last_name, m.field4 AS callsign,
                     c.name AS cert_name, c.fema_course_code, mc.expiry_date
              FROM `{$prefix}member_certifications` mc
              JOIN `{$prefix}member` m ON mc.member_id = m.id
@@ -871,6 +962,7 @@ switch ($report) {
                 'expiry_date'    => $r['expiry_date'],
                 'days_remaining' => $daysRem,
                 'state'          => $daysRem !== null && $daysRem < 0 ? 'EXPIRED' : 'Expiring',
+                'member_id'      => (int) ($r['member_id'] ?? 0),
             ];
         }
 
@@ -917,14 +1009,23 @@ switch ($report) {
         );
         // Pull team memberships separately so multi-team is captured
         $tm = safe_fetch_all_rpt(
-            "SELECT tm.member_id, t.team AS team_name
+            "SELECT tm.member_id, t.id AS team_id, t.team AS team_name
              FROM `{$prefix}team_members` tm
              JOIN `{$prefix}teams` t ON tm.team_id = t.id"
         );
         $teamsByMember = [];
         foreach ($tm as $row) {
-            $teamsByMember[(int) $row['member_id']][] = $row['team_name'];
+            $teamsByMember[(int) $row['member_id']][] = [
+                'id' => (int) $row['team_id'],
+                'name' => $row['team_name'],
+            ];
         }
+        $member_link_cols[] = 0;
+        $member_link_cols[] = 1;
+        // Eric, 2026-08-13 — "click on a team name in a report" for a cell
+        // that lists several teams: each name gets its own link rather than
+        // one link around the whole comma-joined string.
+        $team_multi_link_cols[] = 5;
         $rows = [];
         foreach ($members as $m) {
             $teams = $teamsByMember[(int) $m['id']] ?? [];
@@ -934,11 +1035,13 @@ switch ($report) {
                 'callsign'    => $m['callsign'] ?: '',
                 'type_name'   => $m['type_name'] ?: '',
                 'status_name' => $m['status_name'] ?: '',
-                'team_names'  => implode(', ', $teams),
+                'team_names'  => implode(', ', array_column($teams, 'name')),
                 'available'   => $m['available'] ?: '',
                 'phone_cell'  => $m['phone_cell'] ?: '',
                 'email'       => $m['email'] ?: '',
+                'member_id'   => (int) $m['id'],
             ];
+            $row_team_lists[] = $teams;
         }
         $summary = ['total_members' => count($rows)];
         $period_label = 'As of ' . date('Y-m-d H:i');
@@ -954,9 +1057,11 @@ switch ($report) {
         ];
         // DMR IDs are stored in member.notes by tools/radioid_lookup.php as
         // "DMR ID: NNNNN (CALL)" — extract them.
+        $member_link_cols[] = 0;
+        $member_link_cols[] = 1;
         $rows = [];
         $members = safe_fetch_all_rpt(
-            "SELECT m.field2 AS first_name, m.field1 AS last_name,
+            "SELECT m.id AS member_id, m.field2 AS first_name, m.field1 AS last_name,
                     m.field4 AS callsign, m.notes
              FROM `{$prefix}member` m
              WHERE m.deleted_at IS NULL {$rptMemberFrag} AND m.notes LIKE '%DMR ID%'
@@ -972,6 +1077,7 @@ switch ($report) {
                 'first_name' => $m['first_name'],
                 'callsign'   => $m['callsign'] ?: '',
                 'dmr_ids'    => $ids,
+                'member_id'  => (int) ($m['member_id'] ?? 0),
             ];
         }
         $totalIds = 0;
@@ -995,8 +1101,10 @@ switch ($report) {
             ['key' => 'days_remaining', 'label' => 'Days', 'align' => 'right'],
             ['key' => 'state',          'label' => 'Status'],
         ];
+        $member_link_cols[] = 0;
+        $member_link_cols[] = 1;
         $members = safe_fetch_all_rpt(
-            "SELECT m.field2 AS first_name, m.field1 AS last_name,
+            "SELECT m.id AS member_id, m.field2 AS first_name, m.field1 AS last_name,
                     m.field4 AS callsign, m.membership_due
              FROM `{$prefix}member` m
              WHERE m.deleted_at IS NULL {$rptMemberFrag}
@@ -1019,6 +1127,7 @@ switch ($report) {
                 'membership_due' => $m['membership_due'],
                 'days_remaining' => $daysRem,
                 'state'          => $isPast ? 'PAST DUE' : 'Upcoming',
+                'member_id'      => (int) ($m['member_id'] ?? 0),
             ];
         }
         $summary = [
@@ -1061,6 +1170,8 @@ switch ($report) {
              ORDER BY m.field1, m.field2",
             $rptMemberVars
         );
+        $member_link_cols[] = 0;
+        $member_link_cols[] = 1;
         // Annotate each row with the inactivity reason
         $annotated = [];
         foreach ($rows as $r) {
@@ -1081,6 +1192,7 @@ switch ($report) {
                 'available'     => $r['available'] ?: '',
                 'last_activity' => $r['last_activity'] ?: '(never)',
                 'reason'        => implode('; ', $reasons),
+                'member_id'     => (int) ($r['id'] ?? 0),
             ];
         }
         $rows = $annotated;
@@ -1098,8 +1210,10 @@ switch ($report) {
             ['key' => 'total_hours',   'label' => 'Hours',   'align' => 'right'],
             ['key' => 'last_activity', 'label' => 'Last Logged'],
         ];
+        $member_link_cols[] = 0;
+        $member_link_cols[] = 1;
         $rows = safe_fetch_all_rpt(
-            "SELECT m.field2 AS first_name, m.field1 AS last_name, m.field4 AS callsign,
+            "SELECT m.id AS member_id, m.field2 AS first_name, m.field1 AS last_name, m.field4 AS callsign,
                     COUNT(te.id)         AS entry_count,
                     COALESCE(SUM(te.hours), 0) AS total_hours,
                     MAX(te.started_at)   AS last_activity
@@ -1128,6 +1242,20 @@ switch ($report) {
 
 ini_set('display_errors', $prevDisplay);
 
+// Personnel report member-id extraction (drill-down links) — read from the
+// FINAL $rows order, not built alongside the fetch loops above: several
+// personnel cases usort()/annotate/reassign $rows after their row-building
+// loop, which would desync a parallel array built during that loop. Reading
+// 'member_id' off each row here, after all of that has happened, can't
+// desync because it walks whatever order $rows is actually in. This key is
+// never in $columns, so the flatten step below drops it from the response —
+// same as every other report, the internal id is never a visible cell.
+if (!empty($member_link_cols)) {
+    foreach ($rows as $r) {
+        $row_member_ids[] = is_array($r) ? (int) ($r['member_id'] ?? 0) : 0;
+    }
+}
+
 // Normalize column/row shape for the legacy renderer (which expects
 // columns: string[] and rows: array of indexed arrays). Personnel
 // reports are authored with structured columns + associative rows;
@@ -1148,6 +1276,26 @@ if (!empty($columns) && is_array($columns[0] ?? null)) {
     $rows    = $flatRows;
 }
 
+// Eric, 2026-08-13 (GH#51 follow-up, expanded to units/facilities/personnel/
+// teams the same day) — drill-down links. Assembled as one generic list of
+// {col, kind, ids} descriptors rather than a scalar-per-kind pair, because
+// a personnel report links BOTH its first_name and last_name columns to
+// the same member — a single column index per kind can't express that.
+// `ids` is row-parallel (ids[$r] is the id for row $r); a report with no
+// linkable column of a given kind simply never appends to that array, so
+// $links is [] for reports that don't apply (e.g. notes_log).
+$links = [];
+foreach ($incident_link_cols as $c) { $links[] = ['col' => $c, 'kind' => 'incident', 'ids' => $row_ticket_ids]; }
+foreach ($unit_link_cols as $c)     { $links[] = ['col' => $c, 'kind' => 'unit',     'ids' => $row_responder_ids]; }
+foreach ($facility_link_cols as $c) { $links[] = ['col' => $c, 'kind' => 'facility', 'ids' => $row_facility_ids]; }
+foreach ($member_link_cols as $c)   { $links[] = ['col' => $c, 'kind' => 'member',   'ids' => $row_member_ids]; }
+foreach ($team_link_cols as $c)     { $links[] = ['col' => $c, 'kind' => 'team',     'ids' => $row_team_ids]; }
+// team_multi: a cell listing several teams. 'items' is row-parallel, each
+// entry an array of {id,name} for that row -- the frontend renders one <a>
+// per item instead of wrapping the whole cell's text in a single link.
+foreach ($team_multi_link_cols as $c) { $links[] = ['col' => $c, 'kind' => 'team_multi', 'items' => $row_team_lists]; }
+foreach ($incident_type_link_cols as $c) { $links[] = ['col' => $c, 'kind' => 'incident_type', 'ids' => $row_type_ids]; }
+
 json_response([
     'report_title' => $report_title,
     'period_label' => $period_label,
@@ -1158,4 +1306,5 @@ json_response([
     // every other report type gets [] and callers that don't know about
     // this key are unaffected.
     'disposition_breakdown' => $disposition_breakdown,
+    'links' => $links,
 ]);

@@ -18,6 +18,7 @@
     var sortCol = 'name';
     var sortAsc = true;
     var searchTerm = '';
+    var _deepLinkTeamId = 0; // GH#51 follow-up (2026-08-13) reports drill-down: ?id=<team_id>
 
     // ── Escape key → back to dashboard ──
     document.addEventListener('keydown', function (e) {
@@ -51,6 +52,13 @@
         initTheme();
         loadTeams();
         bindEvents();
+
+        // Reports drill-down (GH#51 follow-up, 2026-08-13) — a report row's
+        // linked team name (api/reports.php's team_link_cols) points here as
+        // teams.php?id=<team_id>. Deep-open that team's detail once the list
+        // has loaded.
+        var idMatch = window.location.search.match(/[?&]id=(\d+)/);
+        _deepLinkTeamId = (idMatch && parseInt(idMatch[1], 10) > 0) ? parseInt(idMatch[1], 10) : 0;
     });
 
     // ── Theme toggle ──
@@ -88,6 +96,11 @@
 
                 document.getElementById('loadingSpinner').style.display = 'none';
                 document.getElementById('mainContent').style.display = '';
+
+                if (_deepLinkTeamId) {
+                    selectTeam(_deepLinkTeamId);
+                    _deepLinkTeamId = 0;
+                }
             })
             .catch(function (err) {
                 showAlert('Failed to load teams: ' + escHtml(err.message), 'danger');

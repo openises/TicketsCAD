@@ -928,14 +928,24 @@ function _geocode_google_components(array $components): array
 if (!defined('NEWUI_ROOT')) {
     define('NEWUI_ROOT', dirname(__DIR__));
 }
+// dirname(NEWUI_ROOT) alone is correct on POSIX and inside C:\inetpub\wwwroot
+// on a stock Windows/IIS install — the same mistake GHSA-x9x6-w4fg-pmcc's
+// round 2 made for zello-audio. served_dir_above_root() picks a
+// platform-aware default instead; see inc/served-dir.php.
+require_once __DIR__ . '/served-dir.php';
 if (!defined('GEOCODE_CACHE_DIR')) {
-    define('GEOCODE_CACHE_DIR', dirname(NEWUI_ROOT) . '/geocode-cache');
+    define('GEOCODE_CACHE_DIR', served_dir_above_root(NEWUI_ROOT, 'geocode-cache'));
 }
 
-/** Root of the geocode cache — above the web root. See the note above. */
+/** Root of the geocode cache — above the web root, platform-aware. See the note above. */
 function geocode_cache_dir(): string
 {
-    return GEOCODE_CACHE_DIR;
+    $dir = GEOCODE_CACHE_DIR;
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0700, true);
+    }
+    served_dir_harden($dir, 'Geocode lookup cache', true);
+    return $dir;
 }
 
 /**

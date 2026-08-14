@@ -1734,13 +1734,31 @@
     // from the new dropdown. The server figures out which.
     //
     // Phase 104f (a beta tester GH #10, 2026-07-02) — if the server rejects
-    // with extra_data_required (422), open the situation-page extra-
-    // data modal (exposed as window.TCADStatusExtraDataPrompt when
-    // app.js loads on incident-detail — hard fallback to a plain
-    // prompt() if the modal isn't available) and retry the request
-    // with the collected value. This closes the "incident-detail
-    // bypasses extra_data" validation gap a beta tester reported.
-    function updateAssignmentStatus(assignId, newStatusOrId, extraData) {
+    // with extra_data_required (422), open the extra-data modal and
+    // retry the request with the collected value. This closes the
+    // "incident-detail bypasses extra_data" validation gap a beta tester
+    // reported.
+    //
+    // GH#52 follow-up (Chris Byrd, 2026-08-13) — three fixes to this
+    // function:
+    //   1. window.TCADStatusExtraDataPrompt was referenced here since
+    //      Phase 104f but never defined anywhere (app.js's own modal is
+    //      tightly coupled to the dashboard's markup and never exposed
+    //      it) -- every extra-data status on this page silently fell
+    //      back to a plain prompt(), which cannot render a facility
+    //      list. It's now a real, shared component (assets/js/status-
+    //      extra-data-prompt.js), loaded on this page.
+    //   2. Slot 2 (extra_data_type_2, GH#52's own feature) had no
+    //      client-side handling at all on this page -- added, chained
+    //      after slot 1 the same way app.js's dashboard modal chains it.
+    //   3. `selEl` (the dropdown that was set .disabled = true before
+    //      calling this function) is now re-enabled on EVERY exit path
+    //      except a genuine success (which re-renders the whole table
+    //      via refreshIncident(), producing a fresh, enabled control) --
+    //      previously only success re-enabled it, so a cancelled prompt,
+    //      a server error, or a network failure left the dropdown stuck
+    //      disabled until the page was reloaded.
+    function updateAssignmentStatus(assignId, newStatusOrId, extraData, extraData2, selEl) {
         var ticketId = getIncidentId();
         if (!ticketId) return;
 
@@ -1756,6 +1774,29 @@
             body.new_status = newStatusOrId;
         }
         if (extraData) body.extra_data = extraData;
+        if (extraData2) body.extra_data_2 = extraData2;
+
+        function reEnable() {
+            if (selEl) selEl.disabled = false;
+        }
+
+        function openPrompt(edType, edLabel, statusVal, onValue) {
+            if (window.TCADStatusExtraDataPrompt) {
+                window.TCADStatusExtraDataPrompt({
+                    type: edType, label: edLabel, status_val: statusVal
+                }, function (val) {
+                    if (val === null) { reEnable(); return; }
+                    onValue(val);
+                });
+            } else {
+                // Only reachable if status-extra-data-prompt.js failed to
+                // load (e.g. a CDN/asset outage) -- degrade, don't break.
+                var promptMsg = 'This status requires ' + edLabel + '. Enter value:';
+                var val = window.prompt(promptMsg);
+                if (val === null || val === '') { reEnable(); return; }
+                onValue(val);
+            }
+        }
 
         fetch('api/incident-assign.php', {
             method: 'POST',
@@ -1778,36 +1819,41 @@
                             if (parseInt(statuses[i].id, 10) === sid) { opt = statuses[i]; break; }
                         }
                     }
-                    // Two fallback UIs: the reusable modal exposed by
-                    // app.js (situation page) if this page loaded it,
-                    // else a plain prompt() so the workflow still
-                    // completes on incident-detail-only sessions.
                     var edType = (opt && opt.extra_data_type) || 'note';
                     var edLabel = (opt && opt.extra_data_label) || data.label || 'value';
-                    if (window.TCADStatusExtraDataPrompt) {
-                        window.TCADStatusExtraDataPrompt({
-                            type: edType, label: edLabel, status_val: opt ? opt.status_val : ''
-                        }, function (val) {
-                            if (val === null) return;
-                            updateAssignmentStatus(assignId, newStatusOrId, { type: edType, value: val });
-                        });
-                    } else {
-                        var promptMsg = 'This status requires ' + edLabel + '. Enter value:';
-                        var val = window.prompt(promptMsg);
-                        if (val === null || val === '') return;
-                        updateAssignmentStatus(assignId, newStatusOrId, { type: edType, value: val });
+                    openPrompt(edType, edLabel, opt ? opt.status_val : '', function (val) {
+                        updateAssignmentStatus(assignId, newStatusOrId, { type: edType, value: val }, extraData2, selEl);
+                    });
+                });
+                return;
+            }
+            if (data && data.error === 'extra_data_required_2' && !extraData2) {
+                loadUnitStatuses(function (statuses) {
+                    var opt = null;
+                    if (typeof newStatusOrId === 'number' || /^\d+$/.test(String(newStatusOrId))) {
+                        var sid = parseInt(newStatusOrId, 10);
+                        for (var i = 0; i < statuses.length; i++) {
+                            if (parseInt(statuses[i].id, 10) === sid) { opt = statuses[i]; break; }
+                        }
                     }
+                    var edType2 = (opt && opt.extra_data_type_2) || 'note';
+                    var edLabel2 = (opt && opt.extra_data_label_2) || data.label || 'value';
+                    openPrompt(edType2, edLabel2, opt ? opt.status_val : '', function (val) {
+                        updateAssignmentStatus(assignId, newStatusOrId, extraData, { type: edType2, value: val }, selEl);
+                    });
                 });
                 return;
             }
             if (data && data.error) {
                 showAlert(escHtml(data.error), 'danger');
+                reEnable();
                 return;
             }
             refreshIncident();
         })
         .catch(function (err) {
             showAlert('Failed to update status: ' + escHtml(err.message), 'danger');
+            reEnable();
         });
     }
 
@@ -2571,7 +2617,7 @@
                         var assignId = parseInt(this.getAttribute('data-assign-id'), 10);
                         var statusId = parseInt(this.value, 10);
                         this.disabled = true;
-                        updateAssignmentStatus(assignId, statusId);
+                        updateAssignmentStatus(assignId, statusId, null, null, this);
                     });
                 });
             });

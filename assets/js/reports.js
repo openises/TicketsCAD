@@ -17,6 +17,24 @@
     var sortAsc = true;
     var responderList = [];
 
+    // Incident Summary → incident type → filtered Incidents list (Eric,
+    // 2026-08-13). Unlike every other drill-down kind, clicking a type
+    // doesn't open one record — it switches the active report tab to
+    // Incidents and re-runs it filtered to that type. typeFilterId is sent
+    // as in_types_id on every incident_report request while it's set.
+    var typeFilterId = 0;
+    var typeFilterLabel = '';
+
+    // Drill-down link targets by kind (GH#51 follow-up, 2026-08-13) — keyed
+    // to match the 'kind' string api/reports.php sends in reportData.links.
+    var LINK_KIND_URL = {
+        incident: 'incident-detail.php?id=',
+        unit: 'unit-detail.php?id=',
+        facility: 'facility-detail.php?id=',
+        member: 'roster.php?id=',
+        team: 'teams.php?id='
+    };
+
     // ── DOM refs ──────────────────────────────────────────────────────────────
 
     var reportTypeBtns    = document.getElementById('reportTypeBtns');
@@ -125,6 +143,18 @@
     function selectReportType(type) {
         currentReport = type;
 
+        // A type filter only makes sense on the Incidents report — clicking
+        // any OTHER tab manually clears it, same discipline as GH#57's
+        // incidentFilter clear-on-hide (a stale filter surviving a tab
+        // switch would silently narrow a report the user never asked to
+        // filter). drillIntoIncidentType() sets it back AFTER calling this,
+        // so drilling in still works.
+        if (type !== 'incident_report') {
+            typeFilterId = 0;
+            typeFilterLabel = '';
+            hideTypeFilterBanner();
+        }
+
         // Update active state across BOTH button groups
         function paintGroup(group) {
             if (!group) { return; }
@@ -149,6 +179,15 @@
 
         var showIncident = (type === 'after_action');
         incidentFilterCol.classList.toggle('d-none', !showIncident);
+        // GH#57 follow-up (2026-08-13): hiding the field left its VALUE in
+        // place, so runReport() -- which reads incidentFilter.value
+        // unconditionally, regardless of which tab is active -- kept
+        // sending the After Action tab's incident_number filter to every
+        // other report tab until a full page reload. Clear it the moment
+        // it's hidden, not just on page load.
+        if (!showIncident) {
+            incidentFilter.value = '';
+        }
 
         // Personnel reports that don't use the period filter at all
         var personnelNoPeriod = (type === 'roster_snapshot' ||
@@ -165,6 +204,63 @@
         periodSelect.parentElement.classList.toggle('d-none', hidePeriod);
         customDateRange.classList.toggle('d-none', hidePeriod || currentPeriod !== 'custom');
         customDateRange2.classList.toggle('d-none', hidePeriod || currentPeriod !== 'custom');
+    }
+
+    // ── Incident Summary → type drill-down ──────────────────────────────────────
+
+    /** Switch to the Incidents report, filtered to one incident type, and run it. */
+    function drillIntoIncidentType(typeId, typeLabel) {
+        selectReportType('incident_report');
+        typeFilterId = typeId;
+        typeFilterLabel = typeLabel;
+        showTypeFilterBanner();
+        runReport();
+    }
+
+    function showTypeFilterBanner() {
+        hideTypeFilterBanner();
+        var banner = document.createElement('div');
+        banner.id = 'typeFilterBanner';
+        banner.className = 'alert alert-info alert-dismissible fade show d-flex align-items-center py-2 mb-2';
+
+        var icon = document.createElement('i');
+        icon.className = 'bi bi-funnel-fill me-2';
+        banner.appendChild(icon);
+
+        var span = document.createElement('span');
+        span.appendChild(document.createTextNode('Showing incidents of type '));
+        var strong = document.createElement('strong');
+        strong.textContent = typeFilterLabel;
+        span.appendChild(strong);
+        banner.appendChild(span);
+
+        var clearBtn = document.createElement('button');
+        clearBtn.type = 'button';
+        clearBtn.className = 'btn btn-sm btn-outline-info ms-3';
+        clearBtn.textContent = 'Clear Filter';
+        clearBtn.addEventListener('click', clearTypeFilter);
+        banner.appendChild(clearBtn);
+
+        var closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'btn-close';
+        closeBtn.setAttribute('aria-label', 'Clear filter');
+        closeBtn.addEventListener('click', clearTypeFilter);
+        banner.appendChild(closeBtn);
+
+        reportHeader.parentNode.insertBefore(banner, reportHeader);
+    }
+
+    function hideTypeFilterBanner() {
+        var el = document.getElementById('typeFilterBanner');
+        if (el) { el.remove(); }
+    }
+
+    function clearTypeFilter() {
+        typeFilterId = 0;
+        typeFilterLabel = '';
+        hideTypeFilterBanner();
+        runReport();
     }
 
     // ── Load Responders for Filter ────────────────────────────────────────────
@@ -211,6 +307,11 @@
         var iid = (incidentFilter.value || '').trim();
         if (iid !== '') {
             params += '&incident_number=' + encodeURIComponent(iid);
+        }
+
+        // Incident Summary → type drill-down (only applies to Incidents).
+        if (currentReport === 'incident_report' && typeFilterId > 0) {
+            params += '&in_types_id=' + typeFilterId;
         }
 
         showLoading();
@@ -351,15 +452,86 @@
         }
     }
 
+    // Eric, 2026-08-13 (GH#51 follow-up) — "hyperlink the ID so a user can
+    // view the actual incident", applied to every report that has one, not
+    // just the Incidents tab. reportData.incident_link_col/unit_link_col
+    // name WHICH column (if any) gets linked for the CURRENT report;
+    // row_ticket_ids/row_responder_ids are parallel arrays (same order as
+    // rows) of the internal id to link to. The cell keeps showing whatever
+    // it always showed (incident_number, a unit's name/handle) — only the
+    // link TARGET carries the internal id, never the visible text.
     function renderRows(rows) {
         reportTableBody.innerHTML = '';
+
+        // Map column index -> {col, kind, ids} from the generic links list
+        // api/reports.php sends. A given column carries at most one kind.
+        var linksByCol = {};
+        var linkDescs = (reportData && reportData.links) || [];
+        for (var i = 0; i < linkDescs.length; i++) {
+            linksByCol[linkDescs[i].col] = linkDescs[i];
+        }
+
         for (var r = 0; r < rows.length; r++) {
             var tr = document.createElement('tr');
             for (var c = 0; c < rows[r].length; c++) {
                 var td = document.createElement('td');
                 td.className = 'small';
                 var val = rows[r][c];
-                td.textContent = (val !== null && val !== undefined) ? String(val) : '';
+                var text = (val !== null && val !== undefined) ? String(val) : '';
+                var desc = linksByCol[c];
+
+                // team_multi: a cell listing several teams (e.g. roster's
+                // comma-joined Teams column) — one <a> per team, not one
+                // link wrapping the whole joined string.
+                if (desc && desc.kind === 'team_multi') {
+                    var items = (desc.items && desc.items[r]) || [];
+                    if (items.length && LINK_KIND_URL.team) {
+                        for (var ii = 0; ii < items.length; ii++) {
+                            if (ii > 0) td.appendChild(document.createTextNode(', '));
+                            var mLink = document.createElement('a');
+                            mLink.href = LINK_KIND_URL.team + items[ii].id;
+                            mLink.textContent = items[ii].name;
+                            td.appendChild(mLink);
+                        }
+                    } else {
+                        td.textContent = text;
+                    }
+                    tr.appendChild(td);
+                    continue;
+                }
+
+                // incident_type: doesn't open a single record — it switches
+                // the active tab to Incidents, filtered to this type. Needs
+                // a click handler, not a plain href, so it's handled apart
+                // from the generic id-based link path below.
+                if (desc && desc.kind === 'incident_type' && desc.ids && desc.ids[r] > 0 && text !== '') {
+                    var typeLink = document.createElement('a');
+                    typeLink.href = '#';
+                    typeLink.textContent = text;
+                    typeLink.addEventListener('click', (function (typeId, typeLabel) {
+                        return function (evt) {
+                            evt.preventDefault();
+                            drillIntoIncidentType(typeId, typeLabel);
+                        };
+                    })(desc.ids[r], text));
+                    td.appendChild(typeLink);
+                    tr.appendChild(td);
+                    continue;
+                }
+
+                var linkHref = null;
+                if (desc && desc.ids && desc.ids[r] > 0 && LINK_KIND_URL[desc.kind]) {
+                    linkHref = LINK_KIND_URL[desc.kind] + desc.ids[r];
+                }
+
+                if (linkHref && text !== '') {
+                    var a = document.createElement('a');
+                    a.href = linkHref;
+                    a.textContent = text;
+                    td.appendChild(a);
+                } else {
+                    td.textContent = text;
+                }
                 tr.appendChild(td);
             }
             reportTableBody.appendChild(tr);
@@ -378,7 +550,7 @@
             sortAsc = true;
         }
 
-        var rows = reportData.rows.slice(); // copy
+        var rows = reportData.rows;
 
         // Eric 2026-08-12 — parseFloat() only reads a LEADING number, so
         // "26-0091" (Incident #) and "2026-06-15 14:22:09" (Dispatched /
@@ -395,9 +567,19 @@
             return v !== null && v !== undefined && REPORTS_NUMERIC_RE.test(String(v).trim());
         }
 
-        rows.sort(function (a, b) {
-            var va = a[colIdx];
-            var vb = b[colIdx];
+        // GH#51 follow-up (2026-08-13) — sort a permutation of INDICES
+        // rather than the rows array directly. reportData.links[].ids is
+        // row-parallel (ids[r] is the drill-down id for rows[r]); sorting
+        // rows alone leaves those id arrays in the original order, so
+        // every link would point at the wrong record after a column sort.
+        // The same permutation that reorders rows must reorder each ids
+        // array identically.
+        var order = [];
+        for (var oi = 0; oi < rows.length; oi++) { order.push(oi); }
+
+        order.sort(function (ia, ib) {
+            var va = rows[ia][colIdx];
+            var vb = rows[ib][colIdx];
 
             if (isWhollyNumeric(va) && isWhollyNumeric(vb)) {
                 var na = parseFloat(va);
@@ -413,7 +595,21 @@
             return 0;
         });
 
-        reportData.rows = rows;
+        reportData.rows = order.map(function (i) { return rows[i]; });
+
+        var links = reportData.links || [];
+        for (var li = 0; li < links.length; li++) {
+            var ids = links[li].ids;
+            if (ids) {
+                links[li].ids = order.map(function (i) { return ids[i]; });
+            }
+            // team_multi carries 'items' (an array-of-arrays) instead of a
+            // flat 'ids' array — same row-parallel permutation, different key.
+            var items = links[li].items;
+            if (items) {
+                links[li].items = order.map(function (i) { return items[i]; });
+            }
+        }
 
         // Re-render header icons
         var ths = reportTableHead.querySelectorAll('th');
@@ -430,7 +626,7 @@
             }
         }
 
-        renderRows(rows);
+        renderRows(reportData.rows);
     }
 
     // ── Summary Cards ─────────────────────────────────────────────────────────
