@@ -50,12 +50,18 @@ if ($method === 'GET') {
         // the mobile UI can prompt for configured extra-data when a
         // status is selected. Two-tier fetch: full set first, then
         // legacy fallback for pre-Phase-95 installs.
+        // GH#52 (2026-08-14) — added slot 2 (extra_data_*_2) to both
+        // tiers; the mobile UI never surfaced slot 2 at all before this,
+        // even when Settings had it configured, because these columns
+        // simply weren't in the payload the client had to work with.
         $statuses = safe_mobile_fetch(
             "SELECT `id`, `status_val`, `description`,
                     `bg_color` AS `color`, `text_color`,
                     `dispatch`, `incident_action`, `resets_par`,
                     `extra_data_type`, `extra_data_required`,
-                    `extra_data_label`, `extra_data_target`
+                    `extra_data_label`, `extra_data_target`,
+                    `extra_data_type_2`, `extra_data_required_2`,
+                    `extra_data_label_2`, `extra_data_target_2`
              FROM `{$prefix}un_status`
              WHERE (`hide` IS NULL OR `hide` = '' OR `hide` = 'n' OR `hide` = '0' OR `hide` = 0)
              ORDER BY `sort`, `id`"
@@ -70,10 +76,14 @@ if ($method === 'GET') {
                  ORDER BY `sort`, `id`"
             );
             foreach ($statuses as &$s) {
-                $s['extra_data_type']     = 'none';
-                $s['extra_data_required'] = 0;
-                $s['extra_data_label']    = null;
-                $s['extra_data_target']   = 'action_log';
+                $s['extra_data_type']       = 'none';
+                $s['extra_data_required']   = 0;
+                $s['extra_data_label']      = null;
+                $s['extra_data_target']     = 'action_log';
+                $s['extra_data_type_2']     = 'none';
+                $s['extra_data_required_2'] = 0;
+                $s['extra_data_label_2']    = null;
+                $s['extra_data_target_2']   = 'action_log';
             }
             unset($s);
         }

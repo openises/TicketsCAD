@@ -171,7 +171,7 @@ $csrf     = csrf_token();
         <!-- ── Live Feed ──────────────────────────────────────────── -->
         <div class="tab-pane fade" data-tab-content="feed">
             <div class="d-flex gap-2 mb-2 align-items-center">
-                <label class="form-label form-label-sm mb-0">Bridge filter:</label>
+                <label class="form-label form-label-sm mb-0" for="feedBridgeFilter">Bridge filter:</label>
                 <select class="form-select form-select-sm" id="feedBridgeFilter" style="max-width:240px;">
                     <option value="0">All bridges</option>
                 </select>
@@ -192,7 +192,7 @@ $csrf     = csrf_token();
         <!-- ── Nodes ──────────────────────────────────────────────── -->
         <div class="tab-pane fade" data-tab-content="nodes">
             <div class="d-flex gap-2 mb-2 align-items-center">
-                <label class="form-label form-label-sm mb-0">Last heard within:</label>
+                <label class="form-label form-label-sm mb-0" for="nodesHours">Last heard within:</label>
                 <select class="form-select form-select-sm" id="nodesHours" style="max-width:160px;">
                     <option value="1">1 hour</option>
                     <option value="24">24 hours</option>
@@ -229,15 +229,15 @@ $csrf     = csrf_token();
                 <div class="card-body small">
                     <div class="row g-2 align-items-end">
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm">Bridge</label>
+                            <label class="form-label form-label-sm" for="assignBridge">Bridge</label>
                             <select class="form-select form-select-sm" id="assignBridge"><option value="">— choose —</option></select>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm">Channel</label>
+                            <label class="form-label form-label-sm" for="assignChannel">Channel</label>
                             <select class="form-select form-select-sm" id="assignChannel"><option value="">— choose —</option></select>
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm">Slot</label>
+                            <label class="form-label form-label-sm" for="assignSlot">Slot</label>
                             <select class="form-select form-select-sm" id="assignSlot">
                                 <option value="0">0 (Primary)</option>
                                 <option value="1">1</option><option value="2">2</option><option value="3">3</option>
@@ -255,7 +255,7 @@ $csrf     = csrf_token();
         <!-- ── Map (Phase 39E) ────────────────────────────────────── -->
         <div class="tab-pane fade" data-tab-content="map">
             <div class="d-flex gap-2 mb-2 align-items-center">
-                <label class="form-label form-label-sm mb-0">Window:</label>
+                <label class="form-label form-label-sm mb-0" for="mapHours">Window:</label>
                 <select class="form-select form-select-sm" id="mapHours" style="max-width:140px;">
                     <option value="1">last 1 hour</option>
                     <option value="24" selected>last 24 hours</option>
@@ -289,12 +289,12 @@ $csrf     = csrf_token();
 
                     <div class="row g-2 align-items-end">
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm">Bridge</label>
+                            <label class="form-label form-label-sm" for="setupBridgeSelect">Bridge</label>
                             <select class="form-select form-select-sm" id="setupBridgeSelect"><option value="">— pick existing —</option></select>
                             <button type="button" class="btn btn-sm btn-link p-0 mt-1" id="btnSetupMintNew"><i class="bi bi-plus-circle me-1"></i>Mint a new bridge</button>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm">Radio firmware</label>
+                            <label class="form-label form-label-sm" for="setupProtocol">Radio firmware</label>
                             <select class="form-select form-select-sm" id="setupProtocol">
                                 <option value="meshtastic">Meshtastic</option>
                                 <option value="meshcore">MeshCore</option>
@@ -302,7 +302,7 @@ $csrf     = csrf_token();
                             </select>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm">Transport</label>
+                            <label class="form-label form-label-sm" for="setupTransport">Transport</label>
                             <select class="form-select form-select-sm" id="setupTransport">
                                 <option value="serial">USB Serial (default)</option>
                                 <option value="tcp">TCP/IP (Wi-Fi node)</option>
@@ -310,7 +310,7 @@ $csrf     = csrf_token();
                             </select>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm">Transport target</label>
+                            <label class="form-label form-label-sm" for="setupTarget">Transport target</label>
                             <input type="text" class="form-control form-control-sm font-monospace" id="setupTarget" placeholder="/dev/ttyUSB0">
                             <div class="form-text small" id="setupTargetHint">Linux: <code>dmesg | grep tty</code> to find it.</div>
                         </div>
@@ -318,18 +318,18 @@ $csrf     = csrf_token();
 
                     <div class="row g-2 mt-2 d-none" id="setupSecondPortRow">
                         <div class="col-md-3 offset-md-3">
-                            <label class="form-label form-label-sm">Second radio firmware</label>
+                            <label class="form-label form-label-sm" for="setupProtocol2">Second radio firmware</label>
                             <input type="text" class="form-control form-control-sm" id="setupProtocol2" value="meshcore" readonly>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm">Second transport</label>
+                            <label class="form-label form-label-sm" for="setupTransport2">Second transport</label>
                             <select class="form-select form-select-sm" id="setupTransport2">
                                 <option value="serial">USB Serial</option>
                                 <option value="tcp">TCP/IP</option>
                             </select>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm">Second target</label>
+                            <label class="form-label form-label-sm" for="setupTarget2">Second target</label>
                             <input type="text" class="form-control form-control-sm font-monospace" id="setupTarget2" placeholder="/dev/ttyUSB1">
                         </div>
                     </div>
@@ -371,13 +371,13 @@ $csrf     = csrf_token();
                 <div class="card-body">
                     <div class="row g-2">
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm">Target bridge</label>
+                            <label class="form-label form-label-sm" for="sendBridge">Target bridge</label>
                             <select class="form-select form-select-sm" id="sendBridge">
                                 <option value="0">Any (first available)</option>
                             </select>
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm">Protocol</label>
+                            <label class="form-label form-label-sm" for="sendProtocol">Protocol</label>
                             <select class="form-select form-select-sm" id="sendProtocol">
                                 <option value="any">Any</option>
                                 <option value="meshtastic">Meshtastic</option>
@@ -387,7 +387,7 @@ $csrf     = csrf_token();
                         </div>
                         <!-- Phase B: choose the addressing mode for this send. -->
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm">Send to</label>
+                            <label class="form-label form-label-sm" for="sendMode">Send to</label>
                             <select class="form-select form-select-sm" id="sendMode">
                                 <option value="channel">Channel (broadcast)</option>
                                 <option value="node">Direct — node ID</option>
@@ -396,7 +396,7 @@ $csrf     = csrf_token();
                         </div>
                         <!-- Phase 39C + 40: direct-message target node. Free text + datalist autocomplete. -->
                         <div class="col-md-3" id="sendToNodeWrap" style="display:none;">
-                            <label class="form-label form-label-sm">To node (DM)
+                            <label class="form-label form-label-sm" for="sendToNode">To node (DM)
                                 <i class="bi bi-info-circle text-body-secondary" title="Type a node ID (!abc12345) or a MeshCore pubkey-prefix, pick from suggestions, or switch to Channel to broadcast."></i>
                             </label>
                             <input type="text" class="form-control form-control-sm font-monospace"
@@ -407,7 +407,7 @@ $csrf     = csrf_token();
                         <!-- Phase B: direct-message a unit / person, resolved to the
                              transport address via the comm-identifier resolver. -->
                         <div class="col-md-3" id="sendToUnitWrap" style="display:none;">
-                            <label class="form-label form-label-sm">To unit / person (DM)
+                            <label class="form-label form-label-sm" for="sendToUnit">To unit / person (DM)
                                 <i class="bi bi-info-circle text-body-secondary" title="Resolves the chosen unit/person to their Meshtastic node / MeshCore pubkey-prefix from the roster. Requires a concrete protocol (not Any)."></i>
                             </label>
                             <select class="form-select form-select-sm" id="sendToUnit">
@@ -416,7 +416,7 @@ $csrf     = csrf_token();
                             <div class="form-text small" id="sendToUnitHint">Pick a unit or person. Set Protocol to Meshtastic or MeshCore.</div>
                         </div>
                         <div class="col-md-2" id="sendChannelSlotWrap">
-                            <label class="form-label form-label-sm">Channel</label>
+                            <label class="form-label form-label-sm" for="sendChannelSlot">Channel</label>
                             <select class="form-select form-select-sm" id="sendChannelSlot">
                                 <option value="0">Slot 0 (primary)</option>
                                 <option value="1">Slot 1</option><option value="2">Slot 2</option>
@@ -428,7 +428,7 @@ $csrf     = csrf_token();
                              Shown only for a Zello channel broadcast; blank = the
                              configured dispatch channel (the proxy fills it in). -->
                         <div class="col-md-3" id="sendZelloChannelWrap" style="display:none;">
-                            <label class="form-label form-label-sm">Zello channel
+                            <label class="form-label form-label-sm" for="sendZelloChannel">Zello channel
                                 <i class="bi bi-info-circle text-body-secondary" title="The Zello channel name to broadcast on. Leave blank to use the configured dispatch channel."></i>
                             </label>
                             <input type="text" class="form-control form-control-sm" id="sendZelloChannel"
@@ -452,7 +452,7 @@ $csrf     = csrf_token();
                             <button class="btn btn-sm btn-primary w-100" id="btnSendText"><i class="bi bi-send me-1"></i>Send</button>
                         </div>
                         <div class="col-12">
-                            <label class="form-label form-label-sm">Message</label>
+                            <label class="form-label form-label-sm" for="sendText">Message</label>
                             <input type="text" class="form-control form-control-sm" id="sendText" maxlength="200" placeholder="Type a message to the mesh...">
                             <div class="form-text small">Direct messages use the transport's direct addressing (Meshtastic node / MeshCore pubkey-prefix; Zello user); channel sends go to the chosen mesh slot or Zello channel. A Zello send queues to <code>zello_outbox</code> and the Zello proxy relays it.</div>
                         </div>
@@ -468,7 +468,7 @@ $csrf     = csrf_token();
         <!-- ── Coverage / Latency ─────────────────────────────────── -->
         <div class="tab-pane fade" data-tab-content="coverage">
             <div class="d-flex gap-2 mb-2">
-                <label class="form-label form-label-sm mb-0">Window:</label>
+                <label class="form-label form-label-sm mb-0" for="coverageHours">Window:</label>
                 <select class="form-select form-select-sm" id="coverageHours" style="max-width:140px;">
                     <option value="1">last 1 hour</option>
                     <option value="6">last 6 hours</option>
@@ -510,16 +510,16 @@ $csrf     = csrf_token();
                         <div class="card-header py-2 small fw-semibold">Configure a remote device</div>
                         <div class="card-body">
                             <div class="mb-2">
-                                <label class="form-label form-label-sm">Bridge (which radio to configure)</label>
+                                <label class="form-label form-label-sm" for="cfgBridge">Bridge (which radio to configure)</label>
                                 <select class="form-select form-select-sm" id="cfgBridge">
                                     <option value="0">— Choose a bridge —</option>
                                 </select>
                             </div>
                             <div class="mb-2">
-                                <label class="form-label form-label-sm">Set owner / long name</label>
+                                <label class="form-label form-label-sm" for="cfgLongName">Set owner / long name</label>
                                 <div class="input-group input-group-sm">
                                     <input type="text" class="form-control" id="cfgLongName" maxlength="39" placeholder="e.g. CAD-Dispatch">
-                                    <input type="text" class="form-control" id="cfgShortName" maxlength="4" placeholder="4-char">
+                                    <input type="text" class="form-control" id="cfgShortName" maxlength="4" placeholder="4-char" aria-label="Short name (4 characters)">
                                     <button class="btn btn-outline-primary" id="btnCfgSetOwner">Apply</button>
                                 </div>
                                 <div class="form-text small">Sets the firmware-level node name. Visible to all mesh chat clients.</div>
@@ -564,17 +564,17 @@ $csrf     = csrf_token();
             </div>
             <div class="modal-body">
                 <div class="mb-2">
-                    <label class="form-label form-label-sm">Name *</label>
+                    <label class="form-label form-label-sm" for="newChName">Name *</label>
                     <input type="text" class="form-control form-control-sm" id="newChName" maxlength="32" placeholder="e.g. EOC-Ops">
                 </div>
                 <div class="mb-2">
-                    <label class="form-label form-label-sm">PSK (base64, optional)</label>
+                    <label class="form-label form-label-sm" for="newChPsk">PSK (base64, optional)</label>
                     <input type="text" class="form-control form-control-sm font-monospace" id="newChPsk" placeholder="(leave blank to generate a fresh 32-byte AES-256 key)">
                     <div class="form-text">Paste an existing channel's key to join, or leave blank to mint a new private channel.</div>
                 </div>
                 <div class="row g-2 mb-2">
                     <div class="col-6">
-                        <label class="form-label form-label-sm">Region</label>
+                        <label class="form-label form-label-sm" for="newChRegion">Region</label>
                         <select class="form-select form-select-sm" id="newChRegion">
                             <option>US</option><option>EU_433</option><option>EU_868</option>
                             <option>CN</option><option>JP</option><option>ANZ</option>
@@ -585,7 +585,7 @@ $csrf     = csrf_token();
                         </select>
                     </div>
                     <div class="col-6">
-                        <label class="form-label form-label-sm">Modem preset</label>
+                        <label class="form-label form-label-sm" for="newChModem">Modem preset</label>
                         <select class="form-select form-select-sm" id="newChModem">
                             <option>LONG_FAST</option><option>LONG_SLOW</option>
                             <option>VERY_LONG_SLOW</option><option>MEDIUM_SLOW</option>
@@ -595,7 +595,7 @@ $csrf     = csrf_token();
                     </div>
                 </div>
                 <div class="mb-2">
-                    <label class="form-label form-label-sm">Notes</label>
+                    <label class="form-label form-label-sm" for="newChNotes">Notes</label>
                     <input type="text" class="form-control form-control-sm" id="newChNotes" maxlength="200">
                 </div>
                 <div class="form-check form-check-inline">
@@ -630,12 +630,12 @@ $csrf     = csrf_token();
                         <div class="small text-body-secondary mt-1">Scan with a Meshtastic app (Android/iOS)</div>
                     </div>
                     <div class="col-md-7">
-                        <label class="form-label form-label-sm">Share URL</label>
+                        <label class="form-label form-label-sm" for="shareUrl">Share URL</label>
                         <div class="input-group input-group-sm mb-2">
                             <input type="text" class="form-control font-monospace" id="shareUrl" readonly>
                             <button class="btn btn-outline-secondary" id="btnCopyShareUrl"><i class="bi bi-clipboard"></i></button>
                         </div>
-                        <label class="form-label form-label-sm">PSK (base64)</label>
+                        <label class="form-label form-label-sm" for="sharePsk">PSK (base64)</label>
                         <div class="input-group input-group-sm mb-2">
                             <input type="text" class="form-control font-monospace" id="sharePsk" readonly>
                             <button class="btn btn-outline-secondary" id="btnCopySharePsk"><i class="bi bi-clipboard"></i></button>
@@ -684,7 +684,7 @@ $csrf     = csrf_token();
                 <div class="border rounded p-2 mb-2 small bg-body-tertiary" id="replyContext">
                     <!-- filled by JS: who/where the inbound came from -->
                 </div>
-                <label class="form-label form-label-sm">Reply</label>
+                <label class="form-label form-label-sm" for="replyText">Reply</label>
                 <input type="text" class="form-control form-control-sm" id="replyText" maxlength="200"
                        placeholder="Type your reply…" autocomplete="off">
                 <div class="form-text small" id="replyHint"></div>
@@ -719,7 +719,7 @@ $csrf     = csrf_token();
                         <label class="btn btn-outline-secondary" for="zReplyUser">DM sender</label>
                     </div>
                 </div>
-                <label class="form-label form-label-sm">Reply</label>
+                <label class="form-label form-label-sm" for="zelloReplyText">Reply</label>
                 <input type="text" class="form-control form-control-sm" id="zelloReplyText" maxlength="1000"
                        placeholder="Type your reply…" autocomplete="off">
                 <div class="form-text small" id="zelloReplyHint"></div>
@@ -743,18 +743,18 @@ $csrf     = csrf_token();
             </div>
             <div class="modal-body">
                 <div class="mb-2">
-                    <label class="form-label form-label-sm">Bridge</label>
+                    <label class="form-label form-label-sm" for="mintBridgeSelect">Bridge</label>
                     <select class="form-select form-select-sm" id="mintBridgeSelect">
                         <option value="0">— New bridge —</option>
                     </select>
                 </div>
                 <div id="mintNewFields">
                     <div class="mb-2">
-                        <label class="form-label form-label-sm">Label *</label>
+                        <label class="form-label form-label-sm" for="mintLabel">Label *</label>
                         <input type="text" class="form-control form-control-sm" id="mintLabel" placeholder="e.g. eoc-radio-room">
                     </div>
                     <div class="mb-2">
-                        <label class="form-label form-label-sm">Host hint (optional)</label>
+                        <label class="form-label form-label-sm" for="mintHost">Host hint (optional)</label>
                         <input type="text" class="form-control form-control-sm" id="mintHost" placeholder="hostname + radio model + location">
                     </div>
                 </div>

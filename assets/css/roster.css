@@ -40,6 +40,14 @@ th.sortable:hover .sort-icon {
     background-color: rgba(var(--bs-warning-rgb), 0.18) !important;
     border-left: 3px solid var(--bs-warning);
 }
+/* Keyboard nav (Eric, 2026-08-14): roving-tabindex focus ring. Rows are
+   tabindex="0"/"-1" divs-as-table-rows, not natively interactive, so an
+   explicit :focus-visible style is worth stating rather than trusting an
+   inherited default that some browsers render faintly on <tr>. */
+.roster-row:focus-visible {
+    outline: 2px solid var(--bs-primary);
+    outline-offset: -2px;
+}
 .roster-row td {
     vertical-align: middle;
     padding: 0.3rem 0.5rem;

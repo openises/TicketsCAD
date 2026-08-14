@@ -146,7 +146,7 @@ $csrf        = csrf_token();
                     </div>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label form-label-sm mb-0">Address precision ceiling</label>
+                    <label class="form-label form-label-sm mb-0" for="pbPrecision">Address precision ceiling</label>
                     <select class="form-select form-select-sm" id="pbPrecision">
                         <option value="exact">Exact — full street address</option>
                         <option value="block">Block — street name only (≈110m)</option>
@@ -157,7 +157,7 @@ $csrf        = csrf_token();
                         <em>coarser</em>, never finer.</div>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label form-label-sm mb-0">Default publish delay (seconds)</label>
+                    <label class="form-label form-label-sm mb-0" for="pbDelay">Default publish delay (seconds)</label>
                     <input type="number" min="0" class="form-control form-control-sm" id="pbDelay" value="90">
                     <div class="form-text">Applies to any incident type with no override in the Incident Type
                         Rules panel below. This is a dispatcher's only reaction window before a sensitive call
@@ -210,7 +210,7 @@ $csrf        = csrf_token();
             </p>
             <div class="row g-2 align-items-end mb-3">
                 <div class="col-md-8">
-                    <label class="form-label form-label-sm mb-0">Excluded groups (hard-excluded regardless of a type's own flag)</label>
+                    <label class="form-label form-label-sm mb-0" for="pbExcludedGroups">Excluded groups (hard-excluded regardless of a type's own flag)</label>
                     <select multiple class="form-select form-select-sm" id="pbExcludedGroups" size="4"></select>
                     <div class="form-text">Ctrl/Cmd-click to select multiple groups.</div>
                 </div>
@@ -242,11 +242,11 @@ $csrf        = csrf_token();
         <div class="card-body">
             <div class="row g-3">
                 <div class="col-md-4">
-                    <label class="form-label form-label-sm mb-0">Requests</label>
+                    <label class="form-label form-label-sm mb-0" for="pbRlRequests">Requests</label>
                     <input type="number" min="1" class="form-control form-control-sm" id="pbRlRequests" value="30">
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label form-label-sm mb-0">Per window (seconds)</label>
+                    <label class="form-label form-label-sm mb-0" for="pbRlWindow">Per window (seconds)</label>
                     <input type="number" min="1" class="form-control form-control-sm" id="pbRlWindow" value="60">
                 </div>
             </div>

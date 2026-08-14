@@ -211,15 +211,17 @@
         document.body.appendChild(wrap.firstChild);
     }
 
-    function promptMobileExtraData(status) {
+    // GH#52 (2026-08-14) — slotSuffix is '' for slot 1 or '_2' for slot 2.
+    function promptMobileExtraData(status, slotSuffix) {
+        slotSuffix = slotSuffix || '';
         return new Promise(function (resolve) {
             ensureMobileExtraDataModal();
-            var type  = status.extra_data_type;
-            var label = status.extra_data_label
+            var type  = status['extra_data_type' + slotSuffix];
+            var label = status['extra_data_label' + slotSuffix]
                         || ({facility:'Destination facility', mileage:'Mileage',
                              location:'Location', note:'Note', numeric:'Value'})[type]
                         || 'Additional info';
-            var req   = parseInt(status.extra_data_required || 0, 10) === 1;
+            var req   = parseInt(status['extra_data_required' + slotSuffix] || 0, 10) === 1;
 
             document.getElementById('mobileExtraDataLabel').textContent =
                 status.status_val + (req ? ' — ' + label + ' required' : '');
@@ -337,7 +339,12 @@
         _dispatchStatusChange.call(this, null);
     }
 
-    function _dispatchStatusChange(extraData) {
+    // GH#52 (2026-08-14) — chains slot 1 then slot 2, each only if the
+    // status configures it. Before this fix, this UI only ever knew about
+    // slot 1 (both the pre-check below and the retry-fallback further
+    // down) — a status with a second extra-data prompt configured would
+    // silently only collect the first.
+    function _dispatchStatusChange(extraData, extraData2) {
         if (!responderId) {
             showToast('No unit linked to your account', 'error');
             return;
@@ -345,13 +352,22 @@
         var statusId = parseInt(this.getAttribute('data-status-id'), 10);
         if (statusId === currentStatusId) return;
 
-        // Phase 95: if the status has extra_data, prompt first.
+        // Phase 95: slot 1.
         var status = findMobileStatus(statusId);
         if (status && status.extra_data_type && status.extra_data_type !== 'none' && !extraData) {
-            var btn = this;
-            promptMobileExtraData(status).then(function (ed) {
+            var btn1 = this;
+            promptMobileExtraData(status, '').then(function (ed) {
                 if (ed === null) return;
-                _dispatchStatusChange.call(btn, ed);
+                _dispatchStatusChange.call(btn1, ed, extraData2);
+            });
+            return;
+        }
+        // GH#52 — slot 2, independent of slot 1.
+        if (status && status.extra_data_type_2 && status.extra_data_type_2 !== 'none' && !extraData2) {
+            var btn2 = this;
+            promptMobileExtraData(status, '_2').then(function (ed2) {
+                if (ed2 === null) return;
+                _dispatchStatusChange.call(btn2, extraData, ed2);
             });
             return;
         }
@@ -366,6 +382,7 @@
             csrf_token: getCsrf()
         };
         if (extraData) body.extra_data = extraData;
+        if (extraData2) body.extra_data_2 = extraData2;
 
         fetch('api/responder-status.php', {
             method: 'POST',
@@ -414,9 +431,34 @@
                         extra_data_required: 1
                     };
                 }
-                promptMobileExtraData(status).then(function (ed) {
+                promptMobileExtraData(status, '').then(function (ed) {
                     if (ed === null) return;
-                    _dispatchStatusChange.call(btn, ed);
+                    _dispatchStatusChange.call(btn, ed, extraData2);
+                });
+                return;
+            }
+            // GH#52 (2026-08-14) — the same defensive retry, for slot 2.
+            // Deliberately a SEPARATE check rather than folding into
+            // wantsExtra above: the naive fix would be to substring-match
+            // 'extra_data_required' the same way, but
+            // "extra_data_2_required".indexOf("extra_data_required") is -1
+            // (the "2_" splits the substring), so that reuse would silently
+            // never fire. Checked for explicitly instead.
+            var wantsExtra2 = !!(data && data.code === 'extra_data_2_required');
+            if (wantsExtra2 && !extraData2) {
+                var status2 = findMobileStatus(statusId);
+                if (!status2) {
+                    status2 = {
+                        id: statusId,
+                        status_val: (data.label || 'this status'),
+                        extra_data_type_2: 'note',
+                        extra_data_label_2: (data.label || ''),
+                        extra_data_required_2: 1
+                    };
+                }
+                promptMobileExtraData(status2, '_2').then(function (ed2) {
+                    if (ed2 === null) return;
+                    _dispatchStatusChange.call(btn, extraData, ed2);
                 });
                 return;
             }

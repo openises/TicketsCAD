@@ -105,7 +105,7 @@ $active_page = 'messaging';
             <!-- Bulk actions -->
             <div class="d-flex align-items-center gap-2 mb-2">
                 <div class="form-check form-check-sm">
-                    <input class="form-check-input" type="checkbox" id="inboxSelectAll" title="Select all">
+                    <input class="form-check-input" type="checkbox" id="inboxSelectAll" title="Select all" aria-label="Select all messages">
                 </div>
                 <button type="button" class="btn btn-sm btn-outline-primary d-none" id="inboxBulkMarkRead" title="Mark selected as read">
                     <i class="bi bi-envelope-open me-1"></i>Mark Read
@@ -167,7 +167,7 @@ $active_page = 'messaging';
                                  mesh, two-stage Send-To, hide-irrelevant-fields.
                                  The form reshapes as the user picks Channel / Send-To. -->
                             <div class="col-md-4">
-                                <label class="form-label small text-body-secondary mb-1">Protocol / Channel</label>
+                                <label class="form-label small text-body-secondary mb-1" for="composeChannel">Protocol / Channel</label>
                                 <select class="form-select form-select-sm" id="composeChannel">
                                     <option value="inbox" selected>TicketsCAD Inbox (internal)</option>
                                     <option value="smtp">Email (SMTP)</option>
@@ -186,7 +186,7 @@ $active_page = 'messaging';
                                  bridge most recently online OR (when a target node is
                                  chosen) the bridge that most recently heard that node. -->
                             <div class="col-md-4" id="composeBridgeCol" style="display:none;">
-                                <label class="form-label small text-body-secondary mb-1">
+                                <label class="form-label small text-body-secondary mb-1" for="composeBridge">
                                     Target bridge
                                     <i class="bi bi-question-circle text-body-secondary" tabindex="0"
                                        data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
@@ -203,7 +203,7 @@ $active_page = 'messaging';
                                  per channel. Mesh: Broadcast slot / Direct node / Direct
                                  unit. SMTP+SMS: Direct email/phone. APRS: Direct callsign. -->
                             <div class="col-md-4" id="composeSendToCol" style="display:none;">
-                                <label class="form-label small text-body-secondary mb-1">Send to</label>
+                                <label class="form-label small text-body-secondary mb-1" for="composeSendTo">Send to</label>
                                 <select class="form-select form-select-sm" id="composeSendTo">
                                     <!-- options populated by JS per channel -->
                                 </select>
@@ -213,7 +213,7 @@ $active_page = 'messaging';
                             <div class="col-12" id="composeRecipRow">
                                 <!-- Inbox: user multi-select -->
                                 <div id="composeRecipInbox">
-                                    <label class="form-label small text-body-secondary mb-1">To</label>
+                                    <label class="form-label small text-body-secondary mb-1" for="composeTo">To</label>
                                     <select class="form-select form-select-sm" id="composeTo" multiple size="4">
                                         <option value="all">-- All Users (Broadcast) --</option>
                                     </select>
@@ -222,7 +222,7 @@ $active_page = 'messaging';
 
                                 <!-- Channel slot (mesh broadcast / zello channel name) -->
                                 <div id="composeRecipChannel" style="display:none;">
-                                    <label class="form-label small text-body-secondary mb-1" id="composeRecipChannelLabel">Channel</label>
+                                    <label class="form-label small text-body-secondary mb-1" id="composeRecipChannelLabel" for="composeChannelSlot">Channel</label>
                                     <select class="form-select form-select-sm" id="composeChannelSlot">
                                         <option value="channel:0">Slot 0 (Primary)</option>
                                         <option value="channel:1">Slot 1</option>
@@ -238,7 +238,7 @@ $active_page = 'messaging';
                                 <!-- Text address (SMTP / SMS / APRS / direct mesh node) +
                                      personnel/node picker autocomplete -->
                                 <div id="composeRecipText" style="display:none;">
-                                    <label class="form-label small text-body-secondary mb-1" id="composeRecipTextLabel">To</label>
+                                    <label class="form-label small text-body-secondary mb-1" id="composeRecipTextLabel" for="composeToText">To</label>
                                     <div class="position-relative">
                                         <input type="text" class="form-control form-control-sm" id="composeToText"
                                                placeholder="" autocomplete="off">
@@ -254,7 +254,7 @@ $active_page = 'messaging';
                                      sendTo=talkgroup. Populated from /api/talkgroups.php?enabled=1.
                                      Each option shows "TG XXXX — Name [call_type]". -->
                                 <div id="composeRecipTalkgroup" style="display:none;">
-                                    <label class="form-label small text-body-secondary mb-1">Talkgroup</label>
+                                    <label class="form-label small text-body-secondary mb-1" for="composeTalkgroup">Talkgroup</label>
                                     <select class="form-select form-select-sm" id="composeTalkgroup">
                                         <option value="">— loading talkgroups —</option>
                                     </select>
@@ -266,7 +266,7 @@ $active_page = 'messaging';
                                 <!-- Unit / personnel picker (future: resolves to channel-
                                      appropriate address via comm_identifiers) -->
                                 <div id="composeRecipUnit" style="display:none;">
-                                    <label class="form-label small text-body-secondary mb-1">To unit / person</label>
+                                    <label class="form-label small text-body-secondary mb-1" for="composeUnitPick">To unit / person</label>
                                     <select class="form-select form-select-sm" id="composeUnitPick">
                                         <option value="">— select —</option>
                                     </select>
@@ -297,7 +297,7 @@ $active_page = 'messaging';
                                  high-priority is a deliverable header or visible
                                  prefix. Hidden for mesh/APRS where it has no effect. -->
                             <div class="col-md-3" id="composePriorityCol">
-                                <label class="form-label small text-body-secondary mb-1">Priority</label>
+                                <label class="form-label small text-body-secondary mb-1" for="composePriority">Priority</label>
                                 <select class="form-select form-select-sm" id="composePriority">
                                     <option value="normal">Normal</option>
                                     <option value="high">High</option>
@@ -307,7 +307,7 @@ $active_page = 'messaging';
 
                             <!-- Send As — SMTP only (when user has personal email). -->
                             <div class="col-md-3" id="composeSendAsCol" style="display:none;">
-                                <label class="form-label small text-body-secondary mb-1">
+                                <label class="form-label small text-body-secondary mb-1" for="composeSendAs">
                                     Send As
                                     <i class="bi bi-question-circle text-body-secondary" tabindex="0"
                                        data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
@@ -323,7 +323,7 @@ $active_page = 'messaging';
                             <!-- Subject — only shown for channels that have subjects
                                  (inbox + smtp). Hidden for SMS where it doesn't apply. -->
                             <div class="col-12" id="composeSubjectCol">
-                                <label class="form-label small text-body-secondary mb-1">Subject</label>
+                                <label class="form-label small text-body-secondary mb-1" for="composeSubject">Subject</label>
                                 <input type="text" class="form-control form-control-sm" id="composeSubject"
                                        placeholder="Subject (optional)" maxlength="255">
                             </div>
@@ -332,7 +332,7 @@ $active_page = 'messaging';
                                  External channels don't have a clean way to
                                  link delivered messages back to incidents. -->
                             <div class="col-md-4" id="composeIncidentCol">
-                                <label class="form-label small text-body-secondary mb-1">Attach to Incident #</label>
+                                <label class="form-label small text-body-secondary mb-1" for="composeIncident">Attach to Incident #</label>
                                 <input type="number" class="form-control form-control-sm" id="composeIncident"
                                        placeholder="(optional)" min="1">
                             </div>
@@ -340,7 +340,7 @@ $active_page = 'messaging';
                             <!-- Body. Char counter shown for length-limited
                                  channels (SMS 160) — hidden otherwise. -->
                             <div class="col-12">
-                                <label class="form-label small text-body-secondary mb-1 d-flex justify-content-between">
+                                <label class="form-label small text-body-secondary mb-1 d-flex justify-content-between" for="composeBody">
                                     <span>Message</span>
                                     <span class="text-body-secondary small font-monospace" id="composeCharCounter" style="display:none;">0/160</span>
                                 </label>
@@ -412,11 +412,11 @@ $active_page = 'messaging';
                     This will send an <strong>URGENT</strong> message to ALL logged-in users and trigger an audio alert on every station.
                 </div>
                 <div class="mb-3">
-                    <label class="form-label small text-body-secondary mb-1">Subject</label>
+                    <label class="form-label small text-body-secondary mb-1" for="hasSubject">Subject</label>
                     <input type="text" class="form-control form-control-sm" id="hasSubject" value="HAS Broadcast" maxlength="255">
                 </div>
                 <div>
-                    <label class="form-label small text-body-secondary mb-1">Message</label>
+                    <label class="form-label small text-body-secondary mb-1" for="hasBody">Message</label>
                     <textarea class="form-control form-control-sm" id="hasBody" rows="4"
                               placeholder="Enter broadcast message..."></textarea>
                 </div>

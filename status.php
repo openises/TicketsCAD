@@ -261,13 +261,13 @@ $csrf     = csrf_token();
                 <i class="bi bi-clock-history text-primary me-2"></i>Service Event History
             </h6>
             <div class="d-flex gap-2 align-items-center">
-                <select class="form-select form-select-sm" id="historyDays" style="width:auto">
+                <select class="form-select form-select-sm" id="historyDays" style="width:auto" aria-label="Time range for event history">
                     <option value="1">Last 24 hours</option>
                     <option value="7" selected>Last 7 days</option>
                     <option value="30">Last 30 days</option>
                     <option value="90">Last 90 days</option>
                 </select>
-                <select class="form-select form-select-sm" id="historyService" style="width:auto">
+                <select class="form-select form-select-sm" id="historyService" style="width:auto" aria-label="Filter event history by service">
                     <option value="">All Services</option>
                     <option value="database">Database</option>
                     <option value="php">PHP</option>

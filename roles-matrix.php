@@ -135,7 +135,7 @@ $active_page = 'personnel';
     <div class="card mb-3">
         <div class="card-body py-2 d-flex align-items-center flex-wrap gap-3">
             <div class="d-flex align-items-center gap-2">
-                <label class="form-label small mb-0 text-body-secondary">Show:</label>
+                <label class="form-label small mb-0 text-body-secondary" for="filterScope">Show:</label>
                 <select class="form-select form-select-sm" id="filterScope" style="width: auto;">
                     <option value="all">All permissions</option>
                     <option value="unreviewed" selected>Un-reviewed only</option>
@@ -144,14 +144,14 @@ $active_page = 'personnel';
                 </select>
             </div>
             <div class="d-flex align-items-center gap-2">
-                <label class="form-label small mb-0 text-body-secondary">Category:</label>
+                <label class="form-label small mb-0 text-body-secondary" for="filterCategory">Category:</label>
                 <select class="form-select form-select-sm" id="filterCategory" style="width: auto;">
                     <option value="">All categories</option>
                 </select>
             </div>
             <div class="d-flex align-items-center gap-2">
                 <input type="search" class="form-control form-control-sm" id="filterText"
-                       placeholder="Filter code/name..." style="width: 200px;">
+                       placeholder="Filter code/name..." style="width: 200px;" aria-label="Filter permissions by code or name">
             </div>
             <div class="ms-auto text-body-secondary small" id="matrixSummary">
                 Loading…

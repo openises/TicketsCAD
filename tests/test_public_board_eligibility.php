@@ -63,10 +63,17 @@ $origDefaultDelay   = null;
 
 function _pb_test_make_type(array $overrides = []): int {
     global $prefix, $createdTypeIds;
+    // 2026-08-14: public_board_never_publish now defaults to 1 (never
+    // publish) on the real column — every fixture here represents "an
+    // admin has already opted this type in," which is the correct state
+    // for exercising the OTHER eligibility gates (delay, excluded group,
+    // Security Label) in isolation. Case 1 below overrides this back to 1
+    // specifically to test the never-publish gate itself.
     $fields = array_merge([
-        'type'        => 'zz138-' . uniqid(),
-        'description' => 'Phase 138 eligibility test type',
-        'group'       => null,
+        'type'                       => 'zz138-' . uniqid(),
+        'description'                => 'Phase 138 eligibility test type',
+        'group'                      => null,
+        'public_board_never_publish' => 0,
     ], $overrides);
     $cols = array_keys($fields);
     db_query(

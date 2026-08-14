@@ -119,12 +119,12 @@ $csrf     = csrf_token();
         </ul>
 
         <!-- Group filter -->
-        <select class="form-select form-select-sm" id="groupFilter" style="width:auto;max-width:200px;">
+        <select class="form-select form-select-sm" id="groupFilter" style="width:auto;max-width:200px;" aria-label="Filter by group">
             <option value=""><?php echo e(t('inclist.filter.all_groups', 'All Groups')); ?></option>
         </select>
 
         <!-- Severity filter -->
-        <select class="form-select form-select-sm" id="sevFilter" style="width:auto;max-width:120px;">
+        <select class="form-select form-select-sm" id="sevFilter" style="width:auto;max-width:120px;" aria-label="Filter by severity">
             <option value=""><?php echo e(t('inclist.filter.all_sev', 'All Sev')); ?></option>
             <option value="0"><?php echo e(t('inclist.sev.low', 'Low')); ?></option>
             <option value="1"><?php echo e(t('inclist.sev.medium', 'Medium')); ?></option>

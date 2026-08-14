@@ -265,7 +265,7 @@ include_once NEWUI_ROOT . '/inc/navbar.php';
             <div class="card-header d-flex align-items-center justify-content-between py-2">
                 <span class="fw-semibold"><i class="bi bi-clock-history me-2"></i>Saved Forms</span>
                 <div class="d-flex align-items-center gap-2">
-                    <label class="form-label mb-0 small">Filter:</label>
+                    <label class="form-label mb-0 small" for="hubFilterType">Filter:</label>
                     <select class="form-select form-select-sm" id="hubFilterType" style="width:140px">
                         <option value="">All Types</option>
                         <option value="213">ICS-213</option>
@@ -353,7 +353,7 @@ include_once NEWUI_ROOT . '/inc/navbar.php';
                 </select>
             </div>
             <div class="col-md-5">
-                <label class="form-label">Link to Incident (optional)</label>
+                <label class="form-label" for="linkIncidentSearch">Link to Incident (optional)</label>
                 <div class="position-relative">
                     <div class="input-group input-group-sm incident-link-bar">
                         <span class="input-group-text"><i class="bi bi-link-45deg"></i></span>

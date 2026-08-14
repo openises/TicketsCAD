@@ -102,7 +102,7 @@ $csrf     = csrf_token();
                     <div class="input-group input-group-sm" style="width: 200px;">
                         <span class="input-group-text"><i class="bi bi-search"></i></span>
                         <input type="text" class="form-control form-control-sm" id="searchInput"
-                               placeholder="Search teams..." autocomplete="off">
+                               placeholder="Search teams..." autocomplete="off" aria-label="Search teams">
                     </div>
                 </div>
                 <div class="card-body p-0">
@@ -235,28 +235,28 @@ $csrf     = csrf_token();
                         <input type="hidden" id="editId" value="0">
                         <div class="row g-2">
                             <div class="col-md-8">
-                                <label class="form-label form-label-sm mb-0">Team Name <span class="text-danger">*</span></label>
+                                <label class="form-label form-label-sm mb-0" for="editName">Team Name <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control form-control-sm" id="editName" required>
                                 <div class="invalid-feedback">Team name is required.</div>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label form-label-sm mb-0">Type</label>
+                                <label class="form-label form-label-sm mb-0" for="editType">Type</label>
                                 <select class="form-select form-select-sm" id="editType">
                                     <option value="">-- Select --</option>
                                 </select>
                             </div>
                             <div class="col-12">
-                                <label class="form-label form-label-sm mb-0">Description / Mission</label>
+                                <label class="form-label form-label-sm mb-0" for="editDescription">Description / Mission</label>
                                 <textarea class="form-control form-control-sm" id="editDescription" rows="2"></textarea>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label form-label-sm mb-0">Team Leader</label>
+                                <label class="form-label form-label-sm mb-0" for="editLeader">Team Leader</label>
                                 <select class="form-select form-select-sm" id="editLeader">
                                     <option value="">-- None --</option>
                                 </select>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label form-label-sm mb-0">Deputy Leader</label>
+                                <label class="form-label form-label-sm mb-0" for="editDeputy">Deputy Leader</label>
                                 <select class="form-select form-select-sm" id="editDeputy">
                                     <option value="">-- None --</option>
                                 </select>
@@ -272,13 +272,13 @@ $csrf     = csrf_token();
                             <div class="collapse mt-2" id="nimsCollapse">
                                 <div class="row g-2">
                                     <div class="col-md-4">
-                                        <label class="form-label form-label-sm mb-0">NIMS Resource Type</label>
+                                        <label class="form-label form-label-sm mb-0" for="editNimsType">NIMS Resource Type</label>
                                         <input type="text" class="form-control form-control-sm" id="editNimsType"
                                                placeholder="e.g. Communications Unit" list="nimsTypeList"
                                                autocomplete="off">
                                     </div>
                                     <div class="col-md-4">
-                                        <label class="form-label form-label-sm mb-0">Typing Level (1-4)</label>
+                                        <label class="form-label form-label-sm mb-0" for="editNimsLevel">Typing Level (1-4)</label>
                                         <select class="form-select form-select-sm" id="editNimsLevel">
                                             <option value="">-- N/A --</option>
                                             <option value="1">Type 1 (Most Capable)</option>
@@ -288,7 +288,7 @@ $csrf     = csrf_token();
                                         </select>
                                     </div>
                                     <div class="col-md-4">
-                                        <label class="form-label form-label-sm mb-0">RTLT Code</label>
+                                        <label class="form-label form-label-sm mb-0" for="editRtlt">RTLT Code</label>
                                         <input type="text" class="form-control form-control-sm" id="editRtlt"
                                                placeholder="FEMA RTLT code">
                                     </div>
@@ -337,13 +337,13 @@ $csrf     = csrf_token();
             </div>
             <div class="modal-body py-2">
                 <div class="mb-2">
-                    <label class="form-label form-label-sm mb-0">Member</label>
+                    <label class="form-label form-label-sm mb-0" for="modalMember">Member</label>
                     <select class="form-select form-select-sm" id="modalMember">
                         <option value="">-- Select --</option>
                     </select>
                 </div>
                 <div class="mb-2">
-                    <label class="form-label form-label-sm mb-0">Role</label>
+                    <label class="form-label form-label-sm mb-0" for="modalRole">Role</label>
                     <select class="form-select form-select-sm" id="modalRole">
                         <option value="Member">Member</option>
                         <option value="Leader">Leader</option>
@@ -352,7 +352,7 @@ $csrf     = csrf_token();
                     </select>
                 </div>
                 <div class="mb-2">
-                    <label class="form-label form-label-sm mb-0">ICS Position</label>
+                    <label class="form-label form-label-sm mb-0" for="modalPosition">ICS Position</label>
                     <select class="form-select form-select-sm" id="modalPosition">
                         <option value="">-- None --</option>
                     </select>
@@ -377,7 +377,7 @@ $csrf     = csrf_token();
             <div class="modal-body py-2">
                 <input type="hidden" id="editRoleAssignmentId" value="0">
                 <div class="mb-2">
-                    <label class="form-label form-label-sm mb-0">Role</label>
+                    <label class="form-label form-label-sm mb-0" for="editRoleRole">Role</label>
                     <select class="form-select form-select-sm" id="editRoleRole">
                         <option value="Member">Member</option>
                         <option value="Leader">Leader</option>
@@ -386,13 +386,13 @@ $csrf     = csrf_token();
                     </select>
                 </div>
                 <div class="mb-2">
-                    <label class="form-label form-label-sm mb-0">ICS Position</label>
+                    <label class="form-label form-label-sm mb-0" for="editRolePosition">ICS Position</label>
                     <select class="form-select form-select-sm" id="editRolePosition">
                         <option value="">-- None --</option>
                     </select>
                 </div>
                 <div class="mb-2">
-                    <label class="form-label form-label-sm mb-0">Notes</label>
+                    <label class="form-label form-label-sm mb-0" for="editRoleNotes">Notes</label>
                     <input type="text" class="form-control form-control-sm" id="editRoleNotes">
                 </div>
             </div>

@@ -1058,7 +1058,10 @@ function backup_drill(string $archive, string $adminUser, string $adminPass,
     }
 
     try {
-        $root->exec("CREATE DATABASE `{$scratch}` CHARACTER SET utf8mb4");
+        // $scratch is generated two lines above from random_bytes(), never from
+        // any request input — and a CREATE DATABASE identifier can't be bound as
+        // a parameter regardless (MySQL has no placeholder syntax for DDL names).
+        $root->exec("CREATE DATABASE `{$scratch}` CHARACTER SET utf8mb4"); // NOSONAR S2077: $scratch is server-generated, not user input; DDL identifiers can't be parameters
     } catch (Throwable $e) {
         $out['detail'] = 'could not create the scratch database (needs CREATE privilege): ' . $e->getMessage();
         return $out;
@@ -1077,19 +1080,25 @@ function backup_drill(string $archive, string $adminUser, string $adminPass,
         $out['applied'] = $applied;
         $out['errors']  = $errors;
 
-        $out['tables'] = (int) $pdo->query(
-            "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = " . $pdo->quote($scratch)
-        )->fetchColumn();
+        $tablesStmt = $pdo->prepare("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = ?");
+        $tablesStmt->execute([$scratch]);
+        $out['tables'] = (int) $tablesStmt->fetchColumn();
 
+        // $t always comes from $countTables, whose only value in this codebase is
+        // the hardcoded default above — but a table name can't be a bind
+        // parameter, so it's whitelisted here rather than interpolated on trust,
+        // in case a future caller ever passes something else.
         foreach ($countTables as $t) {
-            try { $out['counts'][$t] = (int) $pdo->query("SELECT COUNT(*) FROM `{$t}`")->fetchColumn(); }
+            if (!preg_match('/^[A-Za-z0-9_]+$/', $t)) { $out['counts'][$t] = null; continue; }
+            try { $out['counts'][$t] = (int) $pdo->query("SELECT COUNT(*) FROM `{$t}`")->fetchColumn(); } // NOSONAR S2077: $t whitelisted to [A-Za-z0-9_] above
             catch (Throwable $e) { $out['counts'][$t] = null; }   // table not in this backup
         }
 
         // Compare against what is live right now — a drill that restores an
         // EMPTY copy of a populated system should not read as a pass.
         foreach ($countTables as $t) {
-            try { $out['compare'][$t] = (int) db_fetch_value("SELECT COUNT(*) FROM `{$t}`"); }
+            if (!preg_match('/^[A-Za-z0-9_]+$/', $t)) { $out['compare'][$t] = null; continue; }
+            try { $out['compare'][$t] = (int) db_fetch_value("SELECT COUNT(*) FROM `{$t}`"); } // NOSONAR S2077: $t whitelisted to [A-Za-z0-9_] above
             catch (Throwable $e) { $out['compare'][$t] = null; }
         }
 
@@ -1106,7 +1115,7 @@ function backup_drill(string $archive, string $adminUser, string $adminPass,
         // blocks DROP DATABASE on a metadata lock (indefinitely).
         $pdo = null;
         // ALWAYS clean up the scratch database, success or failure.
-        try { $root->exec("DROP DATABASE IF EXISTS `{$scratch}`"); }
+        try { $root->exec("DROP DATABASE IF EXISTS `{$scratch}`"); } // NOSONAR S2077: $scratch is server-generated, not user input; DDL identifiers can't be parameters
         catch (Throwable $e) { $out['detail'] .= ' (WARNING: could not drop scratch database ' . $scratch . ')'; }
     }
 

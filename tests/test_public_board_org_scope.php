@@ -76,7 +76,11 @@ try {
     db_query("INSERT INTO " . db_table('organizations') . " (`name`, `public_board_enabled`, `public_board_slug`, `active`) VALUES (?,1,?,0)", ["ZZ138 Org D ({$uniq})", $slugD]);
     $orgD = (int) db_insert_id(); $createdOrgIds[] = $orgD;
 
-    db_query("INSERT INTO " . db_table('in_types') . " (`type`, `description`) VALUES (?, 'zz138 org-scope test type')", ['zz138-' . uniqid()]);
+    // 2026-08-14: public_board_never_publish now defaults to 1 (never
+    // publish) — this fixture represents an admin who has already opted
+    // the type in, so the org-scope resolution itself (not the
+    // never-publish gate) is what's under test here.
+    db_query("INSERT INTO " . db_table('in_types') . " (`type`, `description`, `public_board_never_publish`) VALUES (?, 'zz138 org-scope test type', 0)", ['zz138-' . uniqid()]);
     $createdTypeId = (int) db_insert_id();
 
     db_query(

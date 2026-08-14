@@ -86,9 +86,16 @@
             // stamping main-content on one makes "skip to content" land on a
             // dismissible warning instead of the page, and clobbers the banner's
             // own id (Phase 118, 2026-07-24).
+            //
+            // Also SKIP the command bar (`inc/navbar.php`'s `<div class="command-bar"
+            // id="commandBar">`) — it's a `header ~ div` sibling too, hidden behind
+            // `d-none` until opened, and stealing its id renames it to
+            // `main-content`, breaking any code that looks it up by id. Found
+            // 2026-08-09, fixed 2026-08-14 (Eric: "why not fix it now?").
             var sibs = document.querySelectorAll('header ~ .container, header ~ .container-fluid, header ~ div');
             for (var i = 0; i < sibs.length; i++) {
                 if (sibs[i].classList.contains('alert') || sibs[i].getAttribute('role') === 'alert') continue;
+                if (sibs[i].classList.contains('command-bar')) continue;
                 target = sibs[i];
                 break;
             }

@@ -466,7 +466,7 @@ $userPerms = rbac_user_permissions();
         </div>
         <div class="zello-input-row">
             <input type="text" class="form-control form-control-sm" id="zelloTextInput"
-                   placeholder="Type a message..." autocomplete="off">
+                   placeholder="Type a message..." autocomplete="off" aria-label="Zello text message">
             <button class="btn btn-sm btn-primary" id="zelloSendBtn" title="Send" aria-label="Send message">
                 <i class="bi bi-send"></i>
             </button>

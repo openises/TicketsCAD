@@ -147,12 +147,12 @@ $csrf     = csrf_token();
         <div class="par-banner-form d-none" id="parBannerForm">
             <div class="row g-2 px-2 pb-2">
                 <div class="col-4">
-                    <label class="form-label form-label-sm small mb-0">Members</label>
+                    <label class="form-label form-label-sm small mb-0" for="parBannerMembers">Members</label>
                     <input type="number" min="1" class="form-control form-control-sm"
                            id="parBannerMembers" placeholder="#">
                 </div>
                 <div class="col-8">
-                    <label class="form-label form-label-sm small mb-0">Comments</label>
+                    <label class="form-label form-label-sm small mb-0" for="parBannerComments">Comments</label>
                     <textarea class="form-control form-control-sm" id="parBannerComments"
                               rows="2" maxlength="1024"
                               placeholder="Needs, activity, conditions…"></textarea>
@@ -306,7 +306,7 @@ $csrf     = csrf_token();
                 <div class="mt-3 pt-3 border-top">
                     <div class="input-group">
                         <input type="text" class="form-control" id="quickNoteInput"
-                               placeholder="Add a note..." maxlength="500">
+                               placeholder="Add a note..." maxlength="500" aria-label="Add a note">
                         <button class="btn btn-primary" type="button" id="btnAddNote">
                             <i class="bi bi-send-fill"></i>
                         </button>
@@ -321,7 +321,7 @@ $csrf     = csrf_token();
             <!-- Start trip form -->
             <div id="mileageStartForm">
                 <div class="mb-2">
-                    <label class="form-label small mb-1">Starting Odometer</label>
+                    <label class="form-label small mb-1" for="startOdoInput">Starting Odometer</label>
                     <input type="number" class="form-control" id="startOdoInput"
                            placeholder="e.g. 45230" step="0.1" inputmode="decimal">
                 </div>
@@ -343,7 +343,7 @@ $csrf     = csrf_token();
                     </div>
                 </div>
                 <div class="mb-2">
-                    <label class="form-label small mb-1">Ending Odometer</label>
+                    <label class="form-label small mb-1" for="endOdoInput">Ending Odometer</label>
                     <input type="number" class="form-control" id="endOdoInput"
                            placeholder="e.g. 45248" step="0.1" inputmode="decimal">
                 </div>
@@ -362,7 +362,7 @@ $csrf     = csrf_token();
                     <small class="text-body-secondary" id="gpsStatus">Off</small>
                 </div>
                 <div class="form-check form-switch form-switch-lg">
-                    <input class="form-check-input" type="checkbox" role="switch" id="gpsToggle" style="width:3rem;height:1.5rem;">
+                    <input class="form-check-input" type="checkbox" role="switch" id="gpsToggle" style="width:3rem;height:1.5rem;" aria-label="GPS sharing">
                 </div>
             </div>
             <div class="small text-body-secondary mt-1 d-none" id="gpsCoords"></div>

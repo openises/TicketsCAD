@@ -38,26 +38,41 @@ Organizations panel (their own row) — the master switch, address
 precision, Incident Type Rules, and rate-limiting panels are all
 Super-Admin-only and simply don't render for them.
 
+## Nothing publishes until you say so
+
+**Every incident type defaults to Never Publish** (2026-08-14 — this
+changed from the original "publish everything unless a keyword downgrades
+it" default). A type only appears on any board — shared or per-org — once
+an admin explicitly unchecks "Never Publish" for it in the Incident Type
+Rules panel. This applies to every existing type on upgrade as well as any
+new type you create afterward.
+
+**Visibility (Full vs. Presence-only) only matters for a type you've
+already opted in.** Presence-only shows a generic label, time, and unit
+count — no address, no narrative, no specific type. Full shows everything.
+Neither has any effect while Never Publish is still checked.
+
 ## Before you enable anything: review the Incident Type Rules panel
 
 The shared `in_types` table drives what publishes on **every** board,
-shared or per-org. At migration time, and every time you attempt to flip
-a switch from off to on, the system checks whether any incident type
-whose name, group, or description looks medical/crisis-shaped (a fixed
-keyword list — "medical", "welfare check", "mental health", "crisis",
-"overdose", "abuse", "suicide", and similar) is still set to **Full**
-visibility, and blocks the save with a warning until you explicitly
-acknowledge it.
+shared or per-org. Every time you attempt to flip a switch from off to on,
+the system checks whether any incident type you've opted IN to publishing
+(Never Publish unchecked) whose name, group, or description looks
+medical/crisis-shaped (a fixed keyword list — "medical", "welfare check",
+"mental health", "crisis", "overdose", "abuse", "suicide", "cardiac",
+"arrest", "casualty", "missing", "unconscious", "stroke", "respiratory",
+"seizure", and similar) is still set to **Full** visibility, and blocks
+the save with a warning until you explicitly acknowledge it.
 
 **This is a heuristic, not a guarantee.** It catches types whose type
 name, group, or description contain one of the fixed keywords — it
 cannot read your mind about a type named something the list doesn't
-recognize. Review the Incident Type Rules panel yourself before enabling
-either switch. For any type handling medical, mental-health, domestic
-violence, welfare-check, or juvenile-involved calls, set its visibility
-to **Presence-only** (shows a generic label, time, and unit count — no
-address, no narrative, no specific type) or **Never publish** (excluded
-entirely), rather than relying on the warning alone.
+recognize, and it only looks at types you've already opted in to
+publishing at all. Review the Incident Type Rules panel yourself before
+enabling either switch, and think carefully before opting in any type
+handling medical, mental-health, domestic violence, welfare-check, or
+juvenile-involved calls — Presence-only is a lighter-weight option than
+Full for exactly this reason.
 
 An Org Admin enabling their own org's board sees the same warning (with
 read access to the same underlying list) even though they cannot open the

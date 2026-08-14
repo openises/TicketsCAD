@@ -110,14 +110,14 @@ $active_page = 'message-tray';
                 <div class="card-header py-2"><i class="bi bi-send me-2"></i><span id="mtComposeTitle">New message</span></div>
                 <div class="card-body">
                     <input type="hidden" id="mtReplyTo">
-                    <label class="form-label form-label-sm mb-1">Channel</label>
+                    <label class="form-label form-label-sm mb-1" for="mtComposeChannel">Channel</label>
                     <select class="form-select form-select-sm mb-2" id="mtComposeChannel">
                         <option value="local_chat">Local chat</option>
                         <option value="meshtastic">Meshtastic</option>
                         <option value="zello">Zello</option>
                         <option value="dmr">DMR</option>
                     </select>
-                    <label class="form-label form-label-sm mb-1">Message <span class="text-body-secondary">(Enter to send, Shift+Enter for newline)</span></label>
+                    <label class="form-label form-label-sm mb-1" for="mtComposeBody">Message <span class="text-body-secondary">(Enter to send, Shift+Enter for newline)</span></label>
                     <textarea class="form-control form-control-sm mb-2" id="mtComposeBody" rows="3" placeholder="Type a message…"></textarea>
                     <div class="d-flex gap-2">
                         <button class="btn btn-sm btn-primary" id="mtSend"><i class="bi bi-send me-1"></i>Send</button>
@@ -137,7 +137,7 @@ $active_page = 'message-tray';
       <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
     <div class="modal-body">
       <input type="hidden" id="mtAssignMsgId"><input type="hidden" id="mtAssignMode">
-      <label class="form-label form-label-sm">Incident</label>
+      <label class="form-label form-label-sm" for="mtAssignIncident">Incident</label>
       <select class="form-select form-select-sm" id="mtAssignIncident"></select>
       <div class="form-text" id="mtAssignHint"></div>
     </div>
@@ -155,7 +155,7 @@ $active_page = 'message-tray';
       <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
     <div class="modal-body">
       <input type="hidden" id="mtSenderMsgId">
-      <label class="form-label form-label-sm">Member</label>
+      <label class="form-label form-label-sm" for="mtSenderMember">Member</label>
       <select class="form-select form-select-sm mb-2" id="mtSenderMember"></select>
       <div class="form-check form-switch">
         <input class="form-check-input" type="checkbox" id="mtSenderRemember" checked>

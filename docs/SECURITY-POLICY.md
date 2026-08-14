@@ -8,6 +8,13 @@
 
 This document describes the security controls implemented in the Tickets CAD NewUI v4 application and maps them to the FBI CJIS Security Policy v6.0 (aligned with NIST SP 800-53 Rev 5 and NIST SP 800-63B). It is intended as evidence for a CJIS audit and as a self-test reference for system administrators.
 
+For the threat model, trust boundaries, and a mapping against CIS Controls v8
+and the CIS Microsoft IIS 10 Benchmark (frameworks this document does not
+cover), see [`docs/security/architecture.md`](security/architecture.md). For
+the maintenance cadence — how often dependencies, cryptographic currency, and
+static analysis findings get re-checked — see
+[`docs/security/maintenance.md`](security/maintenance.md).
+
 A complementary admin tool — the **Security Compliance Dashboard** (`/compliance-dashboard.php`) — shows the live values of the settings described here and badges them against CJIS recommendations.
 
 ---

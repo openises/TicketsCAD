@@ -513,23 +513,23 @@ $canBulkDeleteMembers = (rbac_can('action.bulk_delete_members') || is_admin()) ?
                                 <div class="collapse show" id="collapseEditPersonal">
                                     <div class="row g-2">
                                         <div class="col-5">
-                                            <label class="form-label form-label-sm mb-0">First Name *</label>
+                                            <label class="form-label form-label-sm mb-0" for="editFirstName">First Name *</label>
                                             <input type="text" class="form-control form-control-sm" id="editFirstName" required>
                                         </div>
                                         <div class="col-4">
-                                            <label class="form-label form-label-sm mb-0">Last Name *</label>
+                                            <label class="form-label form-label-sm mb-0" for="editLastName">Last Name *</label>
                                             <input type="text" class="form-control form-control-sm" id="editLastName" required>
                                         </div>
                                         <div class="col-3">
-                                            <label class="form-label form-label-sm mb-0">Middle</label>
+                                            <label class="form-label form-label-sm mb-0" for="editMiddleName">Middle</label>
                                             <input type="text" class="form-control form-control-sm" id="editMiddleName">
                                         </div>
                                         <div class="col-4">
-                                            <label class="form-label form-label-sm mb-0">Title</label>
+                                            <label class="form-label form-label-sm mb-0" for="editTitle">Title</label>
                                             <input type="text" class="form-control form-control-sm" id="editTitle">
                                         </div>
                                         <div class="col-4">
-                                            <label class="form-label form-label-sm mb-0">DOB</label>
+                                            <label class="form-label form-label-sm mb-0" for="editDOB">DOB</label>
                                             <input type="date" class="form-control form-control-sm" id="editDOB">
                                         </div>
                                     </div>
@@ -552,12 +552,12 @@ $canBulkDeleteMembers = (rbac_can('action.bulk_delete_members') || is_admin()) ?
                                 <div id="callsignAddRow" class="d-none">
                                     <div class="row g-1 align-items-end border-top pt-1">
                                         <div class="col-4">
-                                            <label class="form-label form-label-sm mb-0">Callsign</label>
+                                            <label class="form-label form-label-sm mb-0" for="addCallsignInput">Callsign</label>
                                             <input type="text" class="form-control form-control-sm" id="addCallsignInput"
                                                    placeholder="e.g. W1AW" style="text-transform:uppercase;">
                                         </div>
                                         <div class="col-3">
-                                            <label class="form-label form-label-sm mb-0">Type</label>
+                                            <label class="form-label form-label-sm mb-0" for="addCallsignType">Type</label>
                                             <select class="form-select form-select-sm" id="addCallsignType">
                                                 <option value="amateur">Amateur</option>
                                                 <option value="gmrs">GMRS</option>
@@ -630,19 +630,19 @@ $canBulkDeleteMembers = (rbac_can('action.bulk_delete_members') || is_admin()) ?
                                 <div class="collapse show" id="collapseEditContact">
                                     <div class="row g-2">
                                         <div class="col-12">
-                                            <label class="form-label form-label-sm mb-0">Email</label>
+                                            <label class="form-label form-label-sm mb-0" for="editEmail">Email</label>
                                             <input type="email" class="form-control form-control-sm" id="editEmail">
                                         </div>
                                         <div class="col-4">
-                                            <label class="form-label form-label-sm mb-0">Home Phone</label>
+                                            <label class="form-label form-label-sm mb-0" for="editPhoneHome">Home Phone</label>
                                             <input type="text" class="form-control form-control-sm" id="editPhoneHome">
                                         </div>
                                         <div class="col-4">
-                                            <label class="form-label form-label-sm mb-0">Work Phone</label>
+                                            <label class="form-label form-label-sm mb-0" for="editPhoneWork">Work Phone</label>
                                             <input type="text" class="form-control form-control-sm" id="editPhoneWork">
                                         </div>
                                         <div class="col-4">
-                                            <label class="form-label form-label-sm mb-0">Cell Phone</label>
+                                            <label class="form-label form-label-sm mb-0" for="editPhoneCell">Cell Phone</label>
                                             <input type="text" class="form-control form-control-sm" id="editPhoneCell">
                                         </div>
                                     </div>
@@ -659,19 +659,19 @@ $canBulkDeleteMembers = (rbac_can('action.bulk_delete_members') || is_admin()) ?
                                 <div class="collapse show" id="collapseEditAddress">
                                     <div class="row g-2">
                                         <div class="col-12">
-                                            <label class="form-label form-label-sm mb-0"><?php echo e(t('field.street', 'Street')); ?></label>
+                                            <label class="form-label form-label-sm mb-0" for="editStreet"><?php echo e(t('field.street', 'Street')); ?></label>
                                             <input type="text" class="form-control form-control-sm" id="editStreet">
                                         </div>
                                         <div class="col-5">
-                                            <label class="form-label form-label-sm mb-0"><?php echo e(t('form.city', 'City')); ?></label>
+                                            <label class="form-label form-label-sm mb-0" for="editCity"><?php echo e(t('form.city', 'City')); ?></label>
                                             <input type="text" class="form-control form-control-sm" id="editCity">
                                         </div>
                                         <div class="col-3">
-                                            <label class="form-label form-label-sm mb-0"><?php echo e(t('form.state', 'State')); ?></label>
+                                            <label class="form-label form-label-sm mb-0" for="editState"><?php echo e(t('form.state', 'State')); ?></label>
                                             <select class="form-select form-select-sm" id="editState"></select>
                                         </div>
                                         <div class="col-4">
-                                            <label class="form-label form-label-sm mb-0"><?php echo e(t('form.zip', 'ZIP')); ?></label>
+                                            <label class="form-label form-label-sm mb-0" for="editZip"><?php echo e(t('form.zip', 'ZIP')); ?></label>
                                             <div class="input-group input-group-sm">
                                                 <input type="text" class="form-control form-control-sm" id="editZip"
                                                        placeholder="e.g. 55401" maxlength="10">
@@ -687,7 +687,7 @@ $canBulkDeleteMembers = (rbac_can('action.bulk_delete_members') || is_admin()) ?
                                              today; future work can swap to a state-driven
                                              dropdown (Billy has the JSON for U.S. counties). -->
                                         <div class="col-12">
-                                            <label class="form-label form-label-sm mb-0">County</label>
+                                            <label class="form-label form-label-sm mb-0" for="editCounty">County</label>
                                             <input type="text" class="form-control form-control-sm" id="editCounty"
                                                    placeholder="e.g. Hennepin" maxlength="64">
                                         </div>
@@ -705,30 +705,30 @@ $canBulkDeleteMembers = (rbac_can('action.bulk_delete_members') || is_admin()) ?
                                 <div class="collapse show" id="collapseEditOrg">
                                     <div class="row g-2">
                                         <div class="col-6">
-                                            <label class="form-label form-label-sm mb-0">Type</label>
+                                            <label class="form-label form-label-sm mb-0" for="editType">Type</label>
                                             <select class="form-select form-select-sm" id="editType"></select>
                                         </div>
                                         <div class="col-6">
-                                            <label class="form-label form-label-sm mb-0">Status</label>
+                                            <label class="form-label form-label-sm mb-0" for="editStatus">Status</label>
                                             <select class="form-select form-select-sm" id="editStatus"></select>
                                         </div>
                                         <div class="col-6">
-                                            <label class="form-label form-label-sm mb-0">Team</label>
+                                            <label class="form-label form-label-sm mb-0" for="editTeam">Team</label>
                                             <select class="form-select form-select-sm" id="editTeam"></select>
                                         </div>
                                         <div class="col-6">
-                                            <label class="form-label form-label-sm mb-0">Available</label>
+                                            <label class="form-label form-label-sm mb-0" for="editAvailable">Available</label>
                                             <select class="form-select form-select-sm" id="editAvailable">
                                                 <option value="Yes">Yes</option>
                                                 <option value="No">No</option>
                                             </select>
                                         </div>
                                         <div class="col-6">
-                                            <label class="form-label form-label-sm mb-0">Join Date</label>
+                                            <label class="form-label form-label-sm mb-0" for="editJoinDate">Join Date</label>
                                             <input type="date" class="form-control form-control-sm" id="editJoinDate">
                                         </div>
                                         <div class="col-6">
-                                            <label class="form-label form-label-sm mb-0">Membership Due</label>
+                                            <label class="form-label form-label-sm mb-0" for="editMembershipDue">Membership Due</label>
                                             <input type="date" class="form-control form-control-sm" id="editMembershipDue">
                                         </div>
                                     </div>
@@ -745,15 +745,15 @@ $canBulkDeleteMembers = (rbac_can('action.bulk_delete_members') || is_admin()) ?
                                 <div class="collapse show" id="collapseEditEmergency">
                                     <div class="row g-2">
                                         <div class="col-5">
-                                            <label class="form-label form-label-sm mb-0">Name</label>
+                                            <label class="form-label form-label-sm mb-0" for="editEmergencyContact">Name</label>
                                             <input type="text" class="form-control form-control-sm" id="editEmergencyContact">
                                         </div>
                                         <div class="col-4">
-                                            <label class="form-label form-label-sm mb-0">Phone</label>
+                                            <label class="form-label form-label-sm mb-0" for="editEmergencyPhone">Phone</label>
                                             <input type="text" class="form-control form-control-sm" id="editEmergencyPhone">
                                         </div>
                                         <div class="col-3">
-                                            <label class="form-label form-label-sm mb-0">Relation</label>
+                                            <label class="form-label form-label-sm mb-0" for="editEmergencyRelation">Relation</label>
                                             <input type="text" class="form-control form-control-sm" id="editEmergencyRelation">
                                         </div>
                                     </div>
@@ -770,11 +770,11 @@ $canBulkDeleteMembers = (rbac_can('action.bulk_delete_members') || is_admin()) ?
                                 <div class="collapse show" id="collapseEditMedical">
                                     <div class="row g-2">
                                         <div class="col-12">
-                                            <label class="form-label form-label-sm mb-0">Medical Info</label>
+                                            <label class="form-label form-label-sm mb-0" for="editMedicalInfo">Medical Info</label>
                                             <textarea class="form-control form-control-sm" id="editMedicalInfo" rows="2"></textarea>
                                         </div>
                                         <div class="col-12">
-                                            <label class="form-label form-label-sm mb-0">Notes</label>
+                                            <label class="form-label form-label-sm mb-0" for="editNotes">Notes</label>
                                             <textarea class="form-control form-control-sm" id="editNotes" rows="2"></textarea>
                                         </div>
                                     </div>
@@ -833,25 +833,25 @@ $canBulkDeleteMembers = (rbac_can('action.bulk_delete_members') || is_admin()) ?
                 <input type="hidden" id="logTimeEntryId" value="">
                 <div class="row g-2 mb-2">
                     <div class="col-6">
-                        <label class="form-label form-label-sm mb-0">Start *</label>
+                        <label class="form-label form-label-sm mb-0" for="logTimeStart">Start *</label>
                         <input type="datetime-local" class="form-control form-control-sm" id="logTimeStart" required>
                     </div>
                     <div class="col-6">
-                        <label class="form-label form-label-sm mb-0">End *</label>
+                        <label class="form-label form-label-sm mb-0" for="logTimeEnd">End *</label>
                         <input type="datetime-local" class="form-control form-control-sm" id="logTimeEnd" required>
                     </div>
                 </div>
                 <div class="mb-2">
-                    <label class="form-label form-label-sm mb-0">Activity *</label>
+                    <label class="form-label form-label-sm mb-0" for="logTimeActivity">Activity *</label>
                     <select class="form-select form-select-sm" id="logTimeActivity" required></select>
                 </div>
                 <div class="mb-2">
-                    <label class="form-label form-label-sm mb-0">Incident (optional)</label>
+                    <label class="form-label form-label-sm mb-0" for="logTimeIncident">Incident (optional)</label>
                     <input type="number" min="1" class="form-control form-control-sm" id="logTimeIncident"
                            placeholder="Incident # if applicable">
                 </div>
                 <div class="mb-2">
-                    <label class="form-label form-label-sm mb-0">Notes</label>
+                    <label class="form-label form-label-sm mb-0" for="logTimeNotes">Notes</label>
                     <textarea class="form-control form-control-sm" id="logTimeNotes" rows="2"
                               placeholder="Optional — what did you do?"></textarea>
                 </div>
@@ -884,11 +884,11 @@ $canBulkDeleteMembers = (rbac_can('action.bulk_delete_members') || is_admin()) ?
                     <label class="form-label form-label-sm mb-0 fw-semibold" id="editOrgName"></label>
                 </div>
                 <div class="mb-2">
-                    <label class="form-label form-label-sm mb-0">Type / Rank</label>
+                    <label class="form-label form-label-sm mb-0" for="editOrgType">Type / Rank</label>
                     <select class="form-select form-select-sm" id="editOrgType"></select>
                 </div>
                 <div class="mb-2">
-                    <label class="form-label form-label-sm mb-0">Status</label>
+                    <label class="form-label form-label-sm mb-0" for="editOrgStatus">Status</label>
                     <select class="form-select form-select-sm" id="editOrgStatus">
                         <option value="active">Active</option>
                         <option value="pending">Pending</option>
@@ -896,7 +896,7 @@ $canBulkDeleteMembers = (rbac_can('action.bulk_delete_members') || is_admin()) ?
                     </select>
                 </div>
                 <div class="mb-2">
-                    <label class="form-label form-label-sm mb-0">Role</label>
+                    <label class="form-label form-label-sm mb-0" for="editOrgRole">Role</label>
                     <select class="form-select form-select-sm" id="editOrgRole">
                         <option value="">— None —</option>
                         <option value="admin">Admin</option>
@@ -906,11 +906,11 @@ $canBulkDeleteMembers = (rbac_can('action.bulk_delete_members') || is_admin()) ?
                     </select>
                 </div>
                 <div class="mb-2">
-                    <label class="form-label form-label-sm mb-0">Join Date</label>
+                    <label class="form-label form-label-sm mb-0" for="editOrgJoinDate">Join Date</label>
                     <input type="date" class="form-control form-control-sm" id="editOrgJoinDate">
                 </div>
                 <div class="mb-2">
-                    <label class="form-label form-label-sm mb-0">Notes</label>
+                    <label class="form-label form-label-sm mb-0" for="editOrgNotes">Notes</label>
                     <textarea class="form-control form-control-sm" id="editOrgNotes" rows="2"></textarea>
                 </div>
             </div>
@@ -937,11 +937,11 @@ $canBulkDeleteMembers = (rbac_can('action.bulk_delete_members') || is_admin()) ?
                 <input type="hidden" id="commModalMemberId">
                 <div class="row g-2 mb-2">
                     <div class="col-6">
-                        <label class="form-label form-label-sm mb-0">Mode</label>
+                        <label class="form-label form-label-sm mb-0" for="commModalMode">Mode</label>
                         <select class="form-select form-select-sm" id="commModalMode"></select>
                     </div>
                     <div class="col-6">
-                        <label class="form-label form-label-sm mb-0">Label <small class="text-body-secondary">(optional)</small></label>
+                        <label class="form-label form-label-sm mb-0" for="commModalLabel">Label <small class="text-body-secondary">(optional)</small></label>
                         <input type="text" class="form-control form-control-sm" id="commModalLabel" placeholder="e.g. Mobile HT">
                     </div>
                 </div>
@@ -950,7 +950,7 @@ $canBulkDeleteMembers = (rbac_can('action.bulk_delete_members') || is_admin()) ?
                 </div>
                 <div id="commModalLookupArea" class="mb-2"></div>
                 <div class="mb-2">
-                    <label class="form-label form-label-sm mb-0">Notes</label>
+                    <label class="form-label form-label-sm mb-0" for="commModalNotes">Notes</label>
                     <textarea class="form-control form-control-sm" id="commModalNotes" rows="2"></textarea>
                 </div>
             </div>

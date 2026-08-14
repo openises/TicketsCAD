@@ -220,7 +220,7 @@ $active_page = 'config';
                     Upload a CSV file with a header row. The system will try to auto-match your column headers to the database fields.
                 </p>
                 <div class="mb-3">
-                    <input type="file" class="form-control form-control-sm" id="csvFile" accept=".csv,.txt,.tsv">
+                    <input type="file" class="form-control form-control-sm" id="csvFile" accept=".csv,.txt,.tsv" aria-label="Upload CSV file">
                 </div>
                 <div id="uploadStatus" class="mb-3" style="display:none"></div>
                 <div class="d-flex gap-2">
@@ -326,13 +326,13 @@ $active_page = 'config';
             <h6 class="mb-3">Export Data as CSV</h6>
             <div class="row g-3">
                 <div class="col-md-4">
-                    <label class="form-label small">Table</label>
+                    <label class="form-label small" for="exportTarget">Table</label>
                     <select class="form-select form-select-sm" id="exportTarget">
                         <!-- Populated by JS -->
                     </select>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label small">Search filter (optional)</label>
+                    <label class="form-label small" for="exportSearch">Search filter (optional)</label>
                     <input type="text" class="form-control form-control-sm" id="exportSearch" placeholder="Filter by keyword...">
                 </div>
                 <div class="col-md-4 d-flex align-items-end">

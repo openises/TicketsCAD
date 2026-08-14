@@ -175,9 +175,9 @@ $pageTitle = $editId > 0
                                     <label class="form-label">Coordinates</label>
                                     <div class="input-group input-group-sm">
                                         <span class="input-group-text">Lat</span>
-                                        <input type="text" class="form-control" id="lat" name="lat" placeholder="44.9778">
+                                        <input type="text" class="form-control" id="lat" name="lat" placeholder="44.9778" aria-label="Latitude">
                                         <span class="input-group-text">Lng</span>
-                                        <input type="text" class="form-control" id="lng" name="lng" placeholder="-93.2650">
+                                        <input type="text" class="form-control" id="lng" name="lng" placeholder="-93.2650" aria-label="Longitude">
                                     </div>
                                     <div class="form-text">Click the map or use Lookup to set coordinates</div>
                                 </div>
@@ -357,7 +357,7 @@ $pageTitle = $editId > 0
                             <div class="mt-2 border-top pt-2">
                                 <div class="row g-2 align-items-end">
                                     <div class="col-md-5">
-                                        <label class="form-label form-label-sm mb-0">Search Personnel</label>
+                                        <label class="form-label form-label-sm mb-0" for="personnelSearchBox">Search Personnel</label>
                                         <input type="text" class="form-control form-control-sm" id="personnelSearchBox"
                                                placeholder="Type name or callsign..." autocomplete="off">
                                         <div id="personnelSearchDropdown" class="position-relative">
@@ -365,7 +365,7 @@ $pageTitle = $editId > 0
                                         </div>
                                     </div>
                                     <div class="col-md-3">
-                                        <label class="form-label form-label-sm mb-0">Role</label>
+                                        <label class="form-label form-label-sm mb-0" for="personnelRoleSelect">Role</label>
                                         <select class="form-select form-select-sm" id="personnelRoleSelect">
                                             <option value="operator">Operator</option>
                                         </select>
@@ -470,18 +470,18 @@ $pageTitle = $editId > 0
                             <div class="mt-2 border-top pt-2">
                                 <div class="row g-2 align-items-end">
                                     <div class="col-md-3">
-                                        <label class="form-label form-label-sm mb-0">Provider</label>
+                                        <label class="form-label form-label-sm mb-0" for="addSourceProvider">Provider</label>
                                         <select class="form-select form-select-sm" id="addSourceProvider">
                                             <option value="">-- add source --</option>
                                         </select>
                                     </div>
                                     <div class="col-md-3">
-                                        <label class="form-label form-label-sm mb-0">Identifier</label>
+                                        <label class="form-label form-label-sm mb-0" for="addSourceIdentifier">Identifier</label>
                                         <input type="text" class="form-control form-control-sm" id="addSourceIdentifier"
                                                placeholder="Callsign, device ID...">
                                     </div>
                                     <div class="col-md-2">
-                                        <label class="form-label form-label-sm mb-0">Priority</label>
+                                        <label class="form-label form-label-sm mb-0" for="addSourcePriority">Priority</label>
                                         <input type="number" class="form-control form-control-sm" id="addSourcePriority"
                                                value="50" min="1" max="200">
                                     </div>

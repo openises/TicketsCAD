@@ -16,15 +16,29 @@
  *   1. The registry is platform-aware — a Windows install is told about a Task
  *      Scheduler task, a Linux install about a systemd timer, and neither is
  *      told about the other's.
- *   2. The runners actually ship, and do not carry the two defects the old
- *      start-proxy.bat had (a hardcoded XAMPP path, and `pause`, which makes a
- *      script interactive-only and so useless to Task Scheduler).
+ *   2. The runners actually ship, invoke EVERY job the registry knows about
+ *      (not a hardcoded subset — see the 2026-08-14 addendum below), and do
+ *      not carry the two defects the old start-proxy.bat had (a hardcoded
+ *      XAMPP path, and `pause`, which makes a script interactive-only and so
+ *      useless to Task Scheduler).
  *   3. The docs contain the commands, since "the docs mention Task Scheduler
  *      in passing" was the state that produced this report.
  *
  * The registry assertions drive the REAL sched_job_registry() and
  * sched_jobs_status(); the platform branch that this host is not running is
  * exercised by reading the source, which is called out where it happens.
+ *
+ * ADDENDUM (2026-08-14): this file originally hardcoded "the registry has
+ * par_tick and pending_messages_tick" and "the runner invokes par_tick /
+ * pending_messages_tick" — true the day it was written, but audit_log_purge
+ * (Phase 133) and message_log_purge (GH#42) were added to the REGISTRY later
+ * without ever being added to tools/run-scheduled-jobs.bat, and this test
+ * had no way to notice because it only ever checked the two names it already
+ * knew about. Section 2 below now derives the expected job list FROM
+ * sched_job_registry() itself and asserts the runner invokes every one of
+ * them — so a 6th job added to the registry without a matching line in the
+ * .bat fails this test immediately, instead of silently shipping broken to
+ * every Windows install the way audit/message-log purge did.
  *
  * Run: /c/xampp/8.2.4/php/php.exe tools/test_all.php   (or this file directly)
  */
@@ -54,8 +68,10 @@ sw_ok('sched_is_windows() agrees with PHP about this host',
     sched_is_windows() === (PHP_OS_FAMILY === 'Windows'));
 
 $reg = sched_job_registry();
-sw_ok('registry still has both jobs',
+sw_ok('registry still has the original two jobs',
     isset($reg['par_tick'], $reg['pending_messages_tick']), 'keys: ' . implode(',', array_keys($reg)));
+sw_ok('registry has grown past the original two (Phase 133/GH#42/Phase 134 jobs present)',
+    count($reg) >= 5, 'keys: ' . implode(',', array_keys($reg)));
 
 $isWin = sched_is_windows();
 foreach ($reg as $key => $def) {
@@ -128,8 +144,23 @@ $jobsBat = $root . '/tools/run-scheduled-jobs.bat';
 sw_ok('tools/run-scheduled-jobs.bat ships', is_file($jobsBat));
 $jobs = is_file($jobsBat) ? (string) file_get_contents($jobsBat) : '';
 
-sw_ok('job runner invokes par_tick', strpos($jobs, 'par_tick.php') !== false);
-sw_ok('job runner invokes pending_messages_tick', strpos($jobs, 'pending_messages_tick.php') !== false);
+// Derive the expected job list from the REGISTRY, not a hardcoded pair --
+// this is the whole point of the 2026-08-14 addendum above. Every job's
+// command names a script under tools/ (or tools\ on Windows) — the runner
+// (a static file, always Windows-syntax on disk regardless of the host this
+// TEST happens to run on) must invoke that exact script. sched_job_registry()
+// reflects THIS host's platform, so on a Linux CI runner the separator is
+// '/', not '\\' — match either.
+foreach ($reg as $key => $def) {
+    if (!preg_match('~tools[\\\\/](\w+\.php)~', (string) $def['command'], $m)) {
+        sw_ok("{$key}'s command names a tools/*.php script (registry sanity)", false,
+            "command={$def['command']}");
+        continue;
+    }
+    $script = $m[1];
+    sw_ok("job runner invokes {$key} ({$script})", strpos($jobs, $script) !== false);
+}
+
 sw_ok('job runner does NOT pause (Task Scheduler has no keyboard)',
     !preg_match('~^\s*pause\s*$~im', $jobs));
 sw_ok('job runner does not hardcode a developer XAMPP path',
@@ -139,9 +170,8 @@ sw_ok('job runner cds to the app root before running',
     strpos($jobs, 'cd /d "%~dp0..') !== false);
 sw_ok('job runner reports a missing PHP rather than logging nothing forever',
     stripos($jobs, 'FATAL') !== false);
-sw_ok('job runner runs the second tick even if the first fails',
-    // The two invocations must not be chained on success.
-    !preg_match('~par_tick\.php.*&&.*pending_messages_tick~s', $jobs));
+sw_ok('job runner does not chain invocations with && (one failure must not skip the rest)',
+    !preg_match('~\.php["\'\s]*&&~', $jobs));
 sw_ok('job runner propagates a failure as its exit code',
     strpos($jobs, 'exit /b %RC%') !== false);
 

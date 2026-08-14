@@ -3,6 +3,72 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.19] — 2026-08-14
+
+### Security
+
+- **`.git/` and `vendor/` were reachable over HTTP on IIS** — a continuation of
+  GHSA-rrp6-pqhj-w5wj, reported by Ron Jones (@rjonesbsink). Neither directory
+  can ship a tracked `web.config` the way `sql/`/`tools/` do (`.git/` is git's
+  own internal directory; `vendor/` is excluded by `.gitignore`'s directory
+  pattern), so both are now hardened at runtime — `served_dir_harden()` fires
+  on the next page load after a clone + `composer install`. Also closed six
+  more directories with no IIS coverage at all (`apache/`, `coordination/`,
+  `drafts/`, `inc/`, `specs/`, `tests/`, `services/` with narrow `.py`-only
+  overrides for the two Mesh Console bridge scripts).
+- **New comprehensive security-practice blueprint**, following a CIS/NIST-
+  aligned research pass: `docs/security/architecture.md` (threat model, trust
+  boundaries, a full CIS Controls v8 self-assessment across all 18 controls,
+  and a CIS Microsoft IIS 10 Benchmark gap analysis across all 7 categories)
+  and `docs/security/maintenance.md` (the maintenance cadence this project
+  never had in writing — dependency scanning, cryptographic-currency review,
+  SonarQube triage process, backup drills, key rotation, with an append-only
+  log). Cross-references the existing CJIS mapping and CISA OSS conformance
+  self-assessment rather than duplicating them.
+- **Every open SonarQube finding investigated and resolved**: a Dockerfile fix
+  (`services/dvswitch/docker/Dockerfile`) so the documented Docker install no
+  longer bakes `DMR_MASTER_PASSWORD`/`DMR_BEARER_TOKEN` into the image layer,
+  plus a non-root container user; a SQL string-building tightening in
+  `inc/backup_schedule.php` converted to a real bound parameter. The remaining
+  findings were confirmed genuine false positives, documented both inline and
+  in SonarQube's own resolution.
+- **627 accessibility findings fixed**: every form input across the
+  application now has a proper `<label for>` or `aria-label`, confirmed by a
+  fresh SonarQube scan (`Web:InputWithoutLabelCheck`: 627 → 0).
+
+### Added
+
+- **Quick Notes** — `/log <text>` in the command bar captures a timestamped
+  personal note without leaving the keyboard; bare `/log` opens the
+  management page. Notes are strictly private — ownership is the access
+  control, with no RBAC permission gating them and no path for one user to
+  see another's list. From the notes page, each note can be copied (default)
+  or moved into an incident's activity log, an open ICS-214's activity log
+  (original capture time preserved), or a personal corner of the existing
+  SOP-Wiki. The prior `/log` command bar entry (jump to the incident activity
+  log widget) is renamed to `/activity`; `/logs` remains as an alias.
+- **Public Board now defaults every incident type to Never Publish.** A
+  safety-first default flip for the credential-free public incident board
+  (shipped disabled by default in v4.2.17) — an admin must now explicitly
+  enable each incident type before it can appear on a public board, rather
+  than every type publishing by default unless a keyword downgraded it.
+
+### Fixed
+
+- **The second extra-data prompt on unit statuses (GH#52) never worked on
+  three of the five places a status change can happen.** It worked correctly
+  on the dashboard's Responders widget and the Incident Detail page, but the
+  Unit Detail page, the mobile interface, and the `/s` command bar had never
+  been taught slot 2 existed — a status configured to collect both a
+  destination facility and a starting mileage reading would silently only
+  ever ask for the first, on those three screens. Fixed all three to chain
+  slot 1 then slot 2, matching the pattern already proven correct elsewhere;
+  the command bar's refusal check also now covers a status needing only slot
+  2, which previously bypassed it and failed confusingly at the server.
+- **The command bar's skip-link accessibility fallback was stealing the
+  command bar's own `id="commandBar"`**, renaming it to `id="main-content"`
+  and leaving the dashboard's skip-link focusing an empty div.
+
 ## [4.2.18] — 2026-08-14
 
 ### Added

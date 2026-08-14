@@ -168,7 +168,7 @@ header('Referrer-Policy: no-referrer-when-downgrade');
 <div class="container-fluid">
   <div class="row">
     <aside class="col-lg-3 col-md-4 doc-sidebar p-3 border-end">
-      <input type="search" class="form-control form-control-sm mb-3" id="doc-filter" placeholder="Filter docs…">
+      <input type="search" class="form-control form-control-sm mb-3" id="doc-filter" placeholder="Filter docs…" aria-label="Filter documentation">
       <?= $sidebar ?>
     </aside>
 

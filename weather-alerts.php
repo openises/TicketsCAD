@@ -101,22 +101,22 @@ $active_page = 'settings';
                     </div>
                 </div>
                 <div class="col-md-8">
-                    <label class="form-label form-label-sm mb-0">Contact email (required — NWS User-Agent)</label>
+                    <label class="form-label form-label-sm mb-0" for="wxUaContact">Contact email (required — NWS User-Agent)</label>
                     <input type="email" class="form-control form-control-sm" id="wxUaContact" placeholder="dispatch@example.org">
                     <div class="form-text">The NWS API rejects anonymous requests. This contact identifies your install.</div>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label form-label-sm mb-0">Poll interval (seconds)</label>
+                    <label class="form-label form-label-sm mb-0" for="wxPollSeconds">Poll interval (seconds)</label>
                     <input type="number" min="30" class="form-control form-control-sm" id="wxPollSeconds" value="60">
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label form-label-sm mb-0">Provider</label>
+                    <label class="form-label form-label-sm mb-0" for="wxProvider">Provider</label>
                     <select class="form-select form-select-sm" id="wxProvider">
                         <option value="nws">NWS (United States)</option>
                     </select>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label form-label-sm mb-0">
+                    <label class="form-label form-label-sm mb-0" for="wxGeofenceUnits">
                         Units inside alert polygons
                         <i class="bi bi-question-circle text-body-secondary" tabindex="0"
                            data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
@@ -154,11 +154,11 @@ $active_page = 'settings';
                 <input type="hidden" id="wxAreaId">
                 <div class="row g-2">
                     <div class="col-md-4">
-                        <label class="form-label form-label-sm mb-0">Label</label>
+                        <label class="form-label form-label-sm mb-0" for="wxAreaLabel">Label</label>
                         <input class="form-control form-control-sm" id="wxAreaLabel" placeholder="MN statewide">
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label form-label-sm mb-0">Kind</label>
+                        <label class="form-label form-label-sm mb-0" for="wxAreaKind">Kind</label>
                         <select class="form-select form-select-sm" id="wxAreaKind">
                             <option value="state">State</option>
                             <option value="zones">Zones / counties (UGC)</option>
@@ -166,25 +166,25 @@ $active_page = 'settings';
                         </select>
                     </div>
                     <div class="col-md-5 wx-area-state">
-                        <label class="form-label form-label-sm mb-0">State code</label>
+                        <label class="form-label form-label-sm mb-0" for="wxAreaState">State code</label>
                         <input class="form-control form-control-sm" id="wxAreaState" maxlength="2" placeholder="MN">
                     </div>
                     <div class="col-md-5 wx-area-zones d-none">
-                        <label class="form-label form-label-sm mb-0">UGC zones/counties (CSV)</label>
+                        <label class="form-label form-label-sm mb-0" for="wxAreaZones">UGC zones/counties (CSV)</label>
                         <input class="form-control form-control-sm" id="wxAreaZones" placeholder="MNZ060,MNC053">
                         <div class="input-group input-group-sm mt-1">
-                            <input class="form-control" id="wxCountyState" maxlength="2" placeholder="State (e.g. MN)" style="max-width:110px;">
+                            <input class="form-control" id="wxCountyState" maxlength="2" placeholder="State (e.g. MN)" style="max-width:110px;" aria-label="State code for county picker">
                             <button type="button" class="btn btn-outline-secondary" id="wxLoadCounties">Pick counties…</button>
                         </div>
                         <div id="wxCountyList" class="border rounded p-2 mt-1 d-none"
                              style="max-height:180px;overflow-y:auto;columns:2;"></div>
                     </div>
                     <div class="col-md-5 wx-area-point d-none">
-                        <label class="form-label form-label-sm mb-0">Lat / Lng / Radius (mi)</label>
+                        <label class="form-label form-label-sm mb-0" for="wxAreaLat">Lat / Lng / Radius (mi)</label>
                         <div class="input-group input-group-sm">
-                            <input class="form-control" id="wxAreaLat" placeholder="44.98">
-                            <input class="form-control" id="wxAreaLng" placeholder="-93.27">
-                            <input class="form-control" id="wxAreaRadius" placeholder="40">
+                            <input class="form-control" id="wxAreaLat" placeholder="44.98" aria-label="Latitude">
+                            <input class="form-control" id="wxAreaLng" placeholder="-93.27" aria-label="Longitude">
+                            <input class="form-control" id="wxAreaRadius" placeholder="40" aria-label="Radius in miles">
                         </div>
                     </div>
                     <div class="col-md-2">
@@ -221,15 +221,15 @@ $active_page = 'settings';
                 <input type="hidden" id="wxRuleId">
                 <div class="row g-2">
                     <div class="col-md-4">
-                        <label class="form-label form-label-sm mb-0">Label</label>
+                        <label class="form-label form-label-sm mb-0" for="wxRuleLabel">Label</label>
                         <input class="form-control form-control-sm" id="wxRuleLabel" placeholder="Tray — severe MN">
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label form-label-sm mb-0">Area</label>
+                        <label class="form-label form-label-sm mb-0" for="wxRuleArea">Area</label>
                         <select class="form-select form-select-sm" id="wxRuleArea"></select>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label form-label-sm mb-0">Target</label>
+                        <label class="form-label form-label-sm mb-0" for="wxRuleTarget">Target</label>
                         <select class="form-select form-select-sm" id="wxRuleTarget">
                             <option value="tray">Notification tray + chime</option>
                             <option value="chat">Chat</option>
@@ -240,23 +240,23 @@ $active_page = 'settings';
                         </select>
                     </div>
                     <div class="col-md-4 wx-rule-ref d-none">
-                        <label class="form-label form-label-sm mb-0">Target ref (TG / channel / list)</label>
+                        <label class="form-label form-label-sm mb-0" for="wxRuleRef">Target ref (TG / channel / list)</label>
                         <input class="form-control form-control-sm" id="wxRuleRef" placeholder="3127">
                     </div>
                     <div class="col-md-2">
-                        <label class="form-label form-label-sm mb-0">Min severity</label>
+                        <label class="form-label form-label-sm mb-0" for="wxRuleSeverity">Min severity</label>
                         <select class="form-select form-select-sm" id="wxRuleSeverity">
                             <option>Minor</option><option>Moderate</option><option selected>Severe</option><option>Extreme</option>
                         </select>
                     </div>
                     <div class="col-md-2">
-                        <label class="form-label form-label-sm mb-0">Min urgency</label>
+                        <label class="form-label form-label-sm mb-0" for="wxRuleUrgency">Min urgency</label>
                         <select class="form-select form-select-sm" id="wxRuleUrgency">
                             <option>Past</option><option>Future</option><option selected>Expected</option><option>Immediate</option>
                         </select>
                     </div>
                     <div class="col-md-2">
-                        <label class="form-label form-label-sm mb-0">Mode</label>
+                        <label class="form-label form-label-sm mb-0" for="wxRuleMode">Mode</label>
                         <select class="form-select form-select-sm" id="wxRuleMode">
                             <option value="notify">Notify</option>
                             <option value="auto_fire">Auto-fire</option>
@@ -264,11 +264,11 @@ $active_page = 'settings';
                         </select>
                     </div>
                     <div class="col-md-2">
-                        <label class="form-label form-label-sm mb-0">Message types</label>
+                        <label class="form-label form-label-sm mb-0" for="wxRuleMsgTypes">Message types</label>
                         <input class="form-control form-control-sm" id="wxRuleMsgTypes" value="Alert,Update">
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label form-label-sm mb-0">Event allow (CSV, blank = all)</label>
+                        <label class="form-label form-label-sm mb-0" for="wxRuleAllow">Event allow (CSV, blank = all)</label>
                         <input class="form-control form-control-sm" id="wxRuleAllow" placeholder="tornado,severe thunderstorm">
                         <div class="mt-1 small" id="wxRuleQuickTypes">
                             <span class="text-body-secondary me-1">Quick picks:</span>
@@ -284,7 +284,7 @@ $active_page = 'settings';
                         </div>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label form-label-sm mb-0">Event deny (CSV)</label>
+                        <label class="form-label form-label-sm mb-0" for="wxRuleDeny">Event deny (CSV)</label>
                         <input class="form-control form-control-sm" id="wxRuleDeny" placeholder="">
                     </div>
                     <div class="col-md-2">
@@ -315,27 +315,27 @@ $active_page = 'settings';
             <p class="text-body-secondary small">Used when a rule's target is DMR or Zello. Relaying NWS warnings on amateur DMR (e.g. TG 3127) is SKYWARN — set your callsign so each transmission carries a §97.119 station ID.</p>
             <div class="row g-3">
                 <div class="col-md-3">
-                    <label class="form-label form-label-sm mb-0">Clear-channel wait (s)</label>
+                    <label class="form-label form-label-sm mb-0" for="wxTtsClear">Clear-channel wait (s)</label>
                     <input type="number" step="0.25" min="0" class="form-control form-control-sm" id="wxTtsClear" value="3.0">
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label form-label-sm mb-0">Callsign (amateur ID)</label>
+                    <label class="form-label form-label-sm mb-0" for="wxTtsCallsign">Callsign (amateur ID)</label>
                     <input class="form-control form-control-sm" id="wxTtsCallsign" placeholder="N0NKI">
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label form-label-sm mb-0">Max read-out (s)</label>
+                    <label class="form-label form-label-sm mb-0" for="wxTtsMax">Max read-out (s)</label>
                     <input type="number" min="10" class="form-control form-control-sm" id="wxTtsMax" value="45">
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label form-label-sm mb-0">Piper voice id</label>
+                    <label class="form-label form-label-sm mb-0" for="wxTtsVoice">Piper voice id</label>
                     <input class="form-control form-control-sm" id="wxTtsVoice" placeholder="(default)">
                 </div>
                 <div class="col-12">
-                    <label class="form-label form-label-sm mb-0">Read-out prefix</label>
+                    <label class="form-label form-label-sm mb-0" for="wxTtsPrefix">Read-out prefix</label>
                     <input class="form-control form-control-sm" id="wxTtsPrefix" value="Weather bulletin from the National Weather Service.">
                 </div>
                 <div class="col-12">
-                    <label class="form-label form-label-sm mb-0">Unattended keying (auto-fire)</label>
+                    <label class="form-label form-label-sm mb-0" for="wxRadioAutofire">Unattended keying (auto-fire)</label>
                     <select class="form-select form-select-sm" id="wxRadioAutofire">
                         <option value="0">Operator must approve every transmission (recommended)</option>
                         <option value="1">Allow auto-fire rules to key unattended</option>

@@ -76,7 +76,7 @@ $csrf     = csrf_token();
                 <div class="row g-2 align-items-end">
                     <!-- Text search -->
                     <div class="col-md-4 col-lg-3">
-                        <label class="form-label text-body-secondary mb-0 small">Search</label>
+                        <label class="form-label text-body-secondary mb-0 small" for="searchText">Search</label>
                         <div class="input-group input-group-sm">
                             <span class="input-group-text"><i class="bi bi-search"></i></span>
                             <input type="text" class="form-control form-control-sm" id="searchText"
@@ -86,7 +86,7 @@ $csrf     = csrf_token();
 
                     <!-- Type filter -->
                     <div class="col-md-2">
-                        <label class="form-label text-body-secondary mb-0 small">Type</label>
+                        <label class="form-label text-body-secondary mb-0 small" for="searchType">Type</label>
                         <select class="form-select form-select-sm" id="searchType">
                             <option value="">All Types</option>
                         </select>
@@ -94,7 +94,7 @@ $csrf     = csrf_token();
 
                     <!-- Status filter -->
                     <div class="col-md-2 col-lg-1">
-                        <label class="form-label text-body-secondary mb-0 small">Status</label>
+                        <label class="form-label text-body-secondary mb-0 small" for="searchStatus">Status</label>
                         <select class="form-select form-select-sm" id="searchStatus">
                             <option value="">All</option>
                             <option value="2">Open</option>
@@ -105,7 +105,7 @@ $csrf     = csrf_token();
 
                     <!-- Severity filter -->
                     <div class="col-md-2 col-lg-1">
-                        <label class="form-label text-body-secondary mb-0 small">Severity</label>
+                        <label class="form-label text-body-secondary mb-0 small" for="searchSeverity">Severity</label>
                         <select class="form-select form-select-sm" id="searchSeverity">
                             <option value="">All</option>
                             <option value="0">Low</option>
@@ -116,19 +116,19 @@ $csrf     = csrf_token();
 
                     <!-- Date from -->
                     <div class="col-md-2 col-lg-1">
-                        <label class="form-label text-body-secondary mb-0 small">From</label>
+                        <label class="form-label text-body-secondary mb-0 small" for="searchDateFrom">From</label>
                         <input type="date" class="form-control form-control-sm" id="searchDateFrom">
                     </div>
 
                     <!-- Date to -->
                     <div class="col-md-2 col-lg-1">
-                        <label class="form-label text-body-secondary mb-0 small">To</label>
+                        <label class="form-label text-body-secondary mb-0 small" for="searchDateTo">To</label>
                         <input type="date" class="form-control form-control-sm" id="searchDateTo">
                     </div>
 
                     <!-- City -->
                     <div class="col-md-2 col-lg-1">
-                        <label class="form-label text-body-secondary mb-0 small">City</label>
+                        <label class="form-label text-body-secondary mb-0 small" for="searchCity">City</label>
                         <input type="text" class="form-control form-control-sm" id="searchCity" placeholder="City...">
                     </div>
 
@@ -153,7 +153,7 @@ $csrf     = csrf_token();
     <div class="d-flex align-items-center justify-content-between mb-2">
         <div class="small text-body-secondary" id="resultsSummary">Enter search criteria above.</div>
         <div class="d-flex gap-2 align-items-center">
-            <select class="form-select form-select-sm" id="pageSize" style="width:auto;">
+            <select class="form-select form-select-sm" id="pageSize" style="width:auto;" aria-label="Results per page">
                 <option value="25">25</option>
                 <option value="50" selected>50</option>
                 <option value="100">100</option>

@@ -86,7 +86,7 @@ $csrf     = csrf_token();
                     <div class="input-group input-group-sm">
                         <span class="input-group-text"><i class="bi bi-search"></i></span>
                         <input type="text" class="form-control form-control-sm" id="searchInput"
-                               placeholder="Search by make, model, callsign, owner..." autocomplete="off">
+                               placeholder="Search by make, model, callsign, owner..." autocomplete="off" aria-label="Search vehicles">
                         <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="btnClearSearch">
                             <i class="bi bi-x-lg"></i>
                         </button>
@@ -260,27 +260,27 @@ $csrf     = csrf_token();
                                 </div>
                                 <div class="row g-2">
                                     <div class="col-3">
-                                        <label class="form-label form-label-sm mb-0">Year</label>
+                                        <label class="form-label form-label-sm mb-0" for="editYear">Year</label>
                                         <input type="number" class="form-control form-control-sm" id="editYear" min="1950" max="2040">
                                     </div>
                                     <div class="col-4">
-                                        <label class="form-label form-label-sm mb-0">Make</label>
+                                        <label class="form-label form-label-sm mb-0" for="editMake">Make</label>
                                         <input type="text" class="form-control form-control-sm" id="editMake" placeholder="e.g. Ford">
                                     </div>
                                     <div class="col-5">
-                                        <label class="form-label form-label-sm mb-0">Model</label>
+                                        <label class="form-label form-label-sm mb-0" for="editModel">Model</label>
                                         <input type="text" class="form-control form-control-sm" id="editModel" placeholder="e.g. Explorer">
                                     </div>
                                     <div class="col-4">
-                                        <label class="form-label form-label-sm mb-0">Color</label>
+                                        <label class="form-label form-label-sm mb-0" for="editColor">Color</label>
                                         <input type="text" class="form-control form-control-sm" id="editColor">
                                     </div>
                                     <div class="col-4">
-                                        <label class="form-label form-label-sm mb-0">Callsign/Unit #</label>
+                                        <label class="form-label form-label-sm mb-0" for="editCallsign">Callsign/Unit #</label>
                                         <input type="text" class="form-control form-control-sm" id="editCallsign">
                                     </div>
                                     <div class="col-4">
-                                        <label class="form-label form-label-sm mb-0">Type</label>
+                                        <label class="form-label form-label-sm mb-0" for="editVehicleType">Type</label>
                                         <select class="form-select form-select-sm" id="editVehicleType"></select>
                                     </div>
                                 </div>
@@ -304,7 +304,7 @@ $csrf     = csrf_token();
                                         </div>
                                     </div>
                                     <div class="col-3">
-                                        <label class="form-label form-label-sm mb-0">Status</label>
+                                        <label class="form-label form-label-sm mb-0" for="editStatus">Status</label>
                                         <select class="form-select form-select-sm" id="editStatus">
                                             <option value="Active">Active</option>
                                             <option value="Out of Service">Out of Service</option>
@@ -312,10 +312,10 @@ $csrf     = csrf_token();
                                         </select>
                                     </div>
                                     <div class="col-9 d-none" id="editOwnerPersonWrap">
-                                        <select class="form-select form-select-sm" id="editOwner"></select>
+                                        <select class="form-select form-select-sm" id="editOwner" aria-label="Select owner (person)"></select>
                                     </div>
                                     <div class="col-9 d-none" id="editOwnerAgencyWrap">
-                                        <select class="form-select form-select-sm" id="editOwnerOrg"></select>
+                                        <select class="form-select form-select-sm" id="editOwnerOrg" aria-label="Select owner (agency)"></select>
                                     </div>
                                 </div>
                             </div>
@@ -327,19 +327,19 @@ $csrf     = csrf_token();
                                 </div>
                                 <div class="row g-2">
                                     <div class="col-4">
-                                        <label class="form-label form-label-sm mb-0">Plate #</label>
+                                        <label class="form-label form-label-sm mb-0" for="editPlate">Plate #</label>
                                         <input type="text" class="form-control form-control-sm" id="editPlate">
                                     </div>
                                     <div class="col-2">
-                                        <label class="form-label form-label-sm mb-0"><?php echo e(t('form.state', 'State')); ?></label>
+                                        <label class="form-label form-label-sm mb-0" for="editPlateState"><?php echo e(t('form.state', 'State')); ?></label>
                                         <select class="form-select form-select-sm" id="editPlateState"></select>
                                     </div>
                                     <div class="col-6">
-                                        <label class="form-label form-label-sm mb-0">VIN</label>
+                                        <label class="form-label form-label-sm mb-0" for="editVin">VIN</label>
                                         <input type="text" class="form-control form-control-sm" id="editVin" maxlength="17">
                                     </div>
                                     <div class="col-6">
-                                        <label class="form-label form-label-sm mb-0">Reg. Expiry</label>
+                                        <label class="form-label form-label-sm mb-0" for="editRegExp">Reg. Expiry</label>
                                         <input type="date" class="form-control form-control-sm" id="editRegExp">
                                     </div>
                                 </div>
@@ -352,15 +352,15 @@ $csrf     = csrf_token();
                                 </div>
                                 <div class="row g-2">
                                     <div class="col-6">
-                                        <label class="form-label form-label-sm mb-0">Carrier</label>
+                                        <label class="form-label form-label-sm mb-0" for="editInsCarrier">Carrier</label>
                                         <input type="text" class="form-control form-control-sm" id="editInsCarrier">
                                     </div>
                                     <div class="col-3">
-                                        <label class="form-label form-label-sm mb-0">Policy #</label>
+                                        <label class="form-label form-label-sm mb-0" for="editInsPolicy">Policy #</label>
                                         <input type="text" class="form-control form-control-sm" id="editInsPolicy">
                                     </div>
                                     <div class="col-3">
-                                        <label class="form-label form-label-sm mb-0">Expiry</label>
+                                        <label class="form-label form-label-sm mb-0" for="editInsExp">Expiry</label>
                                         <input type="date" class="form-control form-control-sm" id="editInsExp">
                                     </div>
                                 </div>
@@ -381,7 +381,7 @@ $csrf     = csrf_token();
                                         </div>
                                     </div>
                                     <div class="col-12">
-                                        <label class="form-label form-label-sm mb-0">Notes</label>
+                                        <label class="form-label form-label-sm mb-0" for="editNotes">Notes</label>
                                         <textarea class="form-control form-control-sm" id="editNotes" rows="2"></textarea>
                                     </div>
                                 </div>

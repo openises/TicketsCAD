@@ -1340,8 +1340,23 @@ function health_check_web_exposure(bool $force = false): array
         $results[] = $bk;
         if ($bk['state'] === 'exposed') { $exposed++; }
         if ($bk['state'] === 'unknown') { $unknown++; }
-        // Only the ambiguous kind of untested escalates — see the note on
-        // 'untested_reason' in _health_backups_probe_result().
+
+        // 2026-08-14 (Ron Jones, @rjonesbsink) — .git/ and vendor/, the gap
+        // sql/ + tools/ + backups/ never covered: on IIS neither carries a
+        // git-shippable web.config (see the long comment in inc/navbar.php,
+        // which hardens both at runtime), so a stock IIS install served
+        // .git/config, .git/HEAD, .git/objects/*, .git/index (the whole
+        // repository and its history, over plain HTTP) and
+        // vendor/composer/installed.json (every dependency's exact version,
+        // a ready-made CVE-matching list) until this was added.
+        foreach (_health_git_vendor_probes($base) as $gv) {
+            $results[] = $gv;
+            if ($gv['state'] === 'exposed') { $exposed++; }
+            if ($gv['state'] === 'unknown') { $unknown++; }
+            if ($gv['state'] === 'untested' && ($gv['untested_reason'] ?? '') !== 'absent') {
+                $untested++;
+            }
+        }
         if ($bk['state'] === 'untested' && ($bk['untested_reason'] ?? '') !== 'absent') {
             $untested++;
         }
@@ -1388,8 +1403,11 @@ function health_check_web_exposure(bool $force = false): array
             'remedy'   => $exposed > 0
                 ? 'Apache: confirm AllowOverride is All or FileInfo so the shipped '
                     . '.htaccess is read. nginx: install '
-                    . 'docs/nginx/ticketscad-hardening.conf. IIS: add the hidden '
-                    . 'segments. Full instructions in docs/WEB-SERVER-HARDENING.md. '
+                    . 'docs/nginx/ticketscad-hardening.conf. IIS: confirm every '
+                    . 'directory\'s web.config is present and unmodified — never add '
+                    . 'hiddenSegments, it matches any path segment and has previously '
+                    . 'taken out assets/vendor/ site-wide. Full instructions in '
+                    . 'docs/WEB-SERVER-HARDENING.md. '
                     . 'If backups/ answered 200, treat the database as disclosed — '
                     . 'see docs/security/advisory-2026-07-30-exposed-directories.md.'
                 : '',
@@ -1629,6 +1647,70 @@ function _health_backups_probe_result(string $base, bool $force = false, ?array 
 
     return $mk('backups/', 'backups/ (database archives)', null, null, 'untested',
         'Could not test the backups directory.', 'inconclusive');
+}
+
+/**
+ * .git/ and vendor/ — 2026-08-14 (Ron Jones, @rjonesbsink). Neither can carry
+ * a git-tracked web.config (.git/ is git's own internal directory, never
+ * versioned content; vendor/ is excluded by .gitignore's `/vendor/` directory
+ * pattern, and a directory-level ignore blocks re-including anything inside
+ * it even by name) — see inc/navbar.php's served_dir_harden() calls, this
+ * gap's actual fix. This function only PROBES; it never writes anything
+ * (this file's own policy is detect-and-warn, not auto-fix).
+ *
+ * A known, always-present file within each is asked for by name, exactly
+ * like the backups probe's own "ask for a real archive, not the directory"
+ * rule — a 403 on .git/ or vendor/ themselves would prove nothing about the
+ * files inside.
+ *
+ * Each returns 'untested'/'absent' when the directory does not exist in this
+ * install (a ZIP install has no .git; an install that has never run
+ * `composer install` has no vendor) — certain, from the filesystem, and
+ * excluded from the severity count the same way an absent backups/ is.
+ *
+ * @return array[] one or two probe rows (both always present in the array;
+ *                  their state is 'untested'/'absent' when the directory
+ *                  itself does not exist)
+ */
+function _health_git_vendor_probes(string $base): array
+{
+    $mk = function (string $path, string $label, ?string $url, ?int $status,
+                    string $state, string $note, string $why = ''): array {
+        return ['path' => $path, 'label' => $label, 'url' => $url,
+                'status' => $status, 'state' => $state, 'note' => $note,
+                'untested_reason' => $why];
+    };
+
+    $root = health_check_root();
+    $out  = [];
+
+    $gitFile = $root . '/.git/HEAD';
+    if (is_file($gitFile)) {
+        $url  = $base . '/.git/HEAD';
+        $code = _health_probe_head($url);
+        $state = ($code === null) ? 'unknown' : (($code >= 200 && $code < 300) ? 'exposed' : 'blocked');
+        $out[] = $mk('.git/HEAD', '.git/ (repository metadata and full history)', $url, $code, $state, '');
+    } else {
+        $out[] = $mk('.git/HEAD', '.git/ (repository metadata and full history)', null, null, 'untested',
+            'No .git directory in this install (a ZIP install, or one where .git was '
+            . 'later removed), so there is nothing at that URL to request.', 'absent');
+    }
+
+    $vendorFile = $root . '/vendor/composer/installed.json';
+    if (is_file($vendorFile)) {
+        $url  = $base . '/vendor/composer/installed.json';
+        $code = _health_probe_head($url);
+        $state = ($code === null) ? 'unknown' : (($code >= 200 && $code < 300) ? 'exposed' : 'blocked');
+        $out[] = $mk('vendor/composer/installed.json', 'vendor/ (composer dependencies, exact versions)',
+            $url, $code, $state, '');
+    } else {
+        $out[] = $mk('vendor/composer/installed.json', 'vendor/ (composer dependencies, exact versions)',
+            null, null, 'untested',
+            'No vendor directory in this install (composer install has not been run), '
+            . 'so there is nothing at that URL to request.', 'absent');
+    }
+
+    return $out;
 }
 
 /**
@@ -2228,7 +2310,7 @@ function health_check_dir_probe(string $dir, string $slug, string $label, bool $
         try {
             $seg  = rawurlencode(basename(rtrim(str_replace('\\', '/', $dir), '/')));
             $urls = [
-                'http://'  . $hostOnly . '/' . $seg . '/' . $name,
+                'http://'  . $hostOnly . '/' . $seg . '/' . $name, // NOSONAR S5332: this IS the check — it probes plain HTTP deliberately, to detect exactly the exposure this function exists to catch
                 'https://' . $hostOnly . '/' . $seg . '/' . $name,
             ];
             // …and the path this application's OWN site would map the directory

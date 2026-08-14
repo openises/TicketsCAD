@@ -41,6 +41,25 @@ require_once __DIR__ . '/rbac.php';
 require_once __DIR__ . '/backup_schedule.php';
 backup_schedule_tick();
 
+// 2026-08-14 (Ron Jones, @rjonesbsink) — .git/ and vendor/ are reachable over
+// HTTP on IIS: neither can carry a git-tracked web.config (.git/ is git's own
+// internal directory, never versioned content; vendor/ is `/vendor/`-ignored
+// by .gitignore, and a directory-level ignore blocks re-including anything
+// inside it even by name). Apache (.htaccess) and nginx already deny both;
+// IIS never reads .htaccess and shipped nothing for either. served_dir_harden()
+// (inc/served-dir.php) is this codebase's existing answer to exactly this
+// shape of problem (keys/, backups/, cache/zello-audio/ all use it) — write
+// the deny files here, wired into the one include every authenticated page
+// pulls in, for the same reason backup_schedule_tick() is: it must run
+// somewhere that fires on its own, because per-install manual copy steps are
+// what left this gap open in the first place. Best-effort and idempotent —
+// see served_dir_harden()'s own docblock.
+require_once __DIR__ . '/served-dir.php';
+if (defined('NEWUI_ROOT')) {
+    served_dir_harden(NEWUI_ROOT . '/.git', 'Git repository metadata (remote URL, full history)', true);
+    served_dir_harden(NEWUI_ROOT . '/vendor', 'Composer dependencies (exact versions, CVE-matchable)', true);
+}
+
 // Defensive defaults: pages are supposed to set $user/$level before including
 // (see the header comment). Default them from the session so a page that
 // forgets (e.g. time-approvals.php) doesn't emit an "undefined variable"
@@ -424,6 +443,7 @@ if (count($_navbar_langs) >= 2):
                         <li><a class="dropdown-item" href="profile.php"><i class="bi bi-person me-2"></i><?php           echo e(t('nav.user.profile',         'My Profile')); ?></a></li>
                         <li><a class="dropdown-item" href="profile.php#password"><i class="bi bi-key me-2"></i><?php     echo e(t('nav.user.change_password', 'Change Password')); ?></a></li>
                         <li><a class="dropdown-item" href="profile.php#security"><i class="bi bi-shield-lock me-2"></i><?php echo e(t('nav.user.tfa',         'Two-Factor Auth')); ?></a></li>
+                        <li><a class="dropdown-item" href="notes.php"><i class="bi bi-journal-richtext me-2"></i><?php     echo e(t('nav.user.notes',           'Quick Notes')); ?></a></li>
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item" href="mobile.php"><i class="bi bi-phone me-2"></i><?php             echo e(t('nav.user.mobile',          'Mobile Unit View')); ?></a></li>
                         <li><a class="dropdown-item" href="quick-start.php"><i class="bi bi-rocket-takeoff me-2"></i><?php echo e(t('nav.user.quick_start',   'Quick Start')); ?></a></li>
@@ -520,7 +540,14 @@ if (count($_navbar_langs) >= 2):
             // Phase 44 — a11y shim: makes every Bootstrap-collapse trigger
             // (data-bs-toggle) keyboard-focusable and Enter/Space-actionable
             // sitewide. One script, fixes ~62 Sonar findings at once.
-            loadGlobal('assets/js/a11y.js?v=<?php echo newui_version(); ?>', '_navbar_a11y');
+            // 2026-08-14 — asset_v() (mtime-based), not the bare version
+            // string: a plain ?v=<version> cache key doesn't change when
+            // only a11y.js's CONTENT changes between releases, so a
+            // browser that cached the pre-fix file (e.g. the command-bar
+            // id-theft bug fixed this same day) keeps serving it until an
+            // unrelated version bump or a manual hard-refresh -- same class
+            // of staleness map-prefs.js already hit and fixed this way.
+            loadGlobal('assets/js/a11y.js?v=<?php echo asset_v('assets/js/a11y.js'); ?>', '_navbar_a11y');
             loadGlobal('assets/js/event-bus.js?v=<?php echo newui_version(); ?>', '_navbar_eventbus');
             // GH #82/#76 — type-icon map markers + name labels. type-icons.js
             // defines window.TypeIcons.markerDivIcon (used by every map's marker

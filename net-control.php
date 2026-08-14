@@ -293,11 +293,11 @@ try {
                 <div class="mb-2">
                     <div class="fw-semibold small mb-1">Templates <span class="text-body-secondary fw-normal">— reuse a zone set year to year</span></div>
                     <div class="input-group input-group-sm mb-1">
-                        <select class="form-select" id="ncTemplateSelect"><option value="">— pick a template —</option></select>
+                        <select class="form-select" id="ncTemplateSelect" aria-label="Select a zone template"><option value="">— pick a template —</option></select>
                         <button type="button" class="btn btn-outline-primary" id="ncApplyTemplateBtn">Apply</button>
                     </div>
                     <div class="input-group input-group-sm">
-                        <input type="text" class="form-control" id="ncTemplateName" maxlength="64" placeholder="Save current zones as… (name)">
+                        <input type="text" class="form-control" id="ncTemplateName" maxlength="64" placeholder="Save current zones as… (name)" aria-label="New template name">
                         <button type="button" class="btn btn-outline-secondary" id="ncSaveTemplateBtn">Save</button>
                     </div>
                 </div>
@@ -363,7 +363,7 @@ try {
         </div>
         <div class="modal-body">
             <input type="hidden" id="ncIssueMemberId">
-            <label class="form-label form-label-sm">Cache item</label>
+            <label class="form-label form-label-sm" for="ncIssueItem">Cache item</label>
             <select class="form-select form-select-sm" id="ncIssueItem"><option value="">Loading…</option></select>
             <div class="form-text">Only items flagged "available for events" and not already issued are listed.</div>
         </div>

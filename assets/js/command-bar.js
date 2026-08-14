@@ -56,7 +56,10 @@
         { name: 'responders',  aliases: ['res', 'resp'],          description: 'Focus the Responders widget',                   handler: doFocusResponders },
         { name: 'units',       aliases: ['uni'],                  description: 'Focus the Responders widget (units view)',      handler: doFocusResponders },
         { name: 'facilities',  aliases: ['fac'],                  description: 'Focus the Facilities widget',                   handler: doFocusFacilities },
-        { name: 'log',         aliases: ['logs'],                 description: 'Focus the Activity Log widget',                 handler: doFocusLog },
+        // 2026-08-14 — 'log'/'logs' renamed to 'activity' to free up /log
+        // for quick-note capture below (Eric: "I want to reassign /log").
+        // 'logs' kept as an alias so a muscle-memory /logs still works.
+        { name: 'activity',    aliases: ['logs'],                 description: 'Focus the Activity Log widget',                 handler: doFocusLog },
         { name: 'detail',      aliases: [],                       description: 'Open detail page for the selected incident',    handler: doOpenDetail },
         { name: 'zello',       aliases: ['zel'],                  description: 'Toggle the Zello radio panel',                  handler: doToggleZello },
 
@@ -88,7 +91,7 @@
         //   /st E2 disp              → set Engine 2 Dispatched
         // takesArgs=true tells executeCurrent to route the whole input
         // (not just the command word) to the handler. See doStatusCommand.
-        { name: 'status',      aliases: ['s', 'st'],              description: 'Change unit status — /s &lt;handle&gt; &lt;status&gt;',  handler: doStatusCommand, takesArgs: true },
+        { name: 'status',      aliases: ['s', 'st'],              description: 'Change unit status — /s <handle> <status>',  handler: doStatusCommand, takesArgs: true },
 
         // Phase 109 — Event Net-Control zone move. Syntax:
         //   /z <team> <zone>   → put a unit in an event zone
@@ -98,7 +101,7 @@
         // Requires an active event selected on the Net Control board
         // (persisted in localStorage as nc_selected_event). Prefix-
         // friendly like /s. See doZoneCommand.
-        { name: 'zone',        aliases: ['z'],                    description: 'Set a unit\'s event zone — /z &lt;team&gt; &lt;zone&gt;', handler: doZoneCommand, takesArgs: true },
+        { name: 'zone',        aliases: ['z'],                    description: 'Set a unit\'s event zone — /z <team> <zone>', handler: doZoneCommand, takesArgs: true },
 
         // Phase 131 — Net-control check-ins. Syntax:
         //   /net 1234 tornado / 3344 hail / 6543 hail / 3243 wind damage
@@ -110,7 +113,18 @@
         // The raw string goes to the server verbatim — inc/net-checkins.php
         // owns the parse. A second parser here would be two definitions of one
         // rule, and they would drift.
-        { name: 'net',         aliases: [],                       description: 'Capture net check-ins — /net &lt;id&gt; &lt;note&gt; / &lt;id&gt; &lt;note&gt;', handler: doNetCommand, takesArgs: true }
+        { name: 'net',         aliases: [],                       description: 'Capture net check-ins — /net <id> <note> / <id> <note>', handler: doNetCommand, takesArgs: true },
+
+        // Phase 139 (Eric 2026-08-14) — Quick Notes. Syntax:
+        //   /log <text>   → capture a timestamped note in one keystroke
+        //   /log          → open the notes list (review/delete/mark done/
+        //                    copy or move into an incident, an ICS-214, or
+        //                    a personal SOP-Wiki page)
+        // 'log' was previously the Activity Log widget focus command --
+        // that moved to /activity (see above) to free this name up, per
+        // Eric's explicit direction. 'note' is the alias he floated himself
+        // when he first described the idea, kept as a second entry point.
+        { name: 'log',         aliases: ['note'],                 description: 'Capture a quick note — /log <text>, or /log alone to review',  handler: doLogCommand, takesArgs: true }
     ];
 
     // Status alias map: short codes + spelled-out variants → canonical
@@ -735,11 +749,19 @@
             // V1 — refuse statuses that need extra_data. They have to
             // go through the modal which has typeaheads/pickers.
             // (Phase 99r-v2 will add inline collection here.)
-            if (statusOpt.extra_data_required
-                && statusOpt.extra_data_type
-                && statusOpt.extra_data_type !== 'none') {
+            // GH#52 — check BOTH slots. A status needing only slot 2 (no
+            // slot 1 configured) used to sail through this check and then
+            // fail confusingly at the server with no prompt at all.
+            if ((statusOpt.extra_data_required
+                    && statusOpt.extra_data_type
+                    && statusOpt.extra_data_type !== 'none')
+                || (statusOpt.extra_data_required_2
+                    && statusOpt.extra_data_type_2
+                    && statusOpt.extra_data_type_2 !== 'none')) {
+                var neededType = (statusOpt.extra_data_required && statusOpt.extra_data_type !== 'none')
+                    ? statusOpt.extra_data_type : statusOpt.extra_data_type_2;
                 return statusError(
-                    canonCandidates[0] + ' needs ' + statusOpt.extra_data_type
+                    canonCandidates[0] + ' needs ' + neededType
                     + ' info — open the unit and use the Status modal instead'
                 );
             }
@@ -893,6 +915,33 @@
         })
         .catch(function (err) {
             statusError('Could not store the check-ins: ' + (err.message || String(err)));
+        });
+    }
+
+    // ── /log <text> — Quick Notes capture (Phase 139) ──
+    function doLogCommand(argString) {
+        var text = String(argString || '').trim();
+        if (!text) {
+            // Bare "/log" (or "/note") -- open the review/manage list.
+            go('notes.php');
+            return;
+        }
+        fetch('api/quick-notes.php', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'create', note_text: text, csrf_token: _cmdCsrf() })
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+            if (res.errors && res.errors.length) { return statusError(res.errors.join(', ')); }
+            if (res.error) { return statusError(res.error); }
+            if (typeof window.showBriefToast === 'function') {
+                window.showBriefToast('Note captured');
+            }
+        })
+        .catch(function (err) {
+            statusError('Could not capture the note: ' + (err.message || String(err)));
         });
     }
 

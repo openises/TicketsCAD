@@ -19,7 +19,7 @@ you exactly what to add.
 |---|---|---|
 | **Apache** (XAMPP, Debian/Ubuntu `apache2`, the Docker image) | `.htaccess`, `sql/.htaccess`, `tools/.htaccess` — shipped, arrive with an update | Confirm `AllowOverride` is `All` or `FileInfo` in your vhost. On `AllowOverride None` Apache ignores every `.htaccess` **without warning**. |
 | **nginx** | Nothing ships that helps you. nginx never reads `.htaccess`. | Install `docs/nginx/ticketscad-hardening.conf` — see below. |
-| **IIS** (Windows) | `sql/web.config` and `tools/web.config` — shipped | Add the equivalent for `backups/` and `inc/` (see below). IIS ignores `.htaccess`. |
+| **IIS** (Windows) | `web.config` next to every sensitive folder — shipped for `sql/`, `tools/`, `tests/`, `specs/`, `inc/`, `apache/`, `coordination/`, `drafts/`, `services/` (+ narrower overrides in `services/meshtastic/` and `services/meshcore/`); written automatically at runtime for `.git/` and `vendor/` (can't ship via git — see below); `keys/` and `backups/` written automatically when created | Nothing, on a stock install. IIS ignores `.htaccess`. |
 | **Caddy** | Nothing ships that helps you. | See below. |
 | **Docker (the shipped image)** | Apache inside the container, with the shipped `.htaccess` | Nothing extra. `backups/` also lives outside the web root from v4.2.3. |
 
@@ -65,6 +65,15 @@ So `services/meshtastic/*.py` and `services/meshcore/*.py` stay downloadable.
 Everything else under `services/` does not — a running install keeps
 `listener.ini` there (it contains your APRS-IS passcode), possibly `.env` files,
 and `services/*/logs/`.
+
+On IIS this is two `web.config` files at different depths, not one:
+`services\web.config` denies the whole folder, and
+`services\meshtastic\web.config` / `services\meshcore\web.config` each
+override it for their own subtree with `<clear />` plus a single
+`<add fileExtension=".py" allowed="true" />` — ordinary IIS configuration
+inheritance (the `web.config` nearest a request wins). If you ever add your
+own subfolder under `services\` that needs to serve something, copy that
+narrow-override shape rather than loosening `services\web.config` itself.
 
 ---
 
@@ -144,9 +153,33 @@ the PHP location and the migration script would still run.
 
 ## IIS (Windows)
 
-IIS ignores `.htaccess` as completely as nginx does. TicketsCAD ships
-`sql/web.config` and `tools/web.config`, which cover the two worst folders. Add
-the same file to `backups\` and `inc\`:
+IIS ignores `.htaccess` as completely as nginx does. As of this version,
+TicketsCAD ships a `web.config` next to every folder in "The list" above that
+is a normal part of the git repository: `sql\`, `tools\`, `tests\`, `specs\`,
+`inc\`, `apache\`, `coordination\`, `drafts\`, and `services\` (see the
+`services\` note below — it is not a plain deny). Nothing to add by hand for
+any of those on a stock install.
+
+**`.git\` and `vendor\` are different, and worth understanding why.** Neither
+can carry a git-tracked `web.config`: `.git\` is git's own internal
+directory, so nothing inside it exists in any commit and nothing can arrive
+there via `git clone` itself; `vendor\` is excluded by `.gitignore`'s
+`/vendor/` directory pattern, and git's own rules block re-including a file
+inside an excluded directory even by name. TicketsCAD writes both
+directories' `web.config` **at runtime instead** — the first page load after
+you `git clone` and `composer install` triggers it, and it is a one-line,
+idempotent, best-effort call (`served_dir_harden()`, `inc/navbar.php`) that
+never touches a file already there. You do not need to do anything for these
+two on a normal install; **Settings → System Health** confirms both are
+blocked (`.git/HEAD` and `vendor/composer/installed.json` are the two
+canaries it asks for by name).
+
+**`keys\` and `backups\`** are written the same runtime way, triggered when
+the application actually creates or uses each directory — also nothing to add
+by hand.
+
+For reference, the shape every one of these files uses (the runtime-written
+ones and the shipped ones are byte-identical in substance):
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>

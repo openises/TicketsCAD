@@ -88,7 +88,8 @@ $csrf     = csrf_token();
         <div class="input-group input-group-sm" style="max-width: 320px;">
             <span class="input-group-text"><i class="bi bi-search"></i></span>
             <input type="text" class="form-control form-control-sm" id="facilitySearch"
-                   placeholder="<?php echo e(t('facs.filter.search', 'Search facilities...')); ?>" autocomplete="off">
+                   placeholder="<?php echo e(t('facs.filter.search', 'Search facilities...')); ?>" autocomplete="off"
+                   aria-label="<?php echo e(t('facs.filter.search', 'Search facilities')); ?>">
         </div>
         <div class="btn-group btn-group-sm" role="group" id="typeFilters">
             <button type="button" class="btn btn-outline-secondary active" data-filter="all"><?php echo e(t('inclist.filter.all', 'All')); ?></button>

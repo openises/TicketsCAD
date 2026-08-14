@@ -246,14 +246,20 @@ that no migration creates, import that file directly.
 
 **The web root is the application root**, so IIS publishes every directory in the
 tree unless told otherwise — including `backups/` (complete database dumps),
-`inc/` (holds your database password), and `sql/` + `tools/`.
+`inc/` (holds your database password), `sql/` + `tools/`, and (found
+2026-08-14, by @rjonesbsink) **`.git/`** (the full repository and its commit
+history, over plain HTTP) and **`vendor/`** (every Composer dependency's
+exact version — a ready-made list to match against known CVEs).
 
 TicketsCAD ships `.htaccess` denies, and **IIS does not read them**, as
 completely as nginx does not.
 
-What ships for IIS: `sql\web.config` and `tools\web.config`, covering the two
-worst directories. You should add the equivalent for `backups\` and `inc\` —
-it is the same four lines every time:
+**What ships for IIS, as of this version:** `web.config` next to every
+sensitive directory in this tree — `sql\`, `tools\`, `tests\`, `specs\`,
+`inc\`, `apache\`, `coordination\`, `drafts\`, and `services\` (with a
+narrower override in `services\meshtastic\` and `services\meshcore\` that
+still allows the two `.py` bridge scripts the Mesh Console tells you to
+download). It is the same four lines every time:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -297,7 +303,19 @@ a backup **archive by name**, not just for `/backups/`: a directory that answers
 
 TicketsCAD also probes its own public URLs and reports the result on
 **Settings → System Health**, so a later `applicationHost.config` edit that re-opens one
-of these gets noticed.
+of these gets noticed — now including `.git/HEAD` and
+`vendor/composer/installed.json` specifically.
+
+> **`.git\` and `vendor\` are different: TicketsCAD writes their `web.config`
+> itself, automatically.** Neither can ship as a tracked file in the git
+> repository — `.git\` is git's own internal directory (nothing inside it
+> exists in any commit), and `vendor\` is excluded by `.gitignore`, which
+> blocks re-including anything inside an excluded directory even by name.
+> Instead, the app writes both directories' `web.config` the first time any
+> page loads after you `git clone` and `composer install` — you do not need
+> to do anything by hand for these two. If you ever see either flagged as
+> exposed on the System Health page, load any page in a browser once (that is
+> the trigger) and re-check.
 
 There is a second layer regardless of web server: every script under `sql\` and
 `tools\` refuses to run under a non-CLI SAPI. That is the only protection that
@@ -415,15 +433,23 @@ See
 
 ## 5. The background jobs need Task Scheduler
 
-**This one is not cosmetic and it does not announce itself.** TicketsCAD has two
-background jobs. On Linux they are driven by systemd timers. Windows has no
-systemd, so unless you create a scheduled task **they never run at all** — and
-everything else keeps working, so there is nothing to notice.
+**This one is not cosmetic and it does not announce itself.** TicketsCAD has
+five background jobs. On Linux they are driven by systemd timers. Windows has
+no systemd, so unless you create a scheduled task **they never run at all** —
+and everything else keeps working, so there is nothing to notice.
 
 | Job | What stops happening if it never runs |
 |---|---|
 | `par_tick` | PAR checks are initiated but never time out. A unit that fails to answer is never marked missed — the check appears to run and silently never completes. |
 | `pending_messages_tick` | Queued notifications — push, webhooks, SMS, e-mail, Slack — stay queued instead of going out, along with messages held for a security label's kill window. |
+| `channel_receive_tick` | Inbound Telegram/Slack messages never get routed to a sender's assigned incident, on any install that has opted a channel in (off by default — harmless if you haven't). |
+| `audit_log_purge_tick` | If Settings → Audit Log → Retention is configured with a nonzero window, old audit-log rows are never archived or removed — the table just keeps growing. Disabled by default. |
+| `message_log_purge_tick` | Same as above, for the outbound message log (Settings → Pending Messages → Message Log Retention). Disabled by default. |
+
+The last two are documented as "run once a day" — that describes how often
+they actually find work to do, not how often it's safe to call them. Both
+are simple cutoff-date queries and are harmless (a cheap no-op) to run every
+minute alongside the others, which is exactly what the shipped runner does.
 
 On the install that reported this, the first manual run cleared a backlog that
 had been accumulating since install day:
@@ -436,9 +462,9 @@ Nineteen units and sixteen cycles, none of which had ever timed out.
 
 ### Create the task
 
-One entry, every minute, running both ticks. One minute is Windows' minimum
-repeat interval and it matches both jobs' interval. From an **elevated** prompt,
-with the path adjusted to your install:
+One entry, every minute, running all five ticks. One minute is Windows'
+minimum repeat interval and it matches every job's polling interval. From an
+**elevated** prompt, with the path adjusted to your install:
 
 ```powershell
 schtasks /Create /TN "TicketsCAD Background Jobs" /SC MINUTE /MO 1 `

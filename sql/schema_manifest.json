@@ -841,6 +841,14 @@
             "user_agent",
             "user_id"
         ],
+        "quick_notes": [
+            "captured_at",
+            "created_at",
+            "done",
+            "note_text",
+            "updated_at",
+            "user_id"
+        ],
         "radioid_users": [
             "callsign",
             "city",
@@ -986,6 +994,7 @@
             "content",
             "created_at",
             "created_by",
+            "owner_user_id",
             "parent_id",
             "slug",
             "sort_order",
@@ -1463,6 +1472,7 @@
         "personnel",
         "places",
         "push_subscriptions",
+        "quick_notes",
         "radioid_users",
         "region",
         "region_type",
@@ -1522,8 +1532,8 @@
     "_meta": {
         "generated_by": "tools/gen_schema_manifest.php",
         "purpose": "columns this code writes to + tables it references; checked by inc/schema-verify.php",
-        "tables": 137,
-        "columns": 1068,
-        "required_tables": 174
+        "tables": 138,
+        "columns": 1075,
+        "required_tables": 175
     }
 }

@@ -14,13 +14,28 @@ REM    schtasks /Create /TN "TicketsCAD Background Jobs" /SC MINUTE /MO 1 ^
 REM      /RU SYSTEM /RL HIGHEST /F ^
 REM      /TR "C:\inetpub\wwwroot\TicketsCAD\tools\run-scheduled-jobs.bat"
 REM
-REM  One minute is Windows' minimum repeat interval, and it happens to match
-REM  every job below's interval (all three are 60s jobs as of Phase 134). One
-REM  task drives all three ticks: fewer moving parts than three separate
-REM  tasks, and they are always in step. (channel_receive_tick, added Phase
-REM  134, is a no-op sweep -- 0 channels polled -- on any install that
-REM  hasn't opted a channel in to inbound polling, so scheduling it
-REM  unconditionally alongside the other two is safe and harmless.)
+REM  One minute is Windows' minimum repeat interval. par_tick,
+REM  pending_messages_tick and channel_receive_tick are all genuinely 60s
+REM  jobs; audit_log_purge_tick and message_log_purge_tick are documented as
+REM  "run once a day" -- that describes the RETENTION cadence, not how often
+REM  this script may safely call them. Both are idempotent cutoff-date
+REM  queries (SELECT eligible rows / DELETE WHERE created_at < cutoff):
+REM  calling them every minute costs one cheap query on the minutes nothing
+REM  is due and is otherwise correct. One task drives all five ticks: fewer
+REM  moving parts than five separate tasks, and they are always in step.
+REM  (channel_receive_tick, added Phase 134, is a no-op sweep -- 0 channels
+REM  polled -- on any install that hasn't opted a channel in to inbound
+REM  polling, so scheduling it unconditionally alongside the others is safe
+REM  and harmless.)
+REM
+REM  audit_log_purge_tick and message_log_purge_tick were missing from this
+REM  file entirely until 2026-08-14 -- each got a systemd timer the day it
+REM  shipped (Phase 133, GH#42), but this file never got the matching line.
+REM  Exactly the "shipped the job, forgot the Windows wiring" gap this whole
+REM  runner exists to prevent. tests/test_scheduled_jobs_windows.php now
+REM  asserts the runner invokes EVERY job sched_job_registry() knows about,
+REM  driven from the registry itself rather than a hardcoded job list, so
+REM  this can't silently happen a third time.
 REM
 REM  Verify it is FIRING, not merely registered -- those look identical from
 REM  the Task Scheduler UI. Watch the run counter climb on
@@ -64,7 +79,13 @@ if errorlevel 1 set "RC=1"
 "%TICKETSCAD_PHP%" tools\channel_receive_tick.php >> "%LOGDIR%\channel_receive_tick.log" 2>&1
 if errorlevel 1 set "RC=1"
 
-REM All three jobs always run: a failure in one must not stop the others. The
+"%TICKETSCAD_PHP%" tools\audit_log_purge_tick.php >> "%LOGDIR%\audit_log_purge_tick.log" 2>&1
+if errorlevel 1 set "RC=1"
+
+"%TICKETSCAD_PHP%" tools\message_log_purge_tick.php >> "%LOGDIR%\message_log_purge_tick.log" 2>&1
+if errorlevel 1 set "RC=1"
+
+REM All five jobs always run: a failure in one must not stop the others. The
 REM exit code reports whether any of them failed, so Task Scheduler's
 REM "Last Run Result" is meaningful.
 exit /b %RC%

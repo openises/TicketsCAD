@@ -159,7 +159,7 @@ function webhook_new_delivery_uid(): string {
         // Non-cryptographic fallback. The uid is a dedupe key, not a
         // secret — it is never trusted for authentication — so a weaker
         // source degrades uniqueness, not security.
-        $b = pack('N4', mt_rand(), mt_rand(), mt_rand(), mt_rand());
+        $b = pack('N4', mt_rand(), mt_rand(), mt_rand(), mt_rand()); // NOSONAR S2245: fallback only when random_bytes() itself throws; uid is a dedupe key, never used for authentication
     }
     $b[6] = chr((ord($b[6]) & 0x0f) | 0x40);
     $b[8] = chr((ord($b[8]) & 0x3f) | 0x80);

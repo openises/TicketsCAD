@@ -94,7 +94,7 @@ if (!preg_match('/^[A-Za-z0-9_]*$/', $prefix)) {
     fwrite(STDERR, "Invalid db_prefix value\n"); exit(1);
 }
 try {
-    $stmt = $pdo->prepare("SELECT `name`, `value` FROM `{$prefix}settings` WHERE `name` LIKE 'zello_%'");
+    $stmt = $pdo->prepare("SELECT `name`, `value` FROM `{$prefix}settings` WHERE `name` LIKE 'zello_%'"); // NOSONAR S2077: $prefix validated to [A-Za-z0-9_] above
     $stmt->execute();
     $rows = $stmt->fetchAll();
     $config = [];

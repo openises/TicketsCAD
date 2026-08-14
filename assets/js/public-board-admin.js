@@ -534,8 +534,13 @@
     function buildTypeRow(t) {
         var tr = document.createElement('tr');
         tr.setAttribute('data-type-id', t.id);
-        var isFull = (t.public_board_visibility || 'full') === 'full';
-        if (sensitiveIds[String(t.id)] && isFull) {
+        // 2026-08-14 (never-publish-by-default): visibility='full' is now a
+        // stored-but-inert value on nearly every type until an admin opts
+        // it in, so it's no longer a useful signal for "could this actually
+        // publish." Highlight any sensitive-matching type that COULD
+        // currently appear on the board -- i.e. never_publish is off.
+        var neverPublish = String(t.public_board_never_publish) === '1';
+        if (sensitiveIds[String(t.id)] && !neverPublish) {
             tr.classList.add('table-warning');
         }
 

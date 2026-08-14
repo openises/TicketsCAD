@@ -202,7 +202,7 @@ function iis_ancestry(DOMNode $el): array
  * @param  array    $nested    nested dir name => example path
  * @return string[]            one line per problem; empty array = valid
  */
-function iis_webconfig_problems(string $xml, array $nested): array
+function iis_webconfig_problems(string $xml, array $nested, array $allowedExtensions = []): array
 {
     $problems = [];
 
@@ -280,14 +280,29 @@ function iis_webconfig_problems(string $xml, array $nested): array
             $allowsSomething = true;
             $which = $ext->getAttribute('fileExtension');
             if ($which === '.' || $which === '') {
+                // Never permitted, even for a file with a declared allow-list —
+                // this re-opens the extension-less directory URL itself, which
+                // is a different and always-wrong thing to allow.
                 $problems[] = 'fileExtension="." allowed="true" re-permits every'
                     . ' EXTENSION-LESS url — GET on the directory itself is served again';
+            } elseif (in_array($which, $allowedExtensions, true)) {
+                // A DECLARED, narrow exception (services/meshtastic and
+                // services/meshcore override the parent services/ deny for
+                // exactly the .py the Mesh Console tells operators to curl —
+                // see those two files' own docblocks). Anything not in the
+                // caller's declared list still falls to the branch below.
+                continue;
             } else {
                 $problems[] = '<fileExtensions allowUnlisted="false"> lists ' . $which
                     . ' as allowed="true", so that extension is still served';
             }
         }
         if (!$allowsSomething) {
+            $deniesEverything = true;
+        } elseif (!empty($allowedExtensions)) {
+            // Everything actually allowed was on the declared exception list,
+            // and nothing else was — this file still denies everything OUTSIDE
+            // that narrow list, which is what "denies" means for this caller.
             $deniesEverything = true;
         }
     }
@@ -738,20 +753,46 @@ $rel = array_map(function ($p) use ($root) {
 test('sql/web.config ships', in_array('sql/web.config', $rel, true));
 test('tools/web.config ships', in_array('tools/web.config', $rel, true));
 
+// services/meshtastic/ and services/meshcore/ are DELIBERATE, narrow
+// overrides of the services/ blanket deny one directory up — the Mesh
+// Console tells operators to curl a .py bridge script from each. Everything
+// else in the tree must still deny every extension outright; these two are
+// held to "denies everything except .py" instead, checked both ways below
+// (that .py IS served here, AND that .zip/.php/the directory itself are
+// still denied) so the exception cannot silently widen.
+$narrowExceptions = [
+    'services/meshtastic/web.config' => ['.py'],
+    'services/meshcore/web.config'   => ['.py'],
+];
+
 foreach ($configs as $i => $path) {
     $text = (string) file_get_contents($path);
-    $problems = iis_webconfig_problems($text, $nested);
+    $allowedExt = $narrowExceptions[$rel[$i]] ?? [];
+    $problems = iis_webconfig_problems($text, $nested, $allowedExt);
     test($rel[$i] . ' is valid IIS configuration that denies',
         $problems === [], implode(' | ', $problems));
-    test($rel[$i] . ' denies a file, a script and a directory url',
-        iis_model_verdict($text, '/x/archive.zip') === 'denied'
-        && iis_model_verdict($text, '/x/run_migrations.php') === 'denied'
-        && iis_model_verdict($text, '/x/') === 'denied');
-    // One shape everywhere. Not a style preference: the reason the two files
-    // diverged in the first place was two sessions each fixing "their" file.
-    test($rel[$i] . ' uses the one shipped mechanism',
-        strpos($text, '<fileExtensions allowUnlisted="false" />') !== false,
-        'every shipped web.config carries the same four lines');
+
+    if ($allowedExt) {
+        test($rel[$i] . ' serves the declared exception but still denies a script and a directory url',
+            iis_model_verdict($text, '/x/bridge_v2.py') === 'served'
+            && iis_model_verdict($text, '/x/archive.zip') === 'denied'
+            && iis_model_verdict($text, '/x/run_migrations.php') === 'denied'
+            && iis_model_verdict($text, '/x/') === 'denied');
+        test($rel[$i] . ' uses Request Filtering with an explicit, narrow allow-list',
+            strpos($text, 'allowUnlisted="false"') !== false && strpos($text, '<clear />') !== false,
+            'a declared exception must reset the inherited list with <clear /> before adding its own entry');
+    } else {
+        test($rel[$i] . ' denies a file, a script and a directory url',
+            iis_model_verdict($text, '/x/archive.zip') === 'denied'
+            && iis_model_verdict($text, '/x/run_migrations.php') === 'denied'
+            && iis_model_verdict($text, '/x/') === 'denied');
+        // One shape everywhere. Not a style preference: the reason the two
+        // files diverged in the first place was two sessions each fixing
+        // "their" file.
+        test($rel[$i] . ' uses the one shipped mechanism',
+            strpos($text, '<fileExtensions allowUnlisted="false" />') !== false,
+            'every shipped web.config carries the same four lines (or is a declared exception, handled above)');
+    }
 }
 
 // A root web.config would apply site-wide, which is where a hidden segment

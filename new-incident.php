@@ -226,9 +226,9 @@ $csrf     = csrf_token();
                                     <label class="form-label"><?php echo e(t('newinc.label.coordinates', 'Coordinates')); ?></label>
                                     <div class="input-group input-group-sm">
                                         <span class="input-group-text">Lat</span>
-                                        <input type="text" class="form-control" id="lat" name="lat" placeholder="44.9778" readonly>
+                                        <input type="text" class="form-control" id="lat" name="lat" placeholder="44.9778" readonly aria-label="Latitude">
                                         <span class="input-group-text">Lng</span>
-                                        <input type="text" class="form-control" id="lng" name="lng" placeholder="-93.2650" readonly>
+                                        <input type="text" class="form-control" id="lng" name="lng" placeholder="-93.2650" readonly aria-label="Longitude">
                                         <button class="btn btn-outline-secondary" type="button" id="btnClearCoords" title="Clear coordinates">
                                             <i class="bi bi-x-lg"></i>
                                         </button>

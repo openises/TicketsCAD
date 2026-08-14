@@ -106,8 +106,8 @@ try {
     // $prefix interpolated in table name — table names can't use
     // bind parameters. Validation above pins it to /^[A-Za-z0-9_]*$/
     // so it's a safe identifier, not injectable.
-    $stmt = $pdo->prepare(
-        "SELECT `name`, `value` FROM `{$prefix}settings` WHERE `name` LIKE 'dmr_%'" // NOSONAR S2077: $prefix validated to [A-Za-z0-9_] above
+    $stmt = $pdo->prepare( // NOSONAR S2077: $prefix validated to [A-Za-z0-9_] above
+        "SELECT `name`, `value` FROM `{$prefix}settings` WHERE `name` LIKE 'dmr_%'"
     );
     $stmt->execute();
     $rows = $stmt->fetchAll();
@@ -128,10 +128,10 @@ if ($port < 1024 || $port > 65535) $port = 8092;
 $channels = [];
 try {
     // Same $prefix validation as above — safe identifier interpolation.
-    $stmt = $pdo->prepare(
+    $stmt = $pdo->prepare( // NOSONAR S2077: $prefix validated to [A-Za-z0-9_] above
         "SELECT id, label, talkgroup, bridge_host, bridge_port, bridge_token,
                 link_mode, enabled
-         FROM `{$prefix}dmr_channels` WHERE enabled = 1" // NOSONAR S2077: $prefix validated to [A-Za-z0-9_] above
+         FROM `{$prefix}dmr_channels` WHERE enabled = 1"
     );
     $stmt->execute();
     foreach ($stmt->fetchAll() as $row) {

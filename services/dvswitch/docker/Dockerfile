@@ -69,8 +69,17 @@ ENV PYTHONPATH=/opt/ticketscad-dvswitch \
     DMR_HTTP_PORT=18091 \
     AMBE_EMU_PORT=2470
 
+# Run as an unprivileged user. Nothing here needs root: both ports (2470,
+# 18091) are unprivileged, and the two directories the entrypoint writes to
+# at runtime — the rendered MMDVM_Bridge.ini and the recordings cache — are
+# created and owned by this user at build time, before ENTRYPOINT drops to it.
+RUN useradd -r -M -d /nonexistent -s /usr/sbin/nologin bridge \
+    && mkdir -p /etc/ticketscad \
+    && chown -R bridge:bridge /etc/ticketscad /var/cache/ticketscad-dvswitch /opt/ticketscad-dvswitch
+
 # HTTP control surface for the CAD. The HBP/UDP socket to your master is
 # outbound, so it needs no published port.
 EXPOSE 18091
 
+USER bridge
 ENTRYPOINT ["/entrypoint.sh"]

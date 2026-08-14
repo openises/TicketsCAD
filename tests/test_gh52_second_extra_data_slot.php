@@ -205,5 +205,53 @@ t('api/config-admin.php statuses POST writes extra_data_type_2 back', strpos($co
 t('api/config-admin.php statuses POST validates extra_data_type_2 against the same allowlist as slot 1',
     (bool) preg_match('/\$extraType2\s*=.*;\s*\n\s*if \(!in_array\(\$extraType2, \$allowedExtraTypes, true\)\)/', $configAdminSrc));
 
+// ── 13. GH#52 trouble report (cbyrdmo, 2026-08-14) — three MORE status-
+//      change entry points existed beyond the dashboard widget and Incident
+//      Detail page, and none of them had ever been taught about slot 2:
+//      Unit Detail page, the mobile interface, and the /s command bar.
+//      Each is fixed to actually chain both slots (or, for the command
+//      bar, to at least refuse consistently instead of silently bypassing
+//      slot 2's required flag). This section is the first time this file's
+//      own "static contract" claim about command-bar.js is actually true —
+//      the original assertions here never touched it despite the docblock
+//      at the top of this file claiming they did.
+$unitStatusesApiSrc = file_get_contents(__DIR__ . '/../api/unit-statuses.php');
+t('api/unit-statuses.php returns extra_data_type_2 (Unit Detail page could not see slot 2 at all before this)',
+    strpos($unitStatusesApiSrc, "'extra_data_type_2'") !== false);
+t('api/unit-statuses.php returns extra_data_required_2', strpos($unitStatusesApiSrc, "'extra_data_required_2'") !== false);
+
+$mobileDataApiSrc = file_get_contents(__DIR__ . '/../api/mobile-data.php');
+t('api/mobile-data.php selects extra_data_type_2 for the mobile status list',
+    strpos($mobileDataApiSrc, '`extra_data_type_2`') !== false);
+t('api/mobile-data.php\'s legacy fallback tier also backfills slot-2 defaults',
+    strpos($mobileDataApiSrc, "\$s['extra_data_type_2']") !== false);
+
+$unitDetailJsSrc = file_get_contents(__DIR__ . '/../assets/js/unit-detail.js');
+t('unit-detail.js\'s promptForExtraData() is slot-generic (slotSuffix), not hardcoded to slot 1',
+    strpos($unitDetailJsSrc, "function promptForExtraData(status, slotSuffix)") !== false);
+t('unit-detail.js\'s changeStatus() checks extra_data_type_2 before submitting',
+    strpos($unitDetailJsSrc, "status.extra_data_type_2 && status.extra_data_type_2 !== 'none'") !== false);
+t('unit-detail.js sends extra_data_2 in the status-change POST body',
+    strpos($unitDetailJsSrc, 'if (extraData2) body.extra_data_2 = extraData2;') !== false);
+t('unit-detail.js has a defensive retry for a stale-cache slot-2 rejection from the server',
+    strpos($unitDetailJsSrc, "data.code === 'extra_data_2_required'") !== false);
+
+$mobileJsSrc = file_get_contents(__DIR__ . '/../assets/js/mobile.js');
+t('mobile.js\'s promptMobileExtraData() is slot-generic (slotSuffix)',
+    strpos($mobileJsSrc, "function promptMobileExtraData(status, slotSuffix)") !== false);
+t('mobile.js\'s _dispatchStatusChange() checks extra_data_type_2 before submitting',
+    strpos($mobileJsSrc, "status.extra_data_type_2 && status.extra_data_type_2 !== 'none'") !== false);
+t('mobile.js sends extra_data_2 in the status-change POST body',
+    strpos($mobileJsSrc, 'if (extraData2) body.extra_data_2 = extraData2;') !== false);
+t('mobile.js has a DEDICATED slot-2 retry check, not a reused substring scan '
+    . '("extra_data_2_required".indexOf("extra_data_required") is -1, so reusing wantsExtra would silently never fire)',
+    strpos($mobileJsSrc, "data.code === 'extra_data_2_required'") !== false
+    && strpos($mobileJsSrc, 'wantsExtra2') !== false);
+
+$commandBarJsSrc = file_get_contents(__DIR__ . '/../assets/js/command-bar.js');
+t('command-bar.js\'s /s refusal check also covers slot 2 (a status needing ONLY slot 2 used to silently bypass this check entirely)',
+    strpos($commandBarJsSrc, 'statusOpt.extra_data_required_2') !== false
+    && strpos($commandBarJsSrc, "statusOpt.extra_data_type_2 !== 'none'") !== false);
+
 echo "\n=== $pass passed, $fail failed ===\n";
 exit($fail > 0 ? 1 : 0);

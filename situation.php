@@ -259,7 +259,8 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
             </h6>
             <div class="d-flex align-items-center gap-2">
                 <select class="form-select form-select-sm" id="sitTimeRange" style="width:auto;font-size:0.72rem;"
-                        title="Choose which incidents to show. 'Current' keeps recently-closed incidents on screen for the duration set below.">
+                        title="Choose which incidents to show. 'Current' keeps recently-closed incidents on screen for the duration set below."
+                        aria-label="Choose which incidents to show">
                     <option value="0">Current</option>
                     <option value="1">Closed Today</option>
                     <option value="5">Closed This Week</option>
@@ -273,7 +274,7 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
                 <div class="input-group input-group-sm" id="sitRecentCloseWrap" style="width:auto;font-size:0.72rem;">
                     <span class="input-group-text py-0 px-1" style="font-size:0.7rem;" title="How long recently-closed incidents stay visible">Keep&nbsp;closed</span>
                     <input type="number" min="0" max="10080" step="15" class="form-control form-control-sm py-0 px-1"
-                           id="sitRecentCloseMins" style="width:60px;font-size:0.7rem;" value="30">
+                           id="sitRecentCloseMins" style="width:60px;font-size:0.7rem;" value="30" aria-label="Minutes to keep recently-closed incidents visible">
                     <span class="input-group-text py-0 px-1" style="font-size:0.7rem;">min</span>
                 </div>
                 <button class="btn btn-sm btn-outline-secondary py-0 px-1" id="sitCollapse" title="Toggle panel">

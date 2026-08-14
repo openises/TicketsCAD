@@ -119,7 +119,7 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
             <!-- Status change controls (populated by JS) -->
             <div class="d-none" id="statusControls">
                 <div class="input-group input-group-sm">
-                    <select class="form-select form-select-sm" id="statusSelect" style="width: auto;">
+                    <select class="form-select form-select-sm" id="statusSelect" style="width: auto;" aria-label="Change incident status">
                         <option value="2"><?php echo e(t('newinc.status.open', 'Open')); ?></option>
                         <option value="1"><?php echo e(t('newinc.status.closed', 'Closed')); ?></option>
                         <option value="3"><?php echo e(t('newinc.status.scheduled', 'Scheduled')); ?></option>
@@ -261,15 +261,15 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
                         <!-- Edit mode (hidden) -->
                         <div id="descEdit" class="d-none">
                             <div class="mb-2">
-                                <label class="form-label text-body-secondary mb-0">Scope / Title</label>
+                                <label class="form-label text-body-secondary mb-0" for="editScope">Scope / Title</label>
                                 <input type="text" class="form-control form-control-sm" id="editScope">
                             </div>
                             <div class="mb-2">
-                                <label class="form-label text-body-secondary mb-0">Description</label>
+                                <label class="form-label text-body-secondary mb-0" for="editDescription">Description</label>
                                 <textarea class="form-control form-control-sm" id="editDescription" rows="3"></textarea>
                             </div>
                             <div class="mb-2">
-                                <label class="form-label text-body-secondary mb-0">Affected</label>
+                                <label class="form-label text-body-secondary mb-0" for="editAffected">Affected</label>
                                 <input type="text" class="form-control form-control-sm" id="editAffected">
                             </div>
                             <div class="d-flex gap-1">
@@ -341,24 +341,24 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
                         <div id="locEdit" class="d-none">
                             <div class="row g-2">
                                 <div class="col-md-6">
-                                    <label class="form-label text-body-secondary mb-0">Street</label>
+                                    <label class="form-label text-body-secondary mb-0" for="editStreet">Street</label>
                                     <input type="text" class="form-control form-control-sm" id="editStreet">
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label text-body-secondary mb-0">City</label>
+                                    <label class="form-label text-body-secondary mb-0" for="editCity">City</label>
                                     <input type="text" class="form-control form-control-sm" id="editCity">
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label text-body-secondary mb-0"><?php echo e(t('form.state', 'State')); ?></label>
+                                    <label class="form-label text-body-secondary mb-0" for="editState"><?php echo e(t('form.state', 'State')); ?></label>
                                     <input type="text" class="form-control form-control-sm" id="editState" maxlength="4">
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label text-body-secondary mb-0">Cross St / Area</label>
+                                    <label class="form-label text-body-secondary mb-0" for="editAddressAbout">Cross St / Area</label>
                                     <input type="text" class="form-control form-control-sm" id="editAddressAbout"
                                            placeholder="Area / About / Cross St">
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label text-body-secondary mb-0">Destination Address</label>
+                                    <label class="form-label text-body-secondary mb-0" for="editToAddress">Destination Address</label>
                                     <input type="text" class="form-control form-control-sm" id="editToAddress"
                                            placeholder="Transport destination (if applicable)">
                                 </div>
@@ -382,10 +382,10 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
                                         <span class="small text-body-secondary ms-auto">
                                             <span class="text-body-secondary me-1">Lat:</span>
                                             <input type="number" step="any" class="form-control form-control-sm d-inline-block" id="editLat"
-                                                   style="width:120px; display:inline-block;" placeholder="—">
+                                                   style="width:120px; display:inline-block;" placeholder="—" aria-label="Latitude">
                                             <span class="text-body-secondary mx-1">Lng:</span>
                                             <input type="number" step="any" class="form-control form-control-sm d-inline-block" id="editLng"
-                                                   style="width:140px; display:inline-block;" placeholder="—">
+                                                   style="width:140px; display:inline-block;" placeholder="—" aria-label="Longitude">
                                         </span>
                                     </div>
                                 </div>
@@ -436,15 +436,15 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
                         <div id="contactEdit" class="d-none">
                             <div class="row g-2">
                                 <div class="col-md-4">
-                                    <label class="form-label text-body-secondary mb-0">Reported By</label>
+                                    <label class="form-label text-body-secondary mb-0" for="editContact">Reported By</label>
                                     <input type="text" class="form-control form-control-sm" id="editContact">
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label text-body-secondary mb-0">Phone</label>
+                                    <label class="form-label text-body-secondary mb-0" for="editPhone">Phone</label>
                                     <input type="text" class="form-control form-control-sm" id="editPhone">
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label text-body-secondary mb-0">911 Notes</label>
+                                    <label class="form-label text-body-secondary mb-0" for="editNineOneOne">911 Notes</label>
                                     <input type="text" class="form-control form-control-sm" id="editNineOneOne">
                                 </div>
                             </div>
@@ -493,13 +493,13 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
                         <div id="facEdit" class="d-none">
                             <div class="row g-2">
                                 <div class="col-md-6">
-                                    <label class="form-label text-body-secondary mb-0">Incident at Facility</label>
+                                    <label class="form-label text-body-secondary mb-0" for="editFacility">Incident at Facility</label>
                                     <select class="form-select form-select-sm" id="editFacility">
                                         <option value="0">— None —</option>
                                     </select>
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label text-body-secondary mb-0">Receiving Facility</label>
+                                    <label class="form-label text-body-secondary mb-0" for="editRecFacility">Receiving Facility</label>
                                     <select class="form-select form-select-sm" id="editRecFacility">
                                         <option value="0">— None —</option>
                                     </select>
@@ -741,7 +741,7 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
                                 <span class="input-group-text"><i class="bi bi-search"></i></span>
                                 <input type="text" class="form-control form-control-sm"
                                        id="responderSearch" placeholder="Search responders..."
-                                       autocomplete="off">
+                                       autocomplete="off" aria-label="Search responders">
                                 <button type="button" class="btn btn-sm btn-primary" id="btnAssignResponder" disabled>
                                     <i class="bi bi-plus-lg me-1"></i>Assign
                                 </button>
@@ -839,8 +839,9 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
                             <!-- New-major inline fields (hidden until "+ Create new" picked) -->
                             <div id="majorNewWrap" class="d-none mt-2">
                                 <input type="text" class="form-control form-control-sm mb-1" id="majorNewName"
-                                       placeholder="<?php echo e(t('incdetail.major.new_name_ph', 'New major incident name')); ?>" maxlength="255">
-                                <select class="form-select form-select-sm" id="majorNewSeverity">
+                                       placeholder="<?php echo e(t('incdetail.major.new_name_ph', 'New major incident name')); ?>" maxlength="255"
+                                       aria-label="<?php echo e(t('incdetail.major.new_name_ph', 'New major incident name')); ?>">
+                                <select class="form-select form-select-sm" id="majorNewSeverity" aria-label="Major incident severity">
                                     <option value="0"><?php echo e(t('major.sev.0', 'Minor')); ?></option>
                                     <option value="1" selected><?php echo e(t('major.sev.1', 'Major')); ?></option>
                                     <option value="2"><?php echo e(t('major.sev.2', 'Critical')); ?></option>
@@ -885,7 +886,7 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
                             <div class="input-group input-group-sm">
                                 <textarea class="form-control form-control-sm" id="noteText"
                                           rows="1" placeholder="Add a note... (Enter to send)"
-                                          style="resize: vertical; min-height: 31px;"></textarea>
+                                          style="resize: vertical; min-height: 31px;" aria-label="Add a note to the activity log"></textarea>
                                 <button type="button" class="btn btn-sm btn-primary" id="btnAddNote" disabled>
                                     <i class="bi bi-send"></i>
                                 </button>

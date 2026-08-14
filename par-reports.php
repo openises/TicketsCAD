@@ -78,11 +78,11 @@ $active_page = 'par-reports';
                 <div class="card-body">
                     <div class="row g-2 align-items-end mb-3">
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm">From</label>
+                            <label class="form-label form-label-sm" for="compFrom">From</label>
                             <input type="date" class="form-control form-control-sm" id="compFrom">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm">To</label>
+                            <label class="form-label form-label-sm" for="compTo">To</label>
                             <input type="date" class="form-control form-control-sm" id="compTo">
                         </div>
                         <div class="col-md-2">
@@ -110,7 +110,7 @@ $active_page = 'par-reports';
                 <div class="card-body">
                     <div class="row g-2 align-items-end mb-3">
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm">Incident #</label>
+                            <label class="form-label form-label-sm" for="tlTicket">Incident #</label>
                             <input type="text" class="form-control form-control-sm" id="tlTicket"
                                    placeholder="e.g. 26-0091"
                                    title="Enter the incident number as shown on the incident (not the internal database id).">

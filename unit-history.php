@@ -88,7 +88,7 @@ $rid = (int) ($_GET['responder_id'] ?? 0);
         <div class="card">
             <div class="card-body">
                 <div class="mb-2 small">Pick a unit:</div>
-                <select class="form-select form-select-sm" id="uhPicker" style="max-width: 400px;"></select>
+                <select class="form-select form-select-sm" id="uhPicker" style="max-width: 400px;" aria-label="Pick a unit"></select>
             </div>
         </div>
     <?php else: ?>
@@ -97,7 +97,7 @@ $rid = (int) ($_GET['responder_id'] ?? 0);
                 <div class="card">
                     <div class="card-header d-flex align-items-center py-1">
                         <span class="fw-semibold small">Timeline</span>
-                        <select class="form-select form-select-sm ms-auto" id="uhFilter" style="width: auto;">
+                        <select class="form-select form-select-sm ms-auto" id="uhFilter" style="width: auto;" aria-label="Filter timeline events">
                             <option value="all">All events</option>
                             <option value="note">Notes only</option>
                             <option value="status_change">Status changes</option>
@@ -115,13 +115,13 @@ $rid = (int) ($_GET['responder_id'] ?? 0);
                     <div class="card-header py-1"><span class="fw-semibold small">Add note</span></div>
                     <div class="card-body">
                         <div class="mb-2">
-                            <label class="form-label form-label-sm">Category</label>
+                            <label class="form-label form-label-sm" for="uhCategory">Category</label>
                             <input type="text" class="form-control form-control-sm" id="uhCategory"
                                    value="general" maxlength="32">
                             <div class="form-text small">e.g. general, ics-214, incident-XYZ, training.</div>
                         </div>
                         <div class="mb-2">
-                            <label class="form-label form-label-sm">Note</label>
+                            <label class="form-label form-label-sm" for="uhNote">Note</label>
                             <textarea class="form-control form-control-sm" id="uhNote" rows="4"
                                       placeholder="What did this unit do?" maxlength="1024"></textarea>
                         </div>

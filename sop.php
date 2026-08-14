@@ -90,7 +90,7 @@ $csrf     = csrf_token();
                 </div>
                 <div class="card-body p-0">
                     <div class="sop-tree-search p-2">
-                        <input type="text" class="form-control form-control-sm" id="treeSearch" placeholder="Filter pages...">
+                        <input type="text" class="form-control form-control-sm" id="treeSearch" placeholder="Filter pages..." aria-label="Filter pages">
                     </div>
                     <div class="sop-tree" id="pageTree">
                         <div class="text-center text-body-secondary py-3">
@@ -212,7 +212,7 @@ $csrf     = csrf_token();
                             <div class="row g-2" id="editorArea">
                                 <div class="col-12" id="editorCol">
                                     <textarea class="form-control sop-editor" id="editContent" rows="18"
-                                              placeholder="Write your page content in Markdown..."></textarea>
+                                              placeholder="Write your page content in Markdown..." aria-label="Page content in Markdown"></textarea>
                                 </div>
                                 <div class="col-6 d-none" id="previewCol">
                                     <div class="sop-preview sop-content" id="editPreview"></div>

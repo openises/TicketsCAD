@@ -228,7 +228,7 @@ $active_page = 'aprs-map';
         <div class="d-flex align-items-center gap-1 ms-1 small" title="Motion projection timeout in minutes — markers freeze at the position they'd be at this many minutes after their last fix. Default 15.">
             <input type="number" class="form-control form-control-sm" id="aprsMotionTimeout"
                    min="1" max="240" step="1" value="15"
-                   style="width:60px;">
+                   style="width:60px;" aria-label="Motion projection timeout in minutes">
             <span class="text-body-secondary" style="font-size:0.7rem;">min</span>
         </div>
 
@@ -254,7 +254,7 @@ $active_page = 'aprs-map';
         </div>
 
         <div class="ms-auto d-flex align-items-center gap-2">
-            <label class="form-label form-label-sm mb-0 text-body-secondary">Time window:</label>
+            <label class="form-label form-label-sm mb-0 text-body-secondary" for="aprsSinceMin">Time window:</label>
             <select class="form-select form-select-sm" id="aprsSinceMin" style="width:120px;">
                 <option value="15">Last 15 min</option>
                 <option value="60" selected>Last hour</option>
@@ -312,7 +312,7 @@ $active_page = 'aprs-map';
                 <div class="card-body aprs-widget-body-list">
             <div class="d-flex align-items-center gap-2 mb-2">
                 <input type="search" class="form-control form-control-sm" id="aprsListFilter"
-                       placeholder="Filter rows (callsign, comment, type)…" style="max-width:300px;">
+                       placeholder="Filter rows (callsign, comment, type)…" style="max-width:300px;" aria-label="Filter rows by callsign, comment, or type">
                 <!-- Phase 99h-v3 (2026-06-29) — Eric beta: filter by
                      station type (e.g. hide all weather, all houses).
                      Dropdown lists every type currently in the data;

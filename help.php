@@ -1384,9 +1384,19 @@ pick one.</p>
         <tr><td><code>/responders</code></td><td><code>/res</code>, <code>/resp</code></td><td>Focus the Responders widget.</td></tr>
         <tr><td><code>/units</code></td><td><code>/uni</code></td><td>Focus the Responders widget (units view).</td></tr>
         <tr><td><code>/facilities</code></td><td><code>/fac</code></td><td>Focus the Facilities widget.</td></tr>
-        <tr><td><code>/log</code></td><td><code>/logs</code></td><td>Focus the Activity Log widget.</td></tr>
+        <tr><td><code>/activity</code></td><td><code>/logs</code></td><td>Focus the Activity Log widget.</td></tr>
         <tr><td><code>/detail</code></td><td>&mdash;</td><td>Open detail view for the selected incident.</td></tr>
         <tr><td><code>/zello</code></td><td><code>/zel</code></td><td>Toggle the Zello radio panel.</td></tr>
+    </tbody>
+</table>
+
+<h6>Quick Notes &mdash; Phase 139</h6>
+<p>Capture a timestamped note in one keystroke, without leaving whatever you were doing:</p>
+<table class="table table-sm table-bordered">
+    <thead><tr><th>Command</th><th>Aliases</th><th>Action</th></tr></thead>
+    <tbody>
+        <tr><td><code>/log &lt;text&gt;</code></td><td><code>/note &lt;text&gt;</code></td><td>Capture <code>&lt;text&gt;</code> as a new note with the current time.</td></tr>
+        <tr><td><code>/log</code></td><td><code>/note</code></td><td>Open the notes list &mdash; review, delete, mark done, or copy/move a note into an incident&#39;s activity log, an ICS-214, or a personal wiki page.</td></tr>
     </tbody>
 </table>
 
@@ -1698,7 +1708,7 @@ foreach ($help_categories as $catKey => $cat) {
             <div class="input-group input-group-sm">
                 <span class="input-group-text"><i class="bi bi-search"></i></span>
                 <input type="text" class="form-control form-control-sm" id="helpSearch"
-                       placeholder="Search help topics..." autocomplete="off">
+                       placeholder="Search help topics..." autocomplete="off" aria-label="Search help topics">
             </div>
         </div>
 

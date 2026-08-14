@@ -302,17 +302,26 @@ function pb_sensitive_keywords(): array
         'domestic', 'dv', 'sexual assault', 'abuse', 'welfare check', 'psych',
         'suicide', 'juvenile', 'child', 'minor', 'behavioral', 'crisis',
         'psychiatric', 'self harm',
+        // Added 2026-08-14 per @rjonesbsink's report: his own CARDIAC, MISSING,
+        // and MCI incident types (grouped under Fire/Law, not EMS) matched
+        // NONE of the keywords above and defaulted to full public exposure.
+        'cardiac', 'arrest', 'casualty', 'missing', 'unconscious', 'stroke',
+        'respiratory', 'seizure',
     ];
 }
 
 /**
  * Live query (not the one-time migration seed): every `in_types` row whose
  * `type`, `group`, OR `description` case-insensitively matches the
- * sensitive-keyword list AND is still at `public_board_visibility =
- * 'full'`. Used by the master-switch pre-enable warning banner (server-
- * side re-check — never trust a client-side-only gate for something this
- * consequential, plan.md §9 panel 1) and by the admin UI's own warning
- * list (tasks.md G1b).
+ * sensitive-keyword list AND could actually appear on the public board
+ * right now — i.e. `public_board_never_publish = 0` (2026-08-14: since
+ * never-publish became the default, `public_board_visibility` alone is no
+ * longer a reliable signal of real exposure — a type can sit at
+ * visibility='full' while never_publish=1 keeps it fully hidden
+ * underneath). Used by the master-switch pre-enable warning banner
+ * (server-side re-check — never trust a client-side-only gate for
+ * something this consequential, plan.md §9 panel 1) and by the admin UI's
+ * own warning list (tasks.md G1b).
  *
  * CORRECTION (final adversarial review, 2026-08-13): this used to match
  * ONLY against `group` — which is a defensible-SOUNDING column name but
@@ -330,6 +339,16 @@ function pb_sensitive_keywords(): array
  * there directly (e.g. "Suicide", "OverdoseEMS"). Still a heuristic, not
  * a guarantee — an admin must still review the Incident Type Rules panel.
  *
+ * CORRECTION 2 (2026-08-14, never-publish-by-default): before this fix the
+ * WHERE clause was `public_board_visibility = 'full'` alone. Once
+ * never-publish defaults to 1 for nearly every type, that condition would
+ * be true for almost the entire table (visibility stays 'full' underneath,
+ * unused, on a type nobody has ever opted in) -- the warning banner would
+ * fire on essentially every enable attempt regardless of real risk, the
+ * exact "check cries wolf, gets muted" failure mode this codebase's own
+ * pitfalls history already names. Added `AND public_board_never_publish =
+ * 0` so this only flags types that would ACTUALLY be exposed.
+ *
  * Fails safe (empty array) on any DB error — the CALLER decides what an
  * empty/unavailable result means; this function does not itself block
  * anything.
@@ -340,7 +359,7 @@ function pb_sensitive_types_still_full(): array
         $regex = implode('|', pb_sensitive_keywords());
         return db_fetch_all(
             "SELECT `id`, `type`, `group` FROM " . db_table('in_types') . "
-              WHERE `public_board_visibility` = 'full'
+              WHERE `public_board_never_publish` = 0
                 AND (
                     (`type` IS NOT NULL AND `type` <> '' AND LOWER(`type`) REGEXP ?)
                  OR (`group` IS NOT NULL AND `group` <> '' AND LOWER(`group`) REGEXP ?)

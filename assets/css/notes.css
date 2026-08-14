@@ -1,0 +1,36 @@
+/*
+ * Phase 139 (2026-08-14) — Quick Notes page styles.
+ */
+
+.quick-note-card {
+    cursor: grab;
+}
+.quick-note-card:active {
+    cursor: grabbing;
+}
+.quick-note-card.quick-note-done .quick-note-text {
+    text-decoration: line-through;
+    opacity: 0.6;
+}
+.quick-note-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.wiki-drop-target {
+    border-radius: 3px;
+    transition: background-color 0.1s ease;
+}
+.wiki-drop-hover {
+    background-color: var(--bs-primary-bg-subtle);
+    outline: 1px dashed var(--bs-primary);
+}
+
+/* Local .btn-xs — the project's existing .btn-xs rule (assets/css/action-bar.css)
+   is scoped to specific action-bar parent classes this page doesn't use. */
+.btn-xs {
+    padding: 0.1rem 0.35rem;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    border-radius: 0.2rem;
+}

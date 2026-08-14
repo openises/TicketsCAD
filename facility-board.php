@@ -95,13 +95,13 @@ try {
         <div class="fb-header-right">
             <!-- Filters -->
             <div class="fb-filter-bar">
-                <select class="form-select" id="fbFilterType" title="Filter by facility type">
+                <select class="form-select" id="fbFilterType" title="Filter by facility type" aria-label="Filter by facility type">
                     <option value="all">All Types</option>
 <?php foreach ($fac_types as $ft): ?>
                     <option value="<?php echo (int) $ft['id']; ?>"><?php echo e($ft['name']); ?></option>
 <?php endforeach; ?>
                 </select>
-                <select class="form-select" id="fbFilterStatus" title="Filter by status">
+                <select class="form-select" id="fbFilterStatus" title="Filter by status" aria-label="Filter by status">
                     <option value="all">All Statuses</option>
                     <option value="open">Open</option>
                     <option value="closed">Closed</option>

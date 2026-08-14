@@ -419,7 +419,13 @@
                 teamHtml = esc(m.team_name);
             }
 
-            html += '<tr class="roster-row' + (isSelected ? ' selected' : '') + '" data-id="' + m.id + '">' +
+            // Roving tabindex (Eric, 2026-08-14): only ONE row is a real tab
+            // stop at a time (the selected row, or the first row if none is
+            // selected yet) so Tab from the search field lands directly in
+            // the list instead of tabbing through every row individually.
+            // ArrowUp/ArrowDown move the roving index; see bindRosterKeyboardNav().
+            var rowTabindex = (isSelected || (!selectedId && i === 0)) ? '0' : '-1';
+            html += '<tr class="roster-row' + (isSelected ? ' selected' : '') + '" data-id="' + m.id + '" tabindex="' + rowTabindex + '">' +
                 '<td class="fw-semibold">' + avatarHtml + esc(m.last_name) + ', ' + esc(m.first_name) + '</td>' +
                 '<td>' + esc(m.callsign || '') + '</td>' +
                 '<td><span class="badge" style="background-color:' + esc(typeColor) + ';color:' + esc(typeTextColor) + ';">' + esc(m.type_name || 'N/A') + '</span></td>' +
@@ -2898,8 +2904,15 @@
             var row = e.target.closest('tr.roster-row');
             if (!row) return;
             var id = row.getAttribute('data-id');
-            if (id) selectMember(parseInt(id, 10));
+            // Keep the roving tabindex in step with mouse selection (so a
+            // later Tab-from-search lands on whatever was last clicked) via
+            // the same select-then-requery helper the keyboard handlers
+            // use — selectMember() replaces $tbody's innerHTML synchronously,
+            // so `row` itself is a detached node by the time it returns.
+            if (id) _rosterSelectAndFocus(parseInt(id, 10));
         });
+
+        bindRosterKeyboardNav();
 
         // Sort headers
         var headers = document.querySelectorAll('#rosterTable th.sortable');
@@ -3144,6 +3157,121 @@
                 document.getElementById('gmrsResultsPanel').classList.add('d-none');
             });
         }
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // KEYBOARD NAVIGATION (Eric, 2026-08-14)
+    // ══════════════════════════════════════════════════════════════
+    // Rapid-fire, keyboard-only browsing: land on the page with the search
+    // field focused -> type to filter -> Tab into the results list (a
+    // roving tabindex, so Tab is ONE stop into the list, not one per row) ->
+    // ArrowUp/ArrowDown walk the rows and load each one's detail live ->
+    // Tab again jumps focus into the now-visible detail panel (which also
+    // scrolls it into view, for free, via the browser's native
+    // focus-scrolls-into-view behavior) -> Escape returns to the previous
+    // page. Mirrors the "list + live preview" pattern of a mail client.
+
+    function _rosterRows() {
+        return Array.prototype.slice.call($tbody.querySelectorAll('tr.roster-row'));
+    }
+
+    /** Move the roving tabindex + DOM focus to one specific row. */
+    function _rosterFocusRow(row) {
+        var rows = _rosterRows();
+        for (var i = 0; i < rows.length; i++) {
+            rows[i].setAttribute('tabindex', rows[i] === row ? '0' : '-1');
+        }
+        if (row) row.focus();
+    }
+
+    /** The row that currently owns the roving tabindex (falls back to the first row). */
+    function _rosterActiveRow() {
+        var rows = _rosterRows();
+        for (var i = 0; i < rows.length; i++) {
+            if (rows[i].getAttribute('tabindex') === '0') return rows[i];
+        }
+        return rows[0] || null;
+    }
+
+    /**
+     * selectMember() re-renders $tbody SYNCHRONOUSLY (to update the
+     * "selected" highlight) before its detail-fetch resolves — so a row
+     * reference obtained before calling it is a detached node by the time
+     * selectMember() returns, and .focus()ing it silently does nothing.
+     * Select first, THEN re-query the row by id from the now-current DOM.
+     */
+    function _rosterSelectAndFocus(id) {
+        selectMember(id);
+        var row = $tbody.querySelector('tr.roster-row[data-id="' + id + '"]');
+        if (row) _rosterFocusRow(row);
+    }
+
+    function bindRosterKeyboardNav() {
+        // Tab out of the search field lands directly in the results list
+        // (on the roving-focus row) instead of the browser's default next-
+        // focusable-element order, which would skip past the table entirely.
+        $searchInput.addEventListener('keydown', function (e) {
+            if (e.key !== 'Tab' || e.shiftKey) return;
+            var row = _rosterActiveRow();
+            if (!row) return; // no results — let Tab behave normally
+            e.preventDefault();
+            var id = row.getAttribute('data-id');
+            if (!id) return;
+            if (String(id) === String(selectedId)) {
+                _rosterFocusRow(row); // already selected — nothing to re-render, just focus it
+            } else {
+                _rosterSelectAndFocus(parseInt(id, 10));
+            }
+        });
+
+        // ArrowUp/ArrowDown walk the list; Tab from a row jumps into the
+        // detail panel instead of the table's own trailing cells (sort
+        // headers' tab order, the bulk-select checkbox column, etc.).
+        $tbody.addEventListener('keydown', function (e) {
+            var row = e.target.closest('tr.roster-row');
+            if (!row) return;
+
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                var rows = _rosterRows();
+                var idx = rows.indexOf(row);
+                var next = e.key === 'ArrowDown' ? idx + 1 : idx - 1;
+                if (next < 0 || next >= rows.length) return; // clamp, no wrap
+                var nextId = rows[next].getAttribute('data-id');
+                if (nextId) _rosterSelectAndFocus(parseInt(nextId, 10));
+                return;
+            }
+
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                var enterId = row.getAttribute('data-id');
+                if (enterId) _rosterSelectAndFocus(parseInt(enterId, 10));
+                return;
+            }
+
+            if (e.key === 'Tab' && !e.shiftKey) {
+                var target = $detailView.classList.contains('d-none') ? $detailEmpty : $detailView;
+                if (!target) return;
+                e.preventDefault();
+                // Not natively focusable (a <div>); tabindex="-1" makes it a
+                // valid programmatic focus target without adding it to the
+                // page's normal Tab order for anyone navigating past it.
+                if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
+                target.focus({preventScroll: true});
+                target.scrollIntoView({behavior: 'smooth', block: 'start'});
+            }
+        });
+
+        // Escape returns to the previous page — but only when nothing more
+        // specific already owns Escape: an open Bootstrap modal (which
+        // closes itself on Escape), or the edit view (handled separately,
+        // near $editView's own Escape-to-cancel listener).
+        document.addEventListener('keydown', function (e) {
+            if (e.key !== 'Escape') return;
+            if ($editView && !$editView.classList.contains('d-none')) return;
+            if (document.querySelector('.modal.show')) return;
+            window.history.back();
+        });
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -3992,6 +4120,12 @@
         loadMembers(deepLinkMemberId);
         // Issue #42: member State is a DB-backed <select>.
         if (window.TCADStates) { window.TCADStates.fill(document.getElementById('editState')); }
+
+        // Keyboard-first landing (Eric, 2026-08-14): focus the search field
+        // so typing works immediately with no click first — unless a report
+        // drill-down link asked for a SPECIFIC member, in which case the
+        // user's intent is to look at that person, not to search.
+        if (!deepLinkMemberId && $searchInput) { $searchInput.focus(); }
     }
 
     // ─────────────────────────────────────────────────────────────

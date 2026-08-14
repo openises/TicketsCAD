@@ -140,15 +140,18 @@
         document.body.appendChild(wrap.firstChild);
     }
 
-    function promptForExtraData(status) {
+    // GH#52 (2026-08-14) — slotSuffix is '' for slot 1 or '_2' for slot 2,
+    // so this one function serves both instead of a near-duplicate copy.
+    function promptForExtraData(status, slotSuffix) {
+        slotSuffix = slotSuffix || '';
         return new Promise(function (resolve) {
             ensureExtraDataModal();
-            var type   = status.extra_data_type;
-            var label  = status.extra_data_label
+            var type   = status['extra_data_type' + slotSuffix];
+            var label  = status['extra_data_label' + slotSuffix]
                          || ({facility:'Destination facility', mileage:'Mileage',
                               location:'Location', note:'Note', numeric:'Value'})[type]
                          || 'Additional info';
-            var req    = parseInt(status.extra_data_required || 0, 10) === 1;
+            var req    = parseInt(status['extra_data_required' + slotSuffix] || 0, 10) === 1;
 
             document.getElementById('extraDataModalLabel').textContent =
                 'Status: ' + status.status_val + (req ? ' — ' + label + ' required' : '');
@@ -380,21 +383,34 @@
     }
 
     // ── Change status via API ──
-    function changeStatus(statusId, extraData) {
+    // GH#52 (2026-08-14) — this page only ever collected slot 1. A status
+    // configured with a second extra-data slot (e.g. facility + mileage on
+    // one status change) silently only asked for the first, because this
+    // function had no idea slot 2 existed. Chains slot 1 then slot 2, each
+    // only if the status actually configures it — matching the pattern
+    // app.js's dashboard widget already uses for the same feature.
+    function changeStatus(statusId, extraData, extraData2) {
         var id = getUnitId();
         if (!id) return;
 
         var notesInput = document.getElementById('statusNotes');
         var notes = notesInput ? notesInput.value.trim() : '';
 
-        // Phase 95 (2026-06-28): if the status has extra_data_type set,
-        // prompt for the configured input before POSTing. The prompt
-        // returns a Promise so this function awaits it; cancel aborts.
         var status = findStatusById(statusId);
+        // Phase 95 (2026-06-28): slot 1.
         if (status && status.extra_data_type && status.extra_data_type !== 'none' && !extraData) {
-            promptForExtraData(status).then(function (ed) {
+            promptForExtraData(status, '').then(function (ed) {
                 if (ed === null) return; // user cancelled
-                changeStatus(statusId, ed); // recurse with the data
+                changeStatus(statusId, ed, extraData2);
+            });
+            return;
+        }
+        // GH#52 — slot 2, independent of slot 1, checked after slot 1
+        // resolves (or if slot 1 isn't configured at all).
+        if (status && status.extra_data_type_2 && status.extra_data_type_2 !== 'none' && !extraData2) {
+            promptForExtraData(status, '_2').then(function (ed2) {
+                if (ed2 === null) return;
+                changeStatus(statusId, extraData, ed2);
             });
             return;
         }
@@ -406,6 +422,7 @@
             csrf_token: getCsrfToken()
         };
         if (extraData) body.extra_data = extraData;
+        if (extraData2) body.extra_data_2 = extraData2;
 
         fetch('api/responder-status.php', {
             method: 'POST',
@@ -414,6 +431,23 @@
         })
         .then(function (r) { return r.json(); })
         .then(function (data) {
+            // GH#52 — defensive fallback: if the cached status list was
+            // stale (a status was edited in another tab, say) and slot 2
+            // got missed above, the server still enforces it. Prompt and
+            // retry instead of showing a raw, confusing rejection.
+            if (data.code === 'extra_data_2_required' && !extraData2) {
+                var synth = {
+                    status_val: (status && status.status_val) || data.label || 'this status',
+                    extra_data_type_2: 'note',
+                    extra_data_label_2: data.label || '',
+                    extra_data_required_2: 1
+                };
+                promptForExtraData(synth, '_2').then(function (ed2) {
+                    if (ed2 === null) return;
+                    changeStatus(statusId, extraData, ed2);
+                });
+                return;
+            }
             if (data.error) {
                 showAlert(escHtml(data.error), 'danger');
                 return;

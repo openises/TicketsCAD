@@ -127,12 +127,12 @@ foreach ($eligible as $row) {
 
 // Step 5 — ETag, computed so a config change (precision, excluded groups,
 // default delay) invalidates the cache even if no incident itself changed.
-$configVersion = sha1(
+$configVersion = sha1( // NOSONAR S4790: HTTP cache key only, not a security context — no secret or auth material is hashed here
     $precision . '|'
     . (string) get_variable('public_board_excluded_groups') . '|'
     . (string) get_variable('public_board_default_delay_secs')
 );
-$etag = '"' . sha1($maxUpdatedTs . ':' . count($incidents) . ':' . $configVersion) . '"';
+$etag = '"' . sha1($maxUpdatedTs . ':' . count($incidents) . ':' . $configVersion) . '"'; // NOSONAR S4790: HTTP cache key only, not a security context
 header('ETag: ' . $etag);
 // `public` (not `private`) is deliberate (security review finding #6) —
 // this response is, by design, already fully redacted for an anonymous

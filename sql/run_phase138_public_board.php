@@ -64,8 +64,8 @@ if (function_exists('_p18_table_exists')) {
 // ── A2. in_types — four new columns (plan.md §1a) ───────────────────────
 $inTypesCols = [
     'public_board_never_publish' =>
-        "TINYINT(1) NOT NULL DEFAULT 0
-         COMMENT 'Phase 138 - 1 = this incident type never appears on any public board, no matter what else is configured'",
+        "TINYINT(1) NOT NULL DEFAULT 1
+         COMMENT 'Phase 138 - 1 = this incident type never appears on any public board, no matter what else is configured. Defaults to 1 (2026-08-14) -- an admin must explicitly opt a type in.'",
     'public_board_publish_delay_secs' =>
         "INT UNSIGNED NULL
          COMMENT 'Phase 138 - NULL = use the board-wide default delay; per-type override in seconds'",
@@ -162,6 +162,68 @@ try {
     }
 } catch (Exception $e) {
     echo "[WARN] visibility seed: " . $e->getMessage() . "\n";
+}
+
+// ── A2c. Never-publish-by-default (Eric, 2026-08-14) ────────────────────
+//
+// Ron Jones's keyword-seeding gap report (same day) showed the A2b heuristic
+// above under-classifies sensitive types whenever an install groups them
+// under a non-EMS category (his own CARDIAC/MISSING/MCI types all resolved
+// to FULL because none of the then-20 keywords matched). Eric's direction:
+// flip the default posture from "publish unless a keyword downgrades it" to
+// "publish nothing until an admin explicitly enables that type" — for both
+// new types AND existing ones. See specs/phase-138-public-incident-board/
+// changes.md for the full writeup.
+//
+// ONE-TIME, guarded by a settings marker: every in_types row still at
+// public_board_never_publish = 0 gets flipped to 1. Safe to do
+// unconditionally on first run — the admin UI for this control has never
+// been used on any known install (Eric's own hands-on spot-check of Phase
+// 138 is still pending per specs/handoff.md), so every existing 0 row today
+// is "never reviewed," not "reviewed and approved": there is no real admin
+// decision to lose. The marker prevents a LATER re-run (this script is part
+// of the normal migration runner, invoked on every deploy) from re-flipping
+// a type an admin has since deliberately re-enabled through the real UI.
+try {
+    $alreadyDefaulted = db_fetch_value(
+        "SELECT `value` FROM `{$prefix}settings` WHERE `name` = 'public_board_never_publish_defaulted' LIMIT 1"
+    );
+    if ($alreadyDefaulted === null || $alreadyDefaulted === false) {
+        $toFlip = db_fetch_all(
+            "SELECT `id`, `type` FROM `{$prefix}in_types` WHERE `public_board_never_publish` = 0"
+        );
+        if (!empty($toFlip)) {
+            db_query("UPDATE `{$prefix}in_types` SET `public_board_never_publish` = 1 WHERE `public_board_never_publish` = 0");
+            echo "[OK] Defaulted public_board_never_publish=1 for " . count($toFlip) . " existing type(s) (one-time):\n";
+            foreach ($toFlip as $m) {
+                echo "     - #{$m['id']} \"{$m['type']}\"\n";
+            }
+        } else {
+            echo "[OK] No in_types rows at public_board_never_publish=0 to default (0 touched)\n";
+        }
+        db_query(
+            "INSERT INTO `{$prefix}settings` (`name`, `value`) VALUES ('public_board_never_publish_defaulted', ?)
+             ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)",
+            [date('Y-m-d H:i:s')]
+        );
+        echo "[OK] Marked public_board_never_publish_defaulted (won't re-run)\n";
+    } else {
+        echo "[OK] public_board_never_publish already defaulted on " . $alreadyDefaulted . " — skipping (idempotent)\n";
+    }
+} catch (Exception $e) {
+    echo "[WARN] never-publish default migration: " . $e->getMessage() . "\n";
+}
+
+// New in_types rows created AFTER this ships should also default to
+// never-publish — changes the COLUMN's own default so a plain INSERT with
+// no explicit value (the normal "add incident type" path) lands safe.
+try {
+    db_query("ALTER TABLE `{$prefix}in_types` MODIFY COLUMN `public_board_never_publish`
+              TINYINT(1) NOT NULL DEFAULT 1
+              COMMENT 'Phase 138 - 1 = this incident type never appears on any public board, no matter what else is configured. Defaults to 1 (2026-08-14) -- an admin must explicitly opt a type in.'");
+    echo "[OK] in_types.public_board_never_publish column default is now 1\n";
+} catch (Exception $e) {
+    echo "[WARN] could not update public_board_never_publish column default: " . $e->getMessage() . "\n";
 }
 
 // ── A3. organizations — two new columns + unique slug key (plan.md §1b) ─

@@ -657,8 +657,8 @@ function checked_if($v) { return $v ? ' checked' : ''; }
                                placeholder="Must exactly match the Full Name above">
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label">Date</label>
-                        <input type="text" class="form-control" value="<?php echo date('Y-m-d'); ?>" disabled>
+                        <label class="form-label" for="signed_date">Date</label>
+                        <input type="text" class="form-control" id="signed_date" value="<?php echo date('Y-m-d'); ?>" disabled>
                     </div>
                 </div>
 

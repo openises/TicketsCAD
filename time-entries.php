@@ -144,17 +144,17 @@ $can_approve = rbac_can('time_entry.approve');
                         <div class="card-header py-2">
                             <div class="row g-2 align-items-end">
                                 <div class="col-md-5">
-                                    <label class="form-label form-label-sm mb-0">Month</label>
+                                    <label class="form-label form-label-sm mb-0" for="filtMonth">Month</label>
                                     <input type="month" class="form-control form-control-sm" id="filtMonth">
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label form-label-sm mb-0">Category</label>
+                                    <label class="form-label form-label-sm mb-0" for="filtCategory">Category</label>
                                     <select class="form-select form-select-sm" id="filtCategory">
                                         <option value="">All</option>
                                     </select>
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label form-label-sm mb-0">Status</label>
+                                    <label class="form-label form-label-sm mb-0" for="filtStatus">Status</label>
                                     <select class="form-select form-select-sm" id="filtStatus">
                                         <option value="">All</option>
                                         <option value="self_reported">Pending</option>
@@ -189,23 +189,23 @@ $can_approve = rbac_can('time_entry.approve');
                                 <input type="hidden" id="fId">
                                 <div class="row g-2">
                                     <div class="col-md-6">
-                                        <label class="form-label form-label-sm">Start</label>
+                                        <label class="form-label form-label-sm" for="fStart">Start</label>
                                         <input type="datetime-local" class="form-control form-control-sm" id="fStart" required>
                                     </div>
                                     <div class="col-md-6">
-                                        <label class="form-label form-label-sm">End</label>
+                                        <label class="form-label form-label-sm" for="fEnd">End</label>
                                         <input type="datetime-local" class="form-control form-control-sm" id="fEnd" required>
                                     </div>
                                     <div class="col-md-6">
-                                        <label class="form-label form-label-sm">Category</label>
+                                        <label class="form-label form-label-sm" for="fCategory">Category</label>
                                         <select class="form-select form-select-sm" id="fCategory"></select>
                                     </div>
                                     <div class="col-md-6">
-                                        <label class="form-label form-label-sm">Activity type</label>
+                                        <label class="form-label form-label-sm" for="fActivity">Activity type</label>
                                         <select class="form-select form-select-sm" id="fActivity"></select>
                                     </div>
                                     <div class="col-12">
-                                        <label class="form-label form-label-sm">Notes</label>
+                                        <label class="form-label form-label-sm" for="fNotes">Notes</label>
                                         <textarea class="form-control form-control-sm" id="fNotes" rows="3"
                                             maxlength="500" placeholder="What did you do?"></textarea>
                                     </div>

@@ -145,7 +145,7 @@ $csrf     = csrf_token();
             <div class="row g-2 align-items-end">
                 <!-- Period Selector -->
                 <div class="col-auto">
-                    <label class="form-label small mb-1">Period</label>
+                    <label class="form-label small mb-1" for="periodSelect">Period</label>
                     <select class="form-select form-select-sm" id="periodSelect" style="width: auto;">
                         <option value="today">Today</option>
                         <option value="this_week">This Week</option>
@@ -160,17 +160,17 @@ $csrf     = csrf_token();
 
                 <!-- Custom Date Range (hidden by default) -->
                 <div class="col-auto d-none" id="customDateRange">
-                    <label class="form-label small mb-1">From</label>
+                    <label class="form-label small mb-1" for="startDate">From</label>
                     <input type="date" class="form-control form-control-sm" id="startDate">
                 </div>
                 <div class="col-auto d-none" id="customDateRange2">
-                    <label class="form-label small mb-1">To</label>
+                    <label class="form-label small mb-1" for="endDate">To</label>
                     <input type="date" class="form-control form-control-sm" id="endDate">
                 </div>
 
                 <!-- Responder Filter -->
                 <div class="col-auto" id="responderFilterCol">
-                    <label class="form-label small mb-1">Responder</label>
+                    <label class="form-label small mb-1" for="responderFilter">Responder</label>
                     <select class="form-select form-select-sm" id="responderFilter" style="width: auto;">
                         <option value="0">All Responders</option>
                     </select>
@@ -178,7 +178,7 @@ $csrf     = csrf_token();
 
                 <!-- Incident Filter (for after-action) -->
                 <div class="col-auto d-none" id="incidentFilterCol">
-                    <label class="form-label small mb-1"><?php echo e($incidentNumberLabel); ?> #</label>
+                    <label class="form-label small mb-1" for="incidentFilter"><?php echo e($incidentNumberLabel); ?> #</label>
                     <input type="text" class="form-control form-control-sm" id="incidentFilter"
                            placeholder="e.g. <?php echo e($incidentNumberSample); ?>"
                            title="Enter the incident number as shown on the incident (not the internal database id)."

@@ -194,7 +194,8 @@ $canManage = function_exists('rbac_can') ? rbac_can('action.link_major') : false
                                 <span class="input-group-text"><i class="bi bi-search"></i></span>
                                 <input type="text" class="form-control form-control-sm" id="ticketSearch"
                                        placeholder="<?php echo e(t('major.link.search_ph', 'Search open incidents to link…')); ?>"
-                                       autocomplete="off">
+                                       autocomplete="off"
+                                       aria-label="<?php echo e(t('major.link.search_ph', 'Search open incidents to link')); ?>">
                             </div>
                             <div class="position-relative">
                                 <div class="list-group list-group-flush small d-none" id="ticketDropdown"

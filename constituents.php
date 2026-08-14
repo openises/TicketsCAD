@@ -67,7 +67,7 @@ $csrf     = csrf_token();
             <div class="input-group input-group-sm" style="max-width: 300px;">
                 <span class="input-group-text"><i class="bi bi-search"></i></span>
                 <input type="text" class="form-control form-control-sm" id="searchInput"
-                       placeholder="Search name, phone, address...">
+                       placeholder="Search name, phone, address..." aria-label="Search contacts">
             </div>
             <button class="btn btn-sm btn-outline-success" id="btnExport" title="Export CSV">
                 <i class="bi bi-download me-1"></i>Export
@@ -95,7 +95,7 @@ $csrf     = csrf_token();
                     <table class="table table-sm table-striped table-hover mb-0" id="constituentsTable">
                         <thead>
                             <tr>
-                                <th style="width:30px;"><input type="checkbox" class="form-check-input" id="selectAll" title="Select all"></th>
+                                <th style="width:30px;"><input type="checkbox" class="form-check-input" id="selectAll" title="Select all" aria-label="Select all contacts"></th>
                                 <th>Name</th>
                                 <th>Phone</th>
                                 <th>Address</th>
@@ -149,22 +149,22 @@ $csrf     = csrf_token();
 
                         <div class="row g-2 mb-2">
                             <div class="col-8">
-                                <label class="form-label small mb-0">Name <span class="text-danger">*</span></label>
+                                <label class="form-label small mb-0" for="editContact">Name <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control form-control-sm" id="editContact" required>
                             </div>
                             <div class="col-4">
-                                <label class="form-label small mb-0">Reference</label>
+                                <label class="form-label small mb-0" for="editReference">Reference</label>
                                 <input type="text" class="form-control form-control-sm" id="editReference">
                             </div>
                         </div>
 
                         <div class="row g-2 mb-2">
                             <div class="col-7">
-                                <label class="form-label small mb-0">Phone <span class="text-danger">*</span></label>
+                                <label class="form-label small mb-0" for="editPhone">Phone <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control form-control-sm" id="editPhone" required>
                             </div>
                             <div class="col-5">
-                                <label class="form-label small mb-0">Type</label>
+                                <label class="form-label small mb-0" for="editPhoneType">Type</label>
                                 <div class="input-group input-group-sm">
                                     <select class="form-select form-select-sm phone-type-select" id="editPhoneType">
                                         <option value="">--</option>
@@ -178,18 +178,18 @@ $csrf     = csrf_token();
                                         <option value="custom">Custom...</option>
                                     </select>
                                     <input type="text" class="form-control d-none phone-type-custom" id="editPhoneTypeCustom"
-                                           placeholder="Label">
+                                           placeholder="Label" aria-label="Custom phone type label">
                                 </div>
                             </div>
                         </div>
 
                         <div class="row g-2 mb-2">
                             <div class="col-7">
-                                <label class="form-label small mb-0">Phone 2</label>
+                                <label class="form-label small mb-0" for="editPhone2">Phone 2</label>
                                 <input type="text" class="form-control form-control-sm" id="editPhone2">
                             </div>
                             <div class="col-5">
-                                <label class="form-label small mb-0">Type</label>
+                                <label class="form-label small mb-0" for="editPhone2Type">Type</label>
                                 <div class="input-group input-group-sm">
                                     <select class="form-select form-select-sm phone-type-select" id="editPhone2Type">
                                         <option value="">--</option>
@@ -203,18 +203,18 @@ $csrf     = csrf_token();
                                         <option value="custom">Custom...</option>
                                     </select>
                                     <input type="text" class="form-control d-none phone-type-custom" id="editPhone2TypeCustom"
-                                           placeholder="Label">
+                                           placeholder="Label" aria-label="Custom phone type label">
                                 </div>
                             </div>
                         </div>
 
                         <div class="row g-2 mb-2">
                             <div class="col-7">
-                                <label class="form-label small mb-0">Phone 3</label>
+                                <label class="form-label small mb-0" for="editPhone3">Phone 3</label>
                                 <input type="text" class="form-control form-control-sm" id="editPhone3">
                             </div>
                             <div class="col-5">
-                                <label class="form-label small mb-0">Type</label>
+                                <label class="form-label small mb-0" for="editPhone3Type">Type</label>
                                 <div class="input-group input-group-sm">
                                     <select class="form-select form-select-sm phone-type-select" id="editPhone3Type">
                                         <option value="">--</option>
@@ -228,18 +228,18 @@ $csrf     = csrf_token();
                                         <option value="custom">Custom...</option>
                                     </select>
                                     <input type="text" class="form-control d-none phone-type-custom" id="editPhone3TypeCustom"
-                                           placeholder="Label">
+                                           placeholder="Label" aria-label="Custom phone type label">
                                 </div>
                             </div>
                         </div>
 
                         <div class="row g-2 mb-2">
                             <div class="col-7">
-                                <label class="form-label small mb-0">Phone 4</label>
+                                <label class="form-label small mb-0" for="editPhone4">Phone 4</label>
                                 <input type="text" class="form-control form-control-sm" id="editPhone4">
                             </div>
                             <div class="col-5">
-                                <label class="form-label small mb-0">Type</label>
+                                <label class="form-label small mb-0" for="editPhone4Type">Type</label>
                                 <div class="input-group input-group-sm">
                                     <select class="form-select form-select-sm phone-type-select" id="editPhone4Type">
                                         <option value="">--</option>
@@ -253,13 +253,13 @@ $csrf     = csrf_token();
                                         <option value="custom">Custom...</option>
                                     </select>
                                     <input type="text" class="form-control d-none phone-type-custom" id="editPhone4TypeCustom"
-                                           placeholder="Label">
+                                           placeholder="Label" aria-label="Custom phone type label">
                                 </div>
                             </div>
                         </div>
 
                         <div class="mb-2">
-                            <label class="form-label small mb-0">Email</label>
+                            <label class="form-label small mb-0" for="editEmail">Email</label>
                             <input type="email" class="form-control form-control-sm" id="editEmail">
                         </div>
 
@@ -267,37 +267,37 @@ $csrf     = csrf_token();
 
                         <div class="row g-2 mb-2">
                             <div class="col-8">
-                                <label class="form-label small mb-0">Street</label>
+                                <label class="form-label small mb-0" for="editStreet">Street</label>
                                 <input type="text" class="form-control form-control-sm" id="editStreet">
                             </div>
                             <div class="col-4">
-                                <label class="form-label small mb-0">Apt/Unit</label>
+                                <label class="form-label small mb-0" for="editApartment">Apt/Unit</label>
                                 <input type="text" class="form-control form-control-sm" id="editApartment">
                             </div>
                         </div>
 
                         <div class="row g-2 mb-2">
                             <div class="col-5">
-                                <label class="form-label small mb-0">City</label>
+                                <label class="form-label small mb-0" for="editCity">City</label>
                                 <input type="text" class="form-control form-control-sm" id="editCity">
                             </div>
                             <div class="col-3">
-                                <label class="form-label small mb-0"><?php echo e(t('form.state', 'State')); ?></label>
+                                <label class="form-label small mb-0" for="editState"><?php echo e(t('form.state', 'State')); ?></label>
                                 <select class="form-select form-select-sm" id="editState"></select>
                             </div>
                             <div class="col-4">
-                                <label class="form-label small mb-0"><?php echo e(t('form.zip', 'ZIP')); ?></label>
+                                <label class="form-label small mb-0" for="editPostCode"><?php echo e(t('form.zip', 'ZIP')); ?></label>
                                 <input type="text" class="form-control form-control-sm" id="editPostCode">
                             </div>
                         </div>
 
                         <div class="mb-2">
-                            <label class="form-label small mb-0">Community/Neighborhood</label>
+                            <label class="form-label small mb-0" for="editCommunity">Community/Neighborhood</label>
                             <input type="text" class="form-control form-control-sm" id="editCommunity">
                         </div>
 
                         <div class="mb-2">
-                            <label class="form-label small mb-0">Notes / Warnings</label>
+                            <label class="form-label small mb-0" for="editMisc">Notes / Warnings</label>
                             <textarea class="form-control form-control-sm" id="editMisc" rows="3"
                                       placeholder="Important info about this contact (e.g., medical conditions, pets, access instructions)"></textarea>
                         </div>
@@ -346,7 +346,7 @@ $csrf     = csrf_token();
                         </p>
                         <div class="d-inline-block text-start" style="max-width: 400px;">
                             <input type="file" class="form-control form-control-sm" id="importFileInput"
-                                   accept=".csv,.tsv,.txt">
+                                   accept=".csv,.tsv,.txt" aria-label="Upload contact list file">
                         </div>
                     </div>
                 </div>
@@ -382,15 +382,15 @@ $csrf     = csrf_token();
                         </div>
                         <div class="row g-2 mt-1 d-none" id="firstLastRow">
                             <div class="col-md-4">
-                                <label class="form-label small mb-0">First Name Column</label>
+                                <label class="form-label small mb-0" for="firstNameCol">First Name Column</label>
                                 <select class="form-select form-select-sm" id="firstNameCol"></select>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label small mb-0">Last Name Column</label>
+                                <label class="form-label small mb-0" for="lastNameCol">Last Name Column</label>
                                 <select class="form-select form-select-sm" id="lastNameCol"></select>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label small mb-0">Middle Name Column <span class="text-body-secondary">(optional)</span></label>
+                                <label class="form-label small mb-0" for="middleNameCol">Middle Name Column <span class="text-body-secondary">(optional)</span></label>
                                 <select class="form-select form-select-sm" id="middleNameCol"></select>
                             </div>
                             <div class="col-12 mt-2">
@@ -414,15 +414,15 @@ $csrf     = csrf_token();
                         <h6 class="small mb-2">Default values for missing fields</h6>
                         <div class="row g-2">
                             <div class="col-md-4">
-                                <label class="form-label small mb-0">City</label>
+                                <label class="form-label small mb-0" for="defaultCity">City</label>
                                 <input type="text" class="form-control form-control-sm" id="defaultCity">
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label small mb-0"><?php echo e(t('form.state', 'State')); ?></label>
+                                <label class="form-label small mb-0" for="defaultState"><?php echo e(t('form.state', 'State')); ?></label>
                                 <select class="form-select form-select-sm" id="defaultState"></select>
                             </div>
                             <div class="col-md-5">
-                                <label class="form-label small mb-0">Community</label>
+                                <label class="form-label small mb-0" for="defaultCommunity">Community</label>
                                 <input type="text" class="form-control form-control-sm" id="defaultCommunity">
                             </div>
                         </div>
@@ -437,7 +437,7 @@ $csrf     = csrf_token();
                             <span class="badge bg-warning text-dark" id="previewConflictCount">0 conflicts</span>
                         </div>
                         <div class="d-flex align-items-center gap-2">
-                            <label class="form-label small mb-0">Default for conflicts:</label>
+                            <label class="form-label small mb-0" for="globalConflictAction">Default for conflicts:</label>
                             <select class="form-select form-select-sm" id="globalConflictAction" style="width: auto;">
                                 <option value="skip">Skip (keep existing)</option>
                                 <option value="overwrite">Overwrite with import</option>

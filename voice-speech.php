@@ -127,20 +127,20 @@ $active_page = 'settings';
       <div class="modal-body py-2">
         <input type="hidden" id="ttsEngId" value="0">
         <div class="mb-2">
-            <label class="form-label form-label-sm mb-0">Name</label>
+            <label class="form-label form-label-sm mb-0" for="ttsEngKey">Name</label>
             <input type="text" class="form-control form-control-sm" id="ttsEngKey" placeholder="e.g. kokoro-local">
         </div>
         <div class="mb-2">
-            <label class="form-label form-label-sm mb-0">Driver</label>
+            <label class="form-label form-label-sm mb-0" for="ttsEngDriver">Driver</label>
             <select class="form-select form-select-sm" id="ttsEngDriver"></select>
         </div>
         <div class="mb-2">
-            <label class="form-label form-label-sm mb-0">Label (shown in menus)</label>
+            <label class="form-label form-label-sm mb-0" for="ttsEngLabel">Label (shown in menus)</label>
             <input type="text" class="form-control form-control-sm" id="ttsEngLabel" placeholder="Kokoro (local, Docker)">
         </div>
         <div id="ttsEngFields"></div>
         <div class="mb-2" id="ttsEngKeyWrap">
-            <label class="form-label form-label-sm mb-0">API key <span class="text-body-secondary">(stored server-side, 0640; leave blank to keep existing)</span></label>
+            <label class="form-label form-label-sm mb-0" for="ttsEngKey2">API key <span class="text-body-secondary">(stored server-side, 0640; leave blank to keep existing)</span></label>
             <input type="password" class="form-control form-control-sm" id="ttsEngKey2" autocomplete="off" placeholder="•••••••• (leave blank to keep)">
         </div>
         <div class="form-check form-switch">

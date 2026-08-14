@@ -166,31 +166,31 @@ $forcePwMode = !empty($_SESSION['must_change_password'])
                 <form id="profileForm">
                     <div class="row g-2 mb-2">
                         <div class="col-md-4">
-                            <label class="form-label small"><?php echo e(t('profile.label.username', 'Username')); ?></label>
-                            <input type="text" class="form-control form-control-sm" value="<?php echo $user; ?>" disabled>
+                            <label class="form-label small" for="profileUsername"><?php echo e(t('profile.label.username', 'Username')); ?></label>
+                            <input type="text" class="form-control form-control-sm" id="profileUsername" value="<?php echo $user; ?>" disabled>
                             <div class="form-text"><?php echo e(t('profile.username_locked', 'Username cannot be changed.')); ?></div>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label small"><?php echo e(t('profile.label.display_name', 'Display Name')); ?></label>
+                            <label class="form-label small" for="profileDisplayName"><?php echo e(t('profile.label.display_name', 'Display Name')); ?></label>
                             <input type="text" class="form-control form-control-sm" id="profileDisplayName"
                                    value="<?php echo e($_SESSION['user'] ?? ''); ?>">
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label small"><?php echo e(t('profile.label.role', 'Role')); ?></label>
-                            <input type="text" class="form-control form-control-sm" value="<?php echo e($userRoles); ?>" disabled>
+                            <label class="form-label small" for="profileRole"><?php echo e(t('profile.label.role', 'Role')); ?></label>
+                            <input type="text" class="form-control form-control-sm" id="profileRole" value="<?php echo e($userRoles); ?>" disabled>
                         </div>
                     </div>
                     <div class="row g-2 mb-2">
                         <div class="col-md-6">
-                            <label class="form-label small"><?php echo e(t('profile.label.email', 'Email')); ?></label>
+                            <label class="form-label small" for="profileEmail"><?php echo e(t('profile.label.email', 'Email')); ?></label>
                             <input type="email" class="form-control form-control-sm" id="profileEmail" placeholder="your@email.com">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label small"><?php echo e(t('profile.label.phone', 'Phone')); ?></label>
+                            <label class="form-label small" for="profilePhone"><?php echo e(t('profile.label.phone', 'Phone')); ?></label>
                             <input type="text" class="form-control form-control-sm" id="profilePhone" placeholder="555-1234">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label small"><?php echo e(t('profile.label.callsign', 'Callsign')); ?></label>
+                            <label class="form-label small" for="profileCallsign"><?php echo e(t('profile.label.callsign', 'Callsign')); ?></label>
                             <input type="text" class="form-control form-control-sm" id="profileCallsign" placeholder="N0CALL">
                         </div>
                     </div>
@@ -257,7 +257,7 @@ $forcePwMode = !empty($_SESSION['must_change_password'])
                 <p class="text-body-secondary small mb-2"><?php echo e(t('profile.display_prefs.note', 'These settings are saved per-browser and apply only to this device.')); ?></p>
                 <div class="row g-2 mb-2">
                     <div class="col-md-4">
-                        <label class="form-label small">Menu label fade delay</label>
+                        <label class="form-label small" for="prefNavFade">Menu label fade delay</label>
                         <select class="form-select form-select-sm" id="prefNavFade">
                             <option value="0">Always show labels</option>
                             <option value="3000">3 seconds</option>
@@ -268,7 +268,7 @@ $forcePwMode = !empty($_SESSION['must_change_password'])
                         </select>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label small">Light theme basemap</label>
+                        <label class="form-label small" for="prefBasemapLight">Light theme basemap</label>
                         <select class="form-select form-select-sm" id="prefBasemapLight">
                             <option value="street">Street Map (OSM)</option>
                             <option value="dark">Dark (CartoDB)</option>
@@ -276,7 +276,7 @@ $forcePwMode = !empty($_SESSION['must_change_password'])
                         </select>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label small">Dark theme basemap</label>
+                        <label class="form-label small" for="prefBasemapDark">Dark theme basemap</label>
                         <select class="form-select form-select-sm" id="prefBasemapDark">
                             <option value="street">Street Map (OSM)</option>
                             <option value="dark">Dark (CartoDB)</option>
@@ -299,12 +299,12 @@ $forcePwMode = !empty($_SESSION['must_change_password'])
                 <h6 class="card-title"><i class="bi bi-key me-1"></i> <?php echo e(t('profile.card.change_password', 'Change Password')); ?></h6>
                 <form id="passwordForm">
                     <div class="mb-2">
-                        <label class="form-label small"><?php echo e(t('profile.label.current_password', 'Current Password')); ?></label>
+                        <label class="form-label small" for="currentPassword"><?php echo e(t('profile.label.current_password', 'Current Password')); ?></label>
                         <input type="password" class="form-control form-control-sm" id="currentPassword"
                                autocomplete="current-password" required>
                     </div>
                     <div class="mb-2">
-                        <label class="form-label small"><?php echo e(t('profile.label.new_password', 'New Password')); ?></label>
+                        <label class="form-label small" for="newPassword"><?php echo e(t('profile.label.new_password', 'New Password')); ?></label>
                         <input type="password" class="form-control form-control-sm" id="newPassword"
                                autocomplete="new-password" required minlength="<?php echo (int) pw_min_length(); ?>">
                         <?php
@@ -322,7 +322,7 @@ $forcePwMode = !empty($_SESSION['must_change_password'])
                         <div class="form-text"><?php echo e($pwHelp); ?></div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label small"><?php echo e(t('profile.label.confirm_password', 'Confirm New Password')); ?></label>
+                        <label class="form-label small" for="confirmPassword"><?php echo e(t('profile.label.confirm_password', 'Confirm New Password')); ?></label>
                         <input type="password" class="form-control form-control-sm" id="confirmPassword"
                                autocomplete="new-password" required>
                     </div>
@@ -413,7 +413,7 @@ $forcePwMode = !empty($_SESSION['must_change_password'])
                             <div class="font-monospace small" id="tfaAccountName"></div>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label text-body-secondary">Can't scan? Enter this secret key manually:</label>
+                            <label class="form-label text-body-secondary" for="tfaSecretKey">Can't scan? Enter this secret key manually:</label>
                             <div class="input-group input-group-sm" style="max-width:400px">
                                 <input type="text" class="form-control form-control-sm font-monospace" id="tfaSecretKey" readonly>
                                 <button type="button" class="btn btn-outline-secondary" id="btnCopySecret" title="Copy secret">

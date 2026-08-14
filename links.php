@@ -91,7 +91,7 @@ $active_page = 'links';
         <div class="input-group input-group-sm" style="max-width: 280px;">
             <span class="input-group-text"><i class="bi bi-search"></i></span>
             <input type="text" class="form-control form-control-sm" id="linkSearch"
-                   placeholder="Search links..." autocomplete="off">
+                   placeholder="Search links..." autocomplete="off" aria-label="Search links">
         </div>
         <div class="btn-group btn-group-sm" role="group" id="categoryFilters">
             <button type="button" class="btn btn-outline-secondary active" data-filter="all">All</button>

@@ -61,7 +61,8 @@ $canCfg   = (!function_exists('rbac_can') || rbac_can('action.manage_config'));
     <div class="config-sidebar-filter">
         <input type="text" id="cfgSidebarFilter"
                placeholder="<?php echo e(t('sidebar.filter.placeholder', 'Filter settings…')); ?>"
-               autocomplete="off">
+               autocomplete="off"
+               aria-label="<?php echo e(t('sidebar.filter.placeholder', 'Filter settings')); ?>">
     </div>
 
     <!-- 1. Operations -->

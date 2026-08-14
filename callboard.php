@@ -166,13 +166,13 @@ function cb_status_class($status) {
         <div class="cb-header-right">
             <!-- Filters -->
             <div class="cb-filter-bar">
-                <select class="form-select" id="cbFilterSev" title="Filter by severity">
+                <select class="form-select" id="cbFilterSev" title="Filter by severity" aria-label="Filter by severity">
                     <option value="all">All Severities</option>
                     <option value="2">High</option>
                     <option value="1">Medium</option>
                     <option value="0">Normal</option>
                 </select>
-                <select class="form-select" id="cbFilterType" title="Filter by type">
+                <select class="form-select" id="cbFilterType" title="Filter by type" aria-label="Filter by type">
                     <option value="all">All Types</option>
                 </select>
             </div>

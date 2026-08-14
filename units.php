@@ -122,7 +122,8 @@ $csrf     = csrf_token();
                             <div class="input-group input-group-sm">
                                 <span class="input-group-text"><i class="bi bi-search"></i></span>
                                 <input type="text" class="form-control form-control-sm" id="unitSearch"
-                                       placeholder="<?php echo e(t('units.filter.search', 'Search units...')); ?>" autocomplete="off">
+                                       placeholder="<?php echo e(t('units.filter.search', 'Search units...')); ?>" autocomplete="off"
+                                       aria-label="<?php echo e(t('units.filter.search', 'Search units')); ?>">
                             </div>
                         </div>
                         <div class="col-md-6">

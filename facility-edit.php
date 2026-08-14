@@ -177,9 +177,9 @@ $csrf     = csrf_token();
                                     <label class="form-label">Coordinates</label>
                                     <div class="input-group input-group-sm">
                                         <span class="input-group-text">Lat</span>
-                                        <input type="text" class="form-control" id="lat" name="lat" placeholder="44.9778" readonly>
+                                        <input type="text" class="form-control" id="lat" name="lat" placeholder="44.9778" readonly aria-label="Latitude">
                                         <span class="input-group-text">Lng</span>
-                                        <input type="text" class="form-control" id="lng" name="lng" placeholder="-93.2650" readonly>
+                                        <input type="text" class="form-control" id="lng" name="lng" placeholder="-93.2650" readonly aria-label="Longitude">
                                     </div>
                                     <div class="form-text">Click the map or use Lookup to set coordinates</div>
                                 </div>

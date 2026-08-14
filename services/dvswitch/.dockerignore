@@ -1,0 +1,25 @@
+# Build context for services/dvswitch/docker/Dockerfile is `services/dvswitch`
+# (docker-compose.yml: `context: ..`), NOT the repo root — so the repo-root
+# .dockerignore does not apply here and this directory needs its own.
+#
+# Found 2026-08-14 while investigating a SonarQube CRITICAL (docker:S6470) on
+# the Dockerfile's `COPY . /opt/ticketscad-dvswitch/services/dvswitch/`: the
+# documented install (`cd services/dvswitch/docker && cp .env.example .env`,
+# fill in DMR_MASTER_PASSWORD and DMR_BEARER_TOKEN, `docker compose up -d
+# --build`) creates docker/.env INSIDE this build context, and with no
+# .dockerignore here it was baked straight into the image layer — readable
+# from the image itself (`docker save` / `docker history` / registry access)
+# even though the same values are also passed at runtime via `environment:`.
+# Following the docs exactly was what caused it.
+
+docker/.env
+docker/.env.*
+!docker/.env.example
+
+# Standard hygiene for a Python build context.
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.git
+.gitignore

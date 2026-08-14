@@ -175,7 +175,7 @@ $csrf     = csrf_token();
                                 <div class="fw-semibold mb-1">Add Slot</div>
                                 <div class="row g-1 mb-1">
                                     <div class="col-6">
-                                        <label class="form-label mb-0" style="font-size:0.65rem">Day</label>
+                                        <label class="form-label mb-0" style="font-size:0.65rem" for="slotDay">Day</label>
                                         <select class="form-select form-select-sm" id="slotDay" style="font-size:0.75rem">
                                             <option value="1">Monday</option>
                                             <option value="2">Tuesday</option>
@@ -187,22 +187,22 @@ $csrf     = csrf_token();
                                         </select>
                                     </div>
                                     <div class="col-6">
-                                        <label class="form-label mb-0" style="font-size:0.65rem">Week #</label>
+                                        <label class="form-label mb-0" style="font-size:0.65rem" for="slotWeek">Week #</label>
                                         <input type="number" class="form-control form-control-sm" id="slotWeek" value="1" min="1" max="4" style="font-size:0.75rem">
                                     </div>
                                 </div>
                                 <div class="row g-1 mb-1">
                                     <div class="col-6">
-                                        <label class="form-label mb-0" style="font-size:0.65rem">Start Time</label>
+                                        <label class="form-label mb-0" style="font-size:0.65rem" for="slotStart">Start Time</label>
                                         <input type="time" class="form-control form-control-sm" id="slotStart" value="21:00" style="font-size:0.75rem">
                                     </div>
                                     <div class="col-6">
-                                        <label class="form-label mb-0" style="font-size:0.65rem">End Time</label>
+                                        <label class="form-label mb-0" style="font-size:0.65rem" for="slotEnd">End Time</label>
                                         <input type="time" class="form-control form-control-sm" id="slotEnd" value="08:00" style="font-size:0.75rem">
                                     </div>
                                 </div>
                                 <div class="mb-1">
-                                    <label class="form-label mb-0" style="font-size:0.65rem">Label (optional)</label>
+                                    <label class="form-label mb-0" style="font-size:0.65rem" for="slotLabel">Label (optional)</label>
                                     <input type="text" class="form-control form-control-sm" id="slotLabel" placeholder="e.g. Night Shift" style="font-size:0.75rem">
                                 </div>
                                 <button class="btn btn-sm btn-primary w-100" id="btnAddSlot">
@@ -231,8 +231,8 @@ $csrf     = csrf_token();
                 <!-- Left: Event list -->
                 <div class="col-lg-5">
                     <div class="d-flex align-items-center gap-2 mb-2">
-                        <input type="text" class="form-control form-control-sm" id="eventSearch" placeholder="Search events...">
-                        <select class="form-select form-select-sm" id="eventTypeFilter" style="width:auto">
+                        <input type="text" class="form-control form-control-sm" id="eventSearch" placeholder="Search events..." aria-label="Search events">
+                        <select class="form-select form-select-sm" id="eventTypeFilter" style="width:auto" aria-label="Filter by event type">
                             <option value="">All Types</option>
                             <option value="drill">Drill</option>
                             <option value="exercise">Exercise</option>
@@ -295,7 +295,7 @@ $csrf     = csrf_token();
             </div>
             <div class="modal-body p-2">
                 <input type="text" class="form-control form-control-sm mb-2" id="assignSearchInput"
-                       placeholder="Search by name, callsign..." autocomplete="off">
+                       placeholder="Search by name, callsign..." autocomplete="off" aria-label="Search personnel by name or callsign">
                 <div id="assignSearchResults" style="max-height:250px;overflow-y:auto;"></div>
             </div>
         </div>
@@ -321,7 +321,7 @@ $csrf     = csrf_token();
                 <!-- Swap section (hidden until Swap button clicked) -->
                 <div id="assignSwapSection" class="mt-2 d-none">
                     <hr class="my-2">
-                    <label class="form-label form-label-sm mb-1 fw-semibold">Swap with:</label>
+                    <label class="form-label form-label-sm mb-1 fw-semibold" for="swapSearchInput">Swap with:</label>
                     <input type="text" class="form-control form-control-sm mb-1" id="swapSearchInput"
                            placeholder="Search by name, callsign..." autocomplete="off">
                     <div id="swapSearchResults" style="max-height:150px;overflow-y:auto;"></div>
@@ -341,7 +341,7 @@ $csrf     = csrf_token();
             </div>
             <div class="modal-body p-2">
                 <input type="text" class="form-control form-control-sm mb-2" id="participantSearchInput"
-                       placeholder="Search by name, callsign..." autocomplete="off">
+                       placeholder="Search by name, callsign..." autocomplete="off" aria-label="Search personnel by name or callsign">
                 <div id="participantSearchResults" style="max-height:250px;overflow-y:auto;"></div>
             </div>
         </div>

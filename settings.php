@@ -289,17 +289,17 @@ foreach ($personnelSections as $sec) {
             <!-- Filters -->
             <div class="row g-2 mb-3">
                 <div class="col-md-2">
-                    <select class="form-select form-select-sm" id="auditCategory">
+                    <select class="form-select form-select-sm" id="auditCategory" aria-label="Filter by category">
                         <option value="">All Categories</option>
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <select class="form-select form-select-sm" id="auditActivity">
+                    <select class="form-select form-select-sm" id="auditActivity" aria-label="Filter by activity">
                         <option value="">All Activities</option>
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <select class="form-select form-select-sm" id="auditSeverity">
+                    <select class="form-select form-select-sm" id="auditSeverity" aria-label="Filter by minimum severity">
                         <option value="">Any Severity</option>
                         <option value="1">Info+</option>
                         <option value="2">Low+</option>
@@ -309,18 +309,18 @@ foreach ($personnelSections as $sec) {
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <input type="text" class="form-control form-control-sm" id="auditUser" placeholder="User...">
+                    <input type="text" class="form-control form-control-sm" id="auditUser" placeholder="User..." aria-label="Filter by user">
                 </div>
                 <div class="col-md-2">
-                    <input type="date" class="form-control form-control-sm" id="auditDateFrom" title="From date">
+                    <input type="date" class="form-control form-control-sm" id="auditDateFrom" title="From date" aria-label="Filter from date">
                 </div>
                 <div class="col-md-2">
-                    <input type="date" class="form-control form-control-sm" id="auditDateTo" title="To date">
+                    <input type="date" class="form-control form-control-sm" id="auditDateTo" title="To date" aria-label="Filter to date">
                 </div>
             </div>
             <div class="row g-2 mb-3">
                 <div class="col-md-6">
-                    <input type="text" class="form-control form-control-sm" id="auditSearch" placeholder="Search summary text...">
+                    <input type="text" class="form-control form-control-sm" id="auditSearch" placeholder="Search summary text..." aria-label="Search audit log summary text">
                 </div>
                 <div class="col-md-6 d-flex align-items-center gap-2">
                     <button class="btn btn-sm btn-primary" id="btnAuditSearch"><i class="bi bi-search me-1"></i>Search</button>
@@ -449,7 +449,7 @@ foreach ($personnelSections as $sec) {
 
             <!-- Toolbar -->
             <div class="d-flex gap-2 mb-3 align-items-center flex-wrap">
-                <select class="form-select form-select-sm" id="wbTypeFilter" style="max-width:180px;">
+                <select class="form-select form-select-sm" id="wbTypeFilter" style="max-width:180px;" aria-label="Filter by record type">
                     <option value="">All Types</option>
                     <option value="member">Members</option>
                     <option value="responder">Units</option>
@@ -462,7 +462,7 @@ foreach ($personnelSections as $sec) {
                     <i class="bi bi-arrow-clockwise me-1"></i>Refresh
                 </button>
                 <div class="ms-auto d-flex gap-2 align-items-center">
-                    <label class="form-label form-label-sm mb-0 small">Purge items older than</label>
+                    <label class="form-label form-label-sm mb-0 small" for="wbPurgeDays">Purge items older than</label>
                     <input type="number" class="form-control form-control-sm" id="wbPurgeDays"
                            value="30" min="1" max="365" style="width:70px;">
                     <span class="small">days</span>
@@ -531,7 +531,7 @@ foreach ($personnelSections as $sec) {
                             <label for="typeColor" class="form-label form-label-sm">Color</label>
                             <div class="input-group input-group-sm">
                                 <input type="color" class="form-control form-control-sm form-control-color" id="typeColor" name="color" value="#0d6efd" style="width:38px;">
-                                <input type="text" class="form-control form-control-sm" id="typeColorText" maxlength="7" placeholder="#hex">
+                                <input type="text" class="form-control form-control-sm" id="typeColorText" maxlength="7" placeholder="#hex" aria-label="Color hex value">
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -564,7 +564,7 @@ foreach ($personnelSections as $sec) {
                                     <label class="form-check-label small" for="typeParModeOverride">
                                         Override with
                                     </label>
-                                    <input type="number" class="form-control form-control-sm" id="typeParCadence" name="par_cadence_minutes" value="0" min="1" max="600" style="width:80px;" placeholder="min" disabled>
+                                    <input type="number" class="form-control form-control-sm" id="typeParCadence" name="par_cadence_minutes" value="0" min="1" max="600" style="width:80px;" placeholder="min" disabled aria-label="Override PAR cadence in minutes">
                                     <span class="small text-body-secondary">minutes</span>
                                 </div>
                                 <div class="form-check">
@@ -621,8 +621,8 @@ foreach ($personnelSections as $sec) {
 
             <!-- Toolbar -->
             <div class="config-toolbar">
-                <input type="text" class="form-control form-control-sm" id="typeSearch" placeholder="Search types...">
-                <select class="form-select form-select-sm" id="typeGroupFilter" style="max-width:160px;">
+                <input type="text" class="form-control form-control-sm" id="typeSearch" placeholder="Search types..." aria-label="Search incident types">
+                <select class="form-select form-select-sm" id="typeGroupFilter" style="max-width:160px;" aria-label="Filter by group">
                     <option value="">All Groups</option>
                 </select>
                 <button class="btn btn-sm btn-success ms-auto" id="btnAddType"><i class="bi bi-plus-lg me-1"></i>Add Type</button>
@@ -713,14 +713,14 @@ foreach ($personnelSections as $sec) {
                         <div class="col-md-2">
                             <label for="statusBgColor" class="form-label form-label-sm">Background</label>
                             <div class="input-group input-group-sm">
-                                <input type="color" class="form-control form-control-color" id="statusBgColorPicker" value="#198754" style="width:34px;">
+                                <input type="color" class="form-control form-control-color" id="statusBgColorPicker" value="#198754" style="width:34px;" aria-label="Background color picker">
                                 <input type="text" class="form-control" id="statusBgColor" name="bg_color" maxlength="16" placeholder="#198754">
                             </div>
                         </div>
                         <div class="col-md-2">
                             <label for="statusTextColor" class="form-label form-label-sm">Text</label>
                             <div class="input-group input-group-sm">
-                                <input type="color" class="form-control form-control-color" id="statusTextColorPicker" value="#ffffff" style="width:34px;">
+                                <input type="color" class="form-control form-control-color" id="statusTextColorPicker" value="#ffffff" style="width:34px;" aria-label="Text color picker">
                                 <input type="text" class="form-control" id="statusTextColor" name="text_color" maxlength="16" placeholder="#ffffff">
                             </div>
                         </div>
@@ -956,8 +956,8 @@ foreach ($personnelSections as $sec) {
             </div>
 
             <div class="config-toolbar">
-                <input type="text" class="form-control form-control-sm" id="statusSearch" placeholder="Search statuses...">
-                <select class="form-select form-select-sm" id="statusGroupFilter" style="max-width:160px;">
+                <input type="text" class="form-control form-control-sm" id="statusSearch" placeholder="Search statuses..." aria-label="Search unit statuses">
+                <select class="form-select form-select-sm" id="statusGroupFilter" style="max-width:160px;" aria-label="Filter by group">
                     <option value="">All Groups</option>
                 </select>
                 <button class="btn btn-sm btn-success ms-auto" id="btnAddStatus"><i class="bi bi-plus-lg me-1"></i>Add Status</button>
@@ -998,7 +998,7 @@ foreach ($personnelSections as $sec) {
                                 <h6 class="card-title small fw-bold">Normal (Severity 0)</h6>
                                 <label for="sevColor0" class="form-label form-label-sm">Color</label>
                                 <div class="input-group input-group-sm">
-                                    <input type="color" class="form-control form-control-color" id="sevColor0Picker" value="#00ff00" style="width:38px;">
+                                    <input type="color" class="form-control form-control-color" id="sevColor0Picker" value="#00ff00" style="width:38px;" aria-label="Normal severity color picker">
                                     <input type="text" class="form-control" id="sevColor0" data-key="sev_0_color" maxlength="7" placeholder="#00ff00">
                                 </div>
                                 <label for="sevLabel0" class="form-label form-label-sm mt-2">Label</label>
@@ -1015,7 +1015,7 @@ foreach ($personnelSections as $sec) {
                                 <h6 class="card-title small fw-bold">Elevated (Severity 1)</h6>
                                 <label for="sevColor1" class="form-label form-label-sm">Color</label>
                                 <div class="input-group input-group-sm">
-                                    <input type="color" class="form-control form-control-color" id="sevColor1Picker" value="#ffff00" style="width:38px;">
+                                    <input type="color" class="form-control form-control-color" id="sevColor1Picker" value="#ffff00" style="width:38px;" aria-label="Elevated severity color picker">
                                     <input type="text" class="form-control" id="sevColor1" data-key="sev_1_color" maxlength="7" placeholder="#ffff00">
                                 </div>
                                 <label for="sevLabel1" class="form-label form-label-sm mt-2">Label</label>
@@ -1032,7 +1032,7 @@ foreach ($personnelSections as $sec) {
                                 <h6 class="card-title small fw-bold">Critical (Severity 2)</h6>
                                 <label for="sevColor2" class="form-label form-label-sm">Color</label>
                                 <div class="input-group input-group-sm">
-                                    <input type="color" class="form-control form-control-color" id="sevColor2Picker" value="#ff0000" style="width:38px;">
+                                    <input type="color" class="form-control form-control-color" id="sevColor2Picker" value="#ff0000" style="width:38px;" aria-label="Critical severity color picker">
                                     <input type="text" class="form-control" id="sevColor2" data-key="sev_2_color" maxlength="7" placeholder="#ff0000">
                                 </div>
                                 <label for="sevLabel2" class="form-label form-label-sm mt-2">Label</label>
@@ -1368,27 +1368,27 @@ foreach ($personnelSections as $sec) {
                 <div class="card-body py-2">
                     <div class="row g-2 align-items-end">
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Status</label>
+                            <label class="form-label form-label-sm mb-0" for="facStatusVal">Status</label>
                             <input type="text" class="form-control form-control-sm" id="facStatusVal" maxlength="20" placeholder="e.g. Open">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm mb-0">Description</label>
+                            <label class="form-label form-label-sm mb-0" for="facStatusDesc">Description</label>
                             <input type="text" class="form-control form-control-sm" id="facStatusDesc" maxlength="60">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Group</label>
+                            <label class="form-label form-label-sm mb-0" for="facStatusGroup">Group</label>
                             <input type="text" class="form-control form-control-sm" id="facStatusGroup" maxlength="20" placeholder="Availability">
                         </div>
                         <div class="col-md-1">
-                            <label class="form-label form-label-sm mb-0">Sort</label>
+                            <label class="form-label form-label-sm mb-0" for="facStatusSort">Sort</label>
                             <input type="number" class="form-control form-control-sm" id="facStatusSort" value="0" min="0">
                         </div>
                         <div class="col-md-1">
-                            <label class="form-label form-label-sm mb-0">BG</label>
+                            <label class="form-label form-label-sm mb-0" for="facStatusBg">BG</label>
                             <input type="color" class="form-control form-control-color form-control-sm" id="facStatusBg" value="#198754">
                         </div>
                         <div class="col-md-1">
-                            <label class="form-label form-label-sm mb-0">Text</label>
+                            <label class="form-label form-label-sm mb-0" for="facStatusText">Text</label>
                             <input type="color" class="form-control form-control-color form-control-sm" id="facStatusText" value="#ffffff">
                         </div>
                         <div class="col-md-auto">
@@ -1614,11 +1614,11 @@ foreach ($personnelSections as $sec) {
                         <div class="modal-body">
                             <div class="row g-2 mb-3">
                                 <div class="col-md-5">
-                                    <label class="form-label form-label-sm mb-0">Tone Name <span class="text-body-secondary">(a-z, 0-9, _, -)</span></label>
+                                    <label class="form-label form-label-sm mb-0" for="ctName">Tone Name <span class="text-body-secondary">(a-z, 0-9, _, -)</span></label>
                                     <input type="text" class="form-control form-control-sm" id="ctName" maxlength="32" placeholder="e.g. mayday-siren">
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label form-label-sm mb-0">Wave Type</label>
+                                    <label class="form-label form-label-sm mb-0" for="ctType">Wave Type</label>
                                     <select class="form-select form-select-sm" id="ctType">
                                         <option value="sine">Sine (smooth)</option>
                                         <option value="square">Square (siren)</option>
@@ -1627,7 +1627,7 @@ foreach ($personnelSections as $sec) {
                                     </select>
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label form-label-sm mb-0">Gap Between Notes (ms)</label>
+                                    <label class="form-label form-label-sm mb-0" for="ctGap">Gap Between Notes (ms)</label>
                                     <input type="number" class="form-control form-control-sm" id="ctGap" min="0" max="1000" value="40">
                                 </div>
                             </div>
@@ -2050,25 +2050,25 @@ foreach ($personnelSections as $sec) {
                 <div class="card-body py-2">
                     <div class="row g-2 align-items-end">
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Label</label>
+                            <label class="form-label form-label-sm mb-0" for="dispStatusVal">Label</label>
                             <input type="text" class="form-control form-control-sm" id="dispStatusVal" placeholder="e.g. Resolved / Handled">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Code</label>
+                            <label class="form-label form-label-sm mb-0" for="dispCode">Code</label>
                             <input type="text" class="form-control form-control-sm" id="dispCode" placeholder="e.g. resolved">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Discipline</label>
+                            <label class="form-label form-label-sm mb-0" for="dispDiscipline">Discipline</label>
                             <input type="text" class="form-control form-control-sm" id="dispDiscipline" placeholder="blank = always offered">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Org</label>
+                            <label class="form-label form-label-sm mb-0" for="dispOrgId">Org</label>
                             <select class="form-select form-select-sm" id="dispOrgId">
                                 <option value="">&mdash; every org &mdash;</option>
                             </select>
                         </div>
                         <div class="col-md-1">
-                            <label class="form-label form-label-sm mb-0">Sort</label>
+                            <label class="form-label form-label-sm mb-0" for="dispSortOrder">Sort</label>
                             <input type="number" class="form-control form-control-sm" id="dispSortOrder" value="0">
                         </div>
                         <div class="col-md-auto">
@@ -2085,7 +2085,7 @@ foreach ($personnelSections as $sec) {
                     </div>
                     <div class="row g-2 mt-1">
                         <div class="col-md-6">
-                            <label class="form-label form-label-sm mb-0">Description</label>
+                            <label class="form-label form-label-sm mb-0" for="dispDescription">Description</label>
                             <input type="text" class="form-control form-control-sm" id="dispDescription" placeholder="Optional notes for admins">
                         </div>
                     </div>
@@ -2498,26 +2498,26 @@ foreach ($personnelSections as $sec) {
                                 <input type="hidden" id="secLabelId" value="">
                                 <div class="row g-2 mb-3">
                                     <div class="col-md-4">
-                                        <label class="form-label form-label-sm">Code (machine ID)</label>
+                                        <label class="form-label form-label-sm" for="secLabelCode">Code (machine ID)</label>
                                         <input type="text" id="secLabelCode" class="form-control form-control-sm" maxlength="32" placeholder="standard">
                                         <div class="form-text small">lowercase, letters/numbers/_ only</div>
                                     </div>
                                     <div class="col-md-5">
-                                        <label class="form-label form-label-sm">Display name</label>
+                                        <label class="form-label form-label-sm" for="secLabelName">Display name</label>
                                         <input type="text" id="secLabelName" class="form-control form-control-sm" maxlength="64" placeholder="Standard">
                                     </div>
                                     <div class="col-md-3">
-                                        <label class="form-label form-label-sm">Sort order</label>
+                                        <label class="form-label form-label-sm" for="secLabelSort">Sort order</label>
                                         <input type="number" id="secLabelSort" class="form-control form-control-sm" min="0" value="100">
                                     </div>
                                 </div>
                                 <div class="row g-2 mb-3">
                                     <div class="col-md-3">
-                                        <label class="form-label form-label-sm">Badge background</label>
+                                        <label class="form-label form-label-sm" for="secLabelBg">Badge background</label>
                                         <input type="color" id="secLabelBg" class="form-control form-control-color form-control-sm">
                                     </div>
                                     <div class="col-md-3">
-                                        <label class="form-label form-label-sm">Badge text</label>
+                                        <label class="form-label form-label-sm" for="secLabelFg">Badge text</label>
                                         <input type="color" id="secLabelFg" class="form-control form-control-color form-control-sm">
                                     </div>
                                     <div class="col-md-3 d-flex align-items-end">
@@ -2548,7 +2548,7 @@ foreach ($personnelSections as $sec) {
                                             </div>
                                         </div>
                                         <div class="col-md-4">
-                                            <label class="form-label form-label-sm">Map marker</label>
+                                            <label class="form-label form-label-sm" for="secLabelEocMarker">Map marker</label>
                                             <select id="secLabelEocMarker" class="form-select form-select-sm">
                                                 <option value="full">Full pin</option>
                                                 <option value="dim">Dim pin (no popup detail)</option>
@@ -2556,7 +2556,7 @@ foreach ($personnelSections as $sec) {
                                             </select>
                                         </div>
                                         <div class="col-md-4">
-                                            <label class="form-label form-label-sm">Placeholder text</label>
+                                            <label class="form-label form-label-sm" for="secLabelEocPlaceholder">Placeholder text</label>
                                             <input type="text" id="secLabelEocPlaceholder" class="form-control form-control-sm" maxlength="64" placeholder="*** Restricted ***">
                                         </div>
                                     </div>
@@ -2576,12 +2576,12 @@ foreach ($personnelSections as $sec) {
                                             </div>
                                         </div>
                                         <div class="col-md-3">
-                                            <label class="form-label form-label-sm">Send delay (s)</label>
+                                            <label class="form-label form-label-sm" for="secLabelSendDelay">Send delay (s)</label>
                                             <input type="number" id="secLabelSendDelay" class="form-control form-control-sm" min="0" max="3600" value="0">
                                             <div class="form-text small">Queued. Can be killed before send.</div>
                                         </div>
                                         <div class="col-md-3">
-                                            <label class="form-label form-label-sm">Recall window (s)</label>
+                                            <label class="form-label form-label-sm" for="secLabelRecall">Recall window (s)</label>
                                             <input type="number" id="secLabelRecall" class="form-control form-control-sm" min="0" max="3600" value="0">
                                             <div class="form-text small">After send. Best-effort delete.</div>
                                         </div>
@@ -2598,7 +2598,7 @@ foreach ($personnelSections as $sec) {
                                             </div>
                                         </div>
                                         <div class="col-md-8">
-                                            <label class="form-label form-label-sm">Watermark text</label>
+                                            <label class="form-label form-label-sm" for="secLabelIcsWatermark">Watermark text</label>
                                             <input type="text" id="secLabelIcsWatermark" class="form-control form-control-sm" maxlength="64" placeholder="Confidential">
                                             <div class="form-text small">
                                                 Leave blank for no watermark. Use the label's own
@@ -3336,7 +3336,7 @@ foreach ($personnelSections as $sec) {
             </p>
 
             <div class="config-toolbar mb-2">
-                <input type="text" class="form-control form-control-sm" id="facilitySearch" placeholder="Search facilities..." style="max-width:280px;">
+                <input type="text" class="form-control form-control-sm" id="facilitySearch" placeholder="Search facilities..." style="max-width:280px;" aria-label="Search facilities">
                 <a class="btn btn-sm btn-success ms-auto" href="facility-edit.php" target="_blank" id="btnAddFacility">
                     <i class="bi bi-plus-lg me-1"></i>New Facility
                 </a>
@@ -3684,7 +3684,7 @@ foreach ($personnelSections as $sec) {
                 </p>
                 <div class="row g-2 align-items-end">
                     <div class="col-md-7">
-                        <label class="form-label form-label-sm">Backup Directory</label>
+                        <label class="form-label form-label-sm" for="backupPath">Backup Directory</label>
                         <input type="text" class="form-control form-control-sm" id="backupPath"
                                value="<?php echo e(backup_dir()); ?>"
                                placeholder="Server path for backup storage">
@@ -3758,8 +3758,8 @@ foreach ($personnelSections as $sec) {
                     <div class="settings-group-title">General</div>
                     <div class="row g-2">
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm">Default Session Timeout (minutes)</label>
-                            <input type="number" class="form-control form-control-sm" data-key="session_timeout_minutes" value="480" min="5" max="14400">
+                            <label class="form-label form-label-sm" for="setSessionTimeoutMinutes">Default Session Timeout (minutes)</label>
+                            <input type="number" class="form-control form-control-sm" id="setSessionTimeoutMinutes" data-key="session_timeout_minutes" value="480" min="5" max="14400">
                             <div class="form-text">
                                 Used as the fallback when a role has <em>no</em> per-role timeout set. Default: 480 min (8 hr). Per-role overrides live in the
                                 <a href="#sessionTimeoutsSection" onclick="document.getElementById('roleTimeoutsGrid')?.scrollIntoView({behavior:'smooth'});return false;">Per-Role Session Timeouts</a>
@@ -3767,8 +3767,8 @@ foreach ($personnelSections as $sec) {
                             </div>
                         </div>
                         <div class="col-md-8">
-                            <label class="form-label form-label-sm">Login Banner Text</label>
-                            <input type="text" class="form-control form-control-sm" data-key="login_banner" placeholder="Displayed on the login page">
+                            <label class="form-label form-label-sm" for="setLoginPanelBanner">Login Banner Text</label>
+                            <input type="text" class="form-control form-control-sm" id="setLoginPanelBanner" data-key="login_banner" placeholder="Displayed on the login page">
                         </div>
                     </div>
                     <div class="row g-2 mt-1">
@@ -3821,8 +3821,8 @@ foreach ($personnelSections as $sec) {
                             </div>
                         </div>
                         <div class="col-12 mt-2">
-                            <label class="form-label form-label-sm">Notice text</label>
-                            <textarea class="form-control form-control-sm font-monospace" data-key="cjis_login_notice_text" rows="10"
+                            <label class="form-label form-label-sm" for="setCjisNoticeText">Notice text</label>
+                            <textarea class="form-control form-control-sm font-monospace" id="setCjisNoticeText" data-key="cjis_login_notice_text" rows="10"
                                       placeholder="Notice content shown above the login form. Plain text (line breaks preserved)."></textarea>
                             <div class="form-text">
                                 Line breaks are preserved. Keep under ~2 KB so the banner doesn't dominate the login viewport. Default text on first install is a generic government-system warning; replace with your agency's required wording.
@@ -3866,7 +3866,7 @@ foreach ($personnelSections as $sec) {
                     </p>
                     <div class="row g-2">
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm"><?php echo e(t('pw_policy.label_min', 'Minimum length')); ?></label>
+                            <label class="form-label form-label-sm" for="setPwMinLength"><?php echo e(t('pw_policy.label_min', 'Minimum length')); ?></label>
                             <input type="number" class="form-control form-control-sm pw-policy-input" id="setPwMinLength" data-key="password_min_length" data-cjis-min="8" min="4" max="256" value="8">
                             <div class="form-text">
                                 <?php echo e(t('pw_policy.hint_min', 'CJIS recommended: 8 or more.')); ?>
@@ -3876,7 +3876,7 @@ foreach ($personnelSections as $sec) {
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm"><?php echo e(t('pw_policy.label_history', 'History count')); ?></label>
+                            <label class="form-label form-label-sm" for="setPwHistory"><?php echo e(t('pw_policy.label_history', 'History count')); ?></label>
                             <input type="number" class="form-control form-control-sm pw-policy-input" id="setPwHistory" data-key="password_history_count" data-cjis-min="10" min="0" max="100" value="10">
                             <div class="form-text">
                                 <?php echo e(t('pw_policy.hint_history', 'Last N passwords retained. CJIS recommended: 10 or more.')); ?>
@@ -3886,15 +3886,15 @@ foreach ($personnelSections as $sec) {
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm"><?php echo e(t('pw_policy.label_rotation_days', 'Rotation reminder (days)')); ?></label>
-                            <input type="number" class="form-control form-control-sm" data-key="password_rotation_reminder_days" min="0" max="3650" value="180">
+                            <label class="form-label form-label-sm" for="setPwRotationReminderDays"><?php echo e(t('pw_policy.label_rotation_days', 'Rotation reminder (days)')); ?></label>
+                            <input type="number" class="form-control form-control-sm" id="setPwRotationReminderDays" data-key="password_rotation_reminder_days" min="0" max="3650" value="180">
                             <div class="form-text">
                                 <?php echo e(t('pw_policy.hint_rotation_days', 'Days before showing the "consider rotating" banner. 0 = disabled.')); ?>
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm"><?php echo e(t('pw_policy.label_snooze_days', 'Reminder snooze (days)')); ?></label>
-                            <input type="number" class="form-control form-control-sm" data-key="password_rotation_snooze_days" min="0" max="365" value="10">
+                            <label class="form-label form-label-sm" for="setPwRotationSnoozeDays"><?php echo e(t('pw_policy.label_snooze_days', 'Reminder snooze (days)')); ?></label>
+                            <input type="number" class="form-control form-control-sm" id="setPwRotationSnoozeDays" data-key="password_rotation_snooze_days" min="0" max="365" value="10">
                             <div class="form-text">
                                 <?php echo e(t('pw_policy.hint_snooze_days', 'After "Remind Me Later", days before next reminder. 0 = re-prompt every login.')); ?>
                             </div>
@@ -3911,8 +3911,9 @@ foreach ($personnelSections as $sec) {
                     </p>
                     <div class="row g-2">
                         <div class="col-12">
-                            <label class="form-label form-label-sm"><?php echo e(t('trusted_proxies.label', 'Trusted proxy IPs / CIDR')); ?></label>
+                            <label class="form-label form-label-sm" for="setTrustedProxies"><?php echo e(t('trusted_proxies.label', 'Trusted proxy IPs / CIDR')); ?></label>
                             <input type="text" class="form-control form-control-sm"
+                                   id="setTrustedProxies"
                                    data-key="trusted_proxies"
                                    value="127.0.0.1,::1"
                                    placeholder="127.0.0.1,::1,10.0.0.0/8">
@@ -3930,18 +3931,18 @@ foreach ($personnelSections as $sec) {
                     </p>
                     <div class="row g-2">
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm">Max Failed Attempts</label>
-                            <input type="number" class="form-control form-control-sm" data-key="lockout_max_attempts" value="5" min="1" max="50">
+                            <label class="form-label form-label-sm" for="setLockoutMaxAttempts">Max Failed Attempts</label>
+                            <input type="number" class="form-control form-control-sm" id="setLockoutMaxAttempts" data-key="lockout_max_attempts" value="5" min="1" max="50">
                             <div class="form-text">Default: 5</div>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm">Time Window (minutes)</label>
-                            <input type="number" class="form-control form-control-sm" data-key="lockout_window_minutes" value="15" min="1" max="1440">
+                            <label class="form-label form-label-sm" for="setLockoutWindowMinutes">Time Window (minutes)</label>
+                            <input type="number" class="form-control form-control-sm" id="setLockoutWindowMinutes" data-key="lockout_window_minutes" value="15" min="1" max="1440">
                             <div class="form-text">Default: 15 min</div>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm">Lockout Duration (minutes)</label>
-                            <input type="number" class="form-control form-control-sm" data-key="lockout_duration_minutes" value="30" min="1" max="1440">
+                            <label class="form-label form-label-sm" for="setLockoutDurationMinutes">Lockout Duration (minutes)</label>
+                            <input type="number" class="form-control form-control-sm" id="setLockoutDurationMinutes" data-key="lockout_duration_minutes" value="30" min="1" max="1440">
                             <div class="form-text">Default: 30 min</div>
                         </div>
                     </div>
@@ -3968,17 +3969,17 @@ foreach ($personnelSections as $sec) {
                 </p>
                 <form id="adminResetPwForm" class="row g-2 align-items-end">
                     <div class="col-md-3">
-                        <label class="form-label form-label-sm"><?php echo e(t('admin_reset.label_user', 'User')); ?> <span class="text-danger">*</span></label>
+                        <label class="form-label form-label-sm" for="adminResetUserId"><?php echo e(t('admin_reset.label_user', 'User')); ?> <span class="text-danger">*</span></label>
                         <select class="form-select form-select-sm" id="adminResetUserId" required>
                             <option value="">— <?php echo e(t('admin_reset.select_user', 'Select a user')); ?> —</option>
                         </select>
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label form-label-sm"><?php echo e(t('admin_reset.label_new_pw', 'New Password')); ?> <span class="text-danger">*</span></label>
+                        <label class="form-label form-label-sm" for="adminResetNewPw"><?php echo e(t('admin_reset.label_new_pw', 'New Password')); ?> <span class="text-danger">*</span></label>
                         <input type="password" class="form-control form-control-sm" id="adminResetNewPw" required autocomplete="new-password">
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label form-label-sm"><?php echo e(t('admin_reset.label_reason', 'Reason for reset')); ?> <span class="text-danger">*</span></label>
+                        <label class="form-label form-label-sm" for="adminResetReason"><?php echo e(t('admin_reset.label_reason', 'Reason for reset')); ?> <span class="text-danger">*</span></label>
                         <input type="text" class="form-control form-control-sm" id="adminResetReason"
                                required minlength="3" maxlength="2000"
                                placeholder="<?php echo e(t('admin_reset.placeholder_reason', 'E.g., User reported forgotten password during shift change')); ?>">
@@ -4043,7 +4044,7 @@ foreach ($personnelSections as $sec) {
                         <div class="form-text small">When off, 2FA is completely disabled even for enrolled users.</div>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label form-label-sm">Remember Device (days)</label>
+                        <label class="form-label form-label-sm" for="tfaRememberDays">Remember Device (days)</label>
                         <input type="number" class="form-control form-control-sm" id="tfaRememberDays" min="1" max="365" value="30">
                     </div>
                 </div>
@@ -4100,7 +4101,7 @@ foreach ($personnelSections as $sec) {
                     Only devices on these networks can use "Remember this device." One CIDR per line.
                     Default: private RFC 1918 ranges.
                 </p>
-                <textarea class="form-control form-control-sm" id="tfaTrustedCidrs" rows="4" placeholder="10.0.0.0/8
+                <textarea class="form-control form-control-sm" id="tfaTrustedCidrs" rows="4" aria-label="Trusted networks CIDR list, one per line" placeholder="10.0.0.0/8
 172.16.0.0/12
 192.168.0.0/16"></textarea>
             </div>
@@ -4122,7 +4123,7 @@ foreach ($personnelSections as $sec) {
                 </p>
                 <div class="row g-2 align-items-end">
                     <div class="col-md-4">
-                        <label class="form-label form-label-sm">User ID</label>
+                        <label class="form-label form-label-sm" for="tfaForceUserId">User ID</label>
                         <input type="number" class="form-control form-control-sm" id="tfaForceUserId" placeholder="Enter user ID" min="1">
                     </div>
                     <div class="col-md-4">
@@ -4382,10 +4383,10 @@ foreach ($personnelSections as $sec) {
                 </div>
                 <div class="row g-2 mb-2">
                     <div class="col-md-6">
-                        <input type="text" class="form-control form-control-sm" id="grantSearchUser" placeholder="Filter by username...">
+                        <input type="text" class="form-control form-control-sm" id="grantSearchUser" placeholder="Filter by username..." aria-label="Filter grants by username">
                     </div>
                     <div class="col-md-3">
-                        <select class="form-select form-select-sm" id="grantFilterScope">
+                        <select class="form-select form-select-sm" id="grantFilterScope" aria-label="Filter grants by scope">
                             <option value="">All scopes</option>
                             <option value="global">Global</option>
                             <option value="org">Org</option>
@@ -4395,7 +4396,7 @@ foreach ($personnelSections as $sec) {
                         </select>
                     </div>
                     <div class="col-md-3">
-                        <select class="form-select form-select-sm" id="grantFilterExpiry">
+                        <select class="form-select form-select-sm" id="grantFilterExpiry" aria-label="Filter grants by expiry">
                             <option value="active">Active only</option>
                             <option value="all">Include expired</option>
                             <option value="expiring">Expiring within 7d</option>
@@ -4418,18 +4419,18 @@ foreach ($personnelSections as $sec) {
                 </div>
                 <div class="row g-2 mb-2">
                     <div class="col-md-4">
-                        <input type="text" class="form-control form-control-sm" id="auditSearchUser" placeholder="Filter by username...">
+                        <input type="text" class="form-control form-control-sm" id="auditSearchUser" placeholder="Filter by username..." aria-label="Filter audit trail by username">
                     </div>
                     <div class="col-md-4">
-                        <select class="form-select form-select-sm" id="auditFilterActivity">
+                        <select class="form-select form-select-sm" id="auditFilterActivity" aria-label="Filter audit trail by activity">
                             <option value="">All activities</option>
                             <option value="grant">Grant</option>
                             <option value="revoke">Revoke</option>
                             <option value="expire">Expire</option>
                         </select>
                     </div>
-                    <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="auditFromDate" title="From date"></div>
-                    <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="auditToDate" title="To date"></div>
+                    <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="auditFromDate" title="From date" aria-label="From date"></div>
+                    <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="auditToDate" title="To date" aria-label="To date"></div>
                 </div>
                 <div id="auditLogList" class="small">
                     <div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></div>
@@ -4447,16 +4448,16 @@ foreach ($personnelSections as $sec) {
                     </div>
                     <div class="modal-body">
                         <div class="mb-2">
-                            <label class="form-label form-label-sm">User <span class="text-danger">*</span></label>
+                            <label class="form-label form-label-sm" for="grantUserId">User <span class="text-danger">*</span></label>
                             <select class="form-select form-select-sm" id="grantUserId" required></select>
                         </div>
                         <div class="mb-2">
-                            <label class="form-label form-label-sm">Role <span class="text-danger">*</span></label>
+                            <label class="form-label form-label-sm" for="grantRoleId">Role <span class="text-danger">*</span></label>
                             <select class="form-select form-select-sm" id="grantRoleId" required></select>
                         </div>
                         <div class="row g-2">
                             <div class="col-md-6">
-                                <label class="form-label form-label-sm">Scope</label>
+                                <label class="form-label form-label-sm" for="grantScopeKind">Scope</label>
                                 <select class="form-select form-select-sm" id="grantScopeKind">
                                     <option value="global">Global — applies everywhere</option>
                                     <option value="org">Org — only one organization</option>
@@ -4466,19 +4467,19 @@ foreach ($personnelSections as $sec) {
                                 </select>
                             </div>
                             <div class="col-md-6" id="grantScopeIdWrap" style="display:none;">
-                                <label class="form-label form-label-sm" id="grantScopeIdLabel">Scope ID</label>
+                                <label class="form-label form-label-sm" id="grantScopeIdLabel" for="grantScopeId">Scope ID</label>
                                 <input type="number" class="form-control form-control-sm" id="grantScopeId" min="1">
                             </div>
                         </div>
                         <div class="mb-2 mt-2">
-                            <label class="form-label form-label-sm">
+                            <label class="form-label form-label-sm" for="grantExpiresAt">
                                 Expires
                                 <small class="text-body-secondary">(leave blank for permanent)</small>
                             </label>
                             <input type="datetime-local" class="form-control form-control-sm" id="grantExpiresAt">
                         </div>
                         <div class="mb-2">
-                            <label class="form-label form-label-sm">Reason</label>
+                            <label class="form-label form-label-sm" for="grantReason">Reason</label>
                             <input type="text" class="form-control form-control-sm" id="grantReason" maxlength="255" placeholder="e.g. Pat on call 2026-06-01 to 2026-06-08">
                         </div>
                     </div>
@@ -4580,7 +4581,7 @@ foreach ($personnelSections as $sec) {
                          #userPass input listener in config.js. -->
                     <div class="row g-2 mt-1 d-none" id="adminResetReasonRow">
                         <div class="col-12">
-                            <label class="form-label form-label-sm">
+                            <label class="form-label form-label-sm" for="userResetReason">
                                 <?php echo e(t('admin_reset.label_reason', 'Reason for reset')); ?>
                                 <span class="text-danger">*</span>
                                 <small class="text-body-secondary">
@@ -4768,11 +4769,12 @@ foreach ($personnelSections as $sec) {
                     <div class="input-group input-group-sm" style="width:120px">
                         <input type="number" class="form-control form-control-sm" id="warnProximity"
                                data-warn-setting="warn_proximity" min="0" max="9999" step="1" value="10"
-                               title="Default radius in tenths of the unit (10 = 1.0)">
+                               title="Default radius in tenths of the unit (10 = 1.0)"
+                               aria-label="Global default alert radius">
                         <span class="input-group-text">×0.1</span>
                     </div>
                     <select class="form-select form-select-sm" id="warnProximityUnits"
-                            data-warn-setting="warn_proximity_units" style="width:auto">
+                            data-warn-setting="warn_proximity_units" style="width:auto" aria-label="Global default alert radius units">
                         <option value="M">Miles</option>
                         <option value="K">Kilometers</option>
                         <option value="N">Nautical mi</option>
@@ -4905,7 +4907,7 @@ foreach ($personnelSections as $sec) {
             </div>
 
             <div class="config-toolbar">
-                <input type="text" class="form-control form-control-sm" id="warnLocSearch" placeholder="Search warn locations...">
+                <input type="text" class="form-control form-control-sm" id="warnLocSearch" placeholder="Search warn locations..." aria-label="Search warn locations">
                 <button class="btn btn-sm btn-success ms-auto" id="btnAddWarnLoc"><i class="bi bi-plus-lg me-1"></i>Add Warn Location</button>
             </div>
 
@@ -5507,15 +5509,15 @@ foreach ($personnelSections as $sec) {
                 <div class="card-body py-2">
                     <div class="row g-2 align-items-end">
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Code</label>
+                            <label class="form-label form-label-sm mb-0" for="icsCode">Code</label>
                             <input type="text" class="form-control form-control-sm" id="icsCode" placeholder="e.g. COML" style="text-transform: uppercase;">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm mb-0">Title</label>
+                            <label class="form-label form-label-sm mb-0" for="icsTitle">Title</label>
                             <input type="text" class="form-control form-control-sm" id="icsTitle" placeholder="e.g. Communications Unit Leader">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Category</label>
+                            <label class="form-label form-label-sm mb-0" for="icsCategory">Category</label>
                             <select class="form-select form-select-sm" id="icsCategory">
                                 <option value="">-- Select --</option>
                                 <option value="Command">Command</option>
@@ -5526,7 +5528,7 @@ foreach ($personnelSections as $sec) {
                             </select>
                         </div>
                         <div class="col-md-1">
-                            <label class="form-label form-label-sm mb-0">Level</label>
+                            <label class="form-label form-label-sm mb-0" for="icsNimsLevel">Level</label>
                             <select class="form-select form-select-sm" id="icsNimsLevel">
                                 <option value="">--</option>
                                 <option value="1">1</option>
@@ -5536,7 +5538,7 @@ foreach ($personnelSections as $sec) {
                             </select>
                         </div>
                         <div class="col-md-1">
-                            <label class="form-label form-label-sm mb-0">Order</label>
+                            <label class="form-label form-label-sm mb-0" for="icsSortOrder">Order</label>
                             <input type="number" class="form-control form-control-sm" id="icsSortOrder" value="0" min="0">
                         </div>
                         <div class="col-md-auto">
@@ -5547,7 +5549,7 @@ foreach ($personnelSections as $sec) {
                     </div>
                     <div class="row g-2 mt-1">
                         <div class="col-12">
-                            <label class="form-label form-label-sm mb-0">Description</label>
+                            <label class="form-label form-label-sm mb-0" for="icsDescription">Description</label>
                             <input type="text" class="form-control form-control-sm" id="icsDescription" placeholder="Position description">
                         </div>
                     </div>
@@ -5592,11 +5594,11 @@ foreach ($personnelSections as $sec) {
                 <div class="card-body py-2">
                     <div class="row g-2 align-items-end">
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm mb-0">Course / Training Name</label>
+                            <label class="form-label form-label-sm mb-0" for="trainCatName">Course / Training Name</label>
                             <input type="text" class="form-control form-control-sm" id="trainCatName" placeholder="e.g. IS-100.c Introduction to the Incident Command System">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Category</label>
+                            <label class="form-label form-label-sm mb-0" for="trainCatCategory">Category</label>
                             <select class="form-select form-select-sm" id="trainCatCategory">
                                 <option value="">-- Select --</option>
                                 <option value="FEMA IS">FEMA IS</option>
@@ -5610,11 +5612,11 @@ foreach ($personnelSections as $sec) {
                             </select>
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">FEMA Code</label>
+                            <label class="form-label form-label-sm mb-0" for="trainCatFemaCode">FEMA Code</label>
                             <input type="text" class="form-control form-control-sm" id="trainCatFemaCode" placeholder="e.g. IS-100.c">
                         </div>
                         <div class="col-md-1">
-                            <label class="form-label form-label-sm mb-0">Refresh</label>
+                            <label class="form-label form-label-sm mb-0" for="trainCatRefreshMonths">Refresh</label>
                             <input type="number" class="form-control form-control-sm" id="trainCatRefreshMonths" placeholder="mo" min="0">
                         </div>
                         <div class="col-md-1">
@@ -5631,7 +5633,7 @@ foreach ($personnelSections as $sec) {
                     </div>
                     <div class="row g-2 mt-1">
                         <div class="col-md-8">
-                            <label class="form-label form-label-sm mb-0">Description</label>
+                            <label class="form-label form-label-sm mb-0" for="trainCatDescription">Description</label>
                             <input type="text" class="form-control form-control-sm" id="trainCatDescription" placeholder="Short description (optional)">
                         </div>
                     </div>
@@ -5764,19 +5766,19 @@ foreach ($personnelSections as $sec) {
                 <div class="card-body py-2">
                     <div class="row g-2 align-items-end">
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm mb-0">Type Name</label>
+                            <label class="form-label form-label-sm mb-0" for="vehTypeName">Type Name</label>
                             <input type="text" class="form-control form-control-sm" id="vehTypeName" placeholder="e.g. Emergency Vehicle">
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm mb-0">Description</label>
+                            <label class="form-label form-label-sm mb-0" for="vehTypeDesc">Description</label>
                             <input type="text" class="form-control form-control-sm" id="vehTypeDesc" placeholder="Short description">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Icon</label>
+                            <label class="form-label form-label-sm mb-0" for="vehTypeIcon">Icon</label>
                             <input type="text" class="form-control form-control-sm" id="vehTypeIcon" value="bi-truck" placeholder="bi-truck">
                         </div>
                         <div class="col-md-1">
-                            <label class="form-label form-label-sm mb-0">Order</label>
+                            <label class="form-label form-label-sm mb-0" for="vehTypeSortOrder">Order</label>
                             <input type="number" class="form-control form-control-sm" id="vehTypeSortOrder" value="0" min="0">
                         </div>
                         <div class="col-md-auto">
@@ -5825,19 +5827,19 @@ foreach ($personnelSections as $sec) {
                 <div class="card-body py-2">
                     <div class="row g-2 align-items-end">
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm mb-0">Type Name</label>
+                            <label class="form-label form-label-sm mb-0" for="eqTypeName">Type Name</label>
                             <input type="text" class="form-control form-control-sm" id="eqTypeName" placeholder="e.g. Radio">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm mb-0">Description</label>
+                            <label class="form-label form-label-sm mb-0" for="eqTypeDesc">Description</label>
                             <input type="text" class="form-control form-control-sm" id="eqTypeDesc" placeholder="Short description">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Icon</label>
+                            <label class="form-label form-label-sm mb-0" for="eqTypeIcon">Icon</label>
                             <input type="text" class="form-control form-control-sm" id="eqTypeIcon" value="bi-box" placeholder="bi-box">
                         </div>
                         <div class="col-md-1">
-                            <label class="form-label form-label-sm mb-0">Order</label>
+                            <label class="form-label form-label-sm mb-0" for="eqTypeSortOrder">Order</label>
                             <input type="number" class="form-control form-control-sm" id="eqTypeSortOrder" value="0" min="0">
                         </div>
                         <div class="col-md-1">
@@ -5982,11 +5984,11 @@ foreach ($personnelSections as $sec) {
                 <div class="card-body py-2">
                     <div class="row g-2 align-items-end">
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm mb-0">Name</label>
+                            <label class="form-label form-label-sm mb-0" for="certName">Name</label>
                             <input type="text" class="form-control form-control-sm" id="certName" placeholder="e.g. IS-100.c">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Category</label>
+                            <label class="form-label form-label-sm mb-0" for="certCategory">Category</label>
                             <select class="form-select form-select-sm" id="certCategory">
                                 <option value="">-- Select --</option>
                                 <option value="FEMA IS">FEMA IS</option>
@@ -5998,11 +6000,11 @@ foreach ($personnelSections as $sec) {
                             </select>
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">FEMA Code</label>
+                            <label class="form-label form-label-sm mb-0" for="certFemaCode">FEMA Code</label>
                             <input type="text" class="form-control form-control-sm" id="certFemaCode" placeholder="e.g. IS-100">
                         </div>
                         <div class="col-md-1">
-                            <label class="form-label form-label-sm mb-0">Refresh</label>
+                            <label class="form-label form-label-sm mb-0" for="certRefreshMonths">Refresh</label>
                             <input type="number" class="form-control form-control-sm" id="certRefreshMonths" placeholder="mo" min="0">
                         </div>
                         <div class="col-md-1">
@@ -6019,11 +6021,11 @@ foreach ($personnelSections as $sec) {
                     </div>
                     <div class="row g-2 mt-1">
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm mb-0">Description</label>
+                            <label class="form-label form-label-sm mb-0" for="certDescription">Description</label>
                             <input type="text" class="form-control form-control-sm" id="certDescription" placeholder="Short description (optional)">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm mb-0">NIMS Credential Type</label>
+                            <label class="form-label form-label-sm mb-0" for="certNimsType">NIMS Credential Type</label>
                             <input type="text" class="form-control form-control-sm" id="certNimsType" placeholder="e.g. Type III">
                         </div>
                     </div>
@@ -6101,11 +6103,11 @@ foreach ($personnelSections as $sec) {
                 <div class="card-body py-2">
                     <div class="row g-2 align-items-end">
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm mb-0">Type Name</label>
+                            <label class="form-label form-label-sm mb-0" for="ttName">Type Name</label>
                             <input type="text" class="form-control form-control-sm" id="ttName" placeholder="e.g. Search & Rescue">
                         </div>
                         <div class="col-md-5">
-                            <label class="form-label form-label-sm mb-0">Description</label>
+                            <label class="form-label form-label-sm mb-0" for="ttComment">Description</label>
                             <input type="text" class="form-control form-control-sm" id="ttComment" placeholder="Short description">
                         </div>
                         <div class="col-md-auto">
@@ -6151,19 +6153,19 @@ foreach ($personnelSections as $sec) {
                 <div class="card-body py-2">
                     <div class="row g-2 align-items-end">
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm mb-0">Status Name</label>
+                            <label class="form-label form-label-sm mb-0" for="msName">Status Name</label>
                             <input type="text" class="form-control form-control-sm" id="msName" placeholder="e.g. On Duty">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm mb-0">Description</label>
+                            <label class="form-label form-label-sm mb-0" for="msDescription">Description</label>
                             <input type="text" class="form-control form-control-sm" id="msDescription" placeholder="Short description">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Text Color</label>
+                            <label class="form-label form-label-sm mb-0" for="msColor">Text Color</label>
                             <input type="text" class="form-control form-control-sm" id="msColor" value="Black" placeholder="e.g. Green">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Background</label>
+                            <label class="form-label form-label-sm mb-0" for="msBackground">Background</label>
                             <input type="text" class="form-control form-control-sm" id="msBackground" value="White" placeholder="e.g. White">
                         </div>
                         <div class="col-md-auto">
@@ -6210,19 +6212,19 @@ foreach ($personnelSections as $sec) {
                 <div class="card-body py-2">
                     <div class="row g-2 align-items-end">
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Type Name</label>
+                            <label class="form-label form-label-sm mb-0" for="mtName">Type Name</label>
                             <input type="text" class="form-control form-control-sm" id="mtName" placeholder="e.g. Responder">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm mb-0">Description</label>
+                            <label class="form-label form-label-sm mb-0" for="mtDescription">Description</label>
                             <input type="text" class="form-control form-control-sm" id="mtDescription" placeholder="e.g. Level 2 - Responder">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Text Color</label>
+                            <label class="form-label form-label-sm mb-0" for="mtColor">Text Color</label>
                             <input type="text" class="form-control form-control-sm" id="mtColor" value="Black" placeholder="e.g. Blue">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Background</label>
+                            <label class="form-label form-label-sm mb-0" for="mtBackground">Background</label>
                             <input type="text" class="form-control form-control-sm" id="mtBackground" value="White" placeholder="e.g. White">
                         </div>
                         <div class="col-md-auto">
@@ -6317,19 +6319,19 @@ foreach ($personnelSections as $sec) {
                 <div class="card-body py-2">
                     <div class="row g-2 align-items-end">
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Code</label>
+                            <label class="form-label form-label-sm mb-0" for="uarCode">Code</label>
                             <input type="text" class="form-control form-control-sm" id="uarCode" placeholder="e.g. medic">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm mb-0">Name</label>
+                            <label class="form-label form-label-sm mb-0" for="uarName">Name</label>
                             <input type="text" class="form-control form-control-sm" id="uarName" placeholder="e.g. Medic/EMT">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm mb-0">Description</label>
+                            <label class="form-label form-label-sm mb-0" for="uarDescription">Description</label>
                             <input type="text" class="form-control form-control-sm" id="uarDescription" placeholder="e.g. Medical personnel">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Sort Order</label>
+                            <label class="form-label form-label-sm mb-0" for="uarSortOrder">Sort Order</label>
                             <input type="number" class="form-control form-control-sm" id="uarSortOrder" value="50" min="1">
                         </div>
                         <div class="col-md-auto">
@@ -6371,15 +6373,15 @@ foreach ($personnelSections as $sec) {
                     <input type="hidden" id="orgEditId" value="0">
                     <div class="row g-2 mb-2">
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm mb-0">Name <span class="text-danger">*</span></label>
+                            <label class="form-label form-label-sm mb-0" for="orgName">Name <span class="text-danger">*</span></label>
                             <input type="text" class="form-control form-control-sm" id="orgName" placeholder="e.g. Riverside County ARES">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Short Name</label>
+                            <label class="form-label form-label-sm mb-0" for="orgShortName">Short Name</label>
                             <input type="text" class="form-control form-control-sm" id="orgShortName" placeholder="AUXCOMM" maxlength="32">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Type</label>
+                            <label class="form-label form-label-sm mb-0" for="orgType">Type</label>
                             <select class="form-select form-select-sm" id="orgType">
                                 <option value="">-- Select --</option>
                                 <option>RACES</option>
@@ -6394,7 +6396,7 @@ foreach ($personnelSections as $sec) {
                             </select>
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">
+                            <label class="form-label form-label-sm mb-0" for="orgParentId">
                                 Parent
                                 <i class="bi bi-question-circle text-body-secondary" tabindex="0"
                                    data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
@@ -6406,7 +6408,7 @@ foreach ($personnelSections as $sec) {
                             </select>
                         </div>
                         <div class="col-md-1">
-                            <label class="form-label form-label-sm mb-0">Order</label>
+                            <label class="form-label form-label-sm mb-0" for="orgSortOrder">Order</label>
                             <input type="number" class="form-control form-control-sm" id="orgSortOrder" value="0" min="0">
                         </div>
                         <div class="col-md-1 d-flex align-items-end gap-1">
@@ -6418,21 +6420,21 @@ foreach ($personnelSections as $sec) {
                     </div>
                     <div class="row g-2 mb-2">
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm mb-0">Contact Name</label>
+                            <label class="form-label form-label-sm mb-0" for="orgContactName">Contact Name</label>
                             <input type="text" class="form-control form-control-sm" id="orgContactName">
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm mb-0">Contact Email</label>
+                            <label class="form-label form-label-sm mb-0" for="orgContactEmail">Contact Email</label>
                             <input type="email" class="form-control form-control-sm" id="orgContactEmail">
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm mb-0">Contact Phone</label>
+                            <label class="form-label form-label-sm mb-0" for="orgContactPhone">Contact Phone</label>
                             <input type="text" class="form-control form-control-sm" id="orgContactPhone">
                         </div>
                     </div>
                     <div class="row g-2 mb-2">
                         <div class="col-12">
-                            <label class="form-label form-label-sm mb-0">Description</label>
+                            <label class="form-label form-label-sm mb-0" for="orgDescription">Description</label>
                             <textarea class="form-control form-control-sm" id="orgDescription" rows="2"></textarea>
                         </div>
                     </div>
@@ -6476,23 +6478,23 @@ foreach ($personnelSections as $sec) {
                     <input type="hidden" id="commModeEditId" value="0">
                     <div class="row g-2 mb-2">
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm mb-0">Name <span class="text-danger">*</span></label>
+                            <label class="form-label form-label-sm mb-0" for="commModeName">Name <span class="text-danger">*</span></label>
                             <input type="text" class="form-control form-control-sm" id="commModeName" placeholder="e.g. APRS">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Code <span class="text-danger">*</span></label>
+                            <label class="form-label form-label-sm mb-0" for="commModeCode">Code <span class="text-danger">*</span></label>
                             <input type="text" class="form-control form-control-sm" id="commModeCode" placeholder="aprs" maxlength="32">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Icon (bi-*)</label>
+                            <label class="form-label form-label-sm mb-0" for="commModeIcon">Icon (bi-*)</label>
                             <input type="text" class="form-control form-control-sm" id="commModeIcon" placeholder="broadcast">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Color</label>
+                            <label class="form-label form-label-sm mb-0" for="commModeColor">Color</label>
                             <input type="color" class="form-control form-control-sm form-control-color" id="commModeColor" value="#6c757d">
                         </div>
                         <div class="col-md-1">
-                            <label class="form-label form-label-sm mb-0">Order</label>
+                            <label class="form-label form-label-sm mb-0" for="commModeSortOrder">Order</label>
                             <input type="number" class="form-control form-control-sm" id="commModeSortOrder" value="0" min="0">
                         </div>
                         <div class="col-md-2 d-flex align-items-end">
@@ -6504,11 +6506,11 @@ foreach ($personnelSections as $sec) {
                     </div>
                     <div class="row g-2 mb-2">
                         <div class="col-md-6">
-                            <label class="form-label form-label-sm mb-0">Lookup URL (optional)</label>
+                            <label class="form-label form-label-sm mb-0" for="commModeLookupUrl">Lookup URL (optional)</label>
                             <input type="text" class="form-control form-control-sm" id="commModeLookupUrl" placeholder="https://api.example.com/lookup?q={callsign}">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label form-label-sm mb-0">Notes</label>
+                            <label class="form-label form-label-sm mb-0" for="commModeNotes">Notes</label>
                             <input type="text" class="form-control form-control-sm" id="commModeNotes">
                         </div>
                     </div>
@@ -6590,7 +6592,7 @@ foreach ($personnelSections as $sec) {
                 <a class="btn btn-sm btn-outline-primary" href="import-export.php" title="Bulk import/export places with the unified tool">
                     <i class="bi bi-arrow-left-right me-1"></i>Import / Export…
                 </a>
-                <input type="text" class="form-control form-control-sm ms-auto" placeholder="Filter places…" id="placesFilter" style="max-width:240px;">
+                <input type="text" class="form-control form-control-sm ms-auto" placeholder="Filter places…" id="placesFilter" style="max-width:240px;" aria-label="Filter places">
             </div>
             <div id="placesBody">
                 <div class="text-body-secondary p-3 small">Loading places…</div>
@@ -6610,12 +6612,12 @@ foreach ($personnelSections as $sec) {
                             Upload a CSV or JSON file matching the export format. Matching is by <code>name</code> (case-insensitive) — existing places update, novel names insert. Run a dry run first to see what would happen before writing.
                         </p>
                         <div class="mb-2">
-                            <label class="form-label form-label-sm mb-0">File</label>
+                            <label class="form-label form-label-sm mb-0" for="importPlacesFile">File</label>
                             <input type="file" class="form-control form-control-sm" id="importPlacesFile" accept=".csv,.json,application/json,text/csv">
                         </div>
                         <div class="row g-2 mb-2">
                             <div class="col-6">
-                                <label class="form-label form-label-sm mb-0">Format</label>
+                                <label class="form-label form-label-sm mb-0" for="importPlacesFormat">Format</label>
                                 <select class="form-select form-select-sm" id="importPlacesFormat">
                                     <option value="csv" selected>CSV</option>
                                     <option value="json">JSON</option>
@@ -6656,16 +6658,16 @@ foreach ($personnelSections as $sec) {
                     <div class="modal-body py-2">
                         <input type="hidden" id="placeEditId" value="">
                         <div class="mb-2">
-                            <label class="form-label form-label-sm mb-0">Name</label>
+                            <label class="form-label form-label-sm mb-0" for="placeEditName">Name</label>
                             <input type="text" class="form-control form-control-sm" id="placeEditName" maxlength="64" placeholder="e.g. The Stadium">
                         </div>
                         <div class="row g-2 mb-2">
                             <div class="col-8">
-                                <label class="form-label form-label-sm mb-0">Street</label>
+                                <label class="form-label form-label-sm mb-0" for="placeEditStreet">Street</label>
                                 <input type="text" class="form-control form-control-sm" id="placeEditStreet" maxlength="96">
                             </div>
                             <div class="col-4">
-                                <label class="form-label form-label-sm mb-0">Applies To</label>
+                                <label class="form-label form-label-sm mb-0" for="placeEditApplyTo">Applies To</label>
                                 <select class="form-select form-select-sm" id="placeEditApplyTo">
                                     <option value="bldg">Building / address</option>
                                     <option value="city">City-wide</option>
@@ -6674,21 +6676,21 @@ foreach ($personnelSections as $sec) {
                         </div>
                         <div class="row g-2 mb-2">
                             <div class="col-8">
-                                <label class="form-label form-label-sm mb-0">City</label>
+                                <label class="form-label form-label-sm mb-0" for="placeEditCity">City</label>
                                 <input type="text" class="form-control form-control-sm" id="placeEditCity" maxlength="32">
                             </div>
                             <div class="col-4">
-                                <label class="form-label form-label-sm mb-0">State</label>
+                                <label class="form-label form-label-sm mb-0" for="placeEditState">State</label>
                                 <input type="text" class="form-control form-control-sm text-uppercase" id="placeEditState" maxlength="4">
                             </div>
                         </div>
                         <div class="row g-2 mb-1 align-items-end">
                             <div class="col-4">
-                                <label class="form-label form-label-sm mb-0">Latitude</label>
+                                <label class="form-label form-label-sm mb-0" for="placeEditLat">Latitude</label>
                                 <input type="text" class="form-control form-control-sm font-monospace" id="placeEditLat" inputmode="decimal" placeholder="44.9778">
                             </div>
                             <div class="col-4">
-                                <label class="form-label form-label-sm mb-0">Longitude</label>
+                                <label class="form-label form-label-sm mb-0" for="placeEditLon">Longitude</label>
                                 <input type="text" class="form-control form-control-sm font-monospace" id="placeEditLon" inputmode="decimal" placeholder="-93.2650">
                             </div>
                             <div class="col-4">
@@ -6699,11 +6701,11 @@ foreach ($personnelSections as $sec) {
                         </div>
                         <div id="placeEditLookupMsg" class="small mb-2"></div>
                         <div class="mb-2">
-                            <label class="form-label form-label-sm mb-0">Map Zoom on Select <span class="text-body-secondary">(1-20)</span></label>
+                            <label class="form-label form-label-sm mb-0" for="placeEditZoom">Map Zoom on Select <span class="text-body-secondary">(1-20)</span></label>
                             <input type="number" class="form-control form-control-sm" id="placeEditZoom" min="1" max="20" value="16" style="max-width:100px;">
                         </div>
                         <div class="mb-1">
-                            <label class="form-label form-label-sm mb-0">Information <span class="text-body-secondary">(shown to the dispatcher)</span></label>
+                            <label class="form-label form-label-sm mb-0" for="placeEditInformation">Information <span class="text-body-secondary">(shown to the dispatcher)</span></label>
                             <textarea class="form-control form-control-sm" id="placeEditInformation" rows="2" maxlength="1024"></textarea>
                         </div>
                     </div>
@@ -6752,7 +6754,7 @@ foreach ($personnelSections as $sec) {
 
                 <div class="row g-2 mb-2 align-items-end">
                     <div class="col-md-4">
-                        <label class="form-label form-label-sm mb-1">Active Category</label>
+                        <label class="form-label form-label-sm mb-1" for="moEditorCategory">Active Category</label>
                         <select class="form-select form-select-sm" id="moEditorCategory">
                             <option value="">— pick a category to draw into —</option>
                         </select>
@@ -6803,7 +6805,7 @@ foreach ($personnelSections as $sec) {
                         <!-- Phase 43c + maps-comprehensive-2026-06: import GeoJSON / KML / KMZ -->
                         <button type="button" class="btn btn-sm btn-outline-primary" id="moImportBtn"
                                 title="Import shapes from GeoJSON, KML, or KMZ (zipped KML)"><i class="bi bi-upload me-1"></i>Import</button>
-                        <input type="file" id="moImportFile" accept=".geojson,.json,.kml,.xml,.kmz" style="display:none">
+                        <input type="file" id="moImportFile" accept=".geojson,.json,.kml,.xml,.kmz" style="display:none" aria-label="Import shapes file">
                     </div>
                 </div>
                 <div id="moShapesBody"><div class="text-body-secondary small p-3">Pick a category above to see its shapes.</div></div>
@@ -6881,14 +6883,14 @@ foreach ($personnelSections as $sec) {
                     </p>
                     <div class="row g-2 align-items-end">
                         <div class="col-md-8">
-                            <label class="form-label form-label-sm">Public Key</label>
+                            <label class="form-label form-label-sm" for="pushVapidPublicKey">Public Key</label>
                             <input type="text" class="form-control form-control-sm font-monospace"
                                    id="pushVapidPublicKey" readonly
                                    placeholder="Generate a keypair to populate this">
                             <div class="form-text">Sent to browsers as the <code>applicationServerKey</code>.</div>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm">Private Key</label>
+                            <label class="form-label form-label-sm" for="pushVapidPrivateState">Private Key</label>
                             <input type="text" class="form-control form-control-sm"
                                    id="pushVapidPrivateState" readonly value="(not set)"
                                    placeholder="(not set)">
@@ -7044,37 +7046,37 @@ foreach ($personnelSections as $sec) {
                             <input type="hidden" id="routeId" value="">
                             <div class="row g-2 mb-2">
                                 <div class="col-md-6">
-                                    <label class="form-label form-label-sm">Route Name <span class="text-danger">*</span></label>
+                                    <label class="form-label form-label-sm" for="routeName">Route Name <span class="text-danger">*</span></label>
                                     <input type="text" class="form-control form-control-sm" id="routeName" required placeholder="e.g. Meshtastic to Dispatch Chat">
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label form-label-sm">Priority</label>
+                                    <label class="form-label form-label-sm" for="routePriority">Priority</label>
                                     <input type="number" class="form-control form-control-sm" id="routePriority" value="100" min="1" max="9999">
                                 </div>
                                 <div class="col-md-2">
-                                    <label class="form-label form-label-sm">Enabled</label>
+                                    <label class="form-label form-label-sm" for="routeEnabled">Enabled</label>
                                     <div class="form-check form-switch mt-1">
                                         <input class="form-check-input" type="checkbox" id="routeEnabled" checked>
                                     </div>
                                 </div>
                             </div>
                             <div class="mb-2">
-                                <label class="form-label form-label-sm">Description</label>
+                                <label class="form-label form-label-sm" for="routeDescription">Description</label>
                                 <input type="text" class="form-control form-control-sm" id="routeDescription" placeholder="Optional description">
                             </div>
                             <div class="row g-2 mb-2">
                                 <div class="col-md-4">
-                                    <label class="form-label form-label-sm">Source Channel <span class="text-danger">*</span></label>
+                                    <label class="form-label form-label-sm" for="routeSource">Source Channel <span class="text-danger">*</span></label>
                                     <select class="form-select form-select-sm" id="routeSource">
                                         <option value="*">Any Channel (*)</option>
                                     </select>
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label form-label-sm">Destination Channel <span class="text-danger">*</span></label>
+                                    <label class="form-label form-label-sm" for="routeDest">Destination Channel <span class="text-danger">*</span></label>
                                     <select class="form-select form-select-sm" id="routeDest"></select>
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label form-label-sm">Direction</label>
+                                    <label class="form-label form-label-sm" for="routeDirection">Direction</label>
                                     <select class="form-select form-select-sm" id="routeDirection">
                                         <option value="both">Both</option>
                                         <option value="inbound">Inbound Only</option>
@@ -7088,7 +7090,7 @@ foreach ($personnelSections as $sec) {
                                 <div class="small text-body-secondary mb-1"><i class="bi bi-broadcast me-1"></i>Mesh destination — channel broadcast or a direct unit/person.</div>
                                 <div class="row g-2">
                                     <div class="col-md-4">
-                                        <label class="form-label form-label-sm">Target</label>
+                                        <label class="form-label form-label-sm" for="routeMeshTargetKind">Target</label>
                                         <select class="form-select form-select-sm" id="routeMeshTargetKind">
                                             <option value="channel">Channel (broadcast)</option>
                                             <option value="unit">Unit / Person (direct)</option>
@@ -7096,7 +7098,7 @@ foreach ($personnelSections as $sec) {
                                         </select>
                                     </div>
                                     <div class="col-md-4" id="routeMeshSlotWrap">
-                                        <label class="form-label form-label-sm">Channel Slot</label>
+                                        <label class="form-label form-label-sm" for="routeMeshSlot">Channel Slot</label>
                                         <select class="form-select form-select-sm" id="routeMeshSlot">
                                             <option value="0">0 — Primary / Public</option>
                                             <option value="1">1</option>
@@ -7109,12 +7111,12 @@ foreach ($personnelSections as $sec) {
                                         </select>
                                     </div>
                                     <div class="col-md-8" id="routeMeshUnitWrap" style="display:none;">
-                                        <label class="form-label form-label-sm">Unit / Person</label>
+                                        <label class="form-label form-label-sm" for="routeMeshUnit">Unit / Person</label>
                                         <select class="form-select form-select-sm" id="routeMeshUnit"><option value="">— select —</option></select>
                                         <div class="form-text small" id="routeMeshUnitHint"></div>
                                     </div>
                                     <div class="col-md-8" id="routeMeshNodeWrap" style="display:none;">
-                                        <label class="form-label form-label-sm">Node Address</label>
+                                        <label class="form-label form-label-sm" for="routeMeshNode">Node Address</label>
                                         <input type="text" class="form-control form-control-sm" id="routeMeshNode" placeholder="!a2a79f57 or MeshCore pubkey prefix">
                                     </div>
                                 </div>
@@ -7125,14 +7127,14 @@ foreach ($personnelSections as $sec) {
                                 <div class="small text-body-secondary mb-1"><i class="bi bi-mic me-1"></i>Zello destination — a channel or a user.</div>
                                 <div class="row g-2">
                                     <div class="col-md-4">
-                                        <label class="form-label form-label-sm">Target</label>
+                                        <label class="form-label form-label-sm" for="routeZelloTargetKind">Target</label>
                                         <select class="form-select form-select-sm" id="routeZelloTargetKind">
                                             <option value="channel">Channel</option>
                                             <option value="user">User (DM)</option>
                                         </select>
                                     </div>
                                     <div class="col-md-8">
-                                        <label class="form-label form-label-sm" id="routeZelloValueLabel">Channel name</label>
+                                        <label class="form-label form-label-sm" id="routeZelloValueLabel" for="routeZelloValue">Channel name</label>
                                         <input type="text" class="form-control form-control-sm" id="routeZelloValue" placeholder="Leave blank for default dispatch channel">
                                     </div>
                                 </div>
@@ -7147,7 +7149,7 @@ foreach ($personnelSections as $sec) {
                                     <div class="card card-body p-2">
                                         <div class="row g-2">
                                             <div class="col-md-4">
-                                                <label class="form-label form-label-sm">Min Severity</label>
+                                                <label class="form-label form-label-sm" for="filterSeverityMin">Min Severity</label>
                                                 <select class="form-select form-select-sm" id="filterSeverityMin">
                                                     <option value="">Any</option>
                                                     <option value="1">1 (Low)</option>
@@ -7173,7 +7175,7 @@ foreach ($personnelSections as $sec) {
                                                 </div>
                                             </div>
                                             <div class="col-md-4">
-                                                <label class="form-label form-label-sm">Sender Roles</label>
+                                                <label class="form-label form-label-sm" for="filterSenderRoles">Sender Roles</label>
                                                 <?php
                                                 // Phase 128 (2026-07-29): these were hardcoded legacy
                                                 // LEVELS (0..5), matched against $_SESSION['level'].
@@ -7199,11 +7201,11 @@ foreach ($personnelSections as $sec) {
                                         </div>
                                         <div class="row g-2 mt-1">
                                             <div class="col-md-6">
-                                                <label class="form-label form-label-sm">Keywords <span class="text-body-secondary">(comma-separated, any match)</span></label>
+                                                <label class="form-label form-label-sm" for="filterKeywords">Keywords <span class="text-body-secondary">(comma-separated, any match)</span></label>
                                                 <input type="text" class="form-control form-control-sm" id="filterKeywords" placeholder="fire, mutual aid, hazmat">
                                             </div>
                                             <div class="col-md-6">
-                                                <label class="form-label form-label-sm">Exclude Keywords <span class="text-body-secondary">(comma-separated)</span></label>
+                                                <label class="form-label form-label-sm" for="filterExclude">Exclude Keywords <span class="text-body-secondary">(comma-separated)</span></label>
                                                 <input type="text" class="form-control form-control-sm" id="filterExclude" placeholder="test, drill">
                                             </div>
                                         </div>
@@ -7230,7 +7232,7 @@ foreach ($personnelSections as $sec) {
                                         <div id="recipBuilder" class="mt-2" style="display:none;">
                                             <div class="row g-2">
                                                 <div class="col-md-4">
-                                                    <label class="form-label form-label-sm">Predicate</label>
+                                                    <label class="form-label form-label-sm" for="recipPredicate">Predicate</label>
                                                     <select class="form-select form-select-sm" id="recipPredicate">
                                                         <option value="">— pick a predicate —</option>
                                                         <option value="assigned_to_incident">Users assigned to incident</option>
@@ -7242,7 +7244,7 @@ foreach ($personnelSections as $sec) {
                                                     </select>
                                                 </div>
                                                 <div class="col-md-8">
-                                                    <label class="form-label form-label-sm" id="recipParamLabel">Parameter</label>
+                                                    <label class="form-label form-label-sm" id="recipParamLabel" for="recipParam">Parameter</label>
                                                     <input type="text" class="form-control form-control-sm" id="recipParam" placeholder="(select a predicate first)">
                                                     <div class="form-text small" id="recipParamHint"></div>
                                                 </div>
@@ -7253,7 +7255,7 @@ foreach ($personnelSections as $sec) {
                                                  assigned_to_incident preview misleading. -->
                                             <div class="row g-2 mt-2">
                                                 <div class="col-md-9">
-                                                    <label class="form-label form-label-sm">Test against incident</label>
+                                                    <label class="form-label form-label-sm" for="recipSampleTicket">Test against incident</label>
                                                     <select class="form-select form-select-sm" id="recipSampleTicket">
                                                         <option value="">— synthetic payload (no real ticket) —</option>
                                                     </select>
@@ -7275,7 +7277,7 @@ foreach ($personnelSections as $sec) {
                                             <div id="recipPreviewResult" class="small mt-2" style="display:none;"></div>
 
                                             <div id="recipAdvancedPane" class="mt-2" style="display:none;">
-                                                <label class="form-label form-label-sm">Predicate JSON</label>
+                                                <label class="form-label form-label-sm" for="recipJsonRaw">Predicate JSON</label>
                                                 <textarea class="form-control form-control-sm font-monospace" id="recipJsonRaw" rows="6" placeholder='{"predicate": "rbac_can", "params": {"permission_code": "screen.situation"}}'></textarea>
                                                 <div class="form-text small">Use nested <code>{"type":"any_of","conditions":[...]}</code> for compositions. See docs/MESSAGE-ROUTING-GUIDE.md for shapes.</div>
                                             </div>
@@ -7293,11 +7295,11 @@ foreach ($personnelSections as $sec) {
                                     <div class="card card-body p-2">
                                         <div class="row g-2">
                                             <div class="col-md-8">
-                                                <label class="form-label form-label-sm">Prefix <span class="text-body-secondary">({source} = source channel name)</span></label>
+                                                <label class="form-label form-label-sm" for="transformPrefix">Prefix <span class="text-body-secondary">({source} = source channel name)</span></label>
                                                 <input type="text" class="form-control form-control-sm" id="transformPrefix" placeholder="[From {source}] ">
                                             </div>
                                             <div class="col-md-4">
-                                                <label class="form-label form-label-sm">Override Priority</label>
+                                                <label class="form-label form-label-sm" for="transformPriority">Override Priority</label>
                                                 <select class="form-select form-select-sm" id="transformPriority">
                                                     <option value="">No Change</option>
                                                     <option value="normal">Normal</option>
@@ -7331,11 +7333,11 @@ foreach ($personnelSections as $sec) {
                         <p class="small text-body-secondary">Send a simulated message to see which routes would match. No actual messages are sent.</p>
                         <div class="row g-2 mb-2">
                             <div class="col-md-6">
-                                <label class="form-label form-label-sm">Source Channel</label>
+                                <label class="form-label form-label-sm" for="testChannel">Source Channel</label>
                                 <select class="form-select form-select-sm" id="testChannel"></select>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label form-label-sm">Direction</label>
+                                <label class="form-label form-label-sm" for="testDirection">Direction</label>
                                 <select class="form-select form-select-sm" id="testDirection">
                                     <option value="outbound">Outbound</option>
                                     <option value="inbound">Inbound</option>
@@ -7343,12 +7345,12 @@ foreach ($personnelSections as $sec) {
                             </div>
                         </div>
                         <div class="mb-2">
-                            <label class="form-label form-label-sm">Message Body</label>
+                            <label class="form-label form-label-sm" for="testBody">Message Body</label>
                             <textarea class="form-control form-control-sm" id="testBody" rows="2" placeholder="Type a test message..."></textarea>
                         </div>
                         <div class="row g-2 mb-2">
                             <div class="col-md-6">
-                                <label class="form-label form-label-sm">Priority</label>
+                                <label class="form-label form-label-sm" for="testPriority">Priority</label>
                                 <select class="form-select form-select-sm" id="testPriority">
                                     <option value="normal">Normal</option>
                                     <option value="high">High</option>
@@ -7356,7 +7358,7 @@ foreach ($personnelSections as $sec) {
                                 </select>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label form-label-sm">Severity</label>
+                                <label class="form-label form-label-sm" for="testSeverity">Severity</label>
                                 <select class="form-select form-select-sm" id="testSeverity">
                                     <option value="0">0 (None)</option>
                                     <option value="1">1 (Low)</option>
@@ -7385,7 +7387,7 @@ foreach ($personnelSections as $sec) {
                     <div class="settings-group-title">Mail Transport</div>
                     <div class="row g-2">
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm">Mode</label>
+                            <label class="form-label form-label-sm" for="setEmailMode">Mode</label>
                             <select class="form-select form-select-sm" id="setEmailMode">
                                 <option value="">Disabled</option>
                                 <option value="sendmail">Local Sendmail</option>
@@ -7393,11 +7395,11 @@ foreach ($personnelSections as $sec) {
                             </select>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm">From Address</label>
+                            <label class="form-label form-label-sm" for="setSmtpFrom">From Address</label>
                             <input type="email" class="form-control form-control-sm" id="setSmtpFrom" placeholder="dispatch@example.com">
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm">From Name</label>
+                            <label class="form-label form-label-sm" for="setSmtpFromName">From Name</label>
                             <input type="text" class="form-control form-control-sm" id="setSmtpFromName" placeholder="Tickets CAD">
                         </div>
                     </div>
@@ -7406,15 +7408,15 @@ foreach ($personnelSections as $sec) {
                     <div class="settings-group-title">SMTP Server</div>
                     <div class="row g-2">
                         <div class="col-md-5">
-                            <label class="form-label form-label-sm">SMTP Host</label>
+                            <label class="form-label form-label-sm" for="setSmtpHost">SMTP Host</label>
                             <input type="text" class="form-control form-control-sm" id="setSmtpHost" placeholder="smtp.gmail.com">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm">Port</label>
+                            <label class="form-label form-label-sm" for="setSmtpPort">Port</label>
                             <input type="number" class="form-control form-control-sm" id="setSmtpPort" placeholder="587">
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm">Encryption</label>
+                            <label class="form-label form-label-sm" for="setSmtpEncrypt">Encryption</label>
                             <select class="form-select form-select-sm" id="setSmtpEncrypt">
                                 <option value="tls">STARTTLS (587)</option>
                                 <option value="ssl">SSL/TLS (465)</option>
@@ -7424,11 +7426,11 @@ foreach ($personnelSections as $sec) {
                     </div>
                     <div class="row g-2 mt-1">
                         <div class="col-md-6">
-                            <label class="form-label form-label-sm">Username</label>
+                            <label class="form-label form-label-sm" for="setSmtpUser">Username</label>
                             <input type="text" class="form-control form-control-sm" id="setSmtpUser" placeholder="your-email@gmail.com">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label form-label-sm">Password</label>
+                            <label class="form-label form-label-sm" for="setSmtpPass">Password</label>
                             <input type="password" class="form-control form-control-sm" id="setSmtpPass" data-secret="1" autocomplete="new-password" placeholder="•••• stored — leave blank to keep, type to replace">
                         </div>
                     </div>
@@ -7464,7 +7466,7 @@ foreach ($personnelSections as $sec) {
             <div class="d-flex gap-2 mb-2 align-items-center">
                 <button type="button" class="btn btn-sm btn-success" id="btnNewEmailList"><i class="bi bi-plus-lg me-1"></i>New List</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="btnImportEmailList"><i class="bi bi-upload me-1"></i>Import CSV</button>
-                <input type="text" class="form-control form-control-sm ms-auto" placeholder="Filter lists…" id="emailListFilter" style="max-width:240px;">
+                <input type="text" class="form-control form-control-sm ms-auto" placeholder="Filter lists…" id="emailListFilter" style="max-width:240px;" aria-label="Filter email lists">
             </div>
             <div id="emailListsBody">
                 <div class="text-body-secondary p-3 small">Loading lists…</div>
@@ -7481,7 +7483,7 @@ foreach ($personnelSections as $sec) {
                     <div class="settings-group-title">SMS Provider</div>
                     <div class="row g-2">
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm">Provider</label>
+                            <label class="form-label form-label-sm" for="setSmsProvider">Provider</label>
                             <select class="form-select form-select-sm" id="setSmsProvider">
                                 <option value="">Disabled</option>
                                 <option value="generic">Generic REST Endpoint</option>
@@ -7491,7 +7493,7 @@ foreach ($personnelSections as $sec) {
                             </select>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm">From Number</label>
+                            <label class="form-label form-label-sm" for="setSmsFrom">From Number</label>
                             <input type="text" class="form-control form-control-sm" id="setSmsFrom" placeholder="+15551234567">
                         </div>
                     </div>
@@ -7501,11 +7503,11 @@ foreach ($personnelSections as $sec) {
                     <div class="settings-group-title">Twilio</div>
                     <div class="row g-2">
                         <div class="col-md-6">
-                            <label class="form-label form-label-sm">Account SID</label>
+                            <label class="form-label form-label-sm" for="setSmsTwilioSid">Account SID</label>
                             <input type="text" class="form-control form-control-sm" id="setSmsTwilioSid">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label form-label-sm">Auth Token</label>
+                            <label class="form-label form-label-sm" for="setSmsTwilioToken">Auth Token</label>
                             <input type="password" class="form-control form-control-sm" id="setSmsTwilioToken" data-secret="1" autocomplete="new-password" placeholder="•••• stored — leave blank to keep, type to replace">
                         </div>
                     </div>
@@ -7515,11 +7517,11 @@ foreach ($personnelSections as $sec) {
                     <div class="settings-group-title">BulkVS</div>
                     <div class="row g-2">
                         <div class="col-md-6">
-                            <label class="form-label form-label-sm">API Key</label>
+                            <label class="form-label form-label-sm" for="setSmsBulkvsKey">API Key</label>
                             <input type="text" class="form-control form-control-sm" id="setSmsBulkvsKey" data-secret="1" placeholder="•••• stored — leave blank to keep, type to replace">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label form-label-sm">API Secret</label>
+                            <label class="form-label form-label-sm" for="setSmsBulkvsSecret">API Secret</label>
                             <input type="password" class="form-control form-control-sm" id="setSmsBulkvsSecret" data-secret="1" autocomplete="new-password" placeholder="•••• stored — leave blank to keep, type to replace">
                         </div>
                     </div>
@@ -7529,11 +7531,11 @@ foreach ($personnelSections as $sec) {
                     <div class="settings-group-title">Pushbullet</div>
                     <div class="row g-2">
                         <div class="col-md-8">
-                            <label class="form-label form-label-sm">Access Token</label>
+                            <label class="form-label form-label-sm" for="setSmsPushbulletToken">Access Token</label>
                             <input type="text" class="form-control form-control-sm" id="setSmsPushbulletToken" data-secret="1" placeholder="•••• stored — leave blank to keep, type to replace">
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm">Device ID</label>
+                            <label class="form-label form-label-sm" for="setSmsPushbulletDevice">Device ID</label>
                             <input type="text" class="form-control form-control-sm" id="setSmsPushbulletDevice" placeholder="Auto-detect">
                         </div>
                     </div>
@@ -7543,38 +7545,38 @@ foreach ($personnelSections as $sec) {
                     <div class="settings-group-title">Generic REST Endpoint</div>
                     <div class="row g-2">
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm">Method</label>
+                            <label class="form-label form-label-sm" for="setSmsGenericMethod">Method</label>
                             <select class="form-select form-select-sm" id="setSmsGenericMethod">
                                 <option value="POST">POST</option>
                                 <option value="GET">GET</option>
                             </select>
                         </div>
                         <div class="col-md-9">
-                            <label class="form-label form-label-sm">URL</label>
+                            <label class="form-label form-label-sm" for="setSmsGenericUrl">URL</label>
                             <input type="text" class="form-control form-control-sm" id="setSmsGenericUrl" placeholder="https://api.example.com/sms/send">
                         </div>
                     </div>
                     <div class="row g-2 mt-1">
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm">Content Type</label>
+                            <label class="form-label form-label-sm" for="setSmsGenericContentType">Content Type</label>
                             <select class="form-select form-select-sm" id="setSmsGenericContentType">
                                 <option value="form">Form (x-www-form-urlencoded)</option>
                                 <option value="json">JSON</option>
                             </select>
                         </div>
                         <div class="col-md-9">
-                            <label class="form-label form-label-sm">Auth Header</label>
+                            <label class="form-label form-label-sm" for="setSmsGenericAuth">Auth Header</label>
                             <input type="text" class="form-control form-control-sm" id="setSmsGenericAuth" placeholder="Authorization: Bearer {api_key}">
                         </div>
                     </div>
                     <div class="row g-2 mt-1">
                         <div class="col-md-6">
-                            <label class="form-label form-label-sm">API Key</label>
+                            <label class="form-label form-label-sm" for="setSmsGenericApiKey">API Key</label>
                             <input type="text" class="form-control form-control-sm" id="setSmsGenericApiKey" data-secret="1" placeholder="•••• stored — leave blank to keep, type to replace">
                         </div>
                     </div>
                     <div class="mt-1">
-                        <label class="form-label form-label-sm">Body Template</label>
+                        <label class="form-label form-label-sm" for="setSmsGenericTemplate">Body Template</label>
                         <textarea class="form-control form-control-sm" id="setSmsGenericTemplate" rows="3" placeholder='{"to": "{to}", "message": "{body}", "from": "{from}"}'></textarea>
                         <div class="small text-body-secondary mt-1">Variables: <code>{to}</code> <code>{body}</code> <code>{from}</code> <code>{subject}</code> <code>{api_key}</code></div>
                     </div>
@@ -7615,7 +7617,7 @@ foreach ($personnelSections as $sec) {
                 <div class="settings-group">
                     <div class="row g-2">
                         <div class="col-md-8">
-                            <label class="form-label form-label-sm">Bot Token</label>
+                            <label class="form-label form-label-sm" for="setTelegramToken">Bot Token</label>
                             <div class="input-group input-group-sm">
                                 <input type="password" class="form-control font-monospace" id="setTelegramToken"
                                        data-key="telegram_bot_token" data-secret="1" autocomplete="off"
@@ -7626,7 +7628,7 @@ foreach ($personnelSections as $sec) {
                             <div class="form-text small">From @BotFather. Treat like a password — anyone with the token can post as your bot.</div>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm">Chat ID</label>
+                            <label class="form-label form-label-sm" for="setTelegramChat">Chat ID</label>
                             <input type="text" class="form-control form-control-sm" id="setTelegramChat"
                                    data-key="telegram_chat_id" placeholder="-100123456789">
                             <div class="form-text small">Group IDs start with <code>-100</code>. Personal/DM IDs are positive.</div>
@@ -7658,7 +7660,7 @@ foreach ($personnelSections as $sec) {
                     <div class="settings-group-title">Connection Mode</div>
                     <div class="row g-2">
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm">Mode</label>
+                            <label class="form-label form-label-sm" for="setSlackMode">Mode</label>
                             <select class="form-select form-select-sm" id="setSlackMode">
                                 <option value="">Disabled</option>
                                 <option value="webhook">Incoming Webhook (send only)</option>
@@ -7666,7 +7668,7 @@ foreach ($personnelSections as $sec) {
                             </select>
                         </div>
                         <div class="col-md-8">
-                            <label class="form-label form-label-sm">Default Channel</label>
+                            <label class="form-label form-label-sm" for="setSlackChannel">Default Channel</label>
                             <input type="text" class="form-control form-control-sm" id="setSlackChannel" placeholder="#dispatch or C01234ABCDE">
                         </div>
                     </div>
@@ -7675,7 +7677,7 @@ foreach ($personnelSections as $sec) {
                     <div class="settings-group-title">Webhook</div>
                     <div class="row g-2">
                         <div class="col-12">
-                            <label class="form-label form-label-sm">Webhook URL</label>
+                            <label class="form-label form-label-sm" for="setSlackWebhook">Webhook URL</label>
                             <input type="url" class="form-control form-control-sm" id="setSlackWebhook" data-secret="1" autocomplete="new-password" placeholder="https://hooks.slack.com/services/T.../B.../xxxx">
                         </div>
                     </div>
@@ -7684,7 +7686,7 @@ foreach ($personnelSections as $sec) {
                     <div class="settings-group-title">Bot API</div>
                     <div class="row g-2">
                         <div class="col-12">
-                            <label class="form-label form-label-sm">Bot OAuth Token</label>
+                            <label class="form-label form-label-sm" for="setSlackToken">Bot OAuth Token</label>
                             <input type="password" class="form-control form-control-sm" id="setSlackToken" data-secret="1" autocomplete="new-password" placeholder="xoxb-1234-5678-abcdef">
                         </div>
                     </div>
@@ -7716,7 +7718,7 @@ foreach ($personnelSections as $sec) {
                     <div class="settings-group-title">Gateway Connection</div>
                     <div class="row g-2">
                         <div class="col-md-4">
-                            <label class="form-label form-label-sm">Protocol</label>
+                            <label class="form-label form-label-sm" for="setRadioProtocol">Protocol</label>
                             <select class="form-select form-select-sm" id="setRadioProtocol">
                                 <option value="">Disabled</option>
                                 <option value="mnis">MotoTRBO MNIS</option>
@@ -7724,11 +7726,11 @@ foreach ($personnelSections as $sec) {
                             </select>
                         </div>
                         <div class="col-md-5">
-                            <label class="form-label form-label-sm">Gateway Host</label>
+                            <label class="form-label form-label-sm" for="setRadioHost">Gateway Host</label>
                             <input type="text" class="form-control form-control-sm" id="setRadioHost" placeholder="192.168.1.50">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm">Port</label>
+                            <label class="form-label form-label-sm" for="setRadioPort">Port</label>
                             <input type="number" class="form-control form-control-sm" id="setRadioPort" value="4001">
                         </div>
                     </div>
@@ -7799,24 +7801,24 @@ foreach ($personnelSections as $sec) {
                         <input type="hidden" id="webhookId" value="">
                         <div class="row g-2 mb-2">
                             <div class="col-md-6">
-                                <label class="form-label form-label-sm">Name</label>
+                                <label class="form-label form-label-sm" for="webhookName">Name</label>
                                 <input type="text" class="form-control form-control-sm" id="webhookName" required placeholder="My Integration">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label form-label-sm">URL</label>
+                                <label class="form-label form-label-sm" for="webhookUrl">URL</label>
                                 <input type="url" class="form-control form-control-sm" id="webhookUrl" required placeholder="https://example.com/webhook">
                             </div>
                         </div>
                         <div class="row g-2 mb-2">
                             <div class="col-md-6">
-                                <label class="form-label form-label-sm">Secret (HMAC-SHA256)</label>
+                                <label class="form-label form-label-sm" for="webhookSecret">Secret (HMAC-SHA256)</label>
                                 <div class="input-group input-group-sm">
                                     <input type="text" class="form-control form-control-sm font-monospace" id="webhookSecret" placeholder="Auto-generated on create">
                                     <button type="button" class="btn btn-outline-secondary btn-sm" id="btnGenSecret" title="Generate random secret"><i class="bi bi-arrow-repeat"></i></button>
                                 </div>
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label form-label-sm">Max Retries</label>
+                                <label class="form-label form-label-sm" for="webhookRetryMax">Max Retries</label>
                                 <input type="number" class="form-control form-control-sm" id="webhookRetryMax" min="1" max="10" value="3">
                             </div>
                             <div class="col-md-3">
@@ -7967,12 +7969,12 @@ foreach ($personnelSections as $sec) {
                     <form id="extApiTokenMintForm" autocomplete="off">
                         <div class="row g-2 mb-2">
                             <div class="col-md-6">
-                                <label class="form-label form-label-sm">Name</label>
+                                <label class="form-label form-label-sm" for="extApiTokenName">Name</label>
                                 <input type="text" class="form-control form-control-sm" id="extApiTokenName" required
                                        placeholder="e.g. Acme Agency iOS v1.4">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label form-label-sm">Bound user</label>
+                                <label class="form-label form-label-sm" for="extApiTokenUserId">Bound user</label>
                                 <select class="form-select form-select-sm" id="extApiTokenUserId" required>
                                     <option value="">— Select a user —</option>
                                 </select>
@@ -7989,23 +7991,23 @@ foreach ($personnelSections as $sec) {
                         </div>
                         <div class="row g-2 mb-2">
                             <div class="col-md-6">
-                                <label class="form-label form-label-sm">Description (optional)</label>
+                                <label class="form-label form-label-sm" for="extApiTokenDescription">Description (optional)</label>
                                 <input type="text" class="form-control form-control-sm" id="extApiTokenDescription"
                                        placeholder="Operator notes">
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label form-label-sm">Rate limit / hour</label>
+                                <label class="form-label form-label-sm" for="extApiTokenRateLimit">Rate limit / hour</label>
                                 <input type="number" class="form-control form-control-sm" id="extApiTokenRateLimit"
                                        placeholder="1000" min="1" max="100000">
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label form-label-sm">Expires at (optional)</label>
+                                <label class="form-label form-label-sm" for="extApiTokenExpiresAt">Expires at (optional)</label>
                                 <input type="datetime-local" class="form-control form-control-sm" id="extApiTokenExpiresAt">
                             </div>
                         </div>
                         <div class="row g-2 mb-2">
                             <div class="col-md-12">
-                                <label class="form-label form-label-sm">IP allowlist (optional, comma-separated CIDR)</label>
+                                <label class="form-label form-label-sm" for="extApiTokenIpAllowlist">IP allowlist (optional, comma-separated CIDR)</label>
                                 <input type="text" class="form-control form-control-sm" id="extApiTokenIpAllowlist"
                                        placeholder="e.g. 10.0.0.0/8, 192.168.1.0/24">
                             </div>
@@ -8033,7 +8035,7 @@ foreach ($personnelSections as $sec) {
                                 the admin UI for identification.
                             </p>
                             <div class="mb-2">
-                                <label class="form-label form-label-sm fw-semibold">Raw token</label>
+                                <label class="form-label form-label-sm fw-semibold" for="extApiTokenRawValue">Raw token</label>
                                 <div class="input-group input-group-sm">
                                     <input type="text" class="form-control font-monospace" id="extApiTokenRawValue" readonly>
                                     <button type="button" class="btn btn-outline-secondary" id="btnCopyExtApiToken"><i class="bi bi-clipboard"></i> Copy</button>
@@ -8070,15 +8072,15 @@ foreach ($personnelSections as $sec) {
                 <div class="card-body py-2">
                     <div class="row g-2 align-items-end">
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Code</label>
+                            <label class="form-label form-label-sm mb-0" for="sigCode">Code</label>
                             <input type="text" class="form-control form-control-sm" id="sigCode" maxlength="16" placeholder="e.g. 10-4">
                         </div>
                         <div class="col-md-5">
-                            <label class="form-label form-label-sm mb-0">Description</label>
+                            <label class="form-label form-label-sm mb-0" for="sigDescription">Description</label>
                             <input type="text" class="form-control form-control-sm" id="sigDescription" maxlength="255" placeholder="What the code means">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label form-label-sm mb-0">Sort</label>
+                            <label class="form-label form-label-sm mb-0" for="sigSort">Sort</label>
                             <input type="number" class="form-control form-control-sm" id="sigSort" value="0" min="0">
                         </div>
                         <div class="col-md-1">
@@ -8137,17 +8139,17 @@ foreach ($personnelSections as $sec) {
                     <div class="settings-group-title">Retention &amp; Persistence</div>
                     <div class="row g-2">
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm">Message retention (days)</label>
-                            <input type="number" class="form-control form-control-sm" data-key="chat_retention_days" min="1" max="3650" placeholder="365">
+                            <label class="form-label form-label-sm" for="setChatRetentionDays">Message retention (days)</label>
+                            <input type="number" class="form-control form-control-sm" id="setChatRetentionDays" data-key="chat_retention_days" min="1" max="3650" placeholder="365">
                             <div class="form-text small">Messages older than this are purged by the nightly cleanup job. 0 disables retention (forever).</div>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm">Max message length</label>
-                            <input type="number" class="form-control form-control-sm" data-key="chat_max_chars" min="32" max="8000" placeholder="2000">
+                            <label class="form-label form-label-sm" for="setChatMaxChars">Max message length</label>
+                            <input type="number" class="form-control form-control-sm" id="setChatMaxChars" data-key="chat_max_chars" min="32" max="8000" placeholder="2000">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm">Idle DM clear-on-logout</label>
-                            <select class="form-select form-select-sm" data-key="chat_dm_clear_logout">
+                            <label class="form-label form-label-sm" for="setChatDmClearLogout">Idle DM clear-on-logout</label>
+                            <select class="form-select form-select-sm" id="setChatDmClearLogout" data-key="chat_dm_clear_logout">
                                 <option value="off">Off — keep history</option>
                                 <option value="user">User chooses at logout</option>
                                 <option value="force">Force-clear on logout</option>
@@ -8204,26 +8206,26 @@ foreach ($personnelSections as $sec) {
                     <div class="row g-2">
                         <div class="col-md-3">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" data-key="chat_bridge_telegram">
-                                <label class="form-check-label small">Bridge → Telegram</label>
+                                <input class="form-check-input" type="checkbox" id="setChatBridgeTelegram" data-key="chat_bridge_telegram">
+                                <label class="form-check-label small" for="setChatBridgeTelegram">Bridge → Telegram</label>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" data-key="chat_bridge_slack">
-                                <label class="form-check-label small">Bridge → Slack</label>
+                                <input class="form-check-input" type="checkbox" id="setChatBridgeSlack" data-key="chat_bridge_slack">
+                                <label class="form-check-label small" for="setChatBridgeSlack">Bridge → Slack</label>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" data-key="chat_bridge_email">
-                                <label class="form-check-label small">Bridge → Email (digest)</label>
+                                <input class="form-check-input" type="checkbox" id="setChatBridgeEmail" data-key="chat_bridge_email">
+                                <label class="form-check-label small" for="setChatBridgeEmail">Bridge → Email (digest)</label>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" data-key="chat_bridge_mesh">
-                                <label class="form-check-label small">Bridge → Mesh radio</label>
+                                <input class="form-check-input" type="checkbox" id="setChatBridgeMesh" data-key="chat_bridge_mesh">
+                                <label class="form-check-label small" for="setChatBridgeMesh">Bridge → Mesh radio</label>
                             </div>
                         </div>
                     </div>
@@ -8290,7 +8292,7 @@ foreach ($personnelSections as $sec) {
             <p class="text-body-secondary small mb-2">Per-provider connection configuration. Select a provider to view and edit its settings.</p>
 
             <div class="mb-2">
-                <select class="form-select form-select-sm" id="providerSettingsSelect" style="max-width:300px">
+                <select class="form-select form-select-sm" id="providerSettingsSelect" style="max-width:300px" aria-label="Select a location provider">
                     <option value="">Select a provider...</option>
                 </select>
             </div>
@@ -8442,7 +8444,7 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                     <i class="bi bi-upload me-1"></i>Import CSV
                 </button>
                 <input type="search" class="form-control form-control-sm ms-auto" id="tgFilter"
-                       style="max-width:240px;" placeholder="Filter…">
+                       style="max-width:240px;" placeholder="Filter…" aria-label="Filter talkgroups">
             </div>
 
             <div class="table-responsive">
@@ -8479,27 +8481,27 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                         <div class="modal-body">
                             <div class="row g-2">
                                 <div class="col-md-4">
-                                    <label class="form-label form-label-sm">DMR ID <span class="text-danger">*</span></label>
+                                    <label class="form-label form-label-sm" for="tgEditDmrId">DMR ID <span class="text-danger">*</span></label>
                                     <input type="number" class="form-control form-control-sm" id="tgEditDmrId" min="1" max="16777215" required>
                                     <div class="form-text">1–16777215 (24-bit)</div>
                                 </div>
                                 <div class="col-md-8">
-                                    <label class="form-label form-label-sm">Name <span class="text-danger">*</span></label>
+                                    <label class="form-label form-label-sm" for="tgEditName">Name <span class="text-danger">*</span></label>
                                     <input type="text" class="form-control form-control-sm" id="tgEditName" maxlength="64" required>
                                 </div>
                                 <div class="col-12">
-                                    <label class="form-label form-label-sm">Description</label>
+                                    <label class="form-label form-label-sm" for="tgEditDesc">Description</label>
                                     <input type="text" class="form-control form-control-sm" id="tgEditDesc" maxlength="255">
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label form-label-sm">Call type</label>
+                                    <label class="form-label form-label-sm" for="tgEditCallType">Call type</label>
                                     <select class="form-select form-select-sm" id="tgEditCallType">
                                         <option value="group">Group (broadcast)</option>
                                         <option value="private">Private (point-to-point)</option>
                                     </select>
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label form-label-sm">Sort order</label>
+                                    <label class="form-label form-label-sm" for="tgEditSort">Sort order</label>
                                     <input type="number" class="form-control form-control-sm" id="tgEditSort" value="100">
                                 </div>
                                 <div class="col-md-4 d-flex align-items-end">
@@ -8541,7 +8543,8 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                             <code>enabled</code> (1/0).
                         </p>
                         <textarea class="form-control form-control-sm font-monospace" id="tgImportCsv"
-                                  rows="10" placeholder="dmr_id,name,description,call_type,sort_order,enabled&#10;3127,MN State,Minnesota Statewide,group,100,1"></textarea>
+                                  rows="10" placeholder="dmr_id,name,description,call_type,sort_order,enabled&#10;3127,MN State,Minnesota Statewide,group,100,1"
+                                  aria-label="Talkgroup CSV data"></textarea>
                         <div class="form-check mt-2">
                             <input class="form-check-input" type="checkbox" id="tgImportReplace">
                             <label class="form-check-label" for="tgImportReplace">
@@ -8573,19 +8576,19 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                             <input type="hidden" id="dvsId" value="">
                             <div class="row g-2">
                                 <div class="col-md-4">
-                                    <label class="form-label form-label-sm">Label *</label>
+                                    <label class="form-label form-label-sm" for="dvsLabel">Label *</label>
                                     <input type="text" class="form-control form-control-sm"
                                            id="dvsLabel" required pattern="[A-Za-z0-9_\-]+"
                                            placeholder="e.g. tg91-worldwide">
                                     <small class="text-body-secondary">Used as the systemd instance name. A-Z, 0-9, _-</small>
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label form-label-sm">Talkgroup *</label>
+                                    <label class="form-label form-label-sm" for="dvsTg">Talkgroup *</label>
                                     <input type="text" class="form-control form-control-sm"
                                            id="dvsTg" required placeholder="e.g. 9990 (parrot)">
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label form-label-sm">Network</label>
+                                    <label class="form-label form-label-sm" for="dvsNetwork">Network</label>
                                     <select class="form-select form-select-sm" id="dvsNetwork">
                                         <option>BrandMeister</option>
                                         <option>TGIF</option>
@@ -8595,7 +8598,7 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                                     </select>
                                 </div>
                                 <div class="col-md-2">
-                                    <label class="form-label form-label-sm">Link Mode</label>
+                                    <label class="form-label form-label-sm" for="dvsLinkMode">Link Mode</label>
                                     <select class="form-select form-select-sm" id="dvsLinkMode">
                                         <option value="rx_only">RX only</option>
                                         <option value="tx_only">TX only</option>
@@ -8603,33 +8606,33 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                                     </select>
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label form-label-sm">Bridge host *</label>
+                                    <label class="form-label form-label-sm" for="dvsBridgeHost">Bridge host *</label>
                                     <input type="text" class="form-control form-control-sm"
                                            id="dvsBridgeHost" required
                                            placeholder="dvswitch.example.lan or 192.0.2.10">
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label form-label-sm">Bridge HTTP port</label>
+                                    <label class="form-label form-label-sm" for="dvsBridgePort">Bridge HTTP port</label>
                                     <input type="number" class="form-control form-control-sm"
                                            id="dvsBridgePort" value="18091" min="1024" max="65535">
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label form-label-sm">Chat channel</label>
+                                    <label class="form-label form-label-sm" for="dvsChatChannel">Chat channel</label>
                                     <input type="text" class="form-control form-control-sm"
                                            id="dvsChatChannel" value="dispatch">
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label form-label-sm">USRP listen port</label>
+                                    <label class="form-label form-label-sm" for="dvsUsrpListenPort">USRP listen port</label>
                                     <input type="number" class="form-control form-control-sm"
                                            id="dvsUsrpListenPort" placeholder="auto" min="1024" max="65535">
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label form-label-sm">USRP send port</label>
+                                    <label class="form-label form-label-sm" for="dvsUsrpSendPort">USRP send port</label>
                                     <input type="number" class="form-control form-control-sm"
                                            id="dvsUsrpSendPort" placeholder="auto" min="1024" max="65535">
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label form-label-sm">STT engine</label>
+                                    <label class="form-label form-label-sm" for="dvsSttEngine">STT engine</label>
                                     <select class="form-select form-select-sm" id="dvsSttEngine">
                                         <option value="">(none)</option>
                                         <option value="vosk">Vosk (streaming)</option>
@@ -8637,7 +8640,7 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                                     </select>
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label form-label-sm">TTS engine</label>
+                                    <label class="form-label form-label-sm" for="dvsTtsEngine">TTS engine</label>
                                     <select class="form-select form-select-sm" id="dvsTtsEngine">
                                         <option value="">(none)</option>
                                         <option value="piper">Piper</option>
@@ -8697,7 +8700,7 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                             push-to-talk will work too.
                         </p>
                         <div class="mb-2">
-                            <label class="form-label form-label-sm">
+                            <label class="form-label form-label-sm" for="dvsTestToken">
                                 Bridge bearer token <span class="text-body-secondary">(optional)</span>
                             </label>
                             <input type="password" class="form-control form-control-sm"
@@ -9167,7 +9170,7 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                     <span id="aprsTabMapStatus" class="badge bg-secondary">—</span>
                     <span id="aprsTabMapCount" class="text-body-secondary"></span>
                     <span class="ms-auto">Window:
-                        <select class="form-select form-select-sm d-inline-block w-auto" id="aprsTabMapSince">
+                        <select class="form-select form-select-sm d-inline-block w-auto" id="aprsTabMapSince" aria-label="Map time window">
                             <option value="15">Last 15 min</option>
                             <option value="60" selected>Last hour</option>
                             <option value="240">Last 4 h</option>
@@ -9453,21 +9456,21 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                                 </div>
 
                                 <div class="col-md-6">
-                                    <label class="form-label form-label-sm">Inbound marker default</label>
-                                    <select class="form-select form-select-sm" name="atak_marker_action">
+                                    <label class="form-label form-label-sm" for="atakChanMarkerAction">Inbound marker default</label>
+                                    <select class="form-select form-select-sm" name="atak_marker_action" id="atakChanMarkerAction">
                                         <option value="new_incident">Create new incident</option>
                                         <option value="note_nearest">Append note to nearest open incident</option>
                                     </select>
                                     <div class="form-text">Circle markers (<code>u-d-c-c</code>) always create a new geofenced incident regardless.</div>
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label form-label-sm">Min sec/position</label>
-                                    <input type="number" class="form-control form-control-sm" name="atak_position_min_secs"
+                                    <label class="form-label form-label-sm" for="atakChanPositionMinSecs">Min sec/position</label>
+                                    <input type="number" class="form-control form-control-sm" name="atak_position_min_secs" id="atakChanPositionMinSecs"
                                            min="5" max="3600" value="60">
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label form-label-sm">Min meters/position</label>
-                                    <input type="number" class="form-control form-control-sm" name="atak_position_min_m"
+                                    <label class="form-label form-label-sm" for="atakChanPositionMinM">Min meters/position</label>
+                                    <input type="number" class="form-control form-control-sm" name="atak_position_min_m" id="atakChanPositionMinM"
                                            min="0" max="10000" value="25">
                                 </div>
                             </div>
@@ -9495,11 +9498,11 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                         <form id="atakBindForm">
                             <input type="hidden" name="atak_uid" value="">
                             <div class="mb-2">
-                                <label class="form-label form-label-sm">ATAK UID</label>
-                                <input type="text" class="form-control form-control-sm" name="uid_display" disabled>
+                                <label class="form-label form-label-sm" for="atakBindUidDisplay">ATAK UID</label>
+                                <input type="text" class="form-control form-control-sm" name="uid_display" id="atakBindUidDisplay" disabled>
                             </div>
                             <div class="mb-2">
-                                <label class="form-label form-label-sm">Personnel</label>
+                                <label class="form-label form-label-sm" for="atakBindMember">Personnel</label>
                                 <select class="form-select form-select-sm" name="member_id" id="atakBindMember" required>
                                     <option value="">-- pick personnel --</option>
                                 </select>
@@ -9678,7 +9681,7 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                 <div class="settings-group-title d-flex align-items-center">
                     Recent reports
                     <div class="ms-auto d-flex align-items-center gap-2">
-                        <select id="ingestReportsFilter" class="form-select form-select-sm" style="width:auto">
+                        <select id="ingestReportsFilter" class="form-select form-select-sm" style="width:auto" aria-label="Filter recent reports by provider">
                             <option value="">All providers</option>
                             <option value="traccar">Traccar</option>
                             <option value="opengts">OpenGTS</option>
@@ -9724,14 +9727,14 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                     <div class="modal-body">
                         <form id="ingestMintForm">
                             <div class="mb-2">
-                                <label class="form-label form-label-sm">Label <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control form-control-sm" name="label"
+                                <label class="form-label form-label-sm" for="ingestMintLabel">Label <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control form-control-sm" name="label" id="ingestMintLabel"
                                        placeholder="Truck-7 Teltonika" required maxlength="120">
                                 <div class="form-text">Operator-friendly name. Shown in the token list and audit log.</div>
                             </div>
                             <div class="mb-2">
-                                <label class="form-label form-label-sm">Provider (optional)</label>
-                                <select class="form-select form-select-sm" name="provider_code">
+                                <label class="form-label form-label-sm" for="ingestMintProvider">Provider (optional)</label>
+                                <select class="form-select form-select-sm" name="provider_code" id="ingestMintProvider">
                                     <option value="">Any provider</option>
                                     <option value="owntracks">OwnTracks</option>
                                     <option value="traccar">Traccar</option>
@@ -9746,15 +9749,15 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                                 </div>
                             </div>
                             <div class="mb-2">
-                                <label class="form-label form-label-sm" id="ingestMintBoundIdLabel">Bound device unique ID (optional)</label>
+                                <label class="form-label form-label-sm" id="ingestMintBoundIdLabel" for="ingestMintBoundIdInput">Bound device unique ID (optional)</label>
                                 <input type="text" class="form-control form-control-sm" name="device_unique_id"
                                        id="ingestMintBoundIdInput"
                                        placeholder="863719010012345" maxlength="120">
                                 <div class="form-text" id="ingestMintBoundIdHint">When set, the token is rejected unless the report's device id matches exactly.</div>
                             </div>
                             <div class="mb-2">
-                                <label class="form-label form-label-sm">Notes (optional)</label>
-                                <input type="text" class="form-control form-control-sm" name="notes"
+                                <label class="form-label form-label-sm" for="ingestMintNotes">Notes (optional)</label>
+                                <input type="text" class="form-control form-control-sm" name="notes" id="ingestMintNotes"
                                        placeholder="Issued to Fleet Mgr 2026-06-24" maxlength="255">
                             </div>
                         </form>
@@ -9764,7 +9767,7 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                                 <strong>Copy this token now.</strong> It will never be shown again.
                             </div>
                             <div class="input-group input-group-sm">
-                                <input type="text" class="form-control font-monospace" id="ingestMintResultToken" readonly>
+                                <input type="text" class="form-control font-monospace" id="ingestMintResultToken" readonly aria-label="Minted ingest token">
                                 <button class="btn btn-outline-primary" type="button" id="ingestMintResultCopy">
                                     <i class="bi bi-clipboard me-1"></i>Copy
                                 </button>
@@ -9871,7 +9874,7 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                 <div class="mt-2 d-none" id="gfMarkupNameRow">
                     <div class="row g-2 align-items-end">
                         <div class="col-md-5">
-                            <label class="form-label form-label-sm">Name this boundary</label>
+                            <label class="form-label form-label-sm" for="gfMarkupName">Name this boundary</label>
                             <input type="text" class="form-control form-control-sm" id="gfMarkupName" placeholder="e.g. Downtown Zone, MSP Airport Perimeter">
                         </div>
                         <div class="col-md-3">
@@ -9894,13 +9897,13 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                 </div>
                 <div class="row g-2">
                     <div class="col-md-5">
-                        <label class="form-label form-label-sm">Saved Boundary (Map Markup)</label>
+                        <label class="form-label form-label-sm" for="gfMarkupSelect">Saved Boundary (Map Markup)</label>
                         <select class="form-select form-select-sm" id="gfMarkupSelect">
                             <option value="">-- select a markup --</option>
                         </select>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label form-label-sm">Geofence Name</label>
+                        <label class="form-label form-label-sm" for="gfName">Geofence Name</label>
                         <input type="text" class="form-control form-control-sm" id="gfName" placeholder="Defaults to markup name">
                     </div>
                     <div class="col-md-3 d-flex align-items-end">
@@ -9923,7 +9926,7 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                         </div>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label form-label-sm">Alert Channels</label>
+                        <label class="form-label form-label-sm" for="gfChannels">Alert Channels</label>
                         <select class="form-select form-select-sm" id="gfChannels" multiple size="4">
                             <option value="local_chat" selected>Local Chat</option>
                             <option value="smtp">Email (SMTP)</option>
@@ -9981,19 +9984,19 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
             <!-- Add language form -->
             <form id="langAddForm" class="row g-2 align-items-end mb-3 p-2 border rounded bg-body-tertiary">
                 <div class="col-md-2">
-                    <label class="form-label form-label-sm mb-0">Code</label>
+                    <label class="form-label form-label-sm mb-0" for="langAddCode">Code</label>
                     <input type="text" class="form-control form-control-sm" id="langAddCode" placeholder="e.g. fr, pt-br" maxlength="8" required>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label form-label-sm mb-0">Display name</label>
+                    <label class="form-label form-label-sm mb-0" for="langAddDisplay">Display name</label>
                     <input type="text" class="form-control form-control-sm" id="langAddDisplay" placeholder="e.g. French" required>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label form-label-sm mb-0">Native name</label>
+                    <label class="form-label form-label-sm mb-0" for="langAddNative">Native name</label>
                     <input type="text" class="form-control form-control-sm" id="langAddNative" placeholder="e.g. Français">
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label form-label-sm mb-0">Sort order</label>
+                    <label class="form-label form-label-sm mb-0" for="langAddSort">Sort order</label>
                     <input type="number" class="form-control form-control-sm" id="langAddSort" value="100" min="0" max="999">
                 </div>
                 <div class="col-md-2 text-end">
@@ -10063,17 +10066,17 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
             <!-- Filters / search bar -->
             <div class="row g-2 align-items-end mb-2">
                 <div class="col-md-4">
-                    <label class="form-label form-label-sm mb-0">Search</label>
+                    <label class="form-label form-label-sm mb-0" for="trSearch">Search</label>
                     <input type="text" class="form-control form-control-sm" id="trSearch" placeholder="Key or value…">
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label form-label-sm mb-0">Category</label>
+                    <label class="form-label form-label-sm mb-0" for="trCategoryFilter">Category</label>
                     <select class="form-select form-select-sm" id="trCategoryFilter">
                         <option value="">All</option>
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label form-label-sm mb-0">Show</label>
+                    <label class="form-label form-label-sm mb-0" for="trShowFilter">Show</label>
                     <select class="form-select form-select-sm" id="trShowFilter">
                         <option value="all">All captions</option>
                         <option value="untranslated">Untranslated (any lang)</option>

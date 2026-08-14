@@ -389,7 +389,7 @@ $csrf     = csrf_token();
                         <i class="bi bi-map me-2"></i>
                         <span class="fw-semibold small">Location</span>
                         <div class="ms-auto d-flex gap-1">
-                            <select class="form-select form-select-sm py-0" id="routeHours" style="width:100px;font-size:0.75rem">
+                            <select class="form-select form-select-sm py-0" id="routeHours" style="width:100px;font-size:0.75rem" aria-label="Location history time window">
                                 <option value="1">Last 1h</option>
                                 <option value="4">Last 4h</option>
                                 <option value="8">Last 8h</option>
@@ -490,7 +490,7 @@ $csrf     = csrf_token();
                         <div class="input-group input-group-sm">
                             <span class="input-group-text">Notes</span>
                             <input type="text" class="form-control form-control-sm" id="statusNotes"
-                                   placeholder="Optional status notes...">
+                                   placeholder="Optional status notes..." aria-label="Optional status notes">
                         </div>
                     </div>
                 </div>
@@ -535,9 +535,9 @@ $csrf     = csrf_token();
             </div>
             <div class="modal-body p-2">
                 <input type="text" class="form-control form-control-sm mb-2" id="personnelSearchInput"
-                       placeholder="Search by name, callsign..." autocomplete="off">
+                       placeholder="Search by name, callsign..." autocomplete="off" aria-label="Search personnel by name or callsign">
                 <div class="mb-2">
-                    <label class="form-label mb-0 small">Role</label>
+                    <label class="form-label mb-0 small" for="assignRoleSelect">Role</label>
                     <select class="form-select form-select-sm" id="assignRoleSelect">
                         <option value="operator">Operator</option>
                     </select>
@@ -558,16 +558,16 @@ $csrf     = csrf_token();
             </div>
             <div class="modal-body p-2">
                 <div class="mb-2">
-                    <label class="form-label mb-0 small">Provider</label>
+                    <label class="form-label mb-0 small" for="bindProviderSelect">Provider</label>
                     <select class="form-select form-select-sm" id="bindProviderSelect"></select>
                 </div>
                 <div class="mb-2">
-                    <label class="form-label mb-0 small">Identifier (callsign, device ID, etc.)</label>
+                    <label class="form-label mb-0 small" for="bindIdentifier">Identifier (callsign, device ID, etc.)</label>
                     <input type="text" class="form-control form-control-sm" id="bindIdentifier"
                            placeholder="e.g. N0NKI, OT-MyDevice">
                 </div>
                 <div class="mb-2">
-                    <label class="form-label mb-0 small">Priority (lower = higher priority)</label>
+                    <label class="form-label mb-0 small" for="bindPriority">Priority (lower = higher priority)</label>
                     <input type="number" class="form-control form-control-sm" id="bindPriority"
                            value="50" min="1" max="100">
                 </div>
