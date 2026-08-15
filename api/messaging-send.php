@@ -86,7 +86,10 @@ if ($msgBody === '') {
 }
 
 // RBAC — same gate as internal-messaging send.
-if (!rbac_can('action.send_chat') && !rbac_can('action.send_message')) {
+// action.send_message dropped 2026-08-15 (tools/rbac_permission_audit.php)
+// -- no such permission was ever seeded; action.send_chat already covers
+// this gate.
+if (!rbac_can('action.send_chat')) {
     http_response_code(403);
     echo json_encode(['error' => 'You do not have permission to send messages']);
     exit;

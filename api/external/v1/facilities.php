@@ -27,7 +27,7 @@ if ($method === 'GET') {
     // plus manage_facilities as a fallback for write-capable tokens.
     if (!rbac_can('screen.facilities')
         && !rbac_can('widget.facilities')
-        && !rbac_can('facility.view')
+        && !rbac_can('facilities.view')
         && !rbac_can('action.manage_facilities')) {
         ext_api_error('forbidden_rbac', 403, ['required' => 'screen.facilities']);
     }

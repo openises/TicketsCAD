@@ -25,11 +25,14 @@ if ($method === 'GET') {
     ext_api_require_scope('responders:read');
     // Read RBAC: mirror api/responders.php's screen/widget bypass set,
     // plus manage_members as a fallback for write-capable tokens.
-    if (!rbac_can('screen.responders')
-        && !rbac_can('widget.responders')
-        && !rbac_can('responder.view')
+    // screen.responders was dropped 2026-08-15 (tools/rbac_permission_
+    // audit.php) -- no such permission was ever seeded; there is no
+    // "responders" screen distinct from the widget/canonical-view codes
+    // below, which already cover this endpoint's read access.
+    if (!rbac_can('widget.responders')
+        && !rbac_can('responders.view')
         && !rbac_can('action.manage_members')) {
-        ext_api_error('forbidden_rbac', 403, ['required' => 'screen.responders']);
+        ext_api_error('forbidden_rbac', 403, ['required' => 'widget.responders']);
     }
 
     // Soft-delete filter — graceful if column doesn't exist (pre-wastebasket

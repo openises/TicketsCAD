@@ -54,7 +54,7 @@ api/par.php:200 | api/par.php?action=for_ticket's override-value lookup returns 
 api/active-event.php:131 | pre-wastebasket compat fallback — the primary query (api/active-event.php, ~line 115-120) already filters `deleted_at IS NULL`; this is the catch{} retry for installs without the column.
 api/message-tray.php:203 | pre-wastebasket compat fallback for the ?action=incidents picker — the primary query (~line 182-186) already has the full `deleted_at IS NULL OR = '0000-00-00 00:00:00'` term (this is literally the GH #24 fix); this is the catch{} retry.
 api/net-checkins.php:140 | pre-wastebasket compat fallback — the primary query (~line 125-133) already filters `deleted_at IS NULL`; this is the catch{} retry for installs without the column.
-inc/auto_close.php:173 | auto_close_maybe_cancel() only CANCELS a pending auto-close (no incident content served, and cancelling is harmless regardless of deletion state); the column-existence question doesn't apply here the way it does to the true schema-fallback entries above, but the reasoning is analogous — this is a no-op-safe path, not a leak.
+inc/auto_close.php:196 | auto_close_maybe_cancel() only CANCELS a pending auto-close (no incident content served, and cancelling is harmless regardless of deletion state); the column-existence question doesn't apply here the way it does to the true schema-fallback entries above, but the reasoning is analogous — this is a no-op-safe path, not a leak. Line moved from 173 (GH#65, 2026-08-15: auto_close_clear_on_close() added earlier in the file); same read, same guard.
 inc/par.php:980 | pre-wastebasket compat fallback inside par_run_scheduler() — the primary query (~line 967-971) already has the full `deleted_at IS NULL OR = '0000-00-00 00:00:00'` term; this is the catch{} retry for installs without the column.
 net-control.php:62 | pre-wastebasket compat fallback — the primary query (~line 52-58) already filters `(deleted_at IS NULL)`; this is the catch{} retry for installs without the column.
 
@@ -69,15 +69,15 @@ net-control.php:62 | pre-wastebasket compat fallback — the primary query (~lin
 # Verified by reading the source, not by running the app — a fresh eye
 # should still double-check origin diffs if these lines move.
 
-api/external/v1/incidents.php:112 | $where is seeded with the deleted_at term as its first element (line ~96) before org_query_filter()'s return value is appended; already fixed in 1502157.
+api/external/v1/incidents.php:123 | $where is seeded with the deleted_at term as its first element (line ~96) before org_query_filter()'s return value is appended; already fixed in 1502157. Line moved from 112 (2026-08-15, GH RBAC fix: action.view_incident/action.view_incidents replaced with the real incidents.view code, shifting the GET gate's comment block down 11 lines).
 api/incident-list.php:101 | $where is seeded with the deleted_at term as its first element before org_query_filter()'s return is appended and $whereClause is built via a ternary + implode() this tool can't evaluate.
 api/incident-list.php:114 | same $whereClause as :101 — the count and the row-fetch queries share it.
 api/incident-search.php:127 | same shape as api/incident-list.php:101 — $where seeded first, tainted downstream by org_query_filter() + a ternary/implode() whereClause.
 api/incident-search.php:136 | same $whereClause as :127 — the count and the row-fetch queries share it.
-api/reports.php:295 | 'unit_log' report — $where_parts is seeded with the deleted_at term, but `$where .= $rptTicketFrag;` (org-scope, from a destructuring `[$rptTicketFrag, $rptTicketVars] = org_query_filter(...)` this tool doesn't track) taints the final variable. Line moved from 279 by the 2026-08-13 incident-type-drilldown addition (incident_summary's SELECT/GROUP BY grew, pushing every later case down); same read, same guard.
-api/reports.php:374 | 'dispatch_log' report — same shape as api/reports.php:295. Line moved from 358, same reason (incident-type-drilldown addition shifted later cases).
-api/reports.php:578 | 'incident_report' report — same shape as api/reports.php:295. Line moved from 546, same reason, plus this case's own new `in_types_id` filter block.
-api/reports.php:641 | 'facility_log' report — same shape as api/reports.php:295. Line moved from 609, same reason (incident-type-drilldown addition shifted later cases).
+api/reports.php:322 | 'unit_log' report — $where_parts is seeded with the deleted_at term, but `$where .= $rptTicketFrag;` (org-scope, from a destructuring `[$rptTicketFrag, $rptTicketVars] = org_query_filter(...)` this tool doesn't track) taints the final variable. Line moved from 295 (GH#57 follow-up, 2026-08-15: member_id parsing/IDOR-check/$memberIdFrag setup added ahead of this case, shifting every later case down by 27 lines); same read, same guard.
+api/reports.php:401 | 'dispatch_log' report — same shape as api/reports.php:322. Line moved from 374, same reason.
+api/reports.php:605 | 'incident_report' report — same shape as api/reports.php:322. Line moved from 578, same reason.
+api/reports.php:678 | 'facility_log' report — same shape as api/reports.php:322. Line moved from 651, same reason.
 
 # ── CATEGORY D: downstream of an already-gated query in the same request ────
 # Each of these executes only after an earlier query in the SAME function

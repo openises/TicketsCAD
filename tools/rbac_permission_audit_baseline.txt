@@ -1,0 +1,8 @@
+# RBAC permission-code audit baseline (tools/rbac_permission_audit.php).
+#
+# Format: file:line | code
+#
+# Empty by design (2026-08-15) -- every finding this audit turned up on
+# its first run was fixed in the same commit, not grandfathered in here.
+# Only add an entry for a VERIFIED-legitimate case (with a reason comment
+# above it); this file is not a place to park known bugs.

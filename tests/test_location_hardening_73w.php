@@ -19,9 +19,12 @@ tcheck(preg_match("/action === 'push_pending'[^{]*\\{\\s*_admin_check\\(\\);/", 
 
 // ── geofences RBAC + uid + notify_users validation ────────────────
 $gf = file_get_contents(__DIR__ . '/../api/geofences.php');
+// action.manage_geofences dropped 2026-08-15 (tools/rbac_permission_audit.php)
+// -- no such permission was ever seeded, so no role could ever have held
+// it; action.manage_map/action.manage_config already cover this gate.
 tcheck(strpos($gf, "rbac_can('action.manage_map')") !== false
-    && strpos($gf, "rbac_can('action.manage_geofences')") !== false,
-    'geofences POST gated by manage_map/geofences');
+    && strpos($gf, "rbac_can('action.manage_config')") !== false,
+    'geofences POST gated by manage_map/manage_config');
 tcheck(strpos($gf, '$createdBy = (int) ($GLOBALS[\'current_user_id\'] ?? $_SESSION[\'user_id\'] ?? 0);') !== false,
     'geofences creates use explicit $createdBy from globals/session');
 tcheck(strpos($gf, 'array_map(\'intval\', $notifyUsers)') !== false

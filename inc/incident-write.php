@@ -1015,6 +1015,19 @@ function incident_update_status_internal(int $ticketId, int $newStatus, int $use
             $cascade = incident_clear_stragglers($ticketId, $userId);
             $clearedAssigns  = (int) $cascade['cleared_assigns'];
             $resetResponders = (int) $cascade['reset_responders'];
+
+            // GH #65 (Ron Jones, 2026-08-15) — a manual close never
+            // cleared a pending auto_close_scheduled_at marker armed
+            // earlier by the all-clear path, so reopening this incident
+            // later would race a stale, already-expired timer and get
+            // silently re-closed by the very next sweep. Every close,
+            // manual or automated, now clears it here.
+            if (!function_exists('auto_close_clear_on_close') && is_file(__DIR__ . '/auto_close.php')) {
+                require_once __DIR__ . '/auto_close.php';
+            }
+            if (function_exists('auto_close_clear_on_close')) {
+                auto_close_clear_on_close($ticketId);
+            }
         } elseif ($newStatus === 2) {
             // ── Reopening: clear problemend ──
             db_query(

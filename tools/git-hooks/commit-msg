@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+#
+# tools/git-hooks/commit-msg — DCO sign-off check (Eric 2026-08-14).
+#
+# CONTRIBUTING.md requires every commit to carry a "Signed-off-by:" trailer
+# (git commit -s) — the Developer Certificate of Origin, this project's only
+# contribution paperwork. Nothing enforced it: not this hook (didn't exist),
+# not CI. The gap was found the hard way — a v4.2.19 release commit went out
+# without one and had to be fixed with `git commit --amend -s --no-edit`
+# before pushing, which only worked because it was caught before the push.
+# An already-pushed commit is not something --amend can safely fix.
+#
+# `pre-commit` cannot check this: it runs BEFORE the commit message exists.
+# `commit-msg` is the correct hook — git passes it the path to a temp file
+# holding the message about to be used, and a non-zero exit aborts the commit.
+#
+# Install once per clone:  bash tools/install-git-hooks.sh
+# Bypass in an emergency:  git commit --no-verify   (nothing else checks this)
+
+set -u
+
+MSG_FILE="$1"
+[ -f "$MSG_FILE" ] || exit 0
+
+# Merge commits get their trailer from `git merge --log`/manual editing, not
+# from `-s` on this commit — and DCO's own spec doesn't ask for one per merge.
+FIRST_LINE="$(head -1 "$MSG_FILE")"
+case "$FIRST_LINE" in
+    Merge\ *) exit 0 ;;
+esac
+
+if grep -qE '^Signed-off-by: .+ <.+@.+>$' "$MSG_FILE"; then
+    exit 0
+fi
+
+echo "✗ commit-msg: missing DCO sign-off (CONTRIBUTING.md requires one on every commit)"
+echo "  Re-run with:  git commit -s"
+echo "  Amending an unpushed commit:  git commit --amend -s --no-edit"
+echo "  Bypass (should not be needed for a real commit):  git commit --no-verify"
+exit 1

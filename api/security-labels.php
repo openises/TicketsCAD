@@ -26,7 +26,8 @@ if ($method === 'GET') {
     if (!empty($_GET['action']) && $_GET['action'] === 'resolve') {
         $tid = (int) ($_GET['ticket'] ?? 0);
         if ($tid <= 0) json_error('ticket required');
-        if (!rbac_can('action.view_incident') && !is_admin()) json_error('Forbidden', 403);
+        // action.view_incident dropped 2026-08-15, tools/rbac_permission_audit.php -- never seeded
+        if (!is_admin()) json_error('Forbidden', 403);
         json_response(['resolved' => seclabel_resolve($tid)]);
     }
     if (isset($_GET['id'])) {

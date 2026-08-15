@@ -27,6 +27,29 @@
  * legitimate status change or incident-list read.
  */
 
+/**
+ * GH #65 (Ron Jones, 2026-08-15) — every audit_log() call in this file was
+ * guarded with a bare `if (function_exists('audit_log'))`, no lazy require
+ * attempt first (unlike inc/incident-write.php's own audit calls, which do
+ * try `require_once audit.php` before checking). api/incidents.php reaches
+ * audit.php transitively (inc/security-labels.php and inc/par.php both
+ * require it), so calls from there always worked. api/stream.php -- the
+ * SSE endpoint, running its own sweep on every tick, so the MOST frequent
+ * caller -- loads only api_guard.php, config.php, rbac.php,
+ * session-bootstrap.php, sse.php and auto_close.php, none of which reach
+ * audit.php. From there the guard was always false: every auto-close
+ * scheduled/cancelled/fired via a request that happened to arrive on the
+ * stream connection left NO audit_log() record, silently, forever --
+ * indistinguishable from "nothing happened" in the very log meant to prove
+ * it did.
+ */
+function auto_close_ensure_audit(): bool {
+    if (!function_exists('audit_log') && is_file(__DIR__ . '/audit.php')) {
+        require_once __DIR__ . '/audit.php';
+    }
+    return function_exists('audit_log');
+}
+
 function auto_close_ensure_column(): void {
     static $ensured = false;
     if ($ensured) return;
@@ -149,7 +172,7 @@ function auto_close_maybe_schedule(int $ticketId, int $userId): array {
              WHERE id = ?",
             [$fireAt, $ticketId]
         );
-        if (function_exists('audit_log')) {
+        if (auto_close_ensure_audit()) {
             audit_log('incident', 'update', 'ticket', $ticketId,
                 "Auto-close scheduled in {$grace}s (all units clear)",
                 ['fire_at' => $fireAt, 'grace_seconds' => $grace, 'user_id' => $userId]);
@@ -182,7 +205,7 @@ function auto_close_maybe_cancel(int $ticketId, int $userId): array {
              WHERE id = ?",
             [$ticketId]
         );
-        if (function_exists('audit_log')) {
+        if (auto_close_ensure_audit()) {
             audit_log('incident', 'update', 'ticket', $ticketId,
                 'Auto-close cancelled (unit re-dispatched during grace window)',
                 ['was_fire_at' => $sched, 'user_id' => $userId]);
@@ -191,6 +214,40 @@ function auto_close_maybe_cancel(int $ticketId, int $userId): array {
     } catch (Exception $e) {
         error_log('[auto_close] cancel: ' . $e->getMessage());
         return ['cancelled' => false, 'reason' => 'exception:' . $e->getMessage()];
+    }
+}
+
+/**
+ * GH #65 (Ron Jones, 2026-08-15) — called whenever an incident transitions
+ * to Closed via ANY path (manual close, sweep-driven auto-close, or any
+ * future caller of incident_update_status_internal()). Clears a stale
+ * scheduled-close marker so a LATER reopen can never race a leftover
+ * timer from a previous, already-honoured close cycle.
+ *
+ * Root cause this closes off: a manual close only ever wrote
+ * `status = 1` -- it never touched auto_close_scheduled_at, which the
+ * all-clear path had already armed for +grace seconds. The marker
+ * survived, inert, on a Closed ticket (the sweep's WHERE clause requires
+ * status <> 1, so nothing acts on it while closed). Reopening set
+ * status back to 2 with the marker still in the past, and the very next
+ * sweep -- api/stream.php runs one on every SSE tick -- silently
+ * re-closed it within seconds.
+ *
+ * Fail-soft like every other function in this file: a bookkeeping
+ * cleanup must never block the close it rides along with.
+ */
+function auto_close_clear_on_close(int $ticketId): void {
+    if ($ticketId <= 0) return;
+    auto_close_ensure_column();
+    $prefix = $GLOBALS['db_prefix'] ?? '';
+    try {
+        db_query(
+            "UPDATE `{$prefix}ticket` SET auto_close_scheduled_at = NULL
+             WHERE id = ? AND auto_close_scheduled_at IS NOT NULL",
+            [$ticketId]
+        );
+    } catch (Exception $e) {
+        error_log('[auto_close] clear-on-close: ' . $e->getMessage());
     }
 }
 
@@ -271,7 +328,7 @@ function auto_close_sweep(int $limit = 20): array {
                 "UPDATE `{$prefix}ticket` SET auto_close_scheduled_at = NULL WHERE id = ?",
                 [$tid]
             );
-            if (function_exists('audit_log')) {
+            if (auto_close_ensure_audit()) {
                 audit_log('incident', 'close', 'ticket', $tid,
                     'Incident auto-closed after grace period expired (Phase 104d)',
                     ['grace_seconds' => auto_close_grace_seconds()]);

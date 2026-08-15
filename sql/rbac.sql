@@ -17,11 +17,35 @@ CREATE TABLE IF NOT EXISTS `roles` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Permissions define specific actions/screens/widgets
+-- 2026-08-15 (tools/rbac_permission_audit.php investigation): resource,
+-- verb, and deprecated_alias_of used to be added later by run_rbac_v2.php
+-- (an ADD COLUMN, idempotency-guarded). run_rbac_v2.php sorts AFTER
+-- several phase-numbered migrations that seed a permission row USING
+-- those columns (run_04_phase35_mesh_bridge.php,
+-- run_phase16a_par_schema.php, run_phase18a_security_labels.php,
+-- run_phase80d_time_entries.php, run_phase138_public_board.php --
+-- lexicographic order runs "run_04"/"run_phase*" before "run_rbac_v2"),
+-- so on a genuinely fresh install (verified in CI, which is the only
+-- environment that ever exercises the full migration sequence from an
+-- empty database) those five scripts' INSERTs threw "Unknown column"
+-- against a `permissions` table that didn't have the columns yet -- an
+-- exception each one's own outer try/catch printed as a [WARN] and
+-- swallowed, so the migration "succeeded" while the permission row was
+-- never created. A long-lived dev database that had already run
+-- run_rbac_v2.php by the time those scripts were added never showed the
+-- symptom. Fixed at the root: the columns are part of the table from
+-- its first creation, so no migration's insert order can ever race them
+-- again. run_rbac_v2.php's own ADD COLUMN step still runs on an existing
+-- install upgrading from before this fix -- it is guarded by an
+-- information-schema existence check either way.
 CREATE TABLE IF NOT EXISTS `permissions` (
     `id`          INT AUTO_INCREMENT PRIMARY KEY,
     `code`        VARCHAR(64)  NOT NULL UNIQUE COMMENT 'Machine-readable key, e.g. screen.search, widget.map',
     `name`        VARCHAR(128) NOT NULL COMMENT 'Human-readable label',
     `category`    VARCHAR(32)  NOT NULL COMMENT 'screen, widget, action, field',
+    `resource`    VARCHAR(48)  DEFAULT NULL,
+    `verb`        VARCHAR(16)  DEFAULT NULL,
+    `deprecated_alias_of` VARCHAR(64) DEFAULT NULL COMMENT 'When set, points at the canonical new code; both work.',
     `description` VARCHAR(255) DEFAULT NULL,
     KEY `idx_category` (`category`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

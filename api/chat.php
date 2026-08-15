@@ -195,9 +195,12 @@ if ($method === 'POST') {
         // gates this on admin OR action.manage_members. Without the
         // same gate here, anyone with action.send_chat (every chat
         // role) could fire an outbound to every connected channel.
+        // action.broadcast_alerts dropped 2026-08-15 (tools/rbac_permission_
+        // audit.php) -- no such permission was ever seeded; action.
+        // manage_members already covers this gate, matching messaging.php's
+        // own broadcast gate (line ~358) this comment already says to mirror.
         if (!is_admin()
-            && !rbac_can('action.manage_members')
-            && !rbac_can('action.broadcast_alerts')) {
+            && !rbac_can('action.manage_members')) {
             json_error('Broadcast requires admin or broadcast permission', 403);
         }
         $results = broker_broadcast([

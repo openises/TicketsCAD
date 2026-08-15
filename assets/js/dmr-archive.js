@@ -184,7 +184,19 @@
         elStats.innerHTML = '&nbsp;';
 
         fetch('api/dmr-history.php?' + params.toString(), { credentials: 'same-origin' })
-            .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+            .then(function (r) {
+                if (r.ok) return r.json();
+                // GH#63 (rjonesbsink, 2026-08-15) -- the server always sends a
+                // useful {"error": "..."} body (missing permission, no DMR
+                // channel, etc.), but rejecting with the bare status code
+                // threw it away, so every failure just read "Load failed:
+                // 404" no matter what actually went wrong. Read the body
+                // before rejecting, with a status-code fallback for the rare
+                // case the server didn't send JSON at all.
+                return r.json().catch(function () { return null; }).then(function (body) {
+                    return Promise.reject((body && body.error) || ('HTTP ' + r.status));
+                });
+            })
             .then(function (j) {
                 var rows = (j && j.rows) || [];
                 if (!rows.length) {

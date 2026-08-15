@@ -239,6 +239,16 @@ function weather_nws_counties(string $state, string $ua, ?callable $fetcher = nu
 
     // Disk cache (cache/ is the gitignored weather-tile cache dir).
     $cacheDir  = dirname(__DIR__) . '/cache';
+    // Self-heal: cache/ is wholesale .gitignore'd, so its web.config (the
+    // IIS script-execution deny -- architecture.md §6 item 1) can only
+    // reach a real install by being written here or by tools/
+    // install_fresh.php, never by git pull. Only .json is ever written
+    // into this directory (see served_dir_harden_allowlist()'s caller in
+    // install_fresh.php for the matching check there).
+    if (is_dir($cacheDir) && !file_exists($cacheDir . '/web.config')) {
+        require_once __DIR__ . '/served-dir.php';
+        served_dir_harden_allowlist($cacheDir, 'NWS weather-zone cache + backup health probe', ['.json']);
+    }
     $cacheFile = $cacheDir . '/nws_counties_' . $state . '.json';
     if (is_file($cacheFile) && (time() - (int) filemtime($cacheFile)) < 30 * 86400) {
         $cached = json_decode((string) @file_get_contents($cacheFile), true);

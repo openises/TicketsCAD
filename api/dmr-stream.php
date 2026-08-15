@@ -35,10 +35,10 @@ require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/dmr_token.php';
 ini_set('display_errors', '0');
 
-$rbacOk = function_exists('rbac_can') && (
-    rbac_can('action.dmr_receive')
-    || rbac_can('action.play_dmr_audio')
-);
+// action.play_dmr_audio dropped 2026-08-15 (tools/rbac_permission_audit.php)
+// -- no such permission was ever seeded; action.dmr_receive already covers
+// DMR audio access.
+$rbacOk = function_exists('rbac_can') && rbac_can('action.dmr_receive');
 if (!is_admin() && !$rbacOk) {
     http_response_code(403);
     header('Content-Type: application/json');

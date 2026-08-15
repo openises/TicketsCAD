@@ -26,18 +26,44 @@ $php  = PHP_BINARY;
 
 echo "=== Duplicate DOM id audit gate ===\n\n";
 
+$pass = 0; $fail = 0;
+function t($l, $c) { global $pass, $fail; echo ($c ? "[PASS] " : "[FAIL] ") . $l . "\n"; $c ? $pass++ : $fail++; }
+
 exec(escapeshellarg($php) . ' ' . escapeshellarg($base . '/tools/duplicate_id_audit.php') . ' 2>&1', $out, $code);
 $tail = array_slice($out, -30);
 echo implode("\n", $tail) . "\n\n";
+t('no new duplicate DOM id findings in settings.php', $code === 0);
 
-if ($code === 0) {
-    echo "[PASS] no new duplicate DOM id findings\n";
-    echo "\n=== 1 passed, 0 failed ===\n";
-    exit(0);
-}
-echo "[FAIL] duplicate DOM id audit found NEW findings (see above) — two elements\n"
-   . "       on the same page share an id, which means getElementById() will\n"
-   . "       silently wire one feature's click handler to the other's button.\n"
-   . "       Rename one of the ids before merging.\n";
-echo "\n=== 0 passed, 1 failed ===\n";
-exit(1);
+/*
+ * 2026-08-14 regression: \bid matched inside data-id="..." / data-col-id="..."
+ * because \b treats '-' as a non-word char, so those false-positived as real
+ * id="..." duplicates the moment two elements shared the same data-*id value.
+ * Drive the REAL tool against a synthetic fixture, not a reimplementation of
+ * its regex.
+ */
+$fixtureRel = 'tests/_fixtures/dup_id_audit_fixture.php';
+$fixtureAbs = $base . '/' . $fixtureRel;
+@mkdir(dirname($fixtureAbs), 0777, true);
+file_put_contents($fixtureAbs, <<<'PHP'
+<div data-id="row5">a</div>
+<span data-col-id="row5">b</span>
+<a data-row-id="row5">c</a>
+<input id="realdupe">
+<button id="realdupe">
+PHP
+);
+
+exec(escapeshellarg($php) . ' ' . escapeshellarg($base . '/tools/duplicate_id_audit.php')
+    . ' ' . escapeshellarg('--files=' . $fixtureRel) . ' 2>&1', $fout, $fcode);
+$foutStr = implode("\n", $fout);
+echo $foutStr . "\n\n";
+
+t('data-id/data-col-id/data-row-id sharing a value is NOT flagged (no real id="..." collision)',
+    strpos($foutStr, 'row5') === false);
+t('a genuine repeated id="..." (realdupe) IS still flagged', $fcode === 1 && strpos($foutStr, 'realdupe') !== false);
+
+@unlink($fixtureAbs);
+@rmdir(dirname($fixtureAbs));
+
+echo "\n=== $pass passed, $fail failed ===\n";
+exit($fail > 0 ? 1 : 0);

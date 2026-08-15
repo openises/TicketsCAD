@@ -199,12 +199,40 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
             .sit-table { font-size: 0.85rem; }
             .sit-table td, .sit-table th { padding: 6px 4px; }
             .sit-row td:nth-child(4) { word-break: break-word; }
+            /* GH#47 -- the desktop top:55px offset (pushing Leaflet's
+               corner controls out from under the overlaid header) doesn't
+               apply here: #sitMap switches to `position: relative` above
+               with its own normal-flow height, so the map no longer sits
+               behind the header and the offset would just waste space on
+               an already-small mobile map. Leaflet's own stock rule is
+               `top: 0` (its controls get their spacing from their own
+               10px margin-top, not from this container) -- restore that
+               rather than introducing a different offset of our own. */
+            .leaflet-top { top: 0; }
         }
 
         /* 2026-06-11 — Stack map controls vertically along the right
            edge so they don't overlap. Leaflet's layer control occupies
            the top-right corner; the draw toolbar drops below it; the
            markups panel sits to the left of the draw toolbar. */
+        /* GH#47 (cbyrdmo, 2026-08-14) -- z-index:1010 alone never actually
+           fixed the collision it was meant to: #appHeader is z-index:1030
+           (above), so the top-right layer control still sat visually and
+           click-wise BEHIND the header the entire time -- confirmed live
+           with a Playwright probe (clicking .leaflet-control-layers-toggle
+           hit a navbar <small> element, not the control). #sitMap is a
+           full-bleed absolutely-positioned map (top:0) with the header
+           floating on top of it, so this was never a stacking-order
+           problem a bigger z-index could win on its own -- the control
+           needed to be physically moved out from under the header, not
+           raised above it (raising it above the header would render its
+           icon floating over navbar content instead). top:55px (the
+           header's own height) pushes it below the header; Leaflet's own
+           10px default control margin then supplies the usual gap. (The
+           zoom control had the same header collision but is fixed
+           separately in initMap() by moving it to bottomleft entirely --
+           see that comment for why a top-side offset wasn't enough there.) */
+        .leaflet-top { top: 55px; }
         .leaflet-top.leaflet-right { z-index: 1010; }
         #drawToolbar {
             position: absolute; top: 200px; right: 10px; z-index: 1000;
@@ -502,9 +530,26 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
     var _lastFitSig = null;
     function initMap() {
         map = L.map('sitMap', {
-            zoomControl: true,
+            // GH#47 (cbyrdmo, 2026-08-14) -- Leaflet's default zoomControl
+            // position is topleft. #sitOverlay (the incidents panel,
+            // position:absolute; left:10px; width:480px;
+            // max-height:calc(100% - 20px)) isn't just a top-left corner
+            // box -- with a full incidents list it spans nearly the ENTIRE
+            // left edge of the map top to bottom, so bottomleft collides
+            // with it exactly the same way topleft did. Confirmed live
+            // with a Playwright probe both times: real clicks kept landing
+            // on the overlay's own table rows, not the zoom button,
+            // wherever on the left edge the button was placed. The only
+            // corner the overlay's 480px width doesn't reach is the RIGHT
+            // side, where bottomright is otherwise empty (the attribution
+            // control there is a separate, independently-stacked Leaflet
+            // control in the same corner container -- they don't collide
+            // with each other the way absolutely-positioned page elements
+            // like #sitOverlay do).
+            zoomControl: false,
             attributionControl: true
         }).setView([defaultLat, defaultLng], defaultZoom);
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
         // GH #76 — auto-hide marker name labels when zoomed out + a toggle.
         if (window.TypeIcons && window.TypeIcons.bindLabelZoom) { window.TypeIcons.bindLabelZoom(map); }
 

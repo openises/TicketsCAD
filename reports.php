@@ -185,6 +185,14 @@ $csrf     = csrf_token();
                            style="width: 150px;">
                 </div>
 
+                <!-- Member Filter (for Personnel reports -- a person, not a unit) -->
+                <div class="col-auto d-none" id="memberFilterCol">
+                    <label class="form-label small mb-1" for="memberFilter">Member</label>
+                    <select class="form-select form-select-sm" id="memberFilter" style="width: auto;">
+                        <option value="0">All Members</option>
+                    </select>
+                </div>
+
                 <!-- Run Button -->
                 <div class="col-auto">
                     <button type="button" class="btn btn-sm btn-primary" id="btnRunReport">

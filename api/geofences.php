@@ -100,10 +100,12 @@ if ($method === 'POST') {
     // to admin or explicit map-management roles. Read endpoints
     // (handled in the GET branch above) remain open to any
     // authenticated user.
+    // action.manage_geofences dropped 2026-08-15 (tools/rbac_permission_
+    // audit.php) -- no such permission was ever seeded; action.manage_map
+    // already covers explicit map-management grants.
     require_once __DIR__ . '/../inc/rbac.php';
     if (!is_admin()
         && !rbac_can('action.manage_map')
-        && !rbac_can('action.manage_geofences')
         && !rbac_can('action.manage_config')) {
         json_error('Forbidden — managing geofences requires admin or map-management role', 403);
     }

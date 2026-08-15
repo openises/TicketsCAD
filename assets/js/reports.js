@@ -16,6 +16,7 @@
     var sortColumn = -1;
     var sortAsc = true;
     var responderList = [];
+    var memberList = [];
 
     // Incident Summary → incident type → filtered Incidents list (Eric,
     // 2026-08-13). Unlike every other drill-down kind, clicking a type
@@ -48,6 +49,8 @@
     var responderFilterCol = document.getElementById('responderFilterCol');
     var incidentFilterCol = document.getElementById('incidentFilterCol');
     var incidentFilter    = document.getElementById('incidentFilter');
+    var memberFilter      = document.getElementById('memberFilter');
+    var memberFilterCol   = document.getElementById('memberFilterCol');
     var btnRunReport      = document.getElementById('btnRunReport');
     var btnExportCSV      = document.getElementById('btnExportCSV');
     var btnPrint          = document.getElementById('btnPrint');
@@ -70,6 +73,7 @@
     function init() {
         bindEvents();
         loadResponders();
+        loadMembers();
         setDefaultDates();
     }
 
@@ -174,8 +178,23 @@
         paintGroup(personnelReportBtns);
 
         // Show/hide filters based on report type
-        var showResponder = (type === 'unit_log' || type === 'dispatch_log');
+        // GH#57 follow-up (2026-08-14): facility_log and notes_log both
+        // accept a responder_id filter server-side (api/reports.php) but
+        // were missing from this whitelist, so the dropdown never appeared
+        // for them at all -- reported as "Facility log, notes log has the
+        // same error" as Incidents (which never needed the field). Also
+        // clear the value the moment the field is hidden, the same fix
+        // GH#57 already applied to incidentFilter just below: runReport()
+        // reads responderFilter.value unconditionally, so a responder
+        // picked on Unit Log kept being sent to every other report tab
+        // until a full page reload -- the "have to click Reports from the
+        // main menu to get it to reappear correctly" part of the report.
+        var showResponder = (type === 'unit_log' || type === 'dispatch_log' ||
+                             type === 'facility_log' || type === 'notes_log');
         responderFilterCol.classList.toggle('d-none', !showResponder);
+        if (!showResponder) {
+            responderFilter.value = '0';
+        }
 
         var showIncident = (type === 'after_action');
         incidentFilterCol.classList.toggle('d-none', !showIncident);
@@ -187,6 +206,21 @@
         // it's hidden, not just on page load.
         if (!showIncident) {
             incidentFilter.value = '';
+        }
+
+        // GH#57 follow-up (cbyrdmo, 2026-08-15) -- Personnel reports had no
+        // way to scope to one person at all. This is a Member filter, not a
+        // Responder one: "Responder" above sources api/responders.php (the
+        // `responder` table -- units/vehicles), while Personnel reports are
+        // built from the `member` table (people/roster) -- two different
+        // entities, so they get their own dropdown rather than overloading
+        // the Responder one with two shapes of data.
+        var showMember = (type === 'roster_snapshot' || type === 'time_summary' ||
+                          type === 'license_expirations' || type === 'membership_due' ||
+                          type === 'inactive_members' || type === 'dmr_inventory');
+        memberFilterCol.classList.toggle('d-none', !showMember);
+        if (!showMember) {
+            memberFilter.value = '0';
         }
 
         // Personnel reports that don't use the period filter at all
@@ -286,6 +320,33 @@
             });
     }
 
+    // ── Load Members for Filter ─────────────────────────────────────────────────
+    // GH#57 follow-up (cbyrdmo, 2026-08-15) -- Personnel reports' own filter,
+    // sourced from api/members.php (the `member`/roster table), not
+    // api/responders.php (the `responder`/units table loadResponders() uses).
+
+    function loadMembers() {
+        fetch('api/members.php', { credentials: 'same-origin' })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.members) {
+                    memberList = data.members;
+                    var sel = memberFilter;
+                    for (var i = 0; i < data.members.length; i++) {
+                        var m = data.members[i];
+                        var name = ((m.first_name || '') + ' ' + (m.last_name || '')).trim() || 'Member #' + m.id;
+                        var opt = document.createElement('option');
+                        opt.value = m.id;
+                        opt.textContent = name + (m.callsign ? ' (' + m.callsign + ')' : '');
+                        sel.appendChild(opt);
+                    }
+                }
+            })
+            .catch(function () {
+                // Member list load failed — filters still work without it
+            });
+    }
+
     // ── Run Report ────────────────────────────────────────────────────────────
 
     function runReport() {
@@ -300,6 +361,11 @@
         var rid = parseInt(responderFilter.value, 10) || 0;
         if (rid > 0) {
             params += '&responder_id=' + rid;
+        }
+
+        var mid = parseInt(memberFilter.value, 10) || 0;
+        if (mid > 0) {
+            params += '&member_id=' + mid;
         }
 
         // GH#51 — send the dispatcher's own case number as typed (e.g.

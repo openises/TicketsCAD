@@ -33,7 +33,7 @@ $params = [];
 // RBAC-aware bypass — see api/incidents.php for the rationale.
 require_once __DIR__ . '/../inc/rbac.php';
 $rbacFacilityView = (function_exists('rbac_can')
-    && (rbac_can('screen.facilities') || rbac_can('facility.view') || rbac_can('widget.facilities')));
+    && (rbac_can('screen.facilities') || rbac_can('facilities.view') || rbac_can('widget.facilities')));
 
 if ($is_admin || $rbacFacilityView) {
     $group_filter = "";

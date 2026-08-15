@@ -64,33 +64,33 @@ software cannot fix that from inside the application layer.
 
 ```
                       ┌─────────────────────────────────────────┐
-                      │         Dispatcher's browser              │
-                      │   (session cookie, CSRF token, TLS)        │
+                      │         Dispatcher's browser            │
+                      │   (session cookie, CSRF token, TLS)     │
                       └──────────────────┬──────────────────────┘
-                                          │ HTTPS (operator-configured)
-                      ┌───────────────────▼──────────────────────┐
+                                         │ HTTPS (operator-configured)
+                      ┌──────────────────▼────────────────────────┐
    Web server ───────►│         TicketsCAD PHP application        │
- (Apache/nginx/IIS)   │  api/, inc/, top-level pages — RBAC,       │
-                      │  CSRF, audit log, field encryption          │
-                      └───┬──────────────┬──────────────┬─────────┘
-                          │              │              │
-                  ┌───────▼───┐   ┌──────▼──────┐  ┌────▼─────────────┐
-                  │  MariaDB   │   │  Filesystem  │  │  Radio/mesh       │
-                  │  (RBAC,    │   │  (keys/,     │  │  bridge processes  │
-                  │  incidents,│   │  backups/,   │  │  (DMR, Meshtastic,  │
-                  │  audit)    │   │  uploads/)   │  │  Zello) — separate  │
-                  └────────────┘   └──────────────┘  │  processes/         │
-                                                       │  containers,        │
-                                                       │  bearer-token-      │
-                                                       │  protected HTTP     │
-                                                       │  control surfaces   │
-                                                       └────┬────────────────┘
-                                                            │ outbound only
-                                                    ┌───────▼──────────────┐
-                                                    │  Amateur radio /       │
-                                                    │  DMR network — PUBLIC  │
-                                                    │  by design             │
-                                                    └────────────────────────┘
+ (Apache/nginx/IIS)   │  api/, inc/, top-level pages — RBAC,      │
+                      │  CSRF, audit log, field encryption        │
+                      └───┬──────────────┬───────────────┬────────┘
+                          │              │               │
+                  ┌───────▼────┐  ┌──────▼───────┐  ┌────▼───────────────┐
+                  │  MariaDB   │  │  Filesystem  │  │  Radio/mesh        │
+                  │  (RBAC,    │  │  (keys/,     │  │  bridge processes  │
+                  │  incidents,│  │  backups/,   │  │  (DMR, Meshtastic, │
+                  │  audit)    │  │  uploads/)   │  │  Zello) — separate │
+                  └────────────┘  └──────────────┘  │  processes/        │
+                                                    │  containers,       │
+                                                    │  bearer-token-     │
+                                                    │  protected HTTP    │
+                                                    │  control surfaces  │
+                                                    └──────┬─────────────┘
+                                                           │ outbound only
+                                                   ┌───────▼────────────────┐
+                                                   │  Amateur radio /       │
+                                                   │  DMR network — PUBLIC  │
+                                                   │  by design             │
+                                                   └────────────────────────┘
 
    Third parties contacted (each independently disclosed + toggleable,
    see SECURITY.md "What TicketsCAD sends outside your network"):
@@ -168,22 +168,21 @@ authoritative for a compliance submission.
 | 9 | Email and Web Browser Protections | GAP | Out of the application's control surface — operator workstation/browser hygiene | Light |
 | 10 | Malware Defenses | GAP | No malware/AV scanning on uploaded attachments; host antivirus is the operator's domain | Light |
 | 11 | Data Recovery | **COVERED** | Automatic, verified, restorable backups on systemd timers with a genuine `--drill` restore-and-compare mode — a strong, tested match to this control | Moderate |
-| 12 | Network Infrastructure Management | GAP | No network-segmentation guidance published for operators; flat-LAN single-box deployments are the common real-world case (see §1) | Minimal |
+| 12 | Network Infrastructure Management | PARTIAL | [`network-segmentation-guidance.md`](network-segmentation-guidance.md) now names the specific bridge services and a starting zone layout; still no enforcement — segmentation remains the operator's own network, by design (see §1) | Minimal |
 | 13 | Network Monitoring and Defense | GAP | No IDS/monitoring guidance — legitimately IG2/IG3-tier for this project's scale | None |
-| 14 | Security Awareness and Skills Training | GAP | No dispatcher/operator security-awareness material exists yet — the cheapest, highest-IG1-weight gap on this list; queued (§6) | Heavy |
+| 14 | Security Awareness and Skills Training | **COVERED** | [`operator-security-awareness.md`](operator-security-awareness.md) — password hygiene, phishing in a public-safety context, physical device security, every in-app reference verified against the code | Heavy |
 | 15 | Service Provider Management | PARTIAL | SECURITY.md discloses every third-party data flow explicitly (AI, TTS, weather, tile providers); no formal service-provider review *process* for operators choosing which to enable | Minimal |
 | 16 | Application Software Security | PARTIAL | Strong test-gate discipline (8,000+ assertions, schema/contract/legacy-level audits, pre-commit hooks); SonarQube runs but is not yet a hard CI gate (see `maintenance.md`), no CodeQL or dedicated SAST gate | None |
-| 17 | Incident Response Management | GAP | SECURITY.md's VDP covers *receiving* a report from a researcher; there is nothing published for "your dispatch center's CAD may have been compromised during an active incident" — a real gap given the life-safety context | Light |
+| 17 | Incident Response Management | **COVERED** | [`incident-response-plan-template.md`](incident-response-plan-template.md) — fill-in-now contacts, recognition signs, first-30-minutes/containment/recovery/after-action, distinct from SECURITY.md's researcher-facing VDP | Light |
 | 18 | Penetration Testing | GAP | No formal program; the project's multi-year real-world vulnerability-report history (see §7) is a partial, informal substitute, not an equivalent | None |
 
-**Read for priority, not for a scorecard.** Controls 4, 6, 8, and 11 are
-already deep. The two cheapest, highest-leverage closes for a volunteer project
-are Control 14 (a documentation exercise) and Control 17 (also mostly
-documentation, with outsized consequence given the domain) — both are now
-tracked as follow-up work (§6). Controls 9, 10, 12, 13, 15, 16, and 18 are
-legitimately lower priority at IG1: several carry zero or near-zero IG1
-safeguards by design, and a few (9, 10, 12) sit outside the application's own
-control surface entirely.
+**Read for priority, not for a scorecard.** Controls 4, 6, 8, 11, 14, and 17
+are now deep. Controls 9, 10, 13, 15, 16, and 18 are legitimately lower
+priority at IG1: several carry zero or near-zero IG1 safeguards by design, and
+9/10 sit outside the application's own control surface entirely. Control 12
+moved from GAP to PARTIAL in this pass (§6 item 10) but stays PARTIAL on
+purpose — network topology is the operator's own infrastructure, not
+something a document can enforce.
 
 ---
 
@@ -208,10 +207,10 @@ category is marked N/A below rather than confused with a real gap.
 
 | Category | Items | Status | Concrete next step |
 |---|---|---|---|
-| **1. Basic Configuration** | 7 | PARTIAL | Directory browsing is explicitly disabled in every shipped web.config (confirmed). App-pool-per-site, non-system-partition content, and WebDAV are operator/ops decisions never codified in a doc. **Action queued (§6):** add "disable the WebDAV IIS role feature" to the install/hardening docs — WebDAV's PUT/MOVE verbs can bypass extension-based Request Filtering entirely, a real gap in an otherwise well-defended layer given TicketsCAD has file-upload features. |
+| **1. Basic Configuration** | 7 | PARTIAL | Directory browsing is explicitly disabled in every shipped web.config (confirmed). App-pool-per-site and non-system-partition content remain operator/ops decisions never codified in a doc. **DONE (§6 item 3):** disabling the WebDAV IIS role feature is now documented in [`WEB-SERVER-HARDENING.md`](../WEB-SERVER-HARDENING.md#disable-the-webdav-role-feature) — WebDAV's PUT/MOVE verbs can bypass extension-based Request Filtering entirely, since that layer never sees those verbs as anything to deny. |
 | **2. Authentication & Authorization** | 8 | N/A / PARTIAL | TicketsCAD does its own PHP-level session authentication, not IIS Windows/Forms auth, so most of this category doesn't apply as written. The "no credentials in config files" intent is already served by the `.htaccess`/`web.config` denies on `config.php`. **Action queued (§6):** document a pre-flight check that the IIS FastCGI `.php` handler mapping is intact — a broken/removed mapping serves PHP source as plain text, which would leak `config.php`'s DB credentials even with directory listing off. |
 | **3. ASP.NET Configuration** | 12 | **N/A** | Not an ASP.NET application. The two conceptually-relevant items (hiding detailed errors, removing identifying headers) are already handled at the PHP layer, server-agnostically (`display_errors` suppressed on API endpoints; security headers set by the app). |
-| **4. Request Filtering** | 11 | PARTIAL | Only the unlisted-file-extension deny (`fileExtensions allowUnlisted="false"`) is shipped. `maxAllowedContentLength`, `maxUrl`, `maxQueryString`, a TRACE-method block, and double-encoding rejection are not yet in the template. **Action queued (§6):** extend the canonical `web.config` template with `<requestLimits>`, a verb restriction on TRACE, and `allowDoubleEscaping="false"` — a template edit to files that already exist and are already CI-gated (`tests/test_iis_webconfig_syntax.php`), not new infrastructure. |
+| **4. Request Filtering** | 11 | PARTIAL | **DONE (§6 item 2):** every shipped and runtime-written `web.config` now carries `allowDoubleEscaping="false"` (double-encoding rejection), CI-gated by `tests/test_iis_webconfig_syntax.php`. `maxAllowedContentLength`, `maxUrl`, `maxQueryString`, and a TRACE-method block are genuinely site-wide settings this project's own "no root web.config" rule means it cannot ship itself — documented as an operator fragment in [`WEB-SERVER-HARDENING.md`](../WEB-SERVER-HARDENING.md#site-wide-request-filtering-add-to-your-own-webconfig-not-ours) instead. Still PARTIAL, honestly: the site-wide four remain the operator's own step, not something a `git pull` delivers. |
 | **5. IIS Logging** | 3 | GAP | IIS's own logs default to the system drive (`%SystemDrive%\inetpub\logs\LogFiles`); nothing relocates them. This is the *exact same lesson* TicketsCAD has already applied three times to its own writable directories (backups, encryption keys, Zello audio — all moved out of/above the web root after real incidents). **Action queued (§6):** document the identical pattern for IIS's own log directory — relocate via IIS Manager/`appcmd`, restrict with ACLs. |
 | **6. FTP Requests** | 2 | **N/A** | TicketsCAD doesn't use or require the IIS FTP role. **Action queued (§6):** one documentation line — "do not enable the FTP Server role for a TicketsCAD install." |
 | **7. Transport Encryption** | 12 | PARTIAL | HSTS and other security headers are already sent from the PHP layer (server-agnostic, benefits IIS too). The actual protocol/cipher-suite hardening (disabling SSLv2/3/TLS1.0/1.1, weak-cipher removal) is a **Windows Schannel/registry-level** setting, entirely outside web.config's reach. **Action queued (§6):** document a Windows Server TLS-hardening runbook step for IIS operators, naming the free **IIS Crypto** tool rather than requiring hand-edited registry keys. |
@@ -221,7 +220,8 @@ secondary research below:** deny script execution inside upload/attachment
 directories specifically — distinct from the CLI-only code-directory hardening
 already shipped, and the single highest-value item found across every source
 consulted, given TicketsCAD's live file-upload surface across incidents,
-members, and facilities. Tracked as the top item in §6.
+members, and facilities. **DONE (§6 item 1)** — see `uploads/web.config` and
+`cache/web.config`.
 
 ---
 
@@ -231,23 +231,38 @@ Ranked by (exposure for a self-hosted, no-IT-staff operator base with a real
 incident history) × (inverse effort). This is a documentation and template-edit
 backlog, not a design problem — nothing here requires new infrastructure.
 
-1. **Deny script execution inside upload/attachment directories** — the single
-   highest-value item found in the research behind this document. Not yet
-   built; distinct from the existing CLI-only guards on *code* directories.
-2. **Extend IIS Request Filtering** beyond file-extension denial:
-   `maxAllowedContentLength`, `maxUrl`, `maxQueryString`, TRACE-method block,
-   `allowDoubleEscaping="false"`. Template edit to already-tested files.
-3. **Document: disable IIS WebDAV** in the install/hardening guides.
-4. **Write a one-page security-awareness doc for dispatchers/operators** (CIS
-   Control 14) — password hygiene, phishing awareness in a public-safety
-   context, physical device security.
-5. **Write an operator-facing incident-response plan template** (CIS Control
-   17) — "your CAD may have been compromised during an active incident,"
-   distinct from SECURITY.md's researcher-facing VDP.
-6. **Recommend a WAF/reverse-proxy layer** for internet-facing installs
-   (Cloudflare's free tier is realistic for an unfunded volunteer org) — this
-   project's own incident history is exactly the class of exposure a WAF
-   mitigates independent of the underlying code fix.
+1. **DONE (2026-08-14).** Deny script execution inside upload/attachment
+   directories. `uploads/web.config` and `cache/web.config` ship the IIS
+   equivalent of the Apache `.htaccess`/nginx rules that already existed —
+   Request Filtering, `allowUnlisted="false"` with an explicit allow-list of
+   exactly the extensions `api/upload.php`'s `$ALLOWED_EXT_MIME` accepts, kept
+   in sync by `tests/test_web_upload_extension_sync.php`. `tests/
+   test_iis_webconfig_syntax.php` was generalized to validate an arbitrary
+   declared extension list, not just the single `.py` case it was written for.
+2. **DONE (2026-08-14).** IIS Request Filtering extended two ways. Every
+   shipped and runtime-written `web.config` now carries
+   `allowDoubleEscaping="false"` (directory-scoped, safe to ship — gated by
+   `tests/test_iis_webconfig_syntax.php`). `maxAllowedContentLength`,
+   `maxUrl`, `maxQueryString`, and a TRACE-method block are genuinely
+   site-wide settings, which this project's own "no root `web.config`" rule
+   (a site-wide rule is the dangerous one — see `sql/web.config`) means it
+   cannot safely ship itself; documented instead as a fragment for the
+   operator's own site-level config in
+   [`WEB-SERVER-HARDENING.md`](../WEB-SERVER-HARDENING.md#site-wide-request-filtering-add-to-your-own-webconfig-not-ours).
+3. **DONE (2026-08-14).** Disabling IIS WebDAV documented in
+   [`WEB-SERVER-HARDENING.md`](../WEB-SERVER-HARDENING.md#disable-the-webdav-role-feature),
+   alongside the WHY (its PUT/MOVE verbs bypass extension-based Request
+   Filtering, which does not apply to those verbs).
+4. **DONE (2026-08-14).** [`operator-security-awareness.md`](operator-security-awareness.md)
+   — password hygiene, phishing in a public-safety context, physical device
+   security, one page, every in-app UI reference verified against the actual
+   code before publishing.
+5. **DONE (2026-08-14).** [`incident-response-plan-template.md`](incident-response-plan-template.md)
+   — fill-in-now contact/backup/fallback fields, recognition signs, a first-
+   30-minutes checklist, containment, recovery, and after-action guidance.
+6. **DONE (2026-08-14).** [`waf-reverse-proxy-recommendation.md`](waf-reverse-proxy-recommendation.md)
+   — Cloudflare free tier as the realistic option for an unfunded volunteer
+   org, with the explicit list of what it does and does not replace.
 7. **Document: relocate IIS's own logs** off the system drive, matching the
    pattern already applied to backups/keys/Zello-audio.
 8. **Extend dependency scanning** to the Python services (DMR bridge,
@@ -256,9 +271,15 @@ backlog, not a design problem — nothing here requires new infrastructure.
 9. **Publish a lightweight operator asset-inventory checklist** (CIS Controls
    1/2) — OS/patch level, PHP version, TLS cert expiry, which optional
    features are enabled.
-10. **Document network-segmentation guidance** for operators, given the
-    radio/mesh bridge services each open additional network surface beyond
-    the web app itself (CIS Control 12 — IG2-tier, ranked last on purpose).
+10. **DONE (2026-08-14).** [`network-segmentation-guidance.md`](network-segmentation-guidance.md)
+    — names the specific bridge services (DMR, Meshtastic, Zello proxy) and
+    their network surface, a starting 4-zone layout, and effort-ordered
+    practical steps. CIS Control 12, IG2-tier, ranked last on purpose —
+    still the right call even though it shipped in this pass.
+
+**Items 7 and 9 remain open** — not part of this pass. Both are still
+documentation-only per this queue's own framing (no new infrastructure), so
+either is a reasonable next pickup.
 
 **Deliberately excluded from this queue**, and why: Control 13 (Network
 Monitoring) and Control 18 (Penetration Testing) are IG2/IG3-tier and outside

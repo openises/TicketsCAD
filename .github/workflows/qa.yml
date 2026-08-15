@@ -104,6 +104,15 @@ jobs:
       - name: UI-consistency audit (interface conventions)
         run: php tests/test_ui_consistency_audit.php
 
+      # Sixth gate in the family. A rbac_can('some.code')/rbac_require_screen
+      # ('some.code') referencing a permission with no row in the permissions
+      # table can never be granted to any role — found app-wide 2026-08-15
+      # (an external-API bug report plus a wider RBAC pass Eric asked for),
+      # including api/external/v1/incidents.php's read gate being reachable
+      # by Super Admin tokens only, with no role able to grant it.
+      - name: RBAC permission-code audit (rbac_can() code ↔ real permissions row)
+        run: php tests/test_rbac_permission_audit.php
+
       # Anti-rot gate for the published SBOM. An SBOM that is accurate once and
       # stale afterwards is worse than none, because it asserts a currency it
       # does not have. If a dependency, a vendored library version, or the

@@ -48,6 +48,20 @@ class ZelloUpstream
      */
     private $channelImagesSupported = [];
 
+    /**
+     * @var array<string, string> GH#66 (Ron Jones, 2026-08-15) — per-channel
+     * "channel|status|error" fingerprint of the last on_channel_status
+     * frame, so a repeat with nothing actually changed doesn't spam the
+     * widget's message box. Zello sends this event on every join AND
+     * leave with the channel's status unchanged ("online" both times) —
+     * confirmed live: 8 channel-status frames across 4 join/leave cycles,
+     * 0 logons among them, so these are not reconnect artifacts. The
+     * label update (ZelloProxyApp.php's structured 'channel_status'
+     * broadcast) is a harmless idempotent refresh and still fires every
+     * time; only the appended message-box line is deduped.
+     */
+    private $lastChannelStatusFingerprint = [];
+
     /** @var int Sequence counter for Zello commands */
     private $seq = 1;
 
@@ -616,8 +630,13 @@ class ZelloUpstream
         // widget so the connection-log trail shows "Channel
         // TicketsCAD-Group is online" alongside the proxy log.
         // Zello sends this per channel on login and whenever the
-        // channel's online-status changes; forwarding all of them
-        // matches log fidelity without extra filtering.
+        // channel's online-status changes -- AND, confirmed by Ron
+        // (GH#66, 2026-08-15), on every ordinary join/leave with the
+        // status unchanged. Forwarding every frame to plog() still
+        // matches log fidelity (an operator reading the raw proxy log
+        // wants every frame); the widget's message box does not, since
+        // it has no count and no name and repeats the identical line on
+        // every join/leave of a busy channel.
         if (isset($data['command']) && $data['command'] === 'on_channel_status') {
             $ch = (string) ($data['channel'] ?? '?');
             $st = (string) ($data['status'] ?? '?');
@@ -635,8 +654,35 @@ class ZelloUpstream
             $err     = trim((string) ($data['error'] ?? ''));
             $errType = trim((string) ($data['error_type'] ?? ''));
             $suffix  = $err !== '' ? ' — ' . $err . ($errType !== '' ? " ({$errType})" : '') : '';
-            \plog("[Upstream] Channel status: {$ch} - {$st}{$suffix}");
-            ($this->onStatus)('channel_status', "Channel '{$ch}' is {$st}{$suffix}");
+            // GH#66 — Ron could not tell from outside whether Zello ever
+            // populates users_online at Consumer tier, because nothing
+            // logs the raw field's presence (only the widget's rendered
+            // label, which folds "not reported" and "reported as zero"
+            // into the same display). One line settles it from the log
+            // going forward on any tier.
+            $usersOnlineRaw = array_key_exists('users_online', $data)
+                ? (string) $data['users_online']
+                : 'ABSENT (Zello did not send this field on this frame)';
+            \plog("[Upstream] Channel status: {$ch} - {$st}{$suffix} (users_online: {$usersOnlineRaw})");
+
+            // GH#66 dedup — only forward to the widget's message box when
+            // (channel, status, error) actually changed since the last
+            // frame for this channel. The label update below (Phase 100 /
+            // ZelloProxyApp's structured broadcast) is unaffected — it is
+            // an idempotent in-place refresh, not an appended log line,
+            // so repeating it is harmless and it still runs unconditionally.
+            // Keyed case-insensitively — Ron's own log shows the same
+            // channel arriving under two castings ('TicketsCad-CleveOps'
+            // and 'ticketscad-cleveops'), which would otherwise dedupe
+            // against nothing and defeat this entirely.
+            $chKey = strtolower($ch);
+            $fingerprint = $st . '|' . $err;
+            $unchanged = isset($this->lastChannelStatusFingerprint[$chKey])
+                && $this->lastChannelStatusFingerprint[$chKey] === $fingerprint;
+            $this->lastChannelStatusFingerprint[$chKey] = $fingerprint;
+            if (!$unchanged) {
+                ($this->onStatus)('channel_status', "Channel '{$ch}' is {$st}{$suffix}");
+            }
             // Phase 100 — remember per-channel images_supported so we
             // can pre-reject client send_image on channels that
             // disallow images. Zello sets this at logon; may update on

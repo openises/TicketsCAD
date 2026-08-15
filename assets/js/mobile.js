@@ -699,16 +699,34 @@
                     facEl.classList.remove('d-none');
                 }
                 if (mobileDetailPref('Patients') && patEl) {
-                    var pats = (data.patients || []);
-                    patEl.innerHTML = '<div class="small fw-semibold mb-1"><i class="bi bi-person-plus me-1"></i>Patients (' + pats.length + ')</div>'
-                        + (pats.length
-                            ? '<ul class="small mb-0">' + pats.slice(0, 10).map(function (p) {
-                                var name = p.fullname || p.name || 'Patient';
-                                var desc = p.description || '';
-                                return '<li>' + escH(name) + (desc ? ' — ' + escH(desc) : '') + '</li>';
-                            }).join('') + '</ul>'
-                            : '<div class="text-body-secondary small">None</div>');
-                    patEl.classList.remove('d-none');
+                    // GH#67 (Ron Jones, 2026-08-15): this section read
+                    // data.patients, a field api/incident-detail.php has
+                    // NEVER returned — so it rendered "Patients (0) / None"
+                    // even when the incident had a patient. Fetch from
+                    // api/patients.php with the incident's ticket_id,
+                    // exactly like the CAD incident-detail page does
+                    // (assets/js/incident-detail.js). Same shape as the
+                    // Call history fix above.
+                    var patHeader = '<div class="small fw-semibold mb-1"><i class="bi bi-person-plus me-1"></i>Patients</div>';
+                    fetch('api/patients.php?ticket_id=' + encodeURIComponent(ticketId), { credentials: 'same-origin' })
+                        .then(function (r) { return r.json(); })
+                        .then(function (patData) {
+                            var pats = (patData.patients || []);
+                            patEl.innerHTML = '<div class="small fw-semibold mb-1"><i class="bi bi-person-plus me-1"></i>Patients (' + pats.length + ')</div>'
+                                + (pats.length
+                                    ? '<ul class="small mb-0">' + pats.slice(0, 10).map(function (p) {
+                                        var name = p.fullname || p.name || 'Patient';
+                                        var desc = p.description || '';
+                                        return '<li>' + escH(name) + (desc ? ' — ' + escH(desc) : '') + '</li>';
+                                    }).join('') + '</ul>'
+                                    : '<div class="text-body-secondary small">None</div>');
+                            patEl.classList.remove('d-none');
+                        })
+                        .catch(function () {
+                            patEl.innerHTML = patHeader
+                                + '<div class="text-body-secondary small">Could not load patients</div>';
+                            patEl.classList.remove('d-none');
+                        });
                 }
                 if (mobileDetailPref('CallHistory') && chEl) {
                     // Issue #14 re-reopen (a beta tester 2026-07-04): this

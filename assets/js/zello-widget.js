@@ -814,7 +814,15 @@
             case 'channel_status':
                 if (channelLabel) {
                     var chText = data.channel || '';
-                    if (data.users_online) {
+                    // GH#66 (Ron Jones, 2026-08-15) — `data.users_online`
+                    // truthiness treated "Zello never sent this field"
+                    // and "Zello reported zero" identically, so on a
+                    // tier/config that never populates occupancy the
+                    // label silently asserted an empty channel. The
+                    // proxy now sends null (not 0) when the field is
+                    // absent; render that as "online" with no count,
+                    // never as "(0 online)".
+                    if (data.users_online !== null && data.users_online !== undefined) {
                         chText += ' (' + data.users_online + ' online)';
                     } else if (data.status) {
                         chText += ' — ' + data.status;

@@ -26,6 +26,7 @@ require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/audit.php';
 require_once __DIR__ . '/../inc/access.php';
 require_once __DIR__ . '/../inc/file-write.php';
+require_once __DIR__ . '/../inc/served-dir.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $uploadDir = NEWUI_ROOT . '/uploads';
@@ -84,6 +85,12 @@ if (!file_exists($htaccess)) {
         . "<IfModule mod_php.c>\n    php_flag engine off\n</IfModule>\n"
         . "<FilesMatch \"\\.(php|phar|phtml|pht|phtm|inc|htaccess|html|htm|svg|xml|xsl|vbs|js)$\">\n"
         . "    Require all denied\n</FilesMatch>\nOptions -ExecCGI\n");
+}
+// IIS never reads .htaccess, and uploads/ is wholesale .gitignore'd — this
+// runtime write is the only way its web.config reaches a real install.
+if (!file_exists($uploadDir . '/web.config')) {
+    served_dir_harden_allowlist($uploadDir, 'File attachments (api/file-upload.php)',
+        array_map(static fn(string $ext): string => '.' . $ext, array_keys($ALLOWED_EXT_MIME)));
 }
 
 // ── Helper: read CSRF token from form field, header, or query (DELETE) ──

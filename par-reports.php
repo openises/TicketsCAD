@@ -26,8 +26,9 @@ if (empty($_SESSION['user_id'])) {
 require_once __DIR__ . '/inc/force-pw-change.php';
 force_pw_change_redirect();
 
-// Allow anyone who can manage PAR OR view incidents.
-if (!rbac_can('action.manage_par') && !rbac_can('action.view_incident') && !is_admin()) {
+// Allow anyone who can manage PAR OR is an admin. (action.view_incident
+// dropped 2026-08-15, tools/rbac_permission_audit.php -- never seeded.)
+if (!rbac_can('action.manage_par') && !is_admin()) {
     header('Location: index.php?err=forbidden');
     exit;
 }

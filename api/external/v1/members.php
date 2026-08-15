@@ -25,8 +25,13 @@ $method = $_SERVER['REQUEST_METHOD'];
 // ═══════════════════════════════════════════════════════════════
 if ($method === 'GET') {
     ext_api_require_scope('members:read');
-    if (!rbac_can('action.view_members') && !rbac_can('action.manage_members')) {
-        ext_api_error('forbidden_rbac', 403, ['required' => 'action.view_members']);
+    // action.view_members was dropped 2026-08-15 (tools/rbac_permission_
+    // audit.php) -- no such permission was ever seeded. roster.view is the
+    // real, already-seeded code (roster.php's own page gate is
+    // screen.roster; roster.view is the RBAC-aware read-access check the
+    // rest of the app uses alongside it).
+    if (!rbac_can('roster.view') && !rbac_can('action.manage_members')) {
+        ext_api_error('forbidden_rbac', 403, ['required' => 'roster.view']);
     }
 
     // Detail

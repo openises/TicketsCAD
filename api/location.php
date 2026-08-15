@@ -1072,11 +1072,13 @@ if ($method === 'POST') {
         // behalf of a unit. (The bridge daemons + OwnTracks clients
         // never use action=report — they hit their own dedicated
         // ingest paths.)
+        // action.report_location dropped 2026-08-15 (tools/rbac_permission_
+        // audit.php) -- no such permission was ever seeded; the two
+        // dispatcher-role codes below already cover this gate.
         require_once __DIR__ . '/../inc/rbac.php';
         if (!is_admin()
             && !rbac_can('action.change_unit_status')
-            && !rbac_can('action.dispatch_unit')
-            && !rbac_can('action.report_location')) {
+            && !rbac_can('action.dispatch_unit')) {
             json_error('Forbidden — reporting locations requires dispatcher or admin role', 403);
         }
 

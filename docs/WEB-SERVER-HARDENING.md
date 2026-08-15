@@ -19,7 +19,7 @@ you exactly what to add.
 |---|---|---|
 | **Apache** (XAMPP, Debian/Ubuntu `apache2`, the Docker image) | `.htaccess`, `sql/.htaccess`, `tools/.htaccess` — shipped, arrive with an update | Confirm `AllowOverride` is `All` or `FileInfo` in your vhost. On `AllowOverride None` Apache ignores every `.htaccess` **without warning**. |
 | **nginx** | Nothing ships that helps you. nginx never reads `.htaccess`. | Install `docs/nginx/ticketscad-hardening.conf` — see below. |
-| **IIS** (Windows) | `web.config` next to every sensitive folder — shipped for `sql/`, `tools/`, `tests/`, `specs/`, `inc/`, `apache/`, `coordination/`, `drafts/`, `services/` (+ narrower overrides in `services/meshtastic/` and `services/meshcore/`); written automatically at runtime for `.git/` and `vendor/` (can't ship via git — see below); `keys/` and `backups/` written automatically when created | Nothing, on a stock install. IIS ignores `.htaccess`. |
+| **IIS** (Windows) | `web.config` next to every sensitive folder — shipped for `sql/`, `tools/`, `tests/`, `specs/`, `inc/`, `apache/`, `coordination/`, `drafts/`, `services/` (+ narrower overrides in `services/meshtastic/` and `services/meshcore/`); `uploads/` and `cache/` too, but with the opposite shape — those two still serve the file types their endpoints actually accept, deny only script extensions and everything not on that list; written automatically at runtime for `.git/` and `vendor/` (can't ship via git — see below); `keys/` and `backups/` written automatically when created | Nothing, on a stock install. IIS ignores `.htaccess`. |
 | **Caddy** | Nothing ships that helps you. | See below. |
 | **Docker (the shipped image)** | Apache inside the container, with the shipped `.htaccess` | Nothing extra. `backups/` also lives outside the web root from v4.2.3. |
 
@@ -322,6 +322,75 @@ report anything that disagrees:
    matters most.
 5. `GET /tools/nothing-here.php` answers the same as a real script, with no
    difference a scanner could use to enumerate what exists.
+
+### Site-wide Request Filtering (add to YOUR OWN web.config, not ours)
+
+Every `web.config` TicketsCAD ships is scoped to one directory — `sql/`,
+`tools/`, `uploads/`, and so on — and none of them apply site-wide, on
+purpose: a broken rule at the site root breaks the whole site (see the
+`hiddenSegments` warning above, which did exactly that to `assets/vendor/`
+on two live installs). TicketsCAD ships **no web.config at the repository
+root**, so it cannot fold the settings below into anything a `git pull`
+delivers automatically.
+
+These four are genuinely site-wide (they should apply to every request,
+not one directory), which is exactly why they belong in **your own**
+site-level `web.config` or in `applicationHost.config` — a file only you
+control, not one this project can safely ship. This is a fragment to
+merge into the `<security><requestFiltering>` your site-level config
+already has (or a new one, if it has none) — **do NOT** also add
+`<fileExtensions allowUnlisted="false" />` at the site root the way the
+per-directory files above do. That denies every extension for the whole
+application, not one directory, and would 404 TicketsCAD entirely:
+
+```
+<requestLimits maxAllowedContentLength="26214400"
+                maxUrl="4096" maxQueryString="2048" />
+<verbs allowUnlisted="true">
+  <add verb="TRACE" allowed="false" />
+</verbs>
+```
+
+- `maxAllowedContentLength` (bytes, default 25 MB shown above) — caps
+  request body size. Raise it if your largest configured upload type
+  needs more headroom than the default; `api/upload.php`'s own
+  `$ALLOWED_EXT_MIME` allowlist and PHP's `upload_max_filesize` /
+  `post_max_size` are the other two places a limit like this lives, and
+  the smallest of the three wins in practice.
+- `maxUrl` / `maxQueryString` (characters) — reject abnormally long
+  requests before they reach PHP at all. The defaults above are generous
+  for TicketsCAD's own routes; tighten them if your install has no
+  reason to see a longer URL.
+- The `TRACE` verb block closes the classic Cross-Site Tracing (XST)
+  probe, which can read cookies marked `HttpOnly` back out through the
+  TRACE echo. TicketsCAD's own session cookie is already `HttpOnly` (see
+  `SECURITY-POLICY.md`), so this is defense in depth, not a gap this
+  project has hit — block it anyway; nothing in the app issues TRACE.
+
+Every directory-scoped `web.config` this project ships already carries
+`allowDoubleEscaping="false"` (rejects double-encoded path segments like
+`..%255c..`, which can otherwise smuggle a request past extension- or
+path-based rules) — see the `<security><requestFiltering>` block in any
+of them for the shape if you want it at the site level too.
+
+### Disable the WebDAV role feature
+
+If the WebDAV Publishing role feature is enabled, its `PUT`/`MOVE`/`PROPFIND`
+verbs can write or move files by a path Request Filtering's *extension*
+rules never see — a request whose HTTP verb is `PUT` isn't asking to
+execute anything, so an extension-based deny does not apply to it the same
+way. TicketsCAD's install docs never ask for WebDAV and nothing in the
+application uses it. Remove it (PowerShell, run as Administrator):
+
+```powershell
+Uninstall-WindowsFeature Web-DAV-Publishing
+```
+
+Or via Server Manager: **Remove Roles and Features → Web Server (IIS) →
+Common HTTP Features → WebDAV Publishing → uncheck**. If your install
+ever needs a WebDAV-based publishing workflow for something unrelated to
+TicketsCAD, scope it to its own site or application pool — never the one
+serving this application.
 
 ---
 

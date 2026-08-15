@@ -333,17 +333,36 @@ rrbv2_step("user_roles: backfill scope from org_id (org-scoped grants)",
 
 rrbv2_step('permissions: seed canonical codes + link aliases',
     function () use ($prefix) {
-        // Already seeded if we have at least one row with a non-null
-        // resource AND verb that doesn't match any "category.X" pattern
-        // (i.e., a canonical row like "incident.edit" rather than
-        // "action.edit_incident").
+        // 2026-08-15 fix (tools/rbac_permission_audit.php investigation):
+        // the ORIGINAL check here was "does at least one already-canonical
+        // row (code = resource.verb) exist" -- meant as "has THIS STEP run
+        // before." That's the wrong question: a permission can land in
+        // already-canonical shape via a completely different path (a phase
+        // script that seeds e.g. code=resource=par/verb=manage directly),
+        // which has nothing to do with whether THIS step has processed the
+        // legacy screen.*/action.*/widget.* codes it exists to migrate.
+        // Once sql/rbac.sql stopped racing run_rbac_v2.php for the
+        // resource/verb columns (2026-08-15, same investigation), the five
+        // phase scripts that seed directly-canonical permissions started
+        // succeeding on a fresh install -- so $canonical > 0 became true
+        // before this step ever ran, and the whole legacy->canonical
+        // migration (incidents.view, facilities.view, responders.view,
+        // roster.view, and every other alias + role_permissions mirror)
+        // silently never happened. 203 permissions on a fresh install
+        // dropped to 116 with zero error anywhere in the pipeline.
+        // Ask the real question instead: is there still a row THIS STEP
+        // would act on (resource/verb set, not yet marked deprecated, not
+        // already in canonical shape)? Rows this step has already
+        // processed get deprecated_alias_of set (see the apply callback
+        // below), so a second run correctly counts zero and skips.
         try {
-            $canonical = (int) db_fetch_value(
+            $needsWork = (int) db_fetch_value(
                 "SELECT COUNT(*) FROM `{$prefix}permissions`
                  WHERE resource IS NOT NULL AND verb IS NOT NULL
-                   AND code = CONCAT(resource, '.', verb)"
+                   AND deprecated_alias_of IS NULL
+                   AND code <> CONCAT(resource, '.', verb)"
             );
-            return $canonical > 0;
+            return $needsWork === 0;
         } catch (Throwable $e) { return false; }
     },
     function () use ($prefix) {
@@ -353,8 +372,37 @@ rrbv2_step('permissions: seed canonical codes + link aliases',
              WHERE resource IS NOT NULL AND verb IS NOT NULL
                AND deprecated_alias_of IS NULL"
         );
+        // 2026-08-15 privilege-tier guard (tools/rbac_permission_audit.php
+        // investigation). rrbv2_parse_code() derives resource/verb from the
+        // OLD code's category-specific naming convention, and TWO old codes
+        // from different categories can legitimately land on the identical
+        // (resource, verb) pair by pure naming coincidence -- confirmed
+        // live: screen.reports (category=screen, "can see the Reports
+        // screen, single-resource reports only") and action.view_reports
+        // (category=action, "Run Aggregate Reports" -- sql/rbac.sql's own
+        // seed comment: admin-only, deliberately withheld from lower
+        // roles) BOTH derive to reports.view. Whichever processes first
+        // creates reports.view and mirrors ITS OWN role_permissions onto
+        // it (correct); the second one found the code already existing,
+        // skipped creating a duplicate (correct), but then fell through to
+        // unconditionally set its OWN deprecated_alias_of = reports.view
+        // (the bug) -- and rbac_can()'s alias resolution
+        // (inc/rbac.php _rbac_alias_candidates()) treats old-code and
+        // deprecated_alias_of as mutually interchangeable for grant
+        // lookups. Net effect: any role holding screen.reports silently
+        // ALSO satisfied action.view_reports, collapsing "can see the
+        // reports screen" into "can run admin-only aggregate reports."
+        // screen.*, widget.* and field.* genuinely ARE synonymous with
+        // each other (all three just mean "can see it", at decreasing
+        // granularity) and stay mergeable. A category that implies DOING
+        // something (action) must never be silently folded into a
+        // category that only implies SEEING something (screen/widget/
+        // field), or the reverse -- that is a privilege-tier change
+        // hiding inside what looks like a naming cleanup.
+        $viewTier = ['screen', 'widget', 'field'];
         $created = 0;
         $skipped = 0;
+        $crossTierSkipped = 0;
         foreach ($rows as $r) {
             $newCode = $r['resource'] . '.' . $r['verb'];
             if ($newCode === $r['code']) {
@@ -363,10 +411,25 @@ rrbv2_step('permissions: seed canonical codes + link aliases',
                 continue;
             }
             // Insert the canonical row if it doesn't exist.
-            $exists = (int) db_fetch_value(
-                "SELECT COUNT(*) FROM `{$prefix}permissions` WHERE code = ?",
+            $existingRow = db_fetch_one(
+                "SELECT category FROM `{$prefix}permissions` WHERE code = ?",
                 [$newCode]
             );
+            $exists = $existingRow !== null;
+            if ($exists) {
+                $oldTier = in_array($r['category'], $viewTier, true) ? 'view' : $r['category'];
+                $newTier = in_array($existingRow['category'], $viewTier, true) ? 'view' : $existingRow['category'];
+                if (($oldTier === 'view') !== ($newTier === 'view')) {
+                    // A view-tier code and a non-view-tier code independently
+                    // derived the same canonical target -- not a real alias.
+                    // Leave this old row exactly as it is (deprecated_alias_of
+                    // stays NULL, it keeps functioning under its own code)
+                    // rather than silently merging two different privilege
+                    // levels.
+                    $crossTierSkipped++;
+                    continue;
+                }
+            }
             if (!$exists) {
                 db_query(
                     "INSERT INTO `{$prefix}permissions`
@@ -390,7 +453,48 @@ rrbv2_step('permissions: seed canonical codes + link aliases',
                 [$newCode, $r['id']]
             );
         }
-        echo "          (canonical=$created, already-canonical=$skipped)\n";
+        echo "          (canonical=$created, already-canonical=$skipped, cross-tier-skipped=$crossTierSkipped)\n";
+    });
+
+// ─────────────────────────────────────────────────────────────────────
+// A8b — repair any cross-tier alias merge from before the guard above
+// ─────────────────────────────────────────────────────────────────────
+//
+// One-time correction for an install where A8 already ran without the
+// privilege-tier guard and set deprecated_alias_of on a screen/widget/
+// field-category row pointing at an action-derived canonical code (or the
+// reverse). Un-link them: reset deprecated_alias_of to NULL so the old
+// code goes back to standing on its own. Nothing else needs correcting --
+// role_permissions was never touched for the "reused an existing
+// canonical row" branch this bug came from (see the guard's comment
+// above), so no grants need to be revoked, only the false alias broken.
+
+rrbv2_step('permissions: repair cross-tier alias merges (A8 guard backfill)',
+    function () use ($prefix) {
+        try {
+            $bad = (int) db_fetch_value(
+                "SELECT COUNT(*) FROM `{$prefix}permissions` old_p
+                 JOIN `{$prefix}permissions` new_p ON new_p.code = old_p.deprecated_alias_of
+                 WHERE old_p.deprecated_alias_of IS NOT NULL
+                   AND ((old_p.category IN ('screen','widget','field') AND new_p.category NOT IN ('screen','widget','field'))
+                     OR (old_p.category NOT IN ('screen','widget','field') AND new_p.category IN ('screen','widget','field')))"
+            );
+            return $bad === 0;
+        } catch (Throwable $e) { return false; }
+    },
+    function () use ($prefix) {
+        $bad = db_fetch_all(
+            "SELECT old_p.id, old_p.code AS old_code, new_p.code AS new_code
+             FROM `{$prefix}permissions` old_p
+             JOIN `{$prefix}permissions` new_p ON new_p.code = old_p.deprecated_alias_of
+             WHERE old_p.deprecated_alias_of IS NOT NULL
+               AND ((old_p.category IN ('screen','widget','field') AND new_p.category NOT IN ('screen','widget','field'))
+                 OR (old_p.category NOT IN ('screen','widget','field') AND new_p.category IN ('screen','widget','field')))"
+        );
+        foreach ($bad as $row) {
+            db_query("UPDATE `{$prefix}permissions` SET deprecated_alias_of = NULL WHERE id = ?", [$row['id']]);
+            echo "          un-linked {$row['old_code']} from {$row['new_code']} (privilege-tier mismatch)\n";
+        }
     });
 
 // ─────────────────────────────────────────────────────────────────────

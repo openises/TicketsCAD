@@ -3,6 +3,74 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.20] — 2026-08-15
+
+### Security
+
+- **RBAC permission-code audit tool + 29 dead-code fixes**, built after an
+  External API report from Ron Jones (@rjonesbsink): `api/external/v1/
+  incidents.php`'s read-only incident-list gate referenced two permission
+  codes (`action.view_incident`/`action.view_incidents`) that had no row in
+  the `permissions` table — so the endpoint was reachable by Super Admin
+  tokens only, with no role configuration able to grant it, despite looking
+  fully configurable. A new `tools/rbac_permission_audit.php` (wired into
+  the pre-commit hook and CI) finds every `rbac_can()`/`rbac_require_screen()`
+  call referencing a dead code; it found 29 across the app, all fixed —
+  either corrected to the real code or removed as redundant against a
+  working sibling in the same OR-chain.
+- **Fixed a schema-ordering bug found by that same audit**: 6 permissions
+  (`action.manage_par`, `action.manage_mesh_bridges`,
+  `action.kill_pending_message`, `action.recall_routed_message`,
+  `action.set_incident_security`, `action.manage_security_labels`) had
+  never been seeded on a genuinely fresh install, ever — five phase
+  migration scripts seeded them using `resource`/`verb` columns that a
+  later-sorting migration added, so their INSERTs threw "Unknown column"
+  and were silently swallowed. The three columns are now part of the
+  `permissions` table's original schema.
+- **Fixed a privilege-tier alias-merging bug** that fixing the above
+  exposed: two permission codes from different categories can derive the
+  same canonical `<resource>.<verb>` form by naming coincidence, and the
+  RBAC v2 migration silently merged them. Confirmed live:
+  `screen.reports` ("can see the Reports screen") and `action.view_reports`
+  (admin-only aggregate reports, per this project's own seed comment) both
+  derive to `reports.view` — a Read-Only user holding only the former
+  silently also satisfied the latter. The migration now refuses to alias
+  across the screen/widget/field ("can see it") vs action ("can do it")
+  boundary, with a one-time retroactive repair for any install that
+  already merged two tiers this way.
+
+### Fixed
+
+- **GH#47** — the EOC display's map zoom and layers controls collided with
+  the page header's higher stacking layer (a `.leaflet-top` positioned
+  control under a `z-index:1030` header) and with the incidents overlay
+  panel, making the layers toggle barely visible and the zoom buttons
+  unresponsive. Reproduced live via Playwright; the layers control now
+  sits below the header, the zoom control moved to the one corner neither
+  obstruction reaches.
+- **GH#65** — reopening a closed incident could silently re-close it within
+  seconds, with no audit trail. A manual close never cleared a stale
+  `auto_close_scheduled_at` marker armed by the all-clear path, so a later
+  reopen raced an already-expired timer; separately, every `audit_log()`
+  call in the auto-close sweep lacked a lazy-require guard, so the most
+  frequent caller (the SSE stream endpoint, which runs the sweep on every
+  tick) could never actually record a close. Both fixed, with a one-time
+  repair migration for any ticket already stuck in the bad state.
+- **GH#66** — the Zello widget logged a spammy, informationless status line
+  on every channel join AND leave (Zello sends `on_channel_status` on
+  both, with the status unchanged); deduped per channel. Also fixed
+  `users_online` collapsing "not reported" and "reported as zero" into
+  the same displayed value.
+- **GH#67** — the mobile Patients section always reported "Patients (0) /
+  None," even on an incident with a patient, because it read a field the
+  incident-detail API has never returned. Now fetches `api/patients.php`
+  directly, matching the desktop page and this file's own Call History
+  section, which hit the identical bug shape previously.
+- **GH#64** — pointing a second unit status at "On Scene" silently did
+  nothing to the incident timeline once that milestone was already
+  stamped (the timestamp is write-once); the status-config help text now
+  says so.
+
 ## [4.2.19] — 2026-08-14
 
 ### Security

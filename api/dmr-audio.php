@@ -34,10 +34,10 @@ ini_set('display_errors', '0');
 // is_admin always allowed; old `action.play_dmr_audio` keeps working
 // for any installs that already granted it before the three-permission
 // split landed.
-$rbacOk = function_exists('rbac_can') && (
-    rbac_can('action.dmr_receive')
-    || rbac_can('action.play_dmr_audio')
-);
+// action.play_dmr_audio dropped 2026-08-15 (tools/rbac_permission_audit.php)
+// -- no such permission was ever seeded; action.dmr_receive already covers
+// DMR audio access.
+$rbacOk = function_exists('rbac_can') && rbac_can('action.dmr_receive');
 if (!is_admin() && !$rbacOk) {
     http_response_code(403);
     header('Content-Type: application/json');

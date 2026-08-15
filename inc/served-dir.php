@@ -371,7 +371,7 @@ function served_dir_harden(string $dir, string $what, bool $force = false): void
                 . "<!-- " . $what . ". IIS ignores .htaccess; this is the equivalent. -->\n"
                 . "<configuration>\n  <system.webServer>\n"
                 . "    <security>\n"
-                . "      <requestFiltering>\n"
+                . "      <requestFiltering allowDoubleEscaping=\"false\">\n"
                 . "        <fileExtensions allowUnlisted=\"false\" />\n"
                 . "      </requestFiltering>\n"
                 . "    </security>\n"
@@ -380,5 +380,76 @@ function served_dir_harden(string $dir, string $what, bool $force = false): void
         }
     } catch (Throwable $e) {
         error_log('[served-dir] could not harden ' . $dir . ': ' . $e->getMessage());
+    }
+}
+
+/**
+ * The narrow-exception sibling of served_dir_harden() — for a directory that
+ * MUST keep serving real files (uploads/, cache/), not one that should deny
+ * everything (backups/, keys/). Two differences from served_dir_harden():
+ *
+ *   1. It writes unconditionally, not only when served_dir_exposure() finds
+ *      evidence of exposure — uploads/ and cache/ are inside the web root BY
+ *      DESIGN (that is the whole point of them), so "is it currently
+ *      reachable" is not the right gate; it always is, on purpose.
+ *   2. The web.config it writes allows exactly $allowedExtensions, denying
+ *      everything else — including every script extension — rather than
+ *      denying the directory outright. IIS Request Filtering,
+ *      allowUnlisted="false" with <clear /> then one <add ... allowed="true">
+ *      per extension: the SAME narrow-exception shape
+ *      services/meshtastic/web.config and services/meshcore/web.config
+ *      already use for their one .py exception, generalized to an arbitrary
+ *      list (tests/test_iis_webconfig_syntax.php validates either shape).
+ *
+ * uploads/ and cache/ are both wholesale .gitignore'd (uploaded/cached
+ * content is runtime data, never checked in), so unlike sql/web.config or
+ * tools/web.config — which ship as ordinary tracked files — this is the
+ * ONLY way either directory's web.config reaches a real install. Called from
+ * tools/install_fresh.php (so a fresh install has it before anything else
+ * runs) and from the runtime "ensure present" checks already used for
+ * uploads/.htaccess, so an existing install self-heals the same way.
+ *
+ * @param string   $dir               The directory to protect (uploads/, cache/).
+ * @param string   $what              Human label for the file's first comment line.
+ * @param string[] $allowedExtensions e.g. ['.png', '.jpg', ...] — WITH the leading dot.
+ */
+function served_dir_harden_allowlist(string $dir, string $what, array $allowedExtensions): void
+{
+    try {
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0755, true);
+        }
+        if (!is_dir($dir)) {
+            return;
+        }
+        $wc = rtrim($dir, '/\\') . '/web.config';
+        if (!file_exists($wc)) {
+            $entries = '';
+            foreach ($allowedExtensions as $ext) {
+                $entries .= '          <add fileExtension="' . htmlspecialchars($ext, ENT_QUOTES)
+                    . "\" allowed=\"true\" />\n";
+            }
+            @file_put_contents($wc,
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                . "<!-- " . $what . ". IIS ignores .htaccess; this is the equivalent.\n"
+                . "     Written automatically by TicketsCAD; see docs/security/architecture.md\n"
+                . "     section 6 item 1 and docs/WEB-SERVER-HARDENING.md. Unlike a deny-\n"
+                . "     everything web.config, this directory must keep serving the file\n"
+                . "     types its own endpoint accepts. Everything NOT listed below still\n"
+                . "     404s, script extensions above all. -->\n"
+                . "<configuration>\n  <system.webServer>\n"
+                . "    <security>\n"
+                . "      <requestFiltering allowDoubleEscaping=\"false\">\n"
+                . "        <fileExtensions allowUnlisted=\"false\">\n"
+                . "          <clear />\n"
+                . $entries
+                . "        </fileExtensions>\n"
+                . "      </requestFiltering>\n"
+                . "    </security>\n"
+                . "    <directoryBrowse enabled=\"false\" />\n"
+                . "  </system.webServer>\n</configuration>\n");
+        }
+    } catch (Throwable $e) {
+        error_log('[served-dir] could not harden (allowlist) ' . $dir . ': ' . $e->getMessage());
     }
 }

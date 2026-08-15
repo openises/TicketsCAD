@@ -61,7 +61,18 @@ foreach ($files as $relPath) {
 
     // Literal id="..." / id='...' — skip any value containing PHP tags,
     // since those are per-iteration dynamic ids, not static duplicates.
-    preg_match_all('/\bid\s*=\s*(["\'])([^"\']*)\1/i', $src, $m, PREG_OFFSET_CAPTURE);
+    //
+    // The leading boundary is a negative lookbehind, NOT \b: \b treats '-' as
+    // a non-word character, so \bid matches the "id" inside data-id="..." and
+    // data-col-id="..." just as readily as a real id="..." attribute — both
+    // "words" start right after a hyphen. That false-positived every
+    // data-*id attribute in the codebase as a literal id, and flagged two
+    // elements sharing a data-id/data-col-id value as a duplicate DOM id
+    // (2026-08-14, found while extending the a11y-label pass, which added
+    // many new data-* attributes). (?<![\w-]) instead requires the character
+    // immediately before "id" to be neither a word character nor a hyphen —
+    // true only when "id" starts its own attribute name.
+    preg_match_all('/(?<![\w-])id\s*=\s*(["\'])([^"\']*)\1/i', $src, $m, PREG_OFFSET_CAPTURE);
     $seen = []; // id value => [line numbers]
     foreach ($m[2] as $i => $match) {
         [$value, $offset] = $match;

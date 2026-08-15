@@ -38,8 +38,19 @@ $method = $_SERVER['REQUEST_METHOD'];
 // ═══════════════════════════════════════════════════════════════
 if ($method === 'GET') {
     ext_api_require_scope('incidents:read');
-    if (!rbac_can('action.view_incident') && !rbac_can('action.view_incidents')) {
-        ext_api_error('forbidden_rbac', 403, ['required' => 'action.view_incident']);
+    // GH -- reported by an external-API integrator (2026-08-15): neither
+    // action.view_incident nor action.view_incidents has ever had a row in
+    // the permissions table (tools/rbac_permission_audit.php confirmed both
+    // dead app-wide), so this gate was reachable by Super Admin tokens
+    // only -- no role configuration could grant a Field Unit / read-only
+    // token access to the read-only incident list. incidents.view is the
+    // real, already-seeded code the rest of the app uses for exactly this
+    // (see screen.incidents/screen.incident_detail's sibling entries and
+    // the internal api/incidents.php gate, which had the same dead-code
+    // disease on its OWN singular `incident.view` half -- fixed alongside
+    // this one, see that file).
+    if (!rbac_can('incidents.view')) {
+        ext_api_error('forbidden_rbac', 403, ['required' => 'incidents.view']);
     }
 
     $prefix = $GLOBALS['db_prefix'] ?? '';

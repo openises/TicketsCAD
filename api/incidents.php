@@ -47,7 +47,7 @@ if (!empty($_GET['search'])) {
     $sFilter = '';
     $sUserGroups = $_SESSION['user_groups'] ?? [];
     $sRbacView = (function_exists('rbac_can')
-        && (rbac_can('screen.incidents') || rbac_can('incident.view')));
+        && (rbac_can('screen.incidents') || rbac_can('incidents.view')));
     if (is_admin() || $sRbacView) {
         $sFilter = '';                       // admin / RBAC-granted: no group filter
     } elseif (!empty($sUserGroups)) {
@@ -214,7 +214,7 @@ $where .= " AND (`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:0
 $user_groups = $_SESSION['user_groups'] ?? [];
 $is_admin = is_admin();
 $rbacIncidentView = (function_exists('rbac_can')
-    && (rbac_can('screen.incidents') || rbac_can('incident.view')));
+    && (rbac_can('screen.incidents') || rbac_can('incidents.view')));
 $group_filter = '';
 if ($is_admin || $rbacIncidentView) {
     // Admin OR RBAC-granted: no legacy group filter.

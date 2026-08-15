@@ -123,15 +123,17 @@ try {
     }
 } catch (Exception $e) {}
 
-// RBAC-aware bypass: if the user holds the screen.responders or the
-// canonical responder.view permission, they have explicit grant to
+// RBAC-aware bypass: if the user holds the canonical responders.view
+// permission (or the responders widget), they have explicit grant to
 // view responders via RBAC and the legacy allocates filter is skipped.
 // See api/incidents.php for the same pattern (deployed 2026-05-26 after
 // a demo user could not see any responders despite Operator role).
+// screen.responders dropped 2026-08-15 (tools/rbac_permission_audit.php)
+// -- no such permission was ever seeded; the other two already cover it.
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/par.php';  // Phase 17 (2026-06-11) — par_due_at()
 $rbacResponderView = (function_exists('rbac_can')
-    && (rbac_can('screen.responders') || rbac_can('responder.view') || rbac_can('widget.responders')));
+    && (rbac_can('responders.view') || rbac_can('widget.responders')));
 
 if ($is_admin || $rbacResponderView) {
     $group_filter = $softDeleteFilter ? "WHERE " . $softDeleteFilter : "";

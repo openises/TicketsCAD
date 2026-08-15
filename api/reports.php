@@ -7,7 +7,15 @@
  *   period:       today | this_week | last_week | this_month | last_month | this_year | last_year | custom
  *   start_date:   Y-m-d (required if period=custom)
  *   end_date:     Y-m-d (required if period=custom)
- *   responder_id:     filter by responder (0=all)
+ *   responder_id:     filter by responder/unit (0=all) — the incident-type
+ *                      reports (unit_log, dispatch_log, facility_log,
+ *                      notes_log)
+ *   member_id:         filter by a specific person (0=all) — the personnel
+ *                      reports (roster_snapshot, time_summary,
+ *                      license_expirations, membership_due,
+ *                      inactive_members, dmr_inventory). Distinct from
+ *                      responder_id: `responder` is the units/vehicles
+ *                      table, `member` is the people/roster table.
  *   incident_number:  filter by incident (used for after_action) — the
  *                      dispatcher's own case number (e.g. "26-0091"),
  *                      resolved server-side via incnum_resolve_input().
@@ -90,6 +98,12 @@ $period       = $_GET['period'] ?? 'this_month';
 $start_date   = $_GET['start_date'] ?? '';
 $end_date     = $_GET['end_date'] ?? '';
 $responder_id = max(0, (int) ($_GET['responder_id'] ?? 0));
+// GH#57 follow-up (2026-08-15, cbyrdmo) -- the six Personnel reports had no
+// way to scope to one person at all; `responder_id` above filters the
+// `responder` (units) table and Personnel reports were explicitly exempted
+// from it. `member_id` is the equivalent for the `member` (people/roster)
+// table.
+$member_id = max(0, (int) ($_GET['member_id'] ?? 0));
 
 // GH#51 — accept the dispatcher's own case number, not the internal id.
 // incident_number is what the new UI sends; incident_id is kept for old
@@ -111,8 +125,9 @@ if (!in_array($report, $valid_reports, true)) {
 }
 
 // Personnel reports — read across the org, so they need the same
-// aggregate permission as the reports below. Skip the incident/responder
-// IDOR checks because they don't take those filters.
+// aggregate permission as the reports below. They don't take the
+// incident_id/responder_id filters below (those scope different tables);
+// member_id is their own equivalent, checked separately.
 $personnelReports = ['license_expirations', 'roster_snapshot', 'dmr_inventory',
                      'membership_due', 'inactive_members', 'time_summary'];
 $isPersonnel = in_array($report, $personnelReports, true);
@@ -121,8 +136,8 @@ if ($isPersonnel && !$_canAggregate) {
     json_error('Personnel reports require the "Run Aggregate Reports" permission', 403);
 }
 
-// Per-resource IDOR check first — a user requesting one specific incident
-// or responder must have access to it regardless of role.
+// Per-resource IDOR check first — a user requesting one specific incident,
+// responder, or member must have access to it regardless of role.
 if ($incident_id > 0 && !user_can_access_entity('incident', $incident_id)) {
     ini_set('display_errors', $prevDisplay);
     json_error('Incident not found', 404);
@@ -131,6 +146,18 @@ if ($responder_id > 0 && !user_can_access_entity('responder', $responder_id)) {
     ini_set('display_errors', $prevDisplay);
     json_error('Responder not found', 404);
 }
+if ($member_id > 0 && !user_can_access_entity('member', $member_id)) {
+    ini_set('display_errors', $prevDisplay);
+    json_error('Member not found', 404);
+}
+
+// A single extra WHERE fragment every Personnel report query appends right
+// after {$rptMemberFrag} (the org-scope filter) -- combining the two in one
+// AND chain means a member outside the caller's visible orgs still can't be
+// singled out by guessing an id, same protection the org-scope filter
+// already provides on its own.
+$memberIdFrag = $member_id > 0 ? ' AND m.id = ?' : '';
+$memberIdVars = $member_id > 0 ? [$member_id] : [];
 
 // Aggregate / cross-resource reports (no specific filter) need the
 // aggregate permission; everyone else must scope to one resource.
@@ -632,6 +659,16 @@ switch ($report) {
         ];
         $params = [$date_start_sql, $date_end_sql];
 
+        // GH#57 follow-up (2026-08-14): the responder-filter dropdown on
+        // the Reports page is now shown for Facility Log too (assets/js/
+        // reports.js), same as unit_log/dispatch_log above -- this
+        // where-clause is what actually makes it filter instead of
+        // rendering a control that silently does nothing.
+        if ($responder_id > 0) {
+            $where_parts[] = "`a`.`responder_id` = ?";
+            $params[] = $responder_id;
+        }
+
         $where = implode(' AND ', $where_parts);
         // Phase 99j-7 — append org-scope filter (empty for Super Admin).
         $where .= $rptTicketFrag;
@@ -814,9 +851,19 @@ switch ($report) {
             }
         }
 
-        // Action log entries
+        // Action log entries. GH#61 (rjonesbsink, 2026-08-14) -- the `action`
+        // table has no `action` column, the narrative lives in `description`;
+        // reading the wrong key via `??` silently produced an empty string
+        // instead of a warning, so the report looked like it worked while
+        // every row's details came through blank. Also resolve `user` (an
+        // id) to a display name, matching api/equipment.php's own
+        // performed_by_name pattern, instead of showing the raw number.
         $actions_data = safe_fetch_all_rpt(
-            "SELECT * FROM `{$prefix}action` WHERE `ticket_id` = ? ORDER BY `date`",
+            "SELECT `a`.*,
+                    COALESCE(NULLIF(TRIM(CONCAT(u.name_f, ' ', u.name_l)), ''), u.`user`) AS performed_by_name
+             FROM `{$prefix}action` `a`
+             LEFT JOIN `{$prefix}user` `u` ON `a`.`user` = `u`.`id`
+             WHERE `a`.`ticket_id` = ? ORDER BY `a`.`date`",
             [$incident_id]
         );
 
@@ -824,8 +871,8 @@ switch ($report) {
             $timeline[] = [
                 'time'    => $act['date'] ?? '',
                 'event'   => 'Action',
-                'who'     => $act['user'] ?? '',
-                'details' => $act['action'] ?? ''
+                'who'     => $act['performed_by_name'] ?? '',
+                'details' => $act['description'] ?? ''
             ];
         }
 
@@ -915,11 +962,11 @@ switch ($report) {
                     mc.callsign AS identifier, mc.license_type, mc.expiry_date
              FROM `{$prefix}member_callsigns` mc
              JOIN `{$prefix}member` m ON mc.member_id = m.id
-             WHERE m.deleted_at IS NULL {$rptMemberFrag}
+             WHERE m.deleted_at IS NULL {$rptMemberFrag}{$memberIdFrag}
                AND mc.expiry_date IS NOT NULL
                AND mc.expiry_date <= ?
              ORDER BY mc.expiry_date ASC",
-            array_merge($rptMemberVars, [$cutoff])
+            array_merge($rptMemberVars, $memberIdVars, [$cutoff])
         );
         foreach ($fcc as $r) {
             $exp = strtotime((string) $r['expiry_date']);
@@ -944,11 +991,11 @@ switch ($report) {
              FROM `{$prefix}member_certifications` mc
              JOIN `{$prefix}member` m ON mc.member_id = m.id
              JOIN `{$prefix}certifications` c ON mc.certification_id = c.id
-             WHERE m.deleted_at IS NULL {$rptMemberFrag}
+             WHERE m.deleted_at IS NULL {$rptMemberFrag}{$memberIdFrag}
                AND mc.expiry_date IS NOT NULL
                AND mc.expiry_date <= ?
              ORDER BY mc.expiry_date ASC",
-            array_merge($rptMemberVars, [$cutoff])
+            array_merge($rptMemberVars, $memberIdVars, [$cutoff])
         );
         foreach ($certs as $r) {
             $exp = strtotime((string) $r['expiry_date']);
@@ -1003,9 +1050,9 @@ switch ($report) {
              FROM `{$prefix}member` m
              LEFT JOIN `{$prefix}member_types`  mt ON m.field3 = mt.id
              LEFT JOIN `{$prefix}member_status` ms ON m.member_status_id = ms.id
-             WHERE m.deleted_at IS NULL {$rptMemberFrag}
+             WHERE m.deleted_at IS NULL {$rptMemberFrag}{$memberIdFrag}
              ORDER BY m.field1, m.field2",
-            $rptMemberVars
+            array_merge($rptMemberVars, $memberIdVars)
         );
         // Pull team memberships separately so multi-team is captured
         $tm = safe_fetch_all_rpt(
@@ -1064,9 +1111,9 @@ switch ($report) {
             "SELECT m.id AS member_id, m.field2 AS first_name, m.field1 AS last_name,
                     m.field4 AS callsign, m.notes
              FROM `{$prefix}member` m
-             WHERE m.deleted_at IS NULL {$rptMemberFrag} AND m.notes LIKE '%DMR ID%'
+             WHERE m.deleted_at IS NULL {$rptMemberFrag}{$memberIdFrag} AND m.notes LIKE '%DMR ID%'
              ORDER BY m.field1, m.field2",
-            $rptMemberVars
+            array_merge($rptMemberVars, $memberIdVars)
         );
         foreach ($members as $m) {
             preg_match_all('/DMR ID:\s*(\d+)/i', (string) $m['notes'], $matches);
@@ -1107,11 +1154,11 @@ switch ($report) {
             "SELECT m.id AS member_id, m.field2 AS first_name, m.field1 AS last_name,
                     m.field4 AS callsign, m.membership_due
              FROM `{$prefix}member` m
-             WHERE m.deleted_at IS NULL {$rptMemberFrag}
+             WHERE m.deleted_at IS NULL {$rptMemberFrag}{$memberIdFrag}
                AND m.membership_due IS NOT NULL
                AND m.membership_due <= ?
              ORDER BY m.membership_due ASC",
-            array_merge($rptMemberVars, [$cutoff])
+            array_merge($rptMemberVars, $memberIdVars, [$cutoff])
         );
         $rows = [];
         $expired = 0;
@@ -1159,7 +1206,7 @@ switch ($report) {
                      WHERE te.member_id = m.id) AS last_activity
              FROM `{$prefix}member` m
              LEFT JOIN `{$prefix}member_status` ms ON m.member_status_id = ms.id
-             WHERE m.deleted_at IS NULL {$rptMemberFrag}
+             WHERE m.deleted_at IS NULL {$rptMemberFrag}{$memberIdFrag}
                AND (m.field8 = 'No'
                     OR ms.status_val IN ('Inactive', 'On Leave')
                     OR NOT EXISTS (
@@ -1168,7 +1215,7 @@ switch ($report) {
                           AND te2.started_at >= DATE_SUB(NOW(), INTERVAL 90 DAY)
                     ))
              ORDER BY m.field1, m.field2",
-            $rptMemberVars
+            array_merge($rptMemberVars, $memberIdVars)
         );
         $member_link_cols[] = 0;
         $member_link_cols[] = 1;
@@ -1223,11 +1270,11 @@ switch ($report) {
                 AND te.started_at >= ?
                 AND te.started_at <= ?
                 AND te.status IN ('self_reported','approved')
-             WHERE m.deleted_at IS NULL {$rptMemberFrag}
+             WHERE m.deleted_at IS NULL {$rptMemberFrag}{$memberIdFrag}
              GROUP BY m.id
              HAVING entry_count > 0
              ORDER BY total_hours DESC",
-            array_merge([$start_date . ' 00:00:00', $end_date . ' 23:59:59'], $rptMemberVars)
+            array_merge([$start_date . ' 00:00:00', $end_date . ' 23:59:59'], $rptMemberVars, $memberIdVars)
         );
         $totalHours = 0;
         foreach ($rows as $r) $totalHours += (float) $r['total_hours'];
@@ -1241,6 +1288,21 @@ switch ($report) {
 }
 
 ini_set('display_errors', $prevDisplay);
+
+// Surface the active member filter in the report header, same as the
+// incident-type reports do for their responder/incident filters (built
+// client-side there from the dropdown's own selected text; done here
+// instead since the Personnel filter is new and this is the one place
+// that already knows $member_id was applied and IDOR-checked).
+if ($isPersonnel && $member_id > 0) {
+    $memberName = safe_fetch_value_rpt(
+        "SELECT TRIM(CONCAT(field2, ' ', field1)) FROM `{$prefix}member` WHERE id = ?",
+        [$member_id]
+    );
+    if ($memberName) {
+        $period_label .= ' — ' . $memberName;
+    }
+}
 
 // Personnel report member-id extraction (drill-down links) — read from the
 // FINAL $rows order, not built alongside the fetch loops above: several

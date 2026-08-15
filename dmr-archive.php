@@ -32,7 +32,10 @@ require_once __DIR__ . '/inc/force-pw-change.php';
 force_pw_change_redirect();
 
 // Same RBAC gate as api/dmr-audio.php and api/dmr-history.php.
-$canView = is_admin() || rbac_can('action.dmr_receive') || rbac_can('action.play_dmr_audio');
+// action.play_dmr_audio dropped 2026-08-15 (tools/rbac_permission_audit.php)
+// -- no such permission was ever seeded; action.dmr_receive already covers
+// DMR audio access.
+$canView = is_admin() || rbac_can('action.dmr_receive');
 if (!$canView) {
     http_response_code(403);
     echo '<h1>403 — Missing permission: action.dmr_receive</h1>';

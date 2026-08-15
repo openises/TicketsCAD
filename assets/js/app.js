@@ -2432,33 +2432,98 @@
                     return;
                 }
 
-                // Responding / On Scene — per-assign path unchanged.
-                fetch('api/incident-assign.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        action: 'update_status',
-                        ticket_id: tid,
-                        assign_id: aid,
-                        new_status: step,
-                        csrf_token: _csrf()
-                    })
-                })
-                .then(function (r) { return r.json(); })
-                .then(function (data) {
-                    if (data.error) {
-                        alert(data.error); btn.disabled = false;
+                // Responding / On Scene — per-assign path. GH#59 (dashboard
+                // quick-select, 2026-08-14): this button used to send only
+                // the bare action name ('on_scene'), never a specific
+                // un_status id. api/incident-assign.php only prefers a
+                // specific id when one is actually supplied (new_status_id);
+                // without it, assign_update_status_internal() falls back to
+                // "whichever status mapped to this action sorts first" —
+                // the exact bug already fixed on the Incident page
+                // (77d26c5), just unreachable from here because this
+                // control never sent an id at all. On an install with only
+                // one status mapped to the action, resolve and submit it
+                // automatically (no change in click count). On an install
+                // with more than one (e.g. "On Scene" + a custom "At Scene"
+                // alias, both incident_action='on_scene'), the generic
+                // button can't know which one the dispatcher means — swap
+                // it for one button per specific status, same pattern the
+                // "Or change the unit's overall status" list already uses.
+                _loadUnStatusOptions().then(function (options) {
+                    var matches = options.filter(function (o) {
+                        return o.incident_action === step;
+                    });
+                    if (matches.length === 1) {
+                        _postAssignStep(btn, aid, tid, handle, step, matches[0].id, matches[0].status_val);
+                    } else if (matches.length > 1) {
+                        _showAssignStepChoices(btn, aid, tid, handle, step, matches);
                     } else {
-                        showBriefToast(handle + ' → ' + step);
-                        // Keep modal open so dispatcher can update the
-                        // OTHER assignment too (Eric's core use case:
-                        // clear from one, responding to next).
-                        EventBus.emit('widget:refresh', { widget: 'responders' });
+                        // Nothing mapped to this action on this install —
+                        // fall back to the legacy action-name path so the
+                        // button still works.
+                        _postAssignStep(btn, aid, tid, handle, step, null, null);
                     }
-                })
-                .catch(function () { alert('Network error'); btn.disabled = false; });
+                });
             });
         });
+    }
+
+    // GH#59 helper — submit a per-assignment Responding/On Scene change,
+    // preferring a specific un_status id (statusId) over the bare action
+    // name when one was resolved. statusLabel is used for the toast so it
+    // reads e.g. "GH59 → On Scene" instead of the raw action string.
+    function _postAssignStep(btn, aid, tid, handle, step, statusId, statusLabel) {
+        var payload = {
+            action: 'update_status',
+            ticket_id: tid,
+            assign_id: aid,
+            csrf_token: _csrf()
+        };
+        if (statusId) {
+            payload.new_status_id = statusId;
+        } else {
+            payload.new_status = step;
+        }
+        fetch('api/incident-assign.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.error) {
+                alert(data.error); btn.disabled = false;
+            } else {
+                showBriefToast(handle + ' → ' + (statusLabel || step));
+                // Keep modal open so dispatcher can update the
+                // OTHER assignment too (Eric's core use case:
+                // clear from one, responding to next).
+                EventBus.emit('widget:refresh', { widget: 'responders' });
+            }
+        })
+        .catch(function () { alert('Network error'); btn.disabled = false; });
+    }
+
+    // GH#59 helper — more than one un_status maps to the clicked action;
+    // replace the ambiguous generic button with one button per specific
+    // status so the dispatcher's choice is explicit, not guessed.
+    function _showAssignStepChoices(btn, aid, tid, handle, step, matches) {
+        var group = document.createElement('div');
+        group.className = 'd-flex flex-wrap gap-1 mt-1 resp-assign-step-choices';
+        matches.forEach(function (o) {
+            var b = document.createElement('button');
+            b.className = 'btn btn-xs resp-assign-step-choice-btn';
+            b.style.background = o.bg_color || '#6c757d';
+            b.style.color = o.text_color || '#fff';
+            b.textContent = o.status_val;
+            b.addEventListener('click', function () {
+                group.querySelectorAll('button').forEach(function (x) { x.disabled = true; });
+                _postAssignStep(btn, aid, tid, handle, step, o.id, o.status_val);
+            });
+            group.appendChild(b);
+        });
+        btn.insertAdjacentElement('afterend', group);
+        btn.remove();
     }
 
     function _legacyPerAssignClear(btn, aid, tid, handle) {
@@ -2662,7 +2727,18 @@
             var v = el.value;
             if (type === 'numeric' || type === 'mileage' || type === 'facility') {
                 if (v === '' || v == null) return null;
-                return parseFloat(v) || (type === 'facility' ? parseInt(v, 10) : null);
+                // GH#52 (cbyrdmo, 2026-08-15) -- `parseFloat(v) || fallback`
+                // treated a legitimate 0 (e.g. a trip gauge reset to zero)
+                // as falsy and fell through to the fallback, which is null
+                // for mileage/numeric -- so entering "0" always read back
+                // as "field is required" even though 0 was typed. Check
+                // isNaN explicitly instead of relying on truthiness.
+                if (type === 'facility') {
+                    var fid = parseInt(v, 10);
+                    return isNaN(fid) ? null : fid;
+                }
+                var num = parseFloat(v);
+                return isNaN(num) ? null : num;
             }
             return v;
         }

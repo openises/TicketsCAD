@@ -35,6 +35,7 @@ require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/audit.php';
 require_once __DIR__ . '/../inc/access.php';
 require_once __DIR__ . '/../inc/upload-config.php';
+require_once __DIR__ . '/../inc/served-dir.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $prefix = $GLOBALS['db_prefix'] ?? '';
@@ -95,6 +96,14 @@ if (!file_exists($htaccess)) {
         . "    Require all denied\n"
         . "</FilesMatch>\n"
         . "Options -ExecCGI\n");
+}
+// IIS never reads .htaccess, and this whole directory is .gitignore'd, so
+// this runtime write is the only way its web.config reaches a real
+// install. Extension list IS $ALLOWED_EXT_MIME's own keys, not a fifth
+// hand-copied duplicate — see served_dir_harden_allowlist()'s docblock.
+if (!file_exists($uploadDir . '/web.config')) {
+    served_dir_harden_allowlist($uploadDir, 'File attachments (api/upload.php)',
+        array_map(static fn(string $ext): string => '.' . $ext, array_keys($ALLOWED_EXT_MIME)));
 }
 
 // Ensure file_uploads table exists

@@ -9,6 +9,7 @@
 #   3b. tools/legacy_level_audit.php             (API gate ↔ the page's RBAC gate)
 #   3c. tools/timezone_audit.php                 (stored clock ↔ the clock queried)
 #   3d. tools/ui_consistency_audit.php           (new UI ↔ the product's conventions)
+#   3e. tools/rbac_permission_audit.php          (rbac_can() code ↔ real permissions row)
 #   4. tools/gen_schema_manifest.php --check     (manifest ↔ what the code writes)
 #   5. tools/generate-sbom.php --check/--verify  (SBOM ↔ dependencies + signature)
 #
@@ -113,6 +114,24 @@ if [ -f tools/ui_consistency_audit.php ]; then
         echo "✗ UI-consistency audit found NEW interface drift:"
         echo "$OUT" | tail -20
         echo "  Conventions: php tools/ui_consistency_audit.php --rules"
+        FAILED=1
+    fi
+fi
+
+# ── 3e. RBAC permission-code audit (needs DB; warn-and-pass if unreachable) ──
+# A rbac_can('some.code')/rbac_require_screen('some.code') referencing a
+# permission with no row in the permissions table can never be granted to
+# any role — found app-wide 2026-08-15 (an external-API bug report plus a
+# wider pass), including api/external/v1/incidents.php's read gate being
+# reachable by Super Admin tokens only.
+if [ -f tools/rbac_permission_audit.php ]; then
+    OUT="$("$PHP" tools/rbac_permission_audit.php 2>&1)"
+    CODE=$?
+    if echo "$OUT" | grep -qi "connection failed\|Access denied\|Unknown database"; then
+        echo "⚠ RBAC permission-code audit skipped (database unreachable) — CI will run it"
+    elif [ $CODE -ne 0 ]; then
+        echo "✗ RBAC permission-code audit found a code with no permissions-table row:"
+        echo "$OUT" | tail -20
         FAILED=1
     fi
 fi

@@ -681,7 +681,7 @@ foreach ($personnelSections as $sec) {
                                 Incident Action
                                 <i class="bi bi-question-circle text-body-secondary" tabindex="0"
                                    data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
-                                   data-bs-content="When a dispatcher picks this status on an incident assignment, stamp the matching assigns timestamp. Dispatched = on assign; Responding/On Scene/Clear = the obvious assigns column. None = just record the status, no timestamp."
+                                   data-bs-content="When a dispatcher picks this status on an incident assignment, stamp the matching assigns timestamp. Dispatched = on assign; Responding/On Scene/Clear = the obvious assigns column. None = just record the status, no timestamp. Each of these timestamps is write-once per assignment: pointing a SECOND status at On Scene (e.g. a 'Facility Arrived' step meant to mark a later leg of the same call) will change the unit's status and add an action-log entry, but will NOT re-stamp On Scene if it is already set — the status change looks like it worked, but the incident timeline gains nothing."
                                    title="Incident action help"></i>
                             </label>
                             <select class="form-select form-select-sm" id="statusIncidentAction" name="incident_action">

@@ -116,7 +116,17 @@
             var v = el.value;
             if (type === 'numeric' || type === 'mileage' || type === 'facility') {
                 if (v === '' || v == null) return null;
-                return type === 'facility' ? (parseInt(v, 10) || null) : (parseFloat(v));
+                // Same fix as app.js's sibling collect() (GH#52, cbyrdmo,
+                // 2026-08-15): a bare `parseInt(...) || fallback` treats a
+                // facility id of 0 as falsy and silently drops it. Facility
+                // ids start at 1 in practice, but check isNaN explicitly
+                // rather than leaning on the same anti-pattern that broke
+                // mileage=0 in the sibling file.
+                if (type === 'facility') {
+                    var fid = parseInt(v, 10);
+                    return isNaN(fid) ? null : fid;
+                }
+                return parseFloat(v);
             }
             return v;
         }

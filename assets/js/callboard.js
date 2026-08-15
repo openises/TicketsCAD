@@ -217,7 +217,15 @@
     function renderRow(inc) {
         var sevClass = 'cb-row-sev-' + (inc.severity || 0);
         var newClass = inc._isNew ? ' cb-row-new' : '';
-        var elapsedInfo = getElapsedInfo(inc.created);
+        // GH#62 (rjonesbsink, 2026-08-15) -- a closed call's elapsed timer
+        // used to keep counting from `created` to "now" forever, since
+        // getElapsedInfo() had no way to know the call had ended -- even
+        // though api/callboard.php already returns problemend and this same
+        // file already uses it 120 lines below for the Closed timeline step.
+        // Same isClosed condition as that existing check, so both agree on
+        // what "closed" means.
+        var isClosed = inc.problemend && parseInt(inc.status, 10) === 1;
+        var elapsedInfo = getElapsedInfo(inc.created, isClosed ? inc.problemend : null);
 
         var addr = inc.street || '';
         if (inc.city) addr += (addr ? ', ' : '') + inc.city;
@@ -262,7 +270,8 @@
         html += '<td class="cb-timestamp">' + formatTimestamp(inc.created) + '</td>';
 
         // Elapsed
-        html += '<td><span class="cb-elapsed ' + elapsedInfo.cssClass + '" data-created="' + escAttr(inc.created || '') + '">'
+        html += '<td><span class="cb-elapsed ' + elapsedInfo.cssClass + '" data-created="' + escAttr(inc.created || '') + '"'
+            + (isClosed ? ' data-problemend="' + escAttr(inc.problemend) + '"' : '') + '>'
             + elapsedInfo.text + '</span></td>';
 
         // Progression
@@ -291,12 +300,16 @@
     }
 
     // ── Elapsed Time ────────────────────────────────────────────────
-    function getElapsedInfo(created) {
+    // GH#62 -- end defaults to "now" (still running), but a closed call
+    // passes its problemend timestamp so the elapsed value freezes at the
+    // moment it actually closed instead of continuing to climb toward red
+    // and critical for a call that is finished.
+    function getElapsedInfo(created, problemend) {
         if (!created) return { text: '--:--', cssClass: 'cb-elapsed-green', seconds: 0 };
 
-        var now = new Date();
         var start = new Date(created);
-        var diff = Math.floor((now.getTime() - start.getTime()) / 1000);
+        var end = problemend ? new Date(problemend) : new Date();
+        var diff = Math.floor((end.getTime() - start.getTime()) / 1000);
 
         if (diff < 0) diff = 0;
 
@@ -333,8 +346,9 @@
         for (var i = 0; i < cells.length; i++) {
             var created = cells[i].getAttribute('data-created');
             if (!created) continue;
+            var problemend = cells[i].getAttribute('data-problemend');
 
-            var info = getElapsedInfo(created);
+            var info = getElapsedInfo(created, problemend);
             cells[i].textContent = info.text;
 
             // Update CSS class for color transition

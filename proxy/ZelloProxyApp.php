@@ -915,11 +915,17 @@ class ZelloProxyApp implements MessageComponentInterface
 
         // Channel status
         if ($command === 'on_channel_status') {
+            // GH#66 (Ron Jones, 2026-08-15) — `?? 0` collapsed "Zello did
+            // not report occupancy" and "zero people are in the channel"
+            // into the same value, so on a tier/config where Zello never
+            // sends users_online, the widget's label quietly asserted an
+            // empty channel rather than an unknown one. Preserve the
+            // absence as null and let the widget render it honestly.
             $this->broadcast([
                 'type'           => 'channel_status',
                 'channel'        => $data['channel'] ?? '',
                 'status'         => $data['status'] ?? '',
-                'users_online'   => $data['users_online'] ?? 0,
+                'users_online'   => array_key_exists('users_online', $data) ? $data['users_online'] : null,
             ]);
             return;
         }

@@ -19,6 +19,7 @@
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
 
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../inc/served-dir.php';
 
 $verbose = in_array('--verbose', $argv ?? [], true);
 $prefix  = $GLOBALS['db_prefix'] ?? '';
@@ -754,6 +755,40 @@ step('uploads/.htaccess present',
             . "    Require all denied\n</FilesMatch>\nOptions -ExecCGI\n");
         if (!file_exists($htaccess)) {
             throw new Exception('Could not write uploads/.htaccess (check perms)');
+        }
+    });
+
+// ─────────────────────────────────────────────────────────────────────
+// 10b. uploads/web.config + cache/web.config present (architecture.md §6
+//      item 1 — the IIS equivalent of the .htaccess step above; IIS never
+//      reads .htaccess, and both directories are wholesale .gitignore'd, so
+//      this runtime write is the ONLY way either file reaches a real
+//      install. Extension list MUST match $ALLOWED_EXT_MIME in
+//      api/upload.php and api/file-upload.php — tests/
+//      test_web_upload_extension_sync.php gates the three staying in sync.
+// ─────────────────────────────────────────────────────────────────────
+step('uploads/web.config present',
+    fn() => file_exists($uploadsDir . '/web.config'),
+    function () use ($uploadsDir) {
+        served_dir_harden_allowlist($uploadsDir, 'File attachments (api/upload.php)', [
+            '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.pdf',
+            '.csv', '.tsv', '.txt', '.log', '.json', '.doc', '.docx',
+            '.xls', '.xlsx', '.ppt', '.pptx', '.rtf', '.odt', '.ods',
+            '.mp3', '.wav', '.mp4', '.webm',
+        ]);
+        if (!file_exists($uploadsDir . '/web.config')) {
+            throw new Exception('Could not write uploads/web.config (check perms)');
+        }
+    });
+
+step('cache/web.config present',
+    fn() => file_exists(realpath(__DIR__ . '/../cache') !== false
+        ? realpath(__DIR__ . '/../cache') . '/web.config' : '/nonexistent'),
+    function () {
+        $cacheDir = realpath(__DIR__ . '/../cache') ?: __DIR__ . '/../cache';
+        served_dir_harden_allowlist($cacheDir, 'NWS weather-zone cache + backup health probe', ['.json']);
+        if (!file_exists($cacheDir . '/web.config')) {
+            throw new Exception('Could not write cache/web.config (check perms)');
         }
     });
 

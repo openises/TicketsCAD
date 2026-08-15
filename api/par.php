@@ -90,7 +90,7 @@ if ($method === 'GET' && $action === 'for_responder') {
 // pattern because reinventing was the wrong call.
 if ($method === 'GET' && $action === 'overdue') {
     require_once __DIR__ . '/../inc/incident-number.php';   // incnum_display()
-    if (!rbac_can('action.view_incident') && !rbac_can('action.manage_par')) {
+    if (!rbac_can('action.manage_par')) { // action.view_incident dropped 2026-08-15, tools/rbac_permission_audit.php -- never seeded
         json_error('Forbidden', 403);
     }
     if (!par_enabled()) {
@@ -164,7 +164,7 @@ if ($method === 'GET' && $action === 'overdue') {
 }
 
 if ($method === 'GET' && $action === 'cycle') {
-    if (!rbac_can('action.view_incident') && !rbac_can('action.manage_par')) {
+    if (!rbac_can('action.manage_par')) { // action.view_incident dropped 2026-08-15, tools/rbac_permission_audit.php -- never seeded
         json_error('Forbidden', 403);
     }
     $id = (int) ($_GET['id'] ?? 0);
@@ -173,7 +173,7 @@ if ($method === 'GET' && $action === 'cycle') {
 }
 
 if ($method === 'GET' && $action === 'for_ticket') {
-    if (!rbac_can('action.view_incident') && !rbac_can('action.manage_par')) {
+    if (!rbac_can('action.manage_par')) { // action.view_incident dropped 2026-08-15, tools/rbac_permission_audit.php -- never seeded
         json_error('Forbidden', 403);
     }
     $ticketId = (int) ($_GET['ticket'] ?? 0);
@@ -237,7 +237,7 @@ if ($method === 'POST' && $action === 'set_override') {
 // "26-0091"), not just the internal ticket id; resolved the same way
 // as the Reports After Action filter.
 if ($method === 'GET' && $action === 'history') {
-    if (!rbac_can('action.view_incident') && !rbac_can('action.manage_par')) {
+    if (!rbac_can('action.manage_par')) { // action.view_incident dropped 2026-08-15, tools/rbac_permission_audit.php -- never seeded
         json_error('Forbidden', 403);
     }
     require_once __DIR__ . '/../inc/incident-number.php';
@@ -271,7 +271,8 @@ if ($method === 'GET' && $action === 'history') {
 // Phase 16 follow-on (2026-06-11) — agency PAR compliance report.
 // Counts cycles + acks/misses in a date window. CSV format optional.
 if ($method === 'GET' && $action === 'report_compliance') {
-    if (!rbac_can('action.manage_par') && !rbac_can('action.view_incident') && !is_admin()) {
+    // action.view_incident dropped 2026-08-15, tools/rbac_permission_audit.php -- never seeded
+    if (!rbac_can('action.manage_par') && !is_admin()) {
         json_error('Forbidden', 403);
     }
     $from = (string) ($_GET['from'] ?? date('Y-m-d', strtotime('-30 days')));

@@ -760,9 +760,22 @@ test('tools/web.config ships', in_array('tools/web.config', $rel, true));
 // held to "denies everything except .py" instead, checked both ways below
 // (that .py IS served here, AND that .zip/.php/the directory itself are
 // still denied) so the exception cannot silently widen.
+//
+// uploads/web.config and cache/web.config (2026-08-14, architecture.md §6
+// item 1) are the same shape for a different reason: these directories hold
+// legitimate user-facing content (uploaded attachments; cached weather-zone
+// JSON), so "deny everything" is wrong for them — but every extension NOT
+// on the upload endpoints' own MIME allowlist (api/upload.php,
+// api/file-upload.php's $ALLOWED_EXT_MIME) must still 404, script
+// extensions above all. Keep this list in sync with that allowlist —
+// tests/test_web_upload_extension_sync.php gates the two staying equal.
 $narrowExceptions = [
     'services/meshtastic/web.config' => ['.py'],
     'services/meshcore/web.config'   => ['.py'],
+    'uploads/web.config' => ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.pdf',
+        '.csv', '.tsv', '.txt', '.log', '.json', '.doc', '.docx', '.xls', '.xlsx',
+        '.ppt', '.pptx', '.rtf', '.odt', '.ods', '.mp3', '.wav', '.mp4', '.webm'],
+    'cache/web.config' => ['.json'],
 ];
 
 foreach ($configs as $i => $path) {
@@ -773,8 +786,20 @@ foreach ($configs as $i => $path) {
         $problems === [], implode(' | ', $problems));
 
     if ($allowedExt) {
-        test($rel[$i] . ' serves the declared exception but still denies a script and a directory url',
-            iis_model_verdict($text, '/x/bridge_v2.py') === 'served'
+        // Generic over the file's OWN declared list, not hardcoded to .py —
+        // uploads/web.config declares 24 extensions, not one, and each must
+        // actually be served or the "allow-list" is decorative.
+        $allServed = true;
+        foreach ($allowedExt as $ext) {
+            if (iis_model_verdict($text, '/x/file' . $ext) !== 'served') {
+                $allServed = false;
+                test($rel[$i] . ' serves its declared ' . $ext . ' entry', false,
+                    'declared allowed="true" but the model says denied');
+            }
+        }
+        test($rel[$i] . ' serves every extension it declares allowed', $allServed);
+        test($rel[$i] . ' still denies a script, an undeclared file type, and a directory url',
+            iis_model_verdict($text, '/x/shell.php') === 'denied'
             && iis_model_verdict($text, '/x/archive.zip') === 'denied'
             && iis_model_verdict($text, '/x/run_migrations.php') === 'denied'
             && iis_model_verdict($text, '/x/') === 'denied');
@@ -793,6 +818,17 @@ foreach ($configs as $i => $path) {
             strpos($text, '<fileExtensions allowUnlisted="false" />') !== false,
             'every shipped web.config carries the same four lines (or is a declared exception, handled above)');
     }
+
+    // architecture.md §6 item 2 (2026-08-14): double-encoded path segments
+    // (e.g. "..%255c..") can smuggle a request past extension/path-based
+    // rules that pattern-match the raw URL before IIS canonicalizes it.
+    // allowDoubleEscaping is an attribute of <requestFiltering> itself, not
+    // <fileExtensions>, so it applies to EVERY file here — deny-all and
+    // narrow-exception alike — without changing either shape checked above.
+    test($rel[$i] . ' rejects double-escaped URLs (allowDoubleEscaping="false")',
+        (bool) preg_match('/<requestFiltering\s+allowDoubleEscaping="false"\s*>/', $text),
+        'requestFiltering must carry allowDoubleEscaping="false" as a defense-in-depth layer'
+        . ' against canonicalization bypass, independent of the file-extension deny');
 }
 
 // A root web.config would apply site-wide, which is where a hidden segment
@@ -933,6 +969,8 @@ foreach ($embedded as $name) {
         && iis_model_verdict($snippet, '/backups/') === 'denied');
     test("$name: it writes the same shape the tree ships",
         strpos($snippet, '<fileExtensions allowUnlisted="false" />') !== false);
+    test("$name: it also carries allowDoubleEscaping=\"false\" (architecture.md §6 item 2)",
+        (bool) preg_match('/<requestFiltering\s+allowDoubleEscaping="false"\s*>/', $snippet));
 }
 
 echo "\n=== $passed passed, $failed failed ===\n";
