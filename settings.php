@@ -681,7 +681,7 @@ foreach ($personnelSections as $sec) {
                                 Incident Action
                                 <i class="bi bi-question-circle text-body-secondary" tabindex="0"
                                    data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
-                                   data-bs-content="When a dispatcher picks this status on an incident assignment, stamp the matching assigns timestamp. Dispatched = on assign; Responding/On Scene/Clear = the obvious assigns column. None = just record the status, no timestamp. Each of these timestamps is write-once per assignment: pointing a SECOND status at On Scene (e.g. a 'Facility Arrived' step meant to mark a later leg of the same call) will change the unit's status and add an action-log entry, but will NOT re-stamp On Scene if it is already set — the status change looks like it worked, but the incident timeline gains nothing."
+                                   data-bs-content="When a dispatcher picks this status on an incident assignment, stamp the matching assigns timestamp. Dispatched = on assign; Responding/On Scene/Facility En Route/Facility Arrived/Clear = the obvious assigns column. None = just record the status, no timestamp. Each of these timestamps is write-once per assignment — pointing a second status at the SAME action (e.g. two different statuses both set to On Scene) will change the unit's status and add an action-log entry, but will NOT re-stamp a timestamp that is already set. If you're tracking a unit transporting to a facility after the original scene, use Facility En Route / Facility Arrived (GH#64) instead of overloading On Scene — those have their own dedicated timestamps (assigns.u2fenr / assigns.u2farr) so the facility leg shows up in the incident timeline too."
                                    title="Incident action help"></i>
                             </label>
                             <select class="form-select form-select-sm" id="statusIncidentAction" name="incident_action">
@@ -689,6 +689,8 @@ foreach ($personnelSections as $sec) {
                                 <option value="dispatched">Dispatched</option>
                                 <option value="responding">Responding</option>
                                 <option value="on_scene">On Scene</option>
+                                <option value="facility_enroute">Facility En Route</option>
+                                <option value="facility_arrived">Facility Arrived</option>
                                 <option value="clear">Clear</option>
                             </select>
                         </div>

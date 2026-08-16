@@ -303,9 +303,21 @@ function par_unit_last_activity_at(int $ticketId, int $responderId): ?int {
     $candidates = [];
 
     // 1. Assigns timestamps (only those whose action resets)
+    // GH#64 — u2fenr/u2farr (facility_enroute/facility_arrived) are
+    // assigns columns, same as dispatched/responding/on_scene, so an
+    // admin who marks one of those two resets_par=1 needs the query
+    // and the column-name mapping to actually reach it. Column name
+    // differs from the incident_action string for these two.
+    $incidentActionToColumn = [
+        'dispatched'        => 'dispatched',
+        'responding'        => 'responding',
+        'on_scene'          => 'on_scene',
+        'facility_enroute'  => 'u2fenr',
+        'facility_arrived'  => 'u2farr',
+    ];
     try {
         $a = db_fetch_one(
-            "SELECT dispatched, responding, on_scene
+            "SELECT dispatched, responding, on_scene, u2fenr, u2farr
                FROM `{$prefix}assigns`
               WHERE ticket_id = ? AND responder_id = ?
                 AND (clear IS NULL OR DATE_FORMAT(clear, '%y') = '00')
@@ -313,8 +325,8 @@ function par_unit_last_activity_at(int $ticketId, int $responderId): ?int {
             [$ticketId, $responderId]
         );
         if ($a) {
-            foreach (['dispatched','responding','on_scene'] as $col) {
-                if (empty($resetsActions[$col])) continue;
+            foreach ($incidentActionToColumn as $action => $col) {
+                if (empty($resetsActions[$action])) continue;
                 if (empty($a[$col]) || substr((string) $a[$col], 0, 4) === '0000') continue;
                 $t = strtotime((string) $a[$col]);
                 if ($t) $candidates[] = $t;

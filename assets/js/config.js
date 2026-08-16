@@ -4637,7 +4637,11 @@
             if (item && item.resets_par !== undefined && item.resets_par !== null) {
                 resetsParEl.checked = parseInt(item.resets_par, 10) === 1;
             } else if (item && item.incident_action) {
-                resetsParEl.checked = ['dispatched','responding','on_scene'].indexOf(item.incident_action) !== -1;
+                // GH#64 — facility_enroute/facility_arrived are the same
+                // "active-call milestone" category as on_scene, so a
+                // status newly pointed at either defaults to Resets PAR
+                // checked, same as the original three.
+                resetsParEl.checked = ['dispatched','responding','on_scene','facility_enroute','facility_arrived'].indexOf(item.incident_action) !== -1;
             } else {
                 resetsParEl.checked = false;
             }

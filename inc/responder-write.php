@@ -592,15 +592,20 @@ function responder_set_status_internal(
 
     // Phase 72 + Phase 90-pre: action row + assigns timestamp stamping
     // for every open assignment.
+    // GH#64 (Ron Jones, 2026-08-15) — facility_enroute/facility_arrived
+    // give the facility leg of a transport its own write-once slots
+    // (assigns.u2fenr/u2farr) instead of forcing admins to overload
+    // on_scene a second time, which silently no-opped once on_scene was
+    // already stamped from the original dispatch.
     $incidentAction  = trim((string) ($status['incident_action'] ?? ''));
-    $stampableActions = ['dispatched', 'responding', 'on_scene', 'clear'];
+    $stampableActions = ['dispatched', 'responding', 'on_scene', 'facility_enroute', 'facility_arrived', 'clear'];
     $shouldStamp = in_array($incidentAction, $stampableActions, true);
 
     $actionLogged  = 0;
     $timestampsSet = 0;
     try {
         $openAssigns = db_fetch_all(
-            "SELECT a.id, a.ticket_id, a.responding, a.on_scene, a.clear
+            "SELECT a.id, a.ticket_id, a.responding, a.on_scene, a.clear, a.u2fenr, a.u2farr
              FROM `{$prefix}assigns` a
              WHERE a.responder_id = ?
                AND (a.clear IS NULL
@@ -662,6 +667,35 @@ function responder_set_status_internal(
                             );
                         }
                         $timestampsSet++;
+                    } elseif ($incidentAction === 'facility_enroute') {
+                        if (empty($oa['u2fenr']) || substr((string) $oa['u2fenr'], 0, 4) === '0000') {
+                            db_query(
+                                "UPDATE `{$prefix}assigns` SET `u2fenr` = NOW() WHERE `id` = ?",
+                                [(int) $oa['id']]
+                            );
+                            $timestampsSet++;
+                        }
+                    } elseif ($incidentAction === 'facility_arrived') {
+                        // Same backstamp shape as on_scene/responding above:
+                        // "arrived at facility" implies "was en route to
+                        // facility" -- if a dispatcher jumps straight to
+                        // Facility Arrived without an intermediate En Route
+                        // status, both timestamps land together rather than
+                        // leaving u2fenr permanently null on a completed leg.
+                        $needEnroute = empty($oa['u2fenr']) || substr((string) $oa['u2fenr'], 0, 4) === '0000';
+                        if ($needEnroute && (empty($oa['u2farr']) || substr((string) $oa['u2farr'], 0, 4) === '0000')) {
+                            db_query(
+                                "UPDATE `{$prefix}assigns` SET `u2fenr` = NOW(), `u2farr` = NOW() WHERE `id` = ?",
+                                [(int) $oa['id']]
+                            );
+                            $timestampsSet++;
+                        } elseif (empty($oa['u2farr']) || substr((string) $oa['u2farr'], 0, 4) === '0000') {
+                            db_query(
+                                "UPDATE `{$prefix}assigns` SET `u2farr` = NOW() WHERE `id` = ?",
+                                [(int) $oa['id']]
+                            );
+                            $timestampsSet++;
+                        }
                     } elseif ($incidentAction === 'clear') {
                         if (empty($oa['clear']) || substr((string) $oa['clear'], 0, 4) === '0000') {
                             db_query(

@@ -2421,7 +2421,9 @@
             '<thead><tr>' +
             '<th>Unit</th><th>Status</th>' +
             '<th title="Distance from incident">Dist</th>' +
-            '<th>Disp</th><th>Resp</th><th>Scene</th><th>Clr</th>' +
+            '<th>Disp</th><th>Resp</th><th>Scene</th>' +
+            '<th title="GH#64 — the facility leg: en route to / arrived at the receiving facility, tracked separately from the original scene so transporting to a hospital after clearing the scene shows in the incident timeline"><i class="bi bi-truck me-1"></i>Facility</th>' +
+            '<th>Clr</th>' +
             '<th title="On-scene elapsed time"><i class="bi bi-stopwatch me-1"></i>Timer</th>' +
             '<th title="Destination hospital for this unit (per-unit receiving facility). In a mass-casualty incident each unit can go to a different facility."><i class="bi bi-hospital me-1"></i>Dest</th>' +
             '<th class="text-end">Actions</th>' +
@@ -2468,6 +2470,15 @@
             if (isCleared) {
                 currentState = 'Cleared';
                 stateClass = 'text-body-secondary';
+            } else if (a.u2farr) {
+                // GH#64 — facility leg outranks the original on-scene state:
+                // the unit has already left the incident scene and arrived
+                // at (or is en route to) the receiving facility.
+                currentState = 'At Facility';
+                stateClass = 'text-success';
+            } else if (a.u2fenr) {
+                currentState = 'To Facility';
+                stateClass = 'text-info';
             } else if (a.on_scene) {
                 currentState = 'On Scene';
                 stateClass = 'text-success';
@@ -2506,6 +2517,17 @@
                     '</div>';
             } else {
                 actionHtml = '<span class="text-body-tertiary small">Cleared</span>';
+            }
+
+            // GH#64 — facility-leg cell: en route / arrived, stacked. Separate
+            // from the original Scene column so a unit transporting after
+            // clearing the original scene shows both legs at once.
+            var facilityHtml = '<span class="text-body-tertiary">—</span>';
+            if (a.u2fenr || a.u2farr) {
+                var facParts = [];
+                if (a.u2fenr) facParts.push('<span title="En route to facility">Enrt ' + formatTime(a.u2fenr) + '</span>');
+                if (a.u2farr) facParts.push('<span title="Arrived at facility">Arr ' + formatTime(a.u2farr) + '</span>');
+                facilityHtml = '<div class="small lh-sm">' + facParts.join('<br>') + '</div>';
             }
 
             // On-scene timer cell
@@ -2576,6 +2598,7 @@
                 '<td>' + formatTime(a.dispatched) + '</td>' +
                 '<td>' + formatTime(a.responding) + '</td>' +
                 '<td>' + formatTime(a.on_scene) + '</td>' +
+                '<td>' + facilityHtml + '</td>' +
                 '<td>' + formatTime(a.clear) + '</td>' +
                 '<td>' + timerHtml + '</td>' +
                 '<td>' + destHtml + '</td>' +

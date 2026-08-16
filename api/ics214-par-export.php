@@ -68,8 +68,15 @@ try {
     // has no fname/lname — the link runs the OTHER way (member.responder_id)
     // and the name columns are first_name/last_name. The old query threw,
     // the catch swallowed it, and this endpoint 404'd for everyone.
+    //
+    // GH#64 investigation (2026-08-15) — m.id is now aliased as member_id so
+    // the builder's own contract (ics214_build_timeline()'s @param docblock:
+    // "row w/ id, name, handle, callsign, member_id") is actually satisfied.
+    // Without it $responder['member_id'] always fell back to 0, so source
+    // (3) of the timeline (action-log entries authored by this responder's
+    // own user account) never matched anything on any real call.
     $responder = db_fetch_one(
-        "SELECT r.id, r.name, r.handle, r.callsign, m.first_name, m.last_name
+        "SELECT r.id, r.name, r.handle, r.callsign, m.id AS member_id, m.first_name, m.last_name
            FROM `{$prefix}responder` r
            LEFT JOIN `{$prefix}member` m ON m.responder_id = r.id
           WHERE r.id = ?",

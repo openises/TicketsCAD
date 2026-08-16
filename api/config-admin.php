@@ -426,7 +426,17 @@ if ($section === 'statuses') {
 
         // Phase 25 (2026-06-11) — allowlist the incident_action enum so
         // dispatcher-side dropdowns can only set known assigns columns.
-        $allowedActions = ['', 'dispatched', 'responding', 'on_scene', 'clear'];
+        // GH#64 (2026-08-15) — facility_enroute/facility_arrived are a
+        // FOURTH independent place this same list had to be kept in sync
+        // (alongside inc/responder-write.php's $stampableActions,
+        // inc/assignment-write.php's $validNamed, and the un_status.
+        // incident_action ENUM itself). Missed on the first pass here:
+        // the settings.php dropdown offered the two new options, the
+        // client correctly sent them, and this allowlist silently
+        // coerced them back to '' before the row was ever saved — an
+        // admin who picked "Facility En Route" got a status that
+        // LOOKED saved (no error) but stamped nothing when used.
+        $allowedActions = ['', 'dispatched', 'responding', 'on_scene', 'facility_enroute', 'facility_arrived', 'clear'];
         $incidentAction = trim($input['incident_action'] ?? '');
         if (!in_array($incidentAction, $allowedActions, true)) $incidentAction = '';
         // Phase 31 (2026-06-12) — when units enter this status, reset

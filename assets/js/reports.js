@@ -189,8 +189,17 @@
         // picked on Unit Log kept being sent to every other report tab
         // until a full page reload -- the "have to click Reports from the
         // main menu to get it to reappear correctly" part of the report.
+        // GH#57 follow-up (cbyrdmo, 2026-08-15): same missing-capability
+        // shape as the facility_log/notes_log fix above -- incident_report
+        // was left off this whitelist too. "Show me every incident this
+        // unit was on" is exactly the kind of question the Incidents tab
+        // should answer, and api/reports.php's incident_report case now
+        // supports it (a responder_id EXISTS filter against assigns,
+        // scoped so a ticket with multiple assigned units doesn't get
+        // duplicated).
         var showResponder = (type === 'unit_log' || type === 'dispatch_log' ||
-                             type === 'facility_log' || type === 'notes_log');
+                             type === 'facility_log' || type === 'notes_log' ||
+                             type === 'incident_report');
         responderFilterCol.classList.toggle('d-none', !showResponder);
         if (!showResponder) {
             responderFilter.value = '0';

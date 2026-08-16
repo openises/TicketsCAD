@@ -60,7 +60,16 @@ function ics214_build_timeline(array $responder, int $responderId, string $from,
 
     // 2) Assigns timestamps ───────────────────────────────────────────────
     try {
-        $sql = "SELECT a.ticket_id, a.dispatched, a.responding, a.on_scene, a.clear, t.scope
+        // GH#64 (2026-08-15) — u2fenr/u2farr (unit-to-facility en route /
+        // arrived) join the same four columns this loop already covered.
+        // They existed in the schema and were already read by
+        // api/incident-detail.php + api/responder-detail.php, but nothing
+        // wrote them until the GH#64 fix wired them into the two status-
+        // change paths (inc/responder-write.php, inc/assignment-write.php)
+        // and gave them their own un_status.incident_action options
+        // instead of overloading the write-once on_scene stamp.
+        $sql = "SELECT a.ticket_id, a.dispatched, a.responding, a.on_scene,
+                       a.u2fenr, a.u2farr, a.clear, t.scope
                   FROM `{$prefix}assigns` a
                   LEFT JOIN `{$prefix}ticket` t ON a.ticket_id = t.id
                  WHERE a.responder_id = ?";
@@ -69,7 +78,8 @@ function ics214_build_timeline(array $responder, int $responderId, string $from,
         foreach (db_fetch_all($sql, $params) as $row) {
             $inc = !empty($row['scope']) ? $row['scope'] : ('Incident #' . (int) $row['ticket_id']);
             foreach (['dispatched' => 'Dispatched to', 'responding' => 'Responding to',
-                      'on_scene'   => 'On scene of', 'clear'      => 'Cleared from'] as $col => $verb) {
+                      'on_scene'   => 'On scene of', 'u2fenr'     => 'En route to facility for',
+                      'u2farr'     => 'Arrived at facility for', 'clear' => 'Cleared from'] as $col => $verb) {
                 $ts = $row[$col] ?? null;
                 if (!$ts || substr($ts, 0, 4) === '0000') continue;
                 if ($ts < $from || $ts > $to) continue;
@@ -85,10 +95,20 @@ function ics214_build_timeline(array $responder, int $responderId, string $from,
     // user is the `user` column (NOT action_text/user_id — those don't exist;
     // the previous exporter referenced them and silently returned nothing via
     // its try/catch, a latent bug fixed here).
+    //
+    // GH#64 investigation (2026-08-15) — found in passing: this lookup used
+    // `user`.`member_id`, a column that has never existed on the `user`
+    // table (the real column is `member` — see api/config-admin.php and
+    // api/members.php, which already write/read it correctly). The
+    // exception was swallowed by this same try/catch, so source (3) has
+    // silently returned nothing on every real call since Phase 111 Slice C
+    // shipped — test_ics214_author_source.php even documented working
+    // around it ("needs a user.member_id link that is absent on local dev")
+    // rather than naming it as the bug it was.
     // 3) Action log authored by this responder's user account ──────────────
     try {
         $userId = (int) db_fetch_value(
-            "SELECT `id` FROM `{$prefix}user` WHERE `member_id` = ? LIMIT 1",
+            "SELECT `id` FROM `{$prefix}user` WHERE `member` = ? LIMIT 1",
             [$memberId]
         );
         if ($userId > 0) {

@@ -597,6 +597,19 @@ switch ($report) {
             $params[] = $in_types_filter;
         }
 
+        // GH#57 follow-up (cbyrdmo, 2026-08-15): the responder-filter
+        // dropdown on the Reports page is now shown for Incidents too
+        // (assets/js/reports.js) -- this is what actually makes it filter.
+        // EXISTS, not a JOIN: the main query below has no assigns join at
+        // all (units_assigned is a subquery COUNT), and a ticket can have
+        // more than one assigned unit -- a JOIN would duplicate incident
+        // rows once per assignment.
+        if ($responder_id > 0) {
+            $where_parts[] = "EXISTS (SELECT 1 FROM `{$prefix}assigns` `ra`
+                               WHERE `ra`.`ticket_id` = `t`.`id` AND `ra`.`responder_id` = ?)";
+            $params[] = $responder_id;
+        }
+
         $where = implode(' AND ', $where_parts);
         // Phase 99j-7 — append org-scope filter (empty for Super Admin).
         $where .= $rptTicketFrag;

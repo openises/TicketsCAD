@@ -364,9 +364,16 @@ function assign_update_status_internal(int $assignId, $newStatusInput, int $user
         $newStatus = _assign_action_by_status_id($newStatusId);
     }
 
-    $validNamed = ['responding', 'on_scene', 'clear', ''];
+    // GH#64 (Ron Jones, 2026-08-15) — facility_enroute/facility_arrived
+    // stamp assigns.u2fenr/u2farr, the same write-once-per-leg shape as
+    // responding/on_scene/clear below. This is a SEPARATE status-change
+    // path from inc/responder-write.php (used by incident-detail.php's
+    // own dropdown rather than the dashboard unit-status widget) -- both
+    // must support every incident_action value or the facility leg only
+    // works from one of the two places a dispatcher can change a status.
+    $validNamed = ['responding', 'on_scene', 'facility_enroute', 'facility_arrived', 'clear', ''];
     if (!in_array($newStatus, $validNamed, true)) {
-        return ['errors' => ['Invalid status — must be responding | on_scene | clear (or send new_status_id)']];
+        return ['errors' => ['Invalid status — must be responding | on_scene | facility_enroute | facility_arrived | clear (or send new_status_id)']];
     }
 
     // Fetch assignment + responder display name
@@ -429,6 +436,35 @@ function assign_update_status_internal(int $assignId, $newStatusInput, int $user
             // one the dispatcher picked on the Incident page.
             _assign_set_responder_status($responderId, $newStatusId > 0
                 ? $newStatusId : _assign_status_id_by_action('on_scene'));
+
+        } elseif ($newStatus === 'facility_enroute') {
+            if (empty($assign['u2fenr']) || substr((string) $assign['u2fenr'], 0, 4) === '0000') {
+                db_query(
+                    "UPDATE `{$prefix}assigns` SET `u2fenr` = ? WHERE `id` = ?",
+                    [$now, $assignId]
+                );
+            }
+            _assign_log_action($ticketId, $respName . ' en route to facility', 25, $userId);
+            _assign_set_responder_status($responderId, $newStatusId > 0
+                ? $newStatusId : _assign_status_id_by_action('facility_enroute'));
+
+        } elseif ($newStatus === 'facility_arrived') {
+            // Same backstamp shape as on_scene above -- "arrived at
+            // facility" implies "was en route to facility".
+            if (empty($assign['u2fenr']) || substr((string) $assign['u2fenr'], 0, 4) === '0000') {
+                db_query(
+                    "UPDATE `{$prefix}assigns` SET `u2fenr` = ?, `u2farr` = ? WHERE `id` = ?",
+                    [$now, $now, $assignId]
+                );
+            } else {
+                db_query(
+                    "UPDATE `{$prefix}assigns` SET `u2farr` = ? WHERE `id` = ?",
+                    [$now, $assignId]
+                );
+            }
+            _assign_log_action($ticketId, $respName . ' arrived at facility', 26, $userId);
+            _assign_set_responder_status($responderId, $newStatusId > 0
+                ? $newStatusId : _assign_status_id_by_action('facility_arrived'));
 
         } elseif ($newStatus === 'clear') {
             db_query(

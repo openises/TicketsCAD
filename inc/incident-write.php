@@ -712,7 +712,25 @@ function incident_clear_stragglers(int $ticketId, int $userId, array $opts = [])
                 $ia = strtolower((string) ($cur['incident_action'] ?? ''));
                 $grp = strtolower((string) ($cur['group'] ?? ''));
                 $name = strtolower((string) ($cur['status_val'] ?? ''));
-                $onCall = in_array($ia, ['dispatched', 'responding', 'on_scene'], true)
+                // $onCall === true means "this status is an active-call
+                // milestone tied to THIS incident" -- when the repair runs
+                // (the close cascade never properly cleared this unit),
+                // that's exactly the straggler condition it exists to heal,
+                // so the responder falls through to the Available reset
+                // below. $onCall === false means "looks like an independent
+                // status the dispatcher set on purpose" (Out of Service,
+                // etc.) and is left alone.
+                //
+                // GH#64 — facility_enroute/facility_arrived are milestones
+                // of THIS call, same category as on_scene, not independent
+                // statuses. Before this, a unit stuck transporting to a
+                // facility when its incident got force-closed without a
+                // proper cascade fell through to the name-regex fallback
+                // ("route"/"transport" happen to match), which is fragile —
+                // an admin-named status like "To Hospital" slips past both
+                // the incident_action check and the regex and would be
+                // stuck at that status forever, never healed to Available.
+                $onCall = in_array($ia, ['dispatched', 'responding', 'on_scene', 'facility_enroute', 'facility_arrived'], true)
                     || preg_match('/^(busy|call|disp|enrt)/', $grp)
                     || preg_match('/respond|dispatch|route|scene|transport|busy/', $name);
                 if (!$onCall) continue; // dispatcher set this deliberately — leave it

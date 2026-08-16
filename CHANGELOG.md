@@ -3,6 +3,42 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.21] — 2026-08-16
+
+### Added
+
+- **Facility-leg tracking**: `assigns.u2fenr`/`u2farr` ("unit to facility
+  en route"/"arrived") existed in the schema since the v3 carryover and
+  were already read by two API endpoints, but nothing in v4 ever wrote
+  them, and unit statuses had no way to map to this leg of a call. Reported
+  by a beta tester as an open question; the concrete symptom underneath was
+  that a status pointed at the closest existing option (On Scene) silently
+  did nothing, since On Scene was already stamped from the original
+  dispatch. Unit statuses can now be mapped to dedicated Facility En Route
+  / Facility Arrived actions, wired into both status-change surfaces (the
+  dashboard/mobile unit-status widget and the incident-detail page's own
+  per-assignment dropdown), the incident-detail assignment table (a new
+  Facility column and lifecycle states), the per-responder ICS-214 personal
+  timeline, the conservative-mode straggler-heal logic, and PAR's cadence
+  tracking.
+
+### Fixed
+
+- **Incidents report was missing its responder filter**: the Incidents tab
+  on the Reports page had no way to filter by unit, unlike its sibling
+  reports.
+- **Situation display's incident/unit list could look cut off the screen**
+  when it was actually just scrollable: with an ordinary amount of active
+  data, the list overflowed its panel and the scrollbar was easy to miss.
+  A visible fade now appears at the bottom edge when there's more content
+  below, and the scrollbar itself is wider and higher-contrast.
+- **Settings statuses save silently dropped the two new facility-leg
+  options** on first release of that feature — fixed before it shipped
+  broken.
+- **ICS-214 personal timeline's "authored by this responder's own
+  account" source never returned anything** on any real install (an
+  internal column-name mismatch).
+
 ## [4.2.20] — 2026-08-15
 
 ### Security

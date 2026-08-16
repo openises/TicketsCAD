@@ -109,8 +109,34 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
             backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
             box-shadow: 0 4px 20px rgba(0,0,0,0.35);
         }
-        #sitOverlay::-webkit-scrollbar { width: 5px; }
-        #sitOverlay::-webkit-scrollbar-thumb { background: var(--bs-border-color); border-radius: 3px; }
+        #sitOverlay::-webkit-scrollbar { width: 8px; }
+        #sitOverlay::-webkit-scrollbar-thumb { background: var(--bs-border-color); border-radius: 4px; }
+        #sitOverlay::-webkit-scrollbar-thumb:hover { background: var(--bs-secondary-color); }
+
+        /* GH#47 follow-up (cbyrdmo, 2026-08-15) — with enough active
+           incidents/units the list overflows #sitOverlay's height (it's
+           capped at calc(100% - 20px) of the viewport) and the thin
+           scrollbar was easy to miss, so a real dispatcher's day-to-day
+           dataset (confirmed reproducible with 26 open incidents / 18
+           units on a plain 1366x768 desktop, no exotic viewport needed)
+           looked like the bottom of the list had simply been cut off the
+           screen rather than needing a scroll. This fade sits pinned to
+           the scroll container's own bottom edge (position: sticky
+           inside #sitOverlay, which is itself the overflow-y:auto
+           container) so it's always exactly where the visible content
+           actually ends, in any tab (incidents/units/facilities/events
+           are siblings — being the last DOM child means it trails
+           whichever one is currently displayed). Toggled by JS based on
+           actual scroll position so it disappears once you've reached
+           the true end of the list. */
+        #sitOverlayFade {
+            position: sticky; bottom: -1px; left: 0; right: 0;
+            height: 28px; margin-top: -28px; z-index: 2;
+            background: linear-gradient(to bottom, transparent, rgba(var(--bs-body-bg-rgb), 0.92) 70%);
+            pointer-events: none;
+            opacity: 0; transition: opacity 0.15s ease;
+        }
+        #sitOverlay.has-more-below #sitOverlayFade { opacity: 1; }
 
         /* Summary bar */
         .sit-summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -190,6 +216,10 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
                 border-top: 1px solid var(--bs-border-color);
                 overflow-y: visible;
             }
+            /* Mobile stacks the whole page and scrolls the document, not
+               #sitOverlay itself -- the bottom-of-list fade only means
+               something for the desktop internal-scroll layout above. */
+            #sitOverlayFade { display: none; }
             /* Map control overlays would collide with the new stacked
                layout — hide the optional draw/markups affordances on
                narrow screens. They're available on the desktop UI. */
@@ -427,6 +457,11 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
                 </tbody>
             </table>
         </div>
+
+        <!-- GH#47 follow-up -- see the #sitOverlayFade CSS comment above.
+             Always the last child so it trails whichever tab's body is
+             currently visible (they're siblings toggled via display). -->
+        <div id="sitOverlayFade"></div>
     </div>
 
     <!-- Draw Toolbar -->
@@ -1558,6 +1593,35 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
         ev.preventDefault();
         switchSitTab(a.getAttribute('data-sittab'));
     });
+
+    // GH#47 follow-up (cbyrdmo, 2026-08-15) — the incidents/units list can
+    // overflow #sitOverlay's fixed height with an entirely normal amount
+    // of active data (reproduced with 26 open incidents / 18 units on a
+    // plain desktop viewport), and the thin auto-scrollbar was easy to
+    // miss, so the cut-off bottom of the list read as missing content
+    // rather than "scroll for more." A MutationObserver (rather than
+    // hooking every render function that rebuilds sitBody/sitUnitsBody/
+    // etc.) keeps this correct no matter which list changed or refreshed.
+    //
+    // Deliberately NOT requestAnimationFrame-gated: rAF callbacks are
+    // throttled/paused entirely for a page the browser isn't actively
+    // compositing (a backgrounded tab, or -- discovered debugging this
+    // exact fix -- an automated browser context that never paints), which
+    // would silently make this fade never appear in exactly those cases.
+    // Recomputing three numeric reads and toggling one class costs nothing
+    // worth debouncing for a list this size, so just do it directly.
+    (function () {
+        var overlay = document.getElementById('sitOverlay');
+        if (!overlay) return;
+        function updateFade() {
+            var hasMore = (overlay.scrollTop + overlay.clientHeight) < (overlay.scrollHeight - 2);
+            overlay.classList.toggle('has-more-below', hasMore);
+        }
+        overlay.addEventListener('scroll', updateFade, { passive: true });
+        window.addEventListener('resize', updateFade);
+        new MutationObserver(updateFade).observe(overlay, { childList: true, subtree: true });
+        updateFade();
+    })();
 
     function loadMapConfig() {
         fetch('api/map-config.php', { credentials: 'same-origin' })

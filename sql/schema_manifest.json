@@ -67,6 +67,8 @@
             "signed_out_at",
             "status_id",
             "ticket_id",
+            "u2farr",
+            "u2fenr",
             "user_id",
             "zone_updated_at"
         ],
@@ -1533,7 +1535,7 @@
         "generated_by": "tools/gen_schema_manifest.php",
         "purpose": "columns this code writes to + tables it references; checked by inc/schema-verify.php",
         "tables": 138,
-        "columns": 1075,
+        "columns": 1077,
         "required_tables": 175
     }
 }
