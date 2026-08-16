@@ -92,10 +92,28 @@
             // `d-none` until opened, and stealing its id renames it to
             // `main-content`, breaking any code that looks it up by id. Found
             // 2026-08-09, fixed 2026-08-14 (Eric: "why not fix it now?").
+            //
+            // GH#47 (cbyrdmo, 2026-08-16): the command-bar fix above was too
+            // narrow — situation.php's own layout root, `<div id="sitContainer">`,
+            // is ALSO an unexcluded `header ~ div` sibling, and it was the very
+            // first one in DOM order that wasn't a banner. Stealing its id broke
+            // this page's `#sitContainer { flex: 1; position: relative; ... }`
+            // rule (the id it was selected on no longer matched anything), which
+            // is what let #sitMap/#sitOverlay collapse to `position:static`/
+            // `top:10px` off the raw viewport and render UNDER the 55px navbar —
+            // "the top of the panel is chopped off", confirmed live by fetching
+            // the page and finding `#sitContainer` absent from the DOM while
+            // `#sitMap`'s parent had `id="main-content"` instead. Rather than
+            // hand-listing a second app-specific id here (and a third, and a
+            // fourth, every time this fallback picks a new victim), skip ANY
+            // candidate that already carries an id: a div with no id is exactly
+            // what this fallback was designed to name, and a div that already
+            // has one is -- as both casualties now prove -- always something the
+            // app is relying on elsewhere, never safe to rename out from under it.
             var sibs = document.querySelectorAll('header ~ .container, header ~ .container-fluid, header ~ div');
             for (var i = 0; i < sibs.length; i++) {
                 if (sibs[i].classList.contains('alert') || sibs[i].getAttribute('role') === 'alert') continue;
-                if (sibs[i].classList.contains('command-bar')) continue;
+                if (sibs[i].id) continue;
                 target = sibs[i];
                 break;
             }

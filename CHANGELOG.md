@@ -3,6 +3,37 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.22] — 2026-08-16
+
+### Fixed
+
+- **EOC Display's incidents/units panel rendered under the navbar**: not
+  the scroll-overflow issue fixed in 4.2.21 — a separate, unrelated bug.
+  The site's own accessibility "skip to content" script has a fallback
+  (for pages without a `<main>` element) that hunts for a content
+  container to jump to, and its selector matched the EOC Display's own
+  layout div and silently renamed its id on every page load. That broke
+  the CSS rule giving the panel its position below the header, dropping
+  it to the raw top of the page, under the navbar. Fixed generally — the
+  fallback no longer touches any element that already has an id, since
+  that always means the app relies on it elsewhere. A follow-up audit
+  found the identical bug silently affecting two more pages that had
+  never been reported — the Dispatch Call Board and the Facility Board —
+  fixed by the same patch. Independently confirmed by Ron Jones
+  (@rjonesbsink).
+- **Address-lookup Test button and geocode cache-clear fataled on every
+  use**: a missing `require` meant the endpoint called a logging function
+  that was never loaded, so both actions failed with a raw PHP error
+  regardless of provider. Reported (with the fix) by kmk1971.
+- **DMR live-audio monitor played nothing despite correct audio arriving
+  from the bridge**: the browser's live-audio stream died roughly every
+  10-12 seconds, even during an active transmission with a continuous
+  flow of data — silence between transmissions (completely normal on a
+  quiet talkgroup) was being misread as a dead connection due to a bug in
+  how the relay read the bridge's stream. Rewritten to no longer treat
+  quiet periods as a failure; verified against a real gap longer than the
+  old failure window. Reported by kmk1971.
+
 ## [4.2.21] — 2026-08-16
 
 ### Added

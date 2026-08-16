@@ -29,6 +29,13 @@ require_once __DIR__ . '/../inc/functions.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/geocode.php';
+// audit_log() (used by the test/clear_cache actions below) lives in
+// inc/audit.php, which nothing above pulls in on this entry path -- unlike
+// most api/*.php files, which get it transitively through a different
+// include chain. Confirmed fatal without this: "Call to undefined function
+// audit_log()" on every address-lookup test and cache clear (kmk1971,
+// openises/tickets#10, reported against a self-hosted Photon provider).
+require_once __DIR__ . '/../inc/audit.php';
 
 header('Content-Type: application/json');
 

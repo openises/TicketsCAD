@@ -11,10 +11,37 @@
  * order. The fallback stamped `id="main-content"` onto it, renaming the
  * command bar's own id out from under any code that looks it up by id.
  *
+ * That fix hand-excluded ONE app-specific id (.command-bar). It was too
+ * narrow: GH#47 (cbyrdmo, 2026-08-16) found the SAME fallback stealing
+ * situation.php's `<div id="sitContainer">` next — also an unexcluded
+ * `header ~ div` sibling — which broke `#sitContainer { flex: 1;
+ * position: relative; ... }` (the selector no longer matched anything once
+ * the id changed) and dropped the incidents/units overlay panel to
+ * `top:10px` off the raw viewport, right under the 55px navbar. The fix is
+ * now general: skip ANY candidate that already carries an id, since a div
+ * with no id is exactly what this fallback was designed to name, and a div
+ * that already has one is — as two separate casualties now prove — always
+ * something the app relies on elsewhere.
+ *
+ * A sitewide audit (same day, prompted by "are there other victims?")
+ * fetched every no-`<main>` page's real rendered HTML and replayed the
+ * OLD (Aug-14-to-16) selector logic against it, hunting for any OTHER
+ * id-bearing div the command-bar-only exclusion had missed. It found TWO
+ * more, both silently broken in production the whole time and both fixed
+ * for free by the same general patch: callboard.php's `#cbContainer` and
+ * facility-board.php's `#fbContainer` — the wall-mounted-display pages,
+ * both carrying the identical `#xContainer { flex: 1; ... }` pattern as
+ * #sitContainer. Nobody had reported either, plausibly because those
+ * boards get set up once and left running rather than actively watched
+ * for a subtle top-of-page layout shift. Confirmed live post-fix: both
+ * keep their id and their `flex: 1 1 0%` sizing. Encoded as harness
+ * candidates below alongside sitContainer so this specific finding has
+ * permanent regression coverage, not just the generic "any id" rule.
+ *
  * Drives the REAL assets/js/a11y.js via node — stubbing only the DOM
  * primitives it touches, not re-implementing ensureSkipTarget()'s logic —
- * so a future regression in the actual exclusion list fails here, not just
- * a grep for the string ".command-bar".
+ * so a future regression in the actual exclusion rule fails here, not just
+ * a grep for a specific class/id string.
  *
  * Usage: php tests/test_a11y_skip_target.php
  */
@@ -30,10 +57,12 @@ $base = realpath(__DIR__ . '/..');
 
 // ── Structural: the fix is actually present in source ───────────────────
 $src = (string) file_get_contents($base . '/assets/js/a11y.js');
-is_true(strpos($src, "sibs[i].classList.contains('command-bar')") !== false,
-    'source excludes .command-bar from the skip-target fallback');
+is_true(strpos($src, 'if (sibs[i].id) continue;') !== false,
+    'source excludes ANY id-bearing candidate from the skip-target fallback (general fix, not a per-element allowlist)');
 is_true(strpos($src, "sibs[i].classList.contains('alert')") !== false,
     'source still excludes .alert too (the original Phase 118 fix)');
+is_true(strpos($src, "sibs[i].classList.contains('command-bar')") === false,
+    'the old command-bar-specific exclusion was removed, not left dangling alongside the general one');
 
 // This fix is worthless to anyone whose browser already cached the
 // pre-fix a11y.js under the same bare ?v=<version> URL -- and
@@ -67,11 +96,11 @@ var fs = require('fs');
 var out = [];
 function check(name, cond, detail) { out.push((cond ? 'PASS|' : 'FAIL|') + name + '|' + (detail || '')); }
 
-function makeEl(cls, attrs) {
+function makeEl(cls, attrs, startId) {
     attrs = attrs || {};
     var classes = (cls || '').split(' ').filter(Boolean);
     var el = {
-        id: '',
+        id: startId || '',
         tagName: 'DIV',
         _attrs: attrs,
         classList: { contains: function (c) { return classes.indexOf(c) !== -1; } },
@@ -84,12 +113,24 @@ function makeEl(cls, attrs) {
 
 // Realistic document order for a page with no <main>: the pending-
 // migrations alert renders first (inc/navbar.php), then the command bar
-// (also inc/navbar.php, right after it), then the page's own content div —
-// exactly the shape that let the command bar win the old, unfenced fallback.
-var alertBar   = makeEl('alert', { role: 'alert' });
-var commandBar = makeEl('command-bar d-none', {});
-var contentDiv = makeEl('container', {});
-var fallbackSibs = [alertBar, commandBar, contentDiv];
+// (also inc/navbar.php, right after it, ALREADY carrying id="commandBar" in
+// the real markup -- the earlier version of this harness started it at
+// id:'' , which doesn't reflect reality and is exactly why the general fix
+// needs to be proven against a candidate that already has an id BEFORE
+// ensureSkipTarget() ever runs), then the three real id-bearing content
+// divs the 2026-08-16 sitewide audit found ALL silently victimized by the
+// same bug (situation.php's #sitContainer -- GH#47's reported casualty --
+// plus callboard.php's #cbContainer and facility-board.php's #fbContainer,
+// found only by re-auditing, never reported), then finally a genuinely
+// id-less content div -- the one case this fallback exists to handle and
+// must keep handling.
+var alertBar    = makeEl('alert', { role: 'alert' });
+var commandBar  = makeEl('command-bar d-none', {}, 'commandBar');
+var sitLikeDiv  = makeEl('', {}, 'sitContainer');
+var cbLikeDiv   = makeEl('', {}, 'cbContainer');
+var fbLikeDiv   = makeEl('', {}, 'fbContainer');
+var contentDiv  = makeEl('container', {});
+var fallbackSibs = [alertBar, commandBar, sitLikeDiv, cbLikeDiv, fbLikeDiv, contentDiv];
 
 global.document = {
     readyState: 'complete',
@@ -114,8 +155,14 @@ eval(fs.readFileSync(process.argv[2], 'utf8'));
 
 check('command bar was NOT chosen as the skip target', commandBar.id !== 'main-content', 'commandBar.id=' + commandBar.id);
 check('alert bar was NOT chosen as the skip target', alertBar.id !== 'main-content', 'alertBar.id=' + alertBar.id);
-check('the real content div WAS chosen instead', contentDiv.id === 'main-content', 'contentDiv.id=' + contentDiv.id);
-check('command bar keeps its own id untouched', commandBar.id === '', 'commandBar.id=' + commandBar.id);
+check('a sitContainer-shaped id-bearing div was NOT chosen as the skip target (GH#47, reported)', sitLikeDiv.id !== 'main-content', 'sitLikeDiv.id=' + sitLikeDiv.id);
+check('a cbContainer-shaped id-bearing div was NOT chosen as the skip target (callboard.php, found by audit)', cbLikeDiv.id !== 'main-content', 'cbLikeDiv.id=' + cbLikeDiv.id);
+check('a fbContainer-shaped id-bearing div was NOT chosen as the skip target (facility-board.php, found by audit)', fbLikeDiv.id !== 'main-content', 'fbLikeDiv.id=' + fbLikeDiv.id);
+check('the genuinely id-less content div WAS chosen instead', contentDiv.id === 'main-content', 'contentDiv.id=' + contentDiv.id);
+check('command bar keeps its own id untouched', commandBar.id === 'commandBar', 'commandBar.id=' + commandBar.id);
+check('the sitContainer-shaped div keeps its own id untouched', sitLikeDiv.id === 'sitContainer', 'sitLikeDiv.id=' + sitLikeDiv.id);
+check('the cbContainer-shaped div keeps its own id untouched', cbLikeDiv.id === 'cbContainer', 'cbLikeDiv.id=' + cbLikeDiv.id);
+check('the fbContainer-shaped div keeps its own id untouched', fbLikeDiv.id === 'fbContainer', 'fbLikeDiv.id=' + fbLikeDiv.id);
 check('chosen target got tabindex=-1 for programmatic focus', contentDiv._attrs.tabindex === '-1');
 
 console.log(out.join('\n'));

@@ -122,67 +122,47 @@ echo ":connected channel=" . (int) $channel['id'] . " label=" . preg_replace('/[
 @flush();
 
 $streamUrl = $bridgeBase . '/audio-stream';
-$ctx = stream_context_create([
-    'http' => [
-        'header'  => "Authorization: Bearer {$token}\r\nAccept: application/x-ndjson\r\n",
-        'timeout' => 10,
-        'ignore_errors' => true,
-    ],
-]);
-$fp = @fopen($streamUrl, 'r', false, $ctx);
-if (!$fp) {
-    echo "event: error\ndata: {\"error\":\"bridge connect failed\"}\n\n";
-    @flush();
-    exit;
-}
-stream_set_blocking($fp, false);
-stream_set_timeout($fp, 5);
 
-$lastKeepalive = time();
+// Reported by kmk1971 (openises/tickets#10, filed against the legacy repo by
+// mistake -- see specs/handoff.md): the old fopen()-based reader died every
+// ~10-12s even during live traffic, isolated to this relay -- raw curl -N
+// against the same bridge, same bearer, during a live transmission delivered
+// 157 NDJSON lines cleanly in ~2s, and this endpoint's own eventCounts log
+// line never fired, i.e. zero events forwarded per connection lifetime.
+// Full root-cause writeup is in inc/dmr_stream_relay.php, which now owns the
+// actual read loop -- pulled out of this file so it can be driven by a test
+// against a real loopback server (tests/test_dmr_stream_relay.php), not just
+// exercised through this endpoint's session/RBAC-gated HTTP entry point.
+require_once __DIR__ . '/../inc/dmr_stream_relay.php';
 
-while (!feof($fp)) {
-    if (connection_aborted()) break;
-    // Hard cap on stream lifetime so PHP releases the worker even if
-    // the upstream goes silent and the client never writes back.
-    if ((time() - $startTime) >= $maxRuntime) break;
-
-    $line = stream_get_line($fp, 65536, "\n");
-    if ($line === false || $line === '') {
-        // Periodic keepalive comment so the browser knows we're alive
-        if (time() - $lastKeepalive >= 15) {
-            echo ":keepalive\n\n";
-            @flush();
-            $lastKeepalive = time();
-        }
-        usleep(50000); // 50 ms
-        continue;
+$result = dmr_stream_relay(
+    $streamUrl,
+    $token,
+    function (string $event, array $msg): void {
+        echo "event: " . $event . "\n";
+        echo "data: " . json_encode($msg) . "\n\n";
+        @flush();
+    },
+    function (): void {
+        echo ":keepalive\n\n";
+        @flush();
+    },
+    function () use ($startTime, $maxRuntime): bool {
+        return connection_aborted() !== 0 || (time() - $startTime) >= $maxRuntime;
     }
+);
 
-    $line = trim($line);
-    if ($line === '') continue;
-
-    $msg = json_decode($line, true);
-    if (!is_array($msg) || empty($msg['event'])) continue;
-
-    $event = preg_replace('/[^a-z_]/', '', strtolower((string) $msg['event']));
-    if ($event === '') $event = 'message';
-    unset($msg['event']);
-
-    // Phase 85c-fix-12: per-event counter for diagnosis. One write
-    // per process lifetime (5-min cap) so the log doesn't bloat.
-    if (!isset($eventCounts)) $eventCounts = [];
-    $eventCounts[$event] = ($eventCounts[$event] ?? 0) + 1;
-
-    echo "event: " . $event . "\n";
-    echo "data: " . json_encode($msg) . "\n\n";
+// CURLE_ABORTED_BY_CALLBACK (42) is our own deliberate stop (client gone or
+// the runtime cap), not a bridge failure -- must not be surfaced as one. Any
+// other error before a single event was ever forwarded is a real connect
+// failure, matching the old fopen()-failed branch's behaviour.
+if ($result['errno'] !== 0 && $result['errno'] !== CURLE_ABORTED_BY_CALLBACK && empty($result['eventCounts'])) {
+    echo "event: error\ndata: " . json_encode(['error' => 'bridge connect failed', 'detail' => $result['error']]) . "\n\n";
     @flush();
-    $lastKeepalive = time();
 }
 
 // Write the counts at exit so we can correlate with widget behaviour.
-if (!empty($eventCounts)) {
+if (!empty($result['eventCounts'])) {
     @error_log("[dmr-stream] pid=" . getmypid() . " forwarded: " .
-        json_encode($eventCounts));
+        json_encode($result['eventCounts']));
 }
-
-fclose($fp);
