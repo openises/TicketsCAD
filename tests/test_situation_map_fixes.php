@@ -87,6 +87,13 @@ t("situation refresh intervals are configurable (get_setting), not hard-coded",
     strpos($s, 'refreshInterval: <?php echo (int) ($sitUnitRefreshSecs') !== false &&
     strpos($s, '}, <?php echo (int) ($sitBoardRefreshSecs') !== false);
 
+// GH #71 — GPS ingest can advance while the unit status remains unchanged.
+// The EOC Updated cell must include the resolved last_track timestamp and
+// compare it with status/unit timestamps instead of using a stale first value.
+t("GH#71: EOC unit Updated cell uses the newest GPS/status/unit timestamp",
+    strpos($s, 'function sitLatestAgo()') !== false &&
+    strpos($s, 'sitLatestAgo(u.last_track, u.status_updated, u.updated)') !== false);
+
 // ── #60/#46 — situation control gets the shared per-category markup overlays ──
 t("#60: situation.php attaches MapPrefs.addMarkupOverlays (dashboard-parity layer toggles)",
     (bool) preg_match('/MapPrefs\.addMarkupOverlays\(map, sitLayersControl\)/', $s) &&

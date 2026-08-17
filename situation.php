@@ -1209,6 +1209,27 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
         return Math.floor(s / 86400) + 'd ago';
     }
 
+    // A GPS fix is a unit update too. Keep the EOC Units table aligned with
+    // the map by showing the newest of the tracking, status, and unit-row
+    // timestamps instead of reporting an old status change while fresh
+    // Traccar/OwnTracks positions continue to arrive.
+    function sitLatestAgo() {
+        var latest = '';
+        var latestMs = -Infinity;
+        var fallback = '';
+        for (var i = 0; i < arguments.length; i++) {
+            var value = arguments[i];
+            if (!value) continue;
+            if (!fallback) fallback = value;
+            var parsed = new Date(String(value).replace(' ', 'T')).getTime();
+            if (!isNaN(parsed) && parsed > latestMs) {
+                latest = value;
+                latestMs = parsed;
+            }
+        }
+        return sitAgo(latest || fallback);
+    }
+
     // GH #49 (round 3) — respect the CONFIGURED facility-status colors, exactly
     // like the (correct) Facilities page does (facilities.js: uses f.bg_color /
     // f.text_color / f.status_name straight from api/facilities.php). The old
@@ -1483,7 +1504,7 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
                     + (u.status_text_color ? 'color:' + esc(u.status_text_color) + ';' : '')
                     + 'font-size:0.62rem;">' + esc(u.status_name || '') + '</span></td>' +
                 '<td>' + esc(addr) + '</td>' +
-                '<td class="text-body-secondary" style="font-size:0.68rem;">' + sitAgo(u.status_updated || u.updated) + '</td>' +
+                '<td class="text-body-secondary" style="font-size:0.68rem;">' + sitLatestAgo(u.last_track, u.status_updated, u.updated) + '</td>' +
                 '</tr>';
         }
         tbody.innerHTML = html;
