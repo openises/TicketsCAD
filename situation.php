@@ -165,6 +165,13 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
         }
         .sit-zone-label::before { display: none; }
 
+        /* GH #74 -- live-GPS layer-control legend dot. A CSS class rather
+           than an inline style="" so the colour can be overridden by a
+           stylesheet (the project's UI-consistency audit flags inline hex
+           colours specifically because no stylesheet can win against them
+           without !important; a class does not have that problem). */
+        .sit-legend-live-gps { color: #fd7e14; }
+
         /* Collapse toggle icon */
         .sit-toggle { cursor: pointer; user-select: none; }
         .sit-toggle .bi { transition: transform 0.2s; }
@@ -2065,7 +2072,7 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
                 var liveGpsLayer = tracker.getLayerGroup();
                 if (liveGpsLayer) {
                     sitLayersControl.addOverlay(liveGpsLayer,
-                        '<span style="color:#fd7e14">&#9679;</span> Units — live GPS');
+                        '<span class="sit-legend-live-gps">&#9679;</span> Units — live GPS');
                     if (window.MapLayerPrefs && window.MapLayerPrefs.register) {
                         window.MapLayerPrefs.register(map, 'units_live', liveGpsLayer);
                     }
