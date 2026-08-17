@@ -165,6 +165,13 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
         }
         .sit-zone-label::before { display: none; }
 
+        /* GH #74 -- live-GPS layer-control legend dot. A CSS class rather
+           than an inline style="" so the colour can be overridden by a
+           stylesheet (the project's UI-consistency audit flags inline hex
+           colours specifically because no stylesheet can win against them
+           without !important; a class does not have that problem). */
+        .sit-legend-live-gps { color: #fd7e14; }
+
         /* Collapse toggle icon */
         .sit-toggle { cursor: pointer; user-select: none; }
         .sit-toggle .bi { transition: transform 0.2s; }
@@ -2070,6 +2077,28 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
                 }
             });
             tracker.start();
+
+            // GH #71 follow-up (cbyrdmo, 2026-08-17) — the live-GPS tracking
+            // overlay was added straight to the map (UnitTracking.init does
+            // L.layerGroup().addTo(map)) and never registered in the layer
+            // control. The "Units (EOC)" checkbox only governs the status-
+            // coloured EOC roster layer (unitMarkers), so switching units off
+            // left the live-GPS markers on screen — drawn in each unit's
+            // configured tracking colour (e.g. orange) rather than the green
+            // status colour — and operators read that as "units won't turn
+            // off." Register the tracking group as its own toggleable overlay
+            // (default on, unchanged) so it can be hidden, and persist that
+            // choice per-user like the other overlays.
+            if (sitLayersControl && typeof tracker.getLayerGroup === 'function') {
+                var liveGpsLayer = tracker.getLayerGroup();
+                if (liveGpsLayer) {
+                    sitLayersControl.addOverlay(liveGpsLayer,
+                        '<span class="sit-legend-live-gps">&#9679;</span> Units — live GPS');
+                    if (window.MapLayerPrefs && window.MapLayerPrefs.register) {
+                        window.MapLayerPrefs.register(map, 'units_live', liveGpsLayer);
+                    }
+                }
+            }
         }
 
         // Fallback polling every 15s for incidents (SSE handles real-time when available)
