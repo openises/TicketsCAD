@@ -18,6 +18,8 @@
 
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
 
+require_once __DIR__ . '/../inc/sql-splitter.php';
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/served-dir.php';
 
@@ -225,56 +227,40 @@ $importSqlFile = function (string $path) {
         // splitter with DELIMITER support (tfa.sql / teams_nims.sql /
         // equipment_personal.sql / training_nims.sql define triggers).
         $pdo = db();
-        $delim = ';';
-        $buf = '';
         $errCount = 0;
         $realErrors = 0;   // errors that are NOT the benign "already exists" kind
-        foreach (preg_split('/\r?\n/', (string) file_get_contents($path)) as $line) {
-            $trim = trim($line);
-            if ($buf === '' && ($trim === '' || strpos($trim, '--') === 0 || $trim[0] === '#')) {
-                continue; // comment/blank between statements
-            }
-            if (preg_match('/^DELIMITER\s+(\S+)\s*$/i', $trim, $m)) {
-                $delim = $m[1];
-                continue;
-            }
-            $buf .= $line . "\n";
-            if (substr(rtrim($buf), -strlen($delim)) === $delim) {
-                $stmt = trim(substr(rtrim($buf), 0, -strlen($delim)));
-                $buf = '';
-                if ($stmt === '') continue;
-                try {
-                    // query() + closeCursor(), not exec(): seed files end
-                    // with verification SELECTs whose unfetched result
-                    // sets poison the shared connection ("2014 Cannot
-                    // execute queries while other unbuffered queries are
-                    // active") for every later step.
-                    $res = $pdo->query($stmt);
-                    if ($res instanceof PDOStatement) $res->closeCursor();
-                } catch (Exception $e) {
-                    $errCount++;   // mirror the CLI's --force tolerance
+        foreach (splitSqlStatements((string) file_get_contents($path)) as $stmt) {
+            try {
+                // query() + closeCursor(), not exec(): seed files end
+                // with verification SELECTs whose unfetched result
+                // sets poison the shared connection ("2014 Cannot
+                // execute queries while other unbuffered queries are
+                // active") for every later step.
+                $res = $pdo->query($stmt);
+                if ($res instanceof PDOStatement) $res->closeCursor();
+            } catch (Exception $e) {
+                $errCount++;   // mirror the CLI's --force tolerance
 
-                    // ...but do NOT swallow it silently. Re-running an
-                    // install over an existing database legitimately raises
-                    // "already exists" errors, which is what the tolerance is
-                    // for. Anything else is a real failure that leaves an
-                    // object missing, and reporting it only as a number in
-                    // "1 applied, 1 skipped" gives the operator nothing to act
-                    // on. That is exactly how a MySQL 8.0 rejection of
-                    // `TEXT DEFAULT '[]'` silently dropped the whole
-                    // dashboard_layouts table (openises/TicketsCAD#5) — the
-                    // count said "skipped" and the cause was invisible until
-                    // someone re-ran the file by hand.
-                    $benign = ['1007','1050','1060','1061','1062','1068','1091','1826'];
-                    $code   = (string) ($e->errorInfo[1] ?? '');
-                    if (!in_array($code, $benign, true)) {
-                        $first = trim(strtok(str_replace("\n", ' ', $stmt), "\n"));
-                        $where = basename($path) . ': ' . substr($first, 0, 70);
-                        echo "    [sql error {$code}] {$where}\n"
-                           . "        " . $e->getMessage() . "\n";
-                        error_log("install_fresh {$where} -> " . $e->getMessage());
-                        $realErrors++;
-                    }
+                // ...but do NOT swallow it silently. Re-running an
+                // install over an existing database legitimately raises
+                // "already exists" errors, which is what the tolerance is
+                // for. Anything else is a real failure that leaves an
+                // object missing, and reporting it only as a number in
+                // "1 applied, 1 skipped" gives the operator nothing to act
+                // on. That is exactly how a MySQL 8.0 rejection of
+                // `TEXT DEFAULT '[]'` silently dropped the whole
+                // dashboard_layouts table (openises/TicketsCAD#5) — the
+                // count said "skipped" and the cause was invisible until
+                // someone re-ran the file by hand.
+                $benign = ['1007','1050','1060','1061','1062','1068','1091','1826'];
+                $code   = (string) ($e->errorInfo[1] ?? '');
+                if (!in_array($code, $benign, true)) {
+                    $first = trim(strtok(str_replace("\n", ' ', $stmt), "\n"));
+                    $where = basename($path) . ': ' . substr($first, 0, 70);
+                    echo "    [sql error {$code}] {$where}\n"
+                       . "        " . $e->getMessage() . "\n";
+                    error_log("install_fresh {$where} -> " . $e->getMessage());
+                    $realErrors++;
                 }
             }
         }
@@ -351,6 +337,39 @@ step('base schema present (settings + user + ticket tables exist)',
             echo "  (imported sql/base_schema.sql cleanly)\n";
         }
     });
+
+// ─────────────────────────────────────────────────────────────────────
+// 0a. Widen settings.value to TEXT — MUST run before any seed data
+// ─────────────────────────────────────────────────────────────────────
+// GH #92 (Ron Jones, 2026-08-19): this widening used to run as step
+// "1. Widen settings.value to TEXT (item #6)" AFTER both the foundational
+// .sql import loop AND the sql/run_*.php migration sweep below. In
+// particular, sql/run_99i_cjis_county.php seeds an 812-character CJIS
+// login-notice default into settings.value while base_schema.sql still
+// ships that column as varchar(512) — so on a true fresh install the
+// notice landed silently truncated to exactly 512 characters (confirmed
+// via a real end-to-end repro against the unmodified seeder: the stored
+// text ends "...or data transiting or stored on t", byte-for-byte the
+// reporter's symptom). On servers where INSERT IGNORE's truncation still
+// surfaces as a hard error under strict SQL mode, the reporter found
+// run_99i_cjis_county.php aborts entirely via its own exit(1) handler —
+// which also skips the unrelated member.county column it adds further
+// down the same try block, collateral damage from an unrelated failure.
+// Both settings.value INSERTs there use INSERT IGNORE, so a truncated row
+// is never repaired by re-running the seed — it reads as "already
+// present" and is skipped forever.
+//
+// Fix: widen the column here, immediately after base_schema.sql is
+// imported and before ANY seed step (the foundational .sql imports right
+// below, or the sql/run_*.php sweep further down) gets a chance to write
+// into it. See also sql/run_gh92_settings_value_repair.php, which repairs
+// an EXISTING install whose cjis_login_notice_text was already truncated
+// by the old ordering (INSERT IGNORE means a normal re-run can't fix it).
+echo "Schema widening (settings.value — must happen before any seed data):\n";
+step('settings.value to TEXT (was varchar 512)',
+    fn() => col_data_type('settings', 'value') === 'text',
+    fn() => db_query("ALTER TABLE `{$prefix}settings` MODIFY COLUMN `value` TEXT DEFAULT NULL"));
+echo "\n";
 
 // Import additional foundational .sql files. The master migration
 // runner (sql/run_migrations.php) only picks up run_*.php scripts —
@@ -537,16 +556,12 @@ step('all sql/run_*.php migrations applied',
     });
 
 // ─────────────────────────────────────────────────────────────────────
-// 1. Widen settings.value to TEXT (item #6)
-// ─────────────────────────────────────────────────────────────────────
-echo "Schema widening:\n";
-step('settings.value to TEXT (was varchar 512)',
-    fn() => col_data_type('settings', 'value') === 'text',
-    fn() => db_query("ALTER TABLE `{$prefix}settings` MODIFY COLUMN `value` TEXT DEFAULT NULL"));
-
-// ─────────────────────────────────────────────────────────────────────
 // 2. Widen in_types columns for realistic protocol text (item #5)
 // ─────────────────────────────────────────────────────────────────────
+// (settings.value to TEXT — formerly "item 1" here — now runs as step 0a
+// above, immediately after base_schema.sql import, ahead of any seed. See
+// the GH #92 comment there.)
+echo "Schema widening:\n";
 step('in_types.protocol to TEXT',
     fn() => col_data_type('in_types', 'protocol') === 'text',
     fn() => db_query("ALTER TABLE `{$prefix}in_types` MODIFY COLUMN `protocol` TEXT DEFAULT NULL"));

@@ -157,7 +157,11 @@ $tableConfig = [
         'table'     => $prefix . 'ics_forms',
         'label'     => 'ICS Form',
         'icon'      => 'bi-file-earmark-text',
-        'select'    => 'id, form_type, title, status, incident_id, deleted_at, deleted_by',
+        // Phase 140: form_data_json is needed so ics_form_label() can read
+        // a custom-type form's frozen _meta.form_number/form_title -- the
+        // nine built-in types ignore this column entirely (their label
+        // comes from form_type alone), so this is a no-op for them.
+        'select'    => 'id, form_type, title, status, incident_id, form_data_json, deleted_at, deleted_by',
         'purgeable' => false,
     ],
     // GH#38 (Chris Byrd, 2026-08-07) — equipment checkout/checkin activity

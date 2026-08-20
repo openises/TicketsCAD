@@ -16,6 +16,7 @@
  */
 
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/../inc/severity.php';
 
 $prevDisplay = ini_get('display_errors');
 ini_set('display_errors', '0');
@@ -31,12 +32,9 @@ $order    = strtolower(trim($_GET['order'] ?? 'desc'));
 $limit    = max(1, min(500, (int) ($_GET['limit'] ?? 50)));
 $offset   = max(0, (int) ($_GET['offset'] ?? 0));
 
-// Severity color map
-$sev_colors = [
-    0 => get_variable('sev_0_color') ?: '#00ff00',
-    1 => get_variable('sev_1_color') ?: '#ffff00',
-    2 => get_variable('sev_2_color') ?: '#ff0000',
-];
+// GH#87/GH#88 (2026-08-19) — sourced from the configurable severity_levels
+// table (inc/severity.php) instead of a hardcoded 3-entry map.
+$sev_colors = severity_color_map();
 $status_labels = [1 => 'Closed', 2 => 'Open', 3 => 'Scheduled'];
 
 // Build WHERE
@@ -57,8 +55,15 @@ $params = [];
 //
 // The fragment begins with " AND ", so we strip the leading " AND "
 // for use with the array-of-conditions pattern below.
+//
+// Phase 141 (2026-08-17) — org_ticket_query_filter() is org_query_filter()'s
+// ticket-specific sibling: same same-org fragment, plus an OR'd-in
+// incident_shares EXISTS clause so a routed ticket appears here too. On a
+// database with no routing rules configured this is a no-op (see
+// tests/test_org_sharing_noop.php).
 require_once __DIR__ . '/../inc/org-scope.php';
-[$orgFrag, $orgVars] = org_query_filter('t.org_id');
+require_once __DIR__ . '/../inc/org-sharing.php';
+[$orgFrag, $orgVars] = org_ticket_query_filter(null, 't');
 if ($orgFrag !== '') {
     // Strip leading " AND " — the array $where joins with " AND " itself.
     $where[] = '(' . preg_replace('/^\s*AND\s+/', '', $orgFrag) . ')';
@@ -115,6 +120,7 @@ try {
         "SELECT
             `t`.`id`,
             `t`.`incident_number`,
+            `t`.`org_id`,
             `t`.`scope`,
             `t`.`street`,
             `t`.`city`,
@@ -153,12 +159,14 @@ foreach ($rows as $row) {
     $incidents[] = [
         'id'                => (int) $row['id'],
         'incident_number'   => $row['incident_number'] ?? null,
+        'org_id'            => isset($row['org_id']) ? (int) $row['org_id'] : null,
         'scope'             => $row['scope'] ?? '',
         'street'            => $row['street'] ?? '',
         'city'              => $row['city'] ?? '',
         'state'             => $row['state'] ?? '',
         'severity'          => $sev,
         'severity_color'    => $sev_colors[$sev] ?? '#ffffff',
+        'severity_label'    => severity_label($sev),
         'status'            => $st,
         'status_text'       => $status_labels[$st] ?? 'Unknown',
         'date'              => $row['date'],
@@ -168,6 +176,12 @@ foreach ($rows as $row) {
         'active_responders' => (int) $row['active_responders'],
     ];
 }
+
+// Phase 141 (2026-08-17) — single choke point: redact + annotate any row
+// whose visibility came from a cross-org share rather than same-org access.
+// No-op (byte-identical $incidents) when the caller has zero applicable
+// shares — see tests/test_org_sharing_noop.php.
+$incidents = org_sharing_apply_list_redaction($incidents);
 
 $groupList = [];
 foreach ($groups as $g) {

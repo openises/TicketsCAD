@@ -713,11 +713,27 @@ if (!defined('TILE_CACHE_DIR')) {
     define('TILE_CACHE_DIR', served_dir_above_root(NEWUI_ROOT, 'tile-cache'));
 }
 
-/** Root of the tile cache — platform-aware, above the web root. See the note above. */
+/**
+ * Root of the tile cache — platform-aware, above the web root. See the note
+ * above.
+ *
+ * Same ownership-race hazard GEOCODE_CACHE_DIR has, and the same fix: the
+ * @mkdir() below is a fallback for installs that never provision this
+ * directory in advance, not the primary defense. Whichever process calls
+ * this function first becomes the owner, and PHP cannot reliably chgrp() the
+ * result to the web server's group afterwards. The real fix is
+ * tools/fix-permissions.php (run on every tools/deploy.sh deploy) creating
+ * this directory owned by the web server up front — see
+ * inc/install-permissions.php's TILE_CACHE_DIR entry and the account of the
+ * your-server.example.com GEOCODE_CACHE_DIR incident there. Mode 0775
+ * (was 0755) matches INSTALL_PERM_MODE_WEB, the mode fix-permissions.php
+ * converges this directory to regardless of who created it, so an install
+ * that never runs that tool is no less private than one that does.
+ */
 function tile_cache_dir(): string
 {
     if (!is_dir(TILE_CACHE_DIR)) {
-        @mkdir(TILE_CACHE_DIR, 0755, true);
+        @mkdir(TILE_CACHE_DIR, 0775, true);
     }
     served_dir_harden(TILE_CACHE_DIR, 'Map tile cache', true);
     return TILE_CACHE_DIR;
@@ -1085,7 +1101,10 @@ function tile_breaker_read(string $provider): array
 function tile_breaker_write(string $provider, array $state): bool
 {
     $dir = tile_breaker_dir();
-    if (!is_dir($dir) && !@mkdir($dir, 0755, true) && !is_dir($dir)) return false;
+    // Mode matches tile_cache_dir()'s parent (0775, not 0755) — see that
+    // function's docblock. A stricter subdirectory under a more permissive
+    // parent denies the very group access the parent just granted.
+    if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) return false;
     return @file_put_contents(tile_breaker_path($provider), json_encode($state), LOCK_EX) !== false;
 }
 

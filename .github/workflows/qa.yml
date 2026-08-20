@@ -113,6 +113,16 @@ jobs:
       - name: RBAC permission-code audit (rbac_can() code ↔ real permissions row)
         run: php tests/test_rbac_permission_audit.php
 
+      # Seventh gate in the family, and the first that isn't about two things
+      # DISAGREEING — it's about one thing existing and the other being simply
+      # ABSENT. GH #91: a settings-table key a UI control writes but nothing
+      # reads back (Chat Bridge's four checkboxes, Severity Levels' label
+      # fields before the same-night fix), or a database column with a
+      # confirmed write path whose value is read nowhere (~12 `user` columns
+      # named in the issue, plus 5 more this tool's own sweep found).
+      - name: Dead-control audit (settings key / column ↔ anything that reads it)
+        run: php tests/test_dead_control_audit.php
+
       # Anti-rot gate for the published SBOM. An SBOM that is accurate once and
       # stale afterwards is worse than none, because it asserts a currency it
       # does not have. If a dependency, a vendored library version, or the

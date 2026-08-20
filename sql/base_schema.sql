@@ -3177,7 +3177,15 @@ commit;
 CREATE TABLE IF NOT EXISTS `settings` (
   `id` bigint(8) NOT NULL AUTO_INCREMENT,
   `name` tinytext DEFAULT NULL,
-  `value` varchar(512) DEFAULT NULL,
+  -- GH #92 (Ron Jones, 2026-08-19): shipped as varchar(512) here for years;
+  -- tools/install_fresh.php widened it to TEXT as a post-import step, but
+  -- (until the same fix) only AFTER seeding an 812-char CJIS login-notice
+  -- default and after any admin-pasted value (e.g. a 1704-char Zello PEM
+  -- private key) could be saved through the running app. Shipping this
+  -- table definition as TEXT directly means an install that imports this
+  -- file on its own (bypassing tools/install_fresh.php) is never narrow
+  -- even briefly. See tools/install_fresh.php step "0a" for the full story.
+  `value` text DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `ID` (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=157 DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
@@ -4093,41 +4101,31 @@ CREATE TABLE IF NOT EXISTS `user` (
   `passwd` tinytext NOT NULL COMMENT 'MySQL hash',
   `name_l` text DEFAULT NULL COMMENT 'last',
   `name_f` text DEFAULT NULL COMMENT 'first',
-  `name_mi` text DEFAULT NULL COMMENT 'middle',
+  `name_mi` text DEFAULT NULL COMMENT 'Phase 147 (GH#91): reserved. No UI reads or writes this -- never built into any user-profile page. Not RBAC/authorization-relevant. A plausible future ''full profile'' field (middle initial), not a removed mechanism.',
   `member` int(11) DEFAULT NULL COMMENT 'Supports Integrated Membership Database',
   `dob` text DEFAULT NULL,
-  `title_id` tinyint(2) DEFAULT NULL COMMENT 'title',
-  `addr_street` text DEFAULT NULL,
-  `addr_city` text DEFAULT NULL,
-  `addr_st` text DEFAULT NULL,
-  `disp` tinyint(1) DEFAULT 1 COMMENT 'dispatch access',
+  `title_id` tinyint(2) DEFAULT NULL COMMENT 'Phase 147 (GH#91): reserved. No UI reads or writes this -- never built into any user-profile page. Not RBAC/authorization-relevant. A plausible future ''full profile'' field (title), not a removed mechanism.',
+  `addr_street` text DEFAULT NULL COMMENT 'Phase 147 (GH#91): reserved. No UI reads or writes this -- never built into any user-profile page. Not RBAC/authorization-relevant. A plausible future ''full profile'' field (mailing address), not a removed mechanism.',
+  `addr_city` text DEFAULT NULL COMMENT 'Phase 147 (GH#91): reserved. No UI reads or writes this -- never built into any user-profile page. Not RBAC/authorization-relevant. A plausible future ''full profile'' field (mailing address), not a removed mechanism.',
+  `addr_st` text DEFAULT NULL COMMENT 'Phase 147 (GH#91): reserved. No UI reads or writes this -- never built into any user-profile page. Not RBAC/authorization-relevant. A plausible future ''full profile'' field (mailing address), not a removed mechanism.',
   `files` tinyint(1) DEFAULT 0 COMMENT 'docs data access',
-  `pers` tinyint(1) DEFAULT 0 COMMENT 'personnel data access',
   `org` int(3) NOT NULL DEFAULT 0 COMMENT 'Organisation',
-  `teams` tinyint(1) DEFAULT 0 COMMENT 'teams data access',
   `status` enum('approved','pending','na') NOT NULL DEFAULT 'approved',
-  `open_at` enum('d','f','p','t') NOT NULL DEFAULT 'd' COMMENT 'after logon',
   `ident` text DEFAULT NULL COMMENT 'identification',
   `info` text DEFAULT NULL COMMENT 'account information',
   `phone_p` text DEFAULT NULL COMMENT 'phone primary',
-  `phone_s` text DEFAULT NULL COMMENT 'phone secondary',
+  `phone_s` text DEFAULT NULL COMMENT 'Phase 147 (GH#91): reserved. No UI reads or writes this -- never built into any user-profile page. Not RBAC/authorization-relevant. A plausible future ''full profile'' field (secondary phone), not a removed mechanism.',
   `phone_m` text DEFAULT NULL COMMENT 'phone mobile',
-  `level` tinyint(1) NOT NULL DEFAULT 0 COMMENT 'privileges',
+  `level` tinyint(1) NOT NULL DEFAULT 0 COMMENT 'Phase 147 (GH#91): NOT an authorization signal -- rbac_can() never consults this (Phase 128). Still written by tools/create_admin.php and api/legacy-import.php, and still READ, but ONLY by the one-time v3->v4 migration bridge (api/rbac.php migrate_levels, sql/run_rbac_v2.php A9/A9b, tools/migrate_rbac.php). Do not add a new reader.',
   `responder_id` int(7) NOT NULL DEFAULT 0 COMMENT 'For level = unit',
   `facility_id` int(7) NOT NULL DEFAULT 0 COMMENT 'For level = facility',
   `email` text DEFAULT NULL COMMENT 'email addr - primary',
-  `email_s` text DEFAULT NULL COMMENT 'email addr - secondary',
-  `ticket_per_page` tinyint(1) DEFAULT NULL,
-  `sort_desc` tinyint(1) DEFAULT 0,
-  `sortorder` tinytext DEFAULT NULL,
-  `reporting` tinyint(1) DEFAULT 1,
+  `email_s` text DEFAULT NULL COMMENT 'Phase 147 (GH#91): reserved. No UI reads or writes this -- never built into any user-profile page. Not RBAC/authorization-relevant. A plausible future ''full profile'' field (secondary email), not a removed mechanism.',
   `callsign` varchar(12) DEFAULT NULL COMMENT 'added 9/23/07',
   `db_prefix` text DEFAULT NULL COMMENT 'db clone to use',
   `expires` timestamp NULL DEFAULT NULL COMMENT 'session start time',
-  `sid` varchar(40) DEFAULT NULL COMMENT 'php session id',
   `login` timestamp NULL DEFAULT NULL COMMENT 'last login',
   `_from` varchar(24) DEFAULT NULL COMMENT 'IP addr',
-  `browser` varchar(40) DEFAULT NULL COMMENT 'used at last login',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;

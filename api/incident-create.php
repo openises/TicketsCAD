@@ -132,11 +132,16 @@ if ($majorId > 0 && function_exists('rbac_can') && rbac_can('action.link_major')
 }
 
 // ── Capture values used by audit/SSE/notifications ──
+// GH#87 — mirrors incident_create_internal()'s own severity_clamp() calls
+// exactly (both the input clamp and the re-clamp on the type override) so
+// this endpoint's notification/SSE context always agrees with what was
+// actually written to `ticket.severity`.
+require_once __DIR__ . '/../inc/severity.php';
 $scope         = trim((string) ($input['scope'] ?? ''));
 $signal        = trim((string) ($input['signal'] ?? ''));
-$severity      = max(0, min(2, (int) ($input['severity'] ?? 0)));
+$severity      = severity_clamp($input['severity'] ?? 0);
 if ($type_row && (int) $type_row['set_severity'] > 0) {
-    $severity = (int) $type_row['set_severity']; // mirror auto-set inside helper
+    $severity = severity_clamp($type_row['set_severity']); // mirror auto-set inside helper
 }
 $status        = (int) ($input['status'] ?? 2);
 if (!in_array($status, [1, 2, 3], true)) $status = 2;
@@ -175,8 +180,12 @@ try {
     ];
     notification_check('incident_create', $notifContext);
 
-    // Also fire severity_high event for high-severity incidents
-    if ($severity >= 2) {
+    // Also fire severity_high event for high-severity incidents.
+    // GH#88 — replaces a hardcoded `>= 2` with the admin-configurable
+    // is_high_alert flag (inc/severity.php), so this fires for whichever
+    // level(s) an agency has actually flagged as escalation-worthy,
+    // not just "the level historically numbered 2."
+    if (severity_is_high_alert($severity)) {
         notification_check('severity_high', $notifContext);
     }
 } catch (Exception $e) {

@@ -249,21 +249,26 @@
         }
 
         var statusClasses = { 1: 'bg-secondary', 2: 'bg-success', 3: 'bg-info' };
-        var sevLabels = ['Low', 'Med', 'High'];
 
         var html = '';
         for (var i = 0; i < results.length; i++) {
             var r = results[i];
 
+            // GH#87/GH#88 (2026-08-19) — severity_label now comes from the
+            // server's configured severity_levels scale (was a hardcoded
+            // ['Low','Med','High'] array here — a different spelling of
+            // the same 3 integers than every other screen used). Text
+            // color is computed from the actual badge background instead
+            // of a hardcoded `>= 2` threshold.
             var sevBadgeStyle = 'background-color:' + escHtml(r.severity_color) + ';color:' +
-                (r.severity >= 2 ? '#fff' : '#000') + ';';
+                contrastTextColor(r.severity_color) + ';';
 
             html += '<tr class="search-result-row" data-id="' + r.id + '" style="cursor:pointer;">' +
                 '<td class="ps-3 fw-semibold text-primary">' + r.id + '</td>' +
                 '<td class="text-nowrap">' + formatDate(r.date) + '</td>' +
                 '<td>' + escHtml(truncate(r.scope, 60)) + '</td>' +
                 '<td><span class="text-body-secondary">' + escHtml(r.type_name || '--') + '</span></td>' +
-                '<td><span class="badge" style="' + sevBadgeStyle + 'font-size:0.65rem;">' + (sevLabels[r.severity] || '--') + '</span></td>' +
+                '<td><span class="badge" style="' + sevBadgeStyle + 'font-size:0.65rem;">' + escHtml(r.severity_label || '--') + '</span></td>' +
                 '<td><span class="badge ' + (statusClasses[r.status] || 'bg-secondary') + '" style="font-size:0.65rem;">' + escHtml(r.status_text) + '</span></td>' +
                 '<td>' + escHtml(r.city || '--') + '</td>' +
                 '<td class="text-body-secondary">' + escHtml(truncate(r.contact || r.phone || '', 20)) + '</td>' +
@@ -366,6 +371,20 @@
         var div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
+    }
+
+    // GH#87/GH#88 (2026-08-19) — see incident-detail.js's copy of this
+    // helper for the full rationale (relative-luminance contrast instead
+    // of a hardcoded severity threshold).
+    function contrastTextColor(hexColor) {
+        var hex = (hexColor || '').replace('#', '');
+        if (hex.length !== 6) return '#000';
+        var r = parseInt(hex.substr(0, 2), 16);
+        var g = parseInt(hex.substr(2, 2), 16);
+        var b = parseInt(hex.substr(4, 2), 16);
+        if (isNaN(r) || isNaN(g) || isNaN(b)) return '#000';
+        var luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        return luminance > 0.55 ? '#000' : '#fff';
     }
 
     // ── Boot ──

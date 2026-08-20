@@ -98,11 +98,16 @@ software cannot fix that from inside the application layer.
    (Radio AI), optional TTS drivers, email/SMS/Slack/webhooks/Web Push.
 ```
 
-**The boundary that has actually been breached, repeatedly, is the first one**:
-the line between "the web server's document root" and "the application's
-private files." Every incident referenced in §7 is a failure of that specific
-boundary, not of RBAC, encryption, or the database layer — which is exactly why
-§4 below gives it more space than any other control category.
+**The boundary that has been breached repeatedly is the web-root/private-files
+one**: the line between "the web server's document root" and "the
+application's private files." Every incident in §7's table is a failure of
+that specific boundary — which is exactly why §4 below gives it more space
+than any other control category. **A second, distinct boundary was also
+breached once** (2026-08-16): the internal Org-Admin/Super-Admin RBAC
+boundary, via a mechanism unrelated to directory exposure — see "A second
+incident pattern: the RBAC exclusion-list boundary" immediately after §7's
+table, below. Encryption and the database layer itself remain unbreached in
+this project's history to date.
 
 **The radio bridges are a separate trust domain on purpose.** They run as
 distinct processes (bare-metal) or containers (Docker), each behind its own
@@ -110,6 +115,135 @@ bearer token, precisely so that a defect in `hbp_client.py` or the Zello proxy
 cannot reach the database or the RBAC-protected API surface directly — they can
 only call back into TicketsCAD's own bearer-token-protected endpoints, the same
 as any external integration would.
+
+**Cross-org ticket sharing (Phase 141, 2026-08-17, GH#70) is a deliberate,
+narrow, audited crossing of the org-isolation boundary — off by default.**
+An install's per-organization data isolation (§1's "curious or malicious
+low-privilege volunteer" row) is otherwise strict: a user's `org_visible_ids()`
+set bounds every ticket-list query and every direct ticket lookup. Cross-org
+ticket sharing (`org_type_routing` + `incident_shares`, `inc/org-sharing.php`)
+adds exactly one narrow, admin-configured exception — a Super Admin can
+route tickets of a given incident type/group from one organization to
+another, at a `view` (redacted, read-only) or `assist` (same-org-equivalent)
+tier. This is off by default (zero routing rules on a fresh install, and on
+both of this project's live hosts as of this phase's ship), fully reversible
+per-rule (deactivation stops future sharing), and every routing-rule
+create/edit/deactivate and every cross-org read is written to the audit log
+distinguishably from ordinary same-org access. Rule authoring is
+Super-Admin-only by design in this phase — the org-scoped self-service
+permission code exists (`action.manage_org_routing_org`) but ships withheld
+from Org Admin's default grant, specifically because a routing rule exposes
+the *creating* org's data to a *different* org with no two-party consent
+mechanism yet (see `docs/CROSS-ORG-TICKET-SHARING.md` for the full model).
+No mutation path in this phase can move ticket ownership between
+organizations, at any tier, including via the external API — verified as
+part of this phase's own endpoint sweep, not merely asserted.
+
+**Phase 142 (2026-08-17) extends the same boundary two ways, both reusing
+Phase 141's authorization primitives rather than building new ones.** First,
+ad hoc manual sharing: a dispatcher can share one specific, already-existing
+ticket with another organization by hand (no standing rule required),
+gated on two new RBAC codes (`action.share_incident`,
+`action.revoke_incident_share` — broadly granted to Dispatcher and Org Admin
+by default, a deliberate departure from Phase 141's Super-Admin-only
+routing-rule codes, reasoned in `docs/CROSS-ORG-TICKET-SHARING.md`) **and**,
+on every single request, `org_ticket_is_owned_by_caller()` — the same
+Phase-141 function, unmodified, that already guarantees no share at any tier
+ever satisfies it. This is what stops the sharpest version of the risk: an
+org whose only access to a ticket is itself share-derived — including
+`assist` tier, which already carries full same-org-equivalent write access —
+can never create or revoke a further share on that ticket, chaining access
+onward to a third org the real owner never agreed to. Proven by a dedicated
+adversarial regression test (`tests/test_org_sharing_anti_chaining.php`),
+not just documented as intent.
+
+Second, real-time visibility: the SSE stream (`api/stream.php`, previously
+untouched by Phase 141 for exactly this reason) gained an org-awareness
+dimension it didn't have before — a share's recipient org now receives live
+push for the shared ticket's events, not just on next poll/reload. This adds
+a new `'org'` visibility scope, deliberately **authorized at publish time,
+not connection-open time**: a connection's own org membership is a stable
+fact computed once when the stream opens, but *which orgs currently hold an
+active share on this specific ticket* is volatile and is re-resolved fresh,
+live, on every single event published — so a share revoked mid-connection
+stops reaching the former recipient starting with the very next event, with
+no propagation-delay window on the write side to go stale (unlike the
+existing `$userIsAdmin`/`$userGroups`/`$entitledPrefixes` connection-open
+snapshot, whose staleness window — up to 5 minutes — is a pre-existing,
+already-accepted class this phase does not widen). See
+`docs/PITFALLS-INDEX.md`'s "Real-time (SSE)" entry for the general
+principle this generalizes to.
+
+**Phase 143 (2026-08-17, GH#70 Phase 3 — the final phase) adds a THIRD
+crossing mechanism, standing relationships, with the genuine two-party
+consent Phase 141's routing rules deliberately lack.** Three new tables
+(`org_relationships`, `org_relationships_members`,
+`org_relationships_activations`) and one new file
+(`inc/org-relationships.php`). Unlike a routing rule, a standing
+relationship cannot take effect unilaterally: every named organization's
+own authorized approver must independently consent — gated by
+`org_relationship_can_act_for_org()`, keyed on the *acting user's own* org
+membership (`org_visible_ids()`) matching the *specific membership row's*
+org, never on who proposed the relationship. This is what makes the
+guarantee genuinely two-party: Org A's proposer can never make Org B's own
+membership row move to `approved`, because Org A's `org_visible_ids()` never
+contains Org B. Two ceilings are independently configurable — `access_tier`
+(write capability) and `redaction_profile` (field visibility) — so a
+relationship can grant real operational write capability without
+automatically widening the sharpest redacted fields.
+
+**The read-time expiry guarantee is this phase's single most
+security-critical property.** A relationship can optionally require a
+separate, time-boxed **activation** step before any visibility exists at
+all. When that window elapses, access is revoked at the instant the window
+closes, checked fresh inside the SQL query itself
+(`org_relationship_activation_live_join_sql()`, a fragment recomputed
+against `NOW()` on every evaluation, deliberately never a cached boolean) —
+never by waiting for a background sweep to notice and flip a flag. This is
+this project's third deliberate application of a lesson first learned twice
+the hard way (the PAR scheduler and the pending-message sweep, both §7):
+"an on/off switch gates behaviour; cleanup that closes out a stale audit
+record runs whether or not anyone is watching, and grants nothing by
+running, and revokes nothing by not running." Proven directly, not merely
+argued: `tests/test_org_relationships_read_time_expiry.php` activates a
+relationship with a short window, lets it expire with the companion
+cleanup job (`tools/org_relationship_cleanup_tick.php`, every 5 minutes)
+**never invoked at all**, and confirms visibility and write access are both
+gone on the very next check while the database's own `deactivated_at`
+column is still `NULL` at that moment.
+
+**Anti-chaining was explicitly re-examined for this phase, not assumed to
+still hold.** Phase 141's own plan had flagged this as required "the moment
+Phase 3 introduces `org_relationships`, since that is exactly the mechanism
+that could make `org_visible_ids()` itself share-derived." Confirmed
+structural: `org_visible_ids()` and `org_ticket_is_owned_by_caller()`
+receive zero edits in Phase 143, in any commit — relationship-derived
+visibility is injected exclusively at the ticket-visibility layer
+(`org_can_see_ticket()`, `org_ticket_query_filter()`,
+`org_can_mutate_ticket()`), never at the org-membership layer. An
+`assist`-tier relationship-derived viewer with full write access to another
+org's ticket is therefore still refused when attempting to share it onward
+(Phase 142's `org_ticket_is_owned_by_caller()` gate, unmodified) or to
+propose/approve a relationship "on that org's behalf"
+(`org_relationship_can_act_for_org()`'s own per-row check) — proven by
+`tests/test_org_relationships_anti_chaining.php`, which additionally asserts
+both guard functions' source is byte-identical to their pre-Phase-143
+committed shape, not merely that this specific scenario happens not to
+break.
+
+Three RBAC codes follow two different default postures, both re-verified
+against this project's own standing rule that no gate on a
+deliberately-narrower-than-`action.manage_config` permission may fall back
+to `is_admin()`: `action.manage_org_relationships` (install-wide,
+Super-Admin-only, same posture as Phase 141's routing codes) and
+`action.manage_org_relationships_org` / `action.activate_org_relationship`
+(both broadly granted to Org Admin and Dispatcher by default — a deliberate
+departure from Phase 141's own `_org`-code precedent, justified because
+proposing or activating grants zero visibility by itself; the real security
+boundary in both cases is the per-row/per-membership check re-run on every
+request, the same separation of concerns Phase 142 already established for
+manual sharing). Full detail: `docs/CROSS-ORG-TICKET-SHARING.md` and
+`specs/phase-143-cross-org-standing-relationships/`.
 
 ---
 
@@ -331,6 +465,39 @@ an explicit simulated Windows layout" review, not just "did the tests pass."
 This history is the strongest evidence for the CIS IIS Benchmark work in §5:
 the gaps found there are not hypothetical.
 
+**A second incident pattern: the RBAC exclusion-list boundary (2026-08-16,
+commits `743d9d4` + `78c6c10`).** Unlike every incident above, this one had
+nothing to do with directory exposure or a specific web server — it was a
+defect in how the default Org Admin/Dispatcher grant is seeded.
+`sql/rbac.sql`/`sql/run_00_rbac.php` grant Org Admin/Dispatcher "everything
+except" a literal `WHERE code NOT IN (...)` list of admin-only permission
+codes. Two independent, additive mechanisms both leaked an excluded
+permission back onto a lower role, neither visible from reading the
+exclusion list itself: (1) a role could hold the OLD code **directly**, from
+before that code was ever added to the list — the purely-additive
+`INSERT IGNORE` grant never retroactively revokes a pre-existing row when a
+string is later added; (2) `sql/run_rbac_v2.php`'s canonicalization step
+links every old code to a `<resource>.<verb>` **canonical alias**, which
+`rbac_can()` treats as fully interchangeable with the original — a literal
+exclusion list written before that canonicalization ran can never name an
+alias that didn't exist yet, so re-importing the seed files afterward
+re-granted the excluded permission under its new name. Found while building
+Phase 140 (an RBAC test that "does NOT hold the install-wide permission"
+flaked and looked like test pollution — it wasn't). **Confirmed live: Org
+Admin held the canonical alias of `action.manage_config` and
+`action.manage_roles` — Super-Admin-tier permissions — on both the dev
+database and your-server.example.com, a complete defeat of the
+Org-Admin/Super-Admin boundary**; your-server was clean on the alias
+path but held all seven then-excluded codes directly, plus Dispatcher
+directly held `action.view_reports`. Fixed same-day with two self-healing
+repair `DELETE` statements (one per leak path) that run on every re-seed,
+applied directly to both production databases as an immediate interim fix
+before the permanent version shipped. `tests/test_rbac_canonical_alias_leak.php`
+reproduces both mechanisms and asserts the live database carries no leaked
+grant. See CLAUDE.md's matching pitfall entry and
+`docs/RBAC-INTEGRATOR-GUIDE.md`'s "Don't" section for the rule a developer
+adding a new admin-only permission must follow to avoid reintroducing this.
+
 ---
 
 ## 8. Residual risks — stated, not hidden
@@ -357,6 +524,32 @@ the gaps found there are not hypothetical.
   reputational risk distinct from a data breach, and one no code control fully
   eliminates (the bearer-token boundary in §2 limits blast radius, it does not
   remove the risk).
+- **Routing rules (§2, Phase 141) still have no two-party consent mechanism
+  — a Super Admin can unilaterally route one organization's tickets to
+  another, and the receiving org has no way to decline.** This is unchanged
+  by Phase 143 and remains a deliberate design choice, not an oversight:
+  a routing rule takes effect unilaterally by design (see
+  `docs/CROSS-ORG-TICKET-SHARING.md`). **An administrator who wants genuine
+  two-party consent now has an alternative that provides it** — Phase 143's
+  standing relationships require every named organization's own authorized
+  approver to independently agree before any visibility exists at all (§2).
+  Routing rules remain the right tool when a receiving org's consent isn't
+  the model (e.g. a parent dispatch org configuring its own child agency's
+  visibility within one legal entity); standing relationships are the right
+  tool for a genuine inter-agency partnership where both sides need to
+  agree. Once a ticket is shared via a rule, deactivating the rule does not
+  retroactively un-share it (so a responding org actively working an
+  incident never silently loses visibility mid-response) — this remains
+  true for routing-rule shares and is joined by the identical guarantee for
+  a relationship's already-open activation window (an explicit deactivation
+  or elapsed window stops *future* visibility; it has never retroactively
+  hidden anything from a currently-open session mid-request). An
+  `assist`-tier responding-org user still has no narrower
+  per-responder-org write boundary, from any of the three grant sources —
+  they can update the status of, or unassign, any unit on a shared or
+  relationship-visible ticket, the same reach a same-org co-dispatcher
+  already has. Both remain named, accepted limitations across all three
+  phases, not oversights.
 
 ---
 

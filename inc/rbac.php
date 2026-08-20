@@ -60,6 +60,12 @@
 
 declare(strict_types=1);
 
+// Phase 145 (2026-08-19) — defines FACILITY_ALLOWED_PERMISSIONS, the
+// single source of truth for facility-account confinement (see
+// _rbac_load_grants() below and inc/facility-scope.php's own docblock).
+// No circular dependency: facility-scope.php does not require this file.
+require_once __DIR__ . '/facility-scope.php';
+
 // ─────────────────────────────────────────────────────────────────────
 // Public API
 // ─────────────────────────────────────────────────────────────────────
@@ -610,6 +616,24 @@ function _rbac_load_grants(bool $forceReload = false) {
         if (!empty($row['deprecated_alias_of'])) {
             $byCode[$row['deprecated_alias_of']][] = $grant;
         }
+    }
+
+    // Phase 145 (2026-08-19) — facility-account confinement, GH#90.
+    // A session with $_SESSION['facility_id'] set is an external
+    // facility login (see inc/facility-scope.php). Regardless of what
+    // role grants actually exist for the account in the database, such
+    // a session may NEVER be treated as Super Admin and may NEVER
+    // receive any permission outside the small facility allowlist. This
+    // is enforced here — the single lowest-level cache every permission
+    // check funnels through — so rbac_can(), is_admin()'s direct
+    // is_super cache read, and rbac_user_permissions() are ALL correct
+    // automatically, with no risk of one call path forgetting the check.
+    if (!empty($_SESSION['facility_id'])) {
+        $isSuper = false;
+        $allowed = defined('FACILITY_ALLOWED_PERMISSIONS')
+            ? FACILITY_ALLOWED_PERMISSIONS
+            : ['screen.facility_portal', 'action.facility_self_report'];
+        $byCode = array_intersect_key($byCode, array_flip($allowed));
     }
 
     return $cache = ['is_super' => $isSuper, 'by_code' => $byCode];

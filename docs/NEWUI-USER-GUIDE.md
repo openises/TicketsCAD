@@ -189,7 +189,7 @@ This section identifies what kind of call you are handling.
 - **Incident Type** --- Select from the dropdown list. Types might include "Structure Fire," "Medical Emergency," "Traffic Accident," "Welfare Check," and so on. Your administrator sets up these types.
   - When you select a type that has a **response protocol**, the protocol text appears in a panel above the map. Read this to the caller if appropriate.
   - The **severity** level auto-fills based on the type you choose, but you can change it.
-- **Severity** --- Indicates urgency. Options are typically Normal, Elevated, and Critical.
+- **Severity** --- Indicates urgency. Every install starts with Normal, Elevated, and Critical, but your administrator can add, rename, recolor, or reorder severity levels under Settings -> Severity Levels (for example, to match your agency's own Priority 1-4 or Code 1-3 vocabulary) -- so the options you see may differ.
 - **Incident Name / Scope** --- A brief summary title for the incident (for example, "Vehicle accident on Highway 5" or "Chest pain at 123 Main St").
 - **Description** --- A detailed description of what is happening.
 - **Signal** --- Optional. Select a signal/dispatch code if your organization uses them.
@@ -577,6 +577,24 @@ You can also click the **Print** button to generate a printable version of the r
 2. Fill in the member's information: name, contact details, member type, and status.
 3. Click **Save**.
 
+## Assigning a Member to a Team
+
+Open a member on the Roster and expand the **Team Memberships** card in
+their detail panel. It lists every team the member belongs to — a member
+can belong to more than one team at the same time.
+
+If your account can manage teams (the **Manage Teams** permission):
+- Use the **Add to Team** control at the bottom of the card to add the
+  member to another team, choosing their role (Member, Leader, Deputy,
+  Observer).
+- Click the small **X** button on any row to remove the member from that
+  team.
+
+This card and the **Teams** page both read and write the same data, so a
+change made on one shows up on the other right away. For more detail on a
+team assignment (ICS position, assigned date, notes), use the **Teams**
+page.
+
 ## Removing Members
 
 ### One member at a time
@@ -717,11 +735,34 @@ Click **Reports** in the navigation bar.
 The reports page provides pre-built reports that help you analyze your operations:
 
 - **Incident Summary** --- Count of incidents broken down by type, severity, or time period.
-- **Response Time Analysis** --- Average time from dispatch to on-scene, by unit or incident type.
-- **Unit Activity** --- Hours worked, incidents responded to, and mileage for each unit.
+- **Intervals** --- Response, scene, and transport time analysis (see below).
+- **Unit Log / Dispatch Log** --- Every unit's dispatch/responding/on-scene/clear timestamps for the period.
 - **Daily/Weekly/Monthly Activity** --- Incident volume over time shown as charts or tables.
 
 All reports can be filtered by date range, incident type, unit, and other criteria.
+
+### Intervals (Response / Scene / Transport Times)
+
+Click the **Intervals** tab on the Reports page to see how long each stage of a
+call took, computed from the same dispatch/responding/on-scene/clear timestamps
+every other report uses, plus the two facility-leg timestamps (en route to
+facility / arrived at facility) recorded when a unit transports a patient:
+
+- **Turnout** --- dispatched to responding (how long the crew took to roll).
+- **Travel** --- responding to on-scene (drive time).
+- **Response** --- dispatched to on-scene, the overall response time.
+- **Scene** --- on-scene to whichever comes next: en-route-to-facility if the
+  unit transported, or clear if it didn't.
+- **Transport** --- en-route-to-facility to arrived-at-facility.
+- **Total** --- dispatched to clear, the whole call door to door.
+
+Most calls never transport, so Transport (and sometimes Scene) is blank on
+those rows --- that's normal, not missing data. The summary cards at the top
+show period-wide averages for whichever legs have data, and two tables below
+the main report break the average response and scene times down by incident
+type and by unit, so you can see, for example, which incident types or which
+units are running the slowest response times this month. Click any incident
+number or unit name to jump to that record.
 
 ## ICS-213 Export
 
@@ -912,6 +953,8 @@ The road conditions feature displays hazardous road conditions on the map as ove
 - **Automatic expiration** --- Road conditions can be set to clear automatically after a certain time.
 
 Road conditions can be managed through the Controls widget on the dashboard (click the **Roads** button) or by administrators in Config > Locations > Road Conditions.
+
+When adding or editing a road condition report in Settings, click **Lookup** next to the Address field to resolve the typed address to Latitude/Longitude automatically (the same shared address lookup used elsewhere in the app) instead of typing decimal coordinates by hand. A report can still be saved with no coordinates (0, 0) for address-only reports with no single point --- the form shows a warning that such a report will not appear on the map overlay, matching the map's own filtering rule.
 
 ## Map Markups
 

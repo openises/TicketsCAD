@@ -339,6 +339,7 @@
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 formData = data;
+                populateSeverities(data.severity_levels || []);
                 populateTypes(data.types || []);
                 populateFacilities(data.facilities || []);
                 populateResponders(data.responders || []);
@@ -349,6 +350,35 @@
             .catch(function (err) {
                 showAlert('Failed to load form data: ' + err.message, 'danger');
             });
+    }
+
+    // GH#87/GH#88 (2026-08-19) — populate the Severity dropdown from the
+    // SAME configured scale api/incident-types.php's `types[].set_severity`
+    // values come from (inc/severity.php on the server). Before this, the
+    // dropdown's 3 options were hardcoded in new-incident.php and the
+    // auto-set-from-incident-type handler below independently believed
+    // set_severity was a 1-5 scale it had to remap onto those 3 values —
+    // two disconnected guesses at the same column. Now there is exactly
+    // one definition, so the option a dispatcher sees IS the value that
+    // gets saved.
+    function populateSeverities(levels) {
+        var sel = document.getElementById('severity');
+        if (!sel || !levels.length) return; // keep static fallback options if the list is empty/unreachable
+
+        var previousValue = sel.value;
+        var html = '';
+        for (var i = 0; i < levels.length; i++) {
+            html += '<option value="' + levels[i].value + '"' +
+                (levels[i].is_default ? ' selected' : '') + '>' +
+                escHtml(levels[i].label) + '</option>';
+        }
+        sel.innerHTML = html;
+
+        // Preserve a value the user (or a resumed draft) already had
+        // selected, if it's still a valid option after reloading.
+        if (previousValue !== '' && sel.querySelector('option[value="' + previousValue + '"]')) {
+            sel.value = previousValue;
+        }
     }
 
     function populateTypes(types) {
@@ -735,12 +765,24 @@
             }
 
             if (autoSev > 0) {
-                // in_types.set_severity is a legacy 1-5 scale; the Severity dropdown is 0-2
-                // (Normal / Elevated / Critical). Map the 1-5 value onto 0-2 so the auto-fill
-                // selects a real option — previously set_severity >= 3 set a nonexistent value
-                // and left the dropdown blank. 1->Normal, 2-3->Elevated, 4-5->Critical.
-                var mappedSev = autoSev <= 1 ? 0 : (autoSev <= 3 ? 1 : 2);
-                document.getElementById('severity').value = mappedSev;
+                // GH#87 FIX — this used to remap set_severity onto a
+                // hardcoded 0-2 scale here on the assumption that
+                // set_severity was a "legacy 1-5 scale" while the server
+                // (inc/incident-write.php / api/incident-create.php) read
+                // the very same column straight through as 0-2 with no
+                // mapping at all. The two disagreed on 33 of 37 real
+                // incident types on the reporting install, always in the
+                // direction that UNDER-reports urgency on screen versus
+                // what actually got saved.
+                //
+                // set_severity now comes from the SAME severity_levels
+                // scale (inc/severity.php) the dropdown itself was just
+                // populated from (populateSeverities(), above) — no
+                // remapping needed or correct. Setting the dropdown's
+                // value directly to the raw configured value is what
+                // keeps what the dispatcher sees in sync with what gets
+                // written to ticket.severity.
+                document.getElementById('severity').value = autoSev;
             }
         });
 
@@ -798,11 +840,71 @@
         // Call History search
         document.getElementById('btnSearchHistory').addEventListener('click', searchCallHistory);
 
-        // New Major Incident button
-        document.getElementById('btnNewMajor').addEventListener('click', function () {
-            // Open new incident page in new tab with major=1 flag
-            window.open('new-incident.php?major=1', '_blank');
-        });
+        // New Major Incident button (GH #79) — creates a major incident
+        // inline via api/major-incidents.php action=create and selects it
+        // in the #major_incident dropdown above, so the dispatcher never
+        // leaves the New Incident form. api/incident-create.php already
+        // reads the dropdown's value and links the new ticket to whatever
+        // major is selected at submit time (see the QA #11 comment there);
+        // this button just gives a way to create the major to select.
+        //
+        // Previously this opened new-incident.php?major=1 in a new tab —
+        // a "major=1" flag nothing in new-incident.php ever read, so the
+        // button just produced a second, ordinary blank incident form.
+        //
+        // Only rendered when the server-side rbac_can('action.link_major')
+        // check passes (new-incident.php $canLinkMajor), matching the same
+        // permission api/major-incidents.php enforces — so this listener
+        // only needs to exist when the button does.
+        var btnNewMajor = document.getElementById('btnNewMajor');
+        if (btnNewMajor) {
+            btnNewMajor.addEventListener('click', function () {
+                var name = window.prompt('Name for the new major incident:');
+                if (name === null) return; // cancelled
+                name = name.trim();
+                if (name === '') {
+                    showAlert('Enter a name for the new major incident.', 'warning');
+                    return;
+                }
+
+                var csrfField = document.querySelector('#incidentForm [name="csrf_token"]');
+                var csrfToken = csrfField ? csrfField.value : '';
+
+                btnNewMajor.disabled = true;
+                fetch('api/major-incidents.php', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'create',
+                        name: name,
+                        severity: 1, // "Major" — matches the default in major-incidents.php's New modal
+                        csrf_token: csrfToken
+                    })
+                })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    btnNewMajor.disabled = false;
+                    if (!data || data.error) {
+                        showAlert('Failed to create major incident: ' + escHtml((data && data.error) || 'unknown error'), 'danger');
+                        return;
+                    }
+                    var sel = document.getElementById('major_incident');
+                    if (sel) {
+                        var opt = document.createElement('option');
+                        opt.value = data.major_id;
+                        opt.textContent = name;
+                        sel.appendChild(opt);
+                        sel.value = data.major_id;
+                    }
+                    showAlert(escHtml(data.message || ('Major incident created: ' + name)), 'success');
+                })
+                .catch(function (err) {
+                    btnNewMajor.disabled = false;
+                    showAlert('Network error creating major incident: ' + escHtml(err.message), 'danger');
+                });
+            });
+        }
 
         // ── Responder search + keyboard navigation ───────────────────────
         // Search box (tabindex=12, after Phone=11): typing filters the

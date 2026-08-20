@@ -57,6 +57,17 @@ if (!sm_is_session_valid()) {
 // Touch the active_sessions row so the rolling timeout extends with use.
 sm_update_activity();
 
+// Phase 145 (2026-08-19, GH#90) — facility-account confinement. Must run
+// BEFORE the must_change_password/tfa/RBAC-fail-closed block below so a
+// facility-confined session is blocked from every endpoint outside its
+// small allowlist regardless of those other states. api/auth.php is
+// require_once'd by essentially every api/*.php endpoint, making this
+// the single choke point that protects endpoints with no RBAC gate of
+// their own — see inc/facility-scope.php's docblock for the full
+// three-layer design. No-op for every non-facility session.
+require_once __DIR__ . '/../inc/facility-scope.php';
+facility_confine_api_or_deny();
+
 // Phase 9 (2026-06-08): force-password-change middleware.
 // IMPORTANT: this MUST run before the RBAC fail-closed check below.
 // Reasoning: a newly-created user with must_change_password=1 may have

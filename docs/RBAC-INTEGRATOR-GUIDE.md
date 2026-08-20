@@ -123,6 +123,7 @@ The `with_session_user($userId, $orgId, callable)` helper in the test suite swap
 - Don't grant roles directly via INSERT into `user_roles`. The grant module enforces the privilege-escalation guard; bypassing it is a security bug.
 - Don't use `rbac_can()` inside the `rbac_grant_role()` path — it's already accounted for by `rbac_can_grant()`. Calling rbac_can recursively risks cache-confusion.
 - Don't catch and swallow `RuntimeException` from grant module functions. They carry user-facing error messages; surface them.
+- Don't add a new admin-only permission code to `sql/rbac.sql`/`sql/run_00_rbac.php`'s Org Admin/Dispatcher `WHERE code NOT IN (...)` exclusion lists without also adding it to the repair `DELETE` immediately below each list. The exclusion list only stops a NEW `INSERT IGNORE` grant — it does nothing for a role that already holds the code directly (granted before the code was excluded) or that will hold its canonical alias once `sql/run_rbac_v2.php`'s A8 step links the old code to a `<resource>.<verb>` form via `deprecated_alias_of`. Both are real, previously-live privilege-escalation paths (2026-08-16 — Org Admin held the canonical alias of `action.manage_config` and `action.manage_roles` on the dev database and your-server.example.com), not theoretical. Copy the pattern of the two `DELETE ... role_permissions` blocks that follow each broad grant.
 
 ## See also
 

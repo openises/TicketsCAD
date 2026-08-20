@@ -545,6 +545,7 @@ geocoder. If that matters for your deployment, host geocoding internally.</p>
     <li>Manage conditions from the Controls widget on the dashboard (click <strong>Roads</strong>).</li>
     <li>Conditions can auto-expire after a set time.</li>
     <li>Visual markers appear directly on the map so dispatchers can warn responders.</li>
+    <li>Admins editing a road condition report in Settings can click <strong>Lookup</strong> next to the Address field to fill in Latitude/Longitude automatically instead of typing coordinates by hand. A report saved with no coordinates (0, 0) is still valid but will not appear on the map overlay — the form shows a warning when that is the case.</li>
 </ul>
 '
             ],
@@ -623,7 +624,7 @@ geocoder. If that matters for your deployment, host geocoding internally.</p>
                 'body'  => '
 <p>If your administrator has enabled it, TicketsCAD can surface <strong>National Weather Service</strong> watches and warnings for your area. When a matching alert is issued you will see a <i class="bi bi-cloud-lightning-rain-fill text-danger"></i> card in the notification tray (bell icon) with an audible chime, and a banner on the Situation view.</p>
 <p>Weather alerts are <strong>off by default</strong> and configured per-install. Administrators set coverage areas (a state, forecast zones, or a point + radius) and routing rules (which severity of alert goes where) at <strong>Settings &gt; Communications &amp; Integrations &gt; Weather Alerts</strong>. Later phases can route alerts to chat/SMS/email and read severe warnings out over DMR/Zello radio.</p>
-<p>See the <a href="docs/WEATHER-ALERTS-GUIDE.md" target="_blank">Weather Alerts administrator guide</a> for setup.</p>
+<p>See the <a href="documentation/?doc=WEATHER-ALERTS-GUIDE" target="_blank">Weather Alerts administrator guide</a> for setup.</p>
 '
             ],
             [
@@ -664,6 +665,22 @@ geocoder. If that matters for your deployment, host geocoding internally.</p>
     <li>Fill in name, contact details, member type, status.</li>
     <li>Click <strong>Save</strong>.</li>
 </ol>
+<h6>Assigning Teams</h6>
+<p>Open a member&#39;s detail panel and expand the <strong>Team
+Memberships</strong> card. It lists every team the member belongs to (a
+member can belong to more than one). If your account can manage teams:</p>
+<ul>
+    <li>Use the <strong>Add to Team</strong> control at the bottom of the
+        card to assign the member to another team, with a role (Member,
+        Leader, Deputy, Observer).</li>
+    <li>Click the <i class="bi bi-x-lg"></i> button on any row to remove
+        the member from that team.</li>
+</ul>
+<p class="small text-body-secondary">Team assignment lives entirely here
+and on the <strong>Teams</strong> tab &mdash; both write to the same place,
+so a change made on either page shows up on the other immediately. For
+finer control (ICS position, assigned date, notes), use the
+<strong>Teams</strong> tab.</p>
 <h6>Removing Members</h6>
 <p>Delete one member from the detail panel&#39;s <strong>Delete</strong>
 button (soft delete &mdash; the member moves to the Wastebasket and can be

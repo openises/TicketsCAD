@@ -132,6 +132,34 @@ check('A32 incident-detail JS links via major API',
 check('A33 incident-detail JS create-then-link path',
     file_has($idjs, "action: 'create'") && file_has($idjs, "action: 'link'"), $pass, $fail);
 
+// GH #79 — New Incident page: the "New" major-incident button previously
+// opened new-incident.php?major=1 in a new tab (a flag nothing ever read,
+// so it just produced a second blank incident form), and the page had no
+// link to the Major Incidents list itself. Fixed by wiring btnNewMajor to
+// create a major incident inline (mirroring incident-detail.js's
+// create-then-link pattern, minus the "link" half — api/incident-create.php
+// already reads the #major_incident select's value at submit time) and by
+// adding a contextual link to major-incidents.php on the page itself.
+$ninc   = $root . '/new-incident.php';
+$nincjs = $root . '/assets/js/new-incident.js';
+
+check('A34 new-incident.php computes link_major permission',
+    file_has($ninc, "rbac_can('action.link_major')"), $pass, $fail);
+check('A35 new-incident.php New-major button gated on the permission',
+    file_has($ninc, '$canLinkMajor'), $pass, $fail);
+check('A36 new-incident.php links to the Major Incidents list',
+    file_has($ninc, 'href="major-incidents.php"'), $pass, $fail);
+check('A37 the dead ?major=1 new-tab flag is gone (regression guard for GH #79)',
+    !file_has($ninc, "window.open('new-incident.php?major=1'")
+    && !file_has($nincjs, "window.open('new-incident.php?major=1'"), $pass, $fail);
+check('A38 new-incident.js New-major button creates a major incident inline',
+    file_has($nincjs, "action: 'create'") && file_has($nincjs, "api/major-incidents.php"), $pass, $fail);
+check('A39 new-incident.js selects the newly created major in the dropdown',
+    file_has($nincjs, 'sel.value = data.major_id'), $pass, $fail);
+check('A40 new-incident.js guards the listener with a null check (button may be hidden by RBAC)',
+    file_has($nincjs, "var btnNewMajor = document.getElementById('btnNewMajor');")
+    && file_has($nincjs, 'if (btnNewMajor) {'), $pass, $fail);
+
 // ══════════════════════════════════════════════════════════════
 // Part B — end-to-end data-layer exercise (mirrors API SQL)
 // ══════════════════════════════════════════════════════════════

@@ -47,7 +47,15 @@
                 loadStatusCounts();
             }, 600);
         };
-        var events = ['incident:new', 'incident:update', 'incident:close', 'incident:note'];
+        // Phase 142 (GH#70 Phase 2) — a share grant makes a ticket newly
+        // visible on this org's board; a revoke removes it — same class of
+        // change as new/close, not a mere in-place field update.
+        // Phase 143 (GH#70 Phase 3) — a standing relationship activating (or
+        // its window elapsing) can add/remove an entire org's worth of
+        // tickets at once; same treatment.
+        var events = ['incident:new', 'incident:update', 'incident:close', 'incident:note',
+            'incident:shared', 'incident:unshared',
+            'org_relationship:activated', 'org_relationship:deactivated'];
         for (var i = 0; i < events.length; i++) {
             window.EventBus.on(events[i], refresh);
         }
@@ -310,7 +318,6 @@
         }
 
         var statusClasses = { 1: 'bg-secondary', 2: 'bg-success', 3: 'bg-info' };
-        var sevLabels = ['Low', 'Med', 'High'];
 
         var html = '';
         for (var i = 0; i < incidents.length; i++) {
@@ -328,11 +335,22 @@
             var caseNum = inc.incident_number || ('#' + inc.id);
             html += '<tr class="incident-row" data-id="' + inc.id + '" data-case-num="' + escHtml(caseNum) + '" style="cursor:pointer;">' +
                 '<td class="ps-3 fw-semibold text-primary font-monospace small">' + escHtml(caseNum) + '</td>' +
-                '<td><span class="sev-stripe" style="' + sevStyle + '" title="' + (sevLabels[inc.severity] || '') + '"></span></td>' +
+                '<td><span class="sev-stripe" style="' + sevStyle + '" title="' + escAttr(inc.severity_label || '') + '"></span></td>' +
                 '<td class="text-nowrap">' + formatDate(inc.date) + '</td>' +
                 '<td>' + escHtml(truncate(inc.scope, 50)) + '</td>' +
                 '<td class="text-body-secondary">' + escHtml(inc.type_name || '--') +
-                    (inc.type_group ? ' <small class="text-body-tertiary">(' + escHtml(inc.type_group) + ')</small>' : '') + '</td>' +
+                    (inc.type_group ? ' <small class="text-body-tertiary">(' + escHtml(inc.type_group) + ')</small>' : '') +
+                    // Phase 141 (GH#70) — cross-org sharing indicator. Present
+                    // only on a row org_sharing_apply_list_redaction() (api/
+                    // incident-list.php) actually annotated as share-derived;
+                    // absent (no badge) for every same-org row and for any
+                    // pre-Phase-141 backend. escHtml() is this file's own
+                    // established escaping helper (textContent under the
+                    // hood, see its definition below) — same pattern already
+                    // used for every other field concatenated into this row.
+                    (inc.shared_from_org_name ? ' <span class="badge bg-info text-dark" title="Shared from ' +
+                        escAttr(inc.shared_from_org_name) + '"><i class="bi bi-share"></i> ' +
+                        escHtml(inc.shared_from_org_name) + '</span>' : '') + '</td>' +
                 '<td>' + location + '</td>' +
                 '<td><span class="badge ' + (statusClasses[inc.status] || 'bg-secondary') + '" style="font-size:0.65rem;">' + escHtml(inc.status_text) + '</span></td>' +
                 '<td class="text-center">' + (inc.active_responders > 0 ? '<span class="badge bg-primary">' + inc.active_responders + '</span>' : '<span class="text-body-tertiary">0</span>') + '</td>' +
@@ -430,6 +448,15 @@
         var div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
+    }
+
+    // Phase 141 (GH#70) — attribute-safe escaping for the "shared from"
+    // badge's title attribute (escHtml() above is for element CONTENT;
+    // an attribute also needs its quote character escaped).
+    function escAttr(str) {
+        if (!str) return '';
+        return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
     // ── Boot ──

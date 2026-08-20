@@ -31,6 +31,11 @@
     var assignAddress = document.getElementById('assignAddress');
     var assignDesc = document.getElementById('assignDesc');
     var assignMapLink = document.getElementById('assignMapLink');
+    // GH#82 — additional active assignments this unit also holds.
+    var otherAssignments = document.getElementById('otherAssignments');
+    var otherAssignmentsList = document.getElementById('otherAssignmentsList');
+    var allAssignments = [];
+    var primaryAssignmentIndex = 0;
     var quickNoteInput = document.getElementById('quickNoteInput');
     var btnAddNote = document.getElementById('btnAddNote');
     var mileageStartForm = document.getElementById('mileageStartForm');
@@ -534,8 +539,15 @@
                     updateStatusBadge(data.current_status.status_val, data.current_status.color);
                 }
 
-                // Assignment
-                renderAssignment(data.assignment);
+                // Assignment(s) — GH#82: a unit can legitimately hold more
+                // than one active assignment at once now (Multi-Assign, or
+                // a dispatcher-confirmed "assign anyway?"). Show the
+                // original/oldest as primary and list any others rather
+                // than silently dropping them.
+                allAssignments = data.assignments || (data.assignment ? [data.assignment] : []);
+                primaryAssignmentIndex = 0;
+                renderAssignment(allAssignments[0] || null);
+                renderOtherAssignments();
 
                 // Recent assignments
                 renderRecent(data.recent_assignments || []);
@@ -620,6 +632,49 @@
         // sections whenever the assignment reloads. The user's
         // localStorage prefs drive which sections actually render.
         try { mobileDetailRefresh(assign.ticket_id || null); } catch (e) {}
+    }
+
+    // GH#82 (2026-08-18) — list every OTHER active assignment this unit
+    // holds (everything in allAssignments except the one currently shown
+    // as primary). Previously the mobile screen only ever knew about the
+    // single newest assignment, so a unit given a second concurrent call
+    // simply lost the first one off its own screen. Tapping an entry here
+    // swaps it into the primary card via the same renderAssignment() the
+    // initial load uses, so nothing is ever hidden.
+    function renderOtherAssignments() {
+        if (!otherAssignments || !otherAssignmentsList) return;
+        var others = [];
+        for (var i = 0; i < allAssignments.length; i++) {
+            if (i !== primaryAssignmentIndex) others.push(i);
+        }
+        if (!others.length) {
+            otherAssignments.classList.add('d-none');
+            otherAssignmentsList.innerHTML = '';
+            return;
+        }
+        var html = '';
+        for (var j = 0; j < others.length; j++) {
+            var idx = others[j];
+            var a = allAssignments[idx];
+            var label = (a.incident_number || ('#' + a.ticket_id)) + ' — ' + (a.nature || a.description || 'incident');
+            html += '<button type="button" class="btn btn-sm btn-outline-warning w-100 mb-1 text-start other-assignment-btn" data-idx="' + idx + '">'
+                  + '<i class="bi bi-arrow-left-right me-1"></i>' + escHtml(label) + '</button>';
+        }
+        otherAssignmentsList.innerHTML = html;
+        var btns = otherAssignmentsList.querySelectorAll('.other-assignment-btn');
+        for (var k = 0; k < btns.length; k++) {
+            btns[k].addEventListener('click', function () {
+                selectPrimaryAssignment(parseInt(this.getAttribute('data-idx'), 10));
+            });
+        }
+        otherAssignments.classList.remove('d-none');
+    }
+
+    function selectPrimaryAssignment(idx) {
+        if (idx < 0 || idx >= allAssignments.length) return;
+        primaryAssignmentIndex = idx;
+        renderAssignment(allAssignments[idx]);
+        renderOtherAssignments();
     }
 
     // Phase 104i (a beta tester GH #14) — partial parity for mobile.

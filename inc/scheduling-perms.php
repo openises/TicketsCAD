@@ -34,97 +34,139 @@ function scheduling_get_permissions(int $memberId, string $scopeType = 'global',
 {
     $prefix = $GLOBALS['db_prefix'] ?? '';
 
-    // Get member info for team/type resolution
+    // Get member info for member_type resolution
     $member = null;
     try {
         $member = db_fetch_one(
-            "SELECT `id`, `team_id`, `member_type_id`
+            "SELECT `id`, `member_type_id`
              FROM `{$prefix}member` WHERE `id` = ?",
             [$memberId]
         );
     } catch (Exception $e) {}
 
-    $teamId = $member ? (int) ($member['team_id'] ?? 0) : 0;
     $typeId = $member ? (int) ($member['member_type_id'] ?? 0) : 0;
 
-    // Build candidate queries in priority order
+    // GH#76 Phase 144 (2026-08-18): team scope now resolves from ALL of the
+    // member's team_members rows, not the single legacy member.team_id
+    // column — that column is retained only as an external-API compat
+    // mirror as of this release and is no longer written by any internal
+    // code path (see inc/member-write.php, CLAUDE.md's GH#76 pitfall
+    // entry). SHIPPED DEFAULT (flagged for Eric's explicit confirmation
+    // before release per the design spec): a member belonging to more than
+    // one team combines by UNION / most-permissive-wins at each "per-team"
+    // priority level below — if ANY of the member's teams has a matching
+    // profile at a given scope, that profile's flags are OR'd together
+    // (see _sched_perm_find_team_union()). A member with exactly one team
+    // reproduces the prior single-team-column behavior byte-for-byte
+    // (single-row union == the old direct lookup). A member with zero
+    // team_members rows keeps the existing member_type/global fallback,
+    // unchanged. Verify with tools/scheduling_perms_diagnose.php before
+    // deploying this to an install with existing team-scoped profiles.
+    $teamIds = [];
+    try {
+        $teamRows = db_fetch_all(
+            "SELECT `team_id` FROM `{$prefix}team_members` WHERE `member_id` = ?",
+            [$memberId]
+        );
+        foreach ($teamRows as $tr) {
+            $tid = (int) ($tr['team_id'] ?? 0);
+            if ($tid > 0) $teamIds[] = $tid;
+        }
+    } catch (Exception $e) {}
+    $teamIds = array_values(array_unique($teamIds));
+
+    // Build candidate queries in priority order. Each candidate carries a
+    // 'kind' so the resolver loop below knows which finder to call —
+    // 'member'/'member_type'/'all' behave exactly as before (single exact
+    // match); 'team_union' evaluates every one of the member's teams at
+    // that scope and combines matches (see above).
     $candidates = [];
 
     // Level 1: Scope-specific, per-member
     if ($scopeType !== 'global' && $scopeId) {
         $candidates[] = [
-            'scope_type' => $scopeType,
-            'scope_id'   => $scopeId,
+            'kind'        => 'exact',
+            'scope_type'  => $scopeType,
+            'scope_id'    => $scopeId,
             'target_type' => 'member',
-            'target_id'  => $memberId,
+            'target_id'   => $memberId,
         ];
     }
 
-    // Level 2: Scope-specific, per-team
-    if ($scopeType !== 'global' && $scopeId && $teamId) {
+    // Level 2: Scope-specific, per-team (union across every team)
+    if ($scopeType !== 'global' && $scopeId && !empty($teamIds)) {
         $candidates[] = [
-            'scope_type' => $scopeType,
-            'scope_id'   => $scopeId,
+            'kind'        => 'team_union',
+            'scope_type'  => $scopeType,
+            'scope_id'    => $scopeId,
             'target_type' => 'team',
-            'target_id'  => $teamId,
+            'target_ids'  => $teamIds,
         ];
     }
 
     // Level 3: Scope-specific, per-member_type
     if ($scopeType !== 'global' && $scopeId && $typeId) {
         $candidates[] = [
-            'scope_type' => $scopeType,
-            'scope_id'   => $scopeId,
+            'kind'        => 'exact',
+            'scope_type'  => $scopeType,
+            'scope_id'    => $scopeId,
             'target_type' => 'member_type',
-            'target_id'  => $typeId,
+            'target_id'   => $typeId,
         ];
     }
 
     // Level 4: Scope-specific, all targets
     if ($scopeType !== 'global' && $scopeId) {
         $candidates[] = [
-            'scope_type' => $scopeType,
-            'scope_id'   => $scopeId,
+            'kind'        => 'exact',
+            'scope_type'  => $scopeType,
+            'scope_id'    => $scopeId,
             'target_type' => 'all',
-            'target_id'  => null,
+            'target_id'   => null,
         ];
     }
 
     // Level 5-7: Global, per-member/team/type
     $candidates[] = [
-        'scope_type' => 'global',
-        'scope_id'   => null,
+        'kind'        => 'exact',
+        'scope_type'  => 'global',
+        'scope_id'    => null,
         'target_type' => 'member',
-        'target_id'  => $memberId,
+        'target_id'   => $memberId,
     ];
-    if ($teamId) {
+    if (!empty($teamIds)) {
         $candidates[] = [
-            'scope_type' => 'global',
-            'scope_id'   => null,
+            'kind'        => 'team_union',
+            'scope_type'  => 'global',
+            'scope_id'    => null,
             'target_type' => 'team',
-            'target_id'  => $teamId,
+            'target_ids'  => $teamIds,
         ];
     }
     if ($typeId) {
         $candidates[] = [
-            'scope_type' => 'global',
-            'scope_id'   => null,
+            'kind'        => 'exact',
+            'scope_type'  => 'global',
+            'scope_id'    => null,
             'target_type' => 'member_type',
-            'target_id'  => $typeId,
+            'target_id'   => $typeId,
         ];
     }
 
     // Level 8: Global default (all)
     $candidates[] = [
-        'scope_type' => 'global',
-        'scope_id'   => null,
+        'kind'        => 'exact',
+        'scope_type'  => 'global',
+        'scope_id'    => null,
         'target_type' => 'all',
-        'target_id'  => null,
+        'target_id'   => null,
     ];
 
     // Try each candidate in priority order
     foreach ($candidates as $c) {
-        $profile = _sched_perm_find($prefix, $c);
+        $profile = ($c['kind'] === 'team_union')
+            ? _sched_perm_find_team_union($prefix, $c)
+            : _sched_perm_find($prefix, $c);
         if ($profile) {
             return $profile;
         }
@@ -261,6 +303,68 @@ function _sched_perm_find(string $prefix, array $criteria): ?array
     if (!$row) return null;
 
     return _sched_perm_to_array($row);
+}
+
+/**
+ * GH#76 Phase 144 (2026-08-18) — team-scope resolver over MULTIPLE teams
+ * (a member's full team_members set), combined by UNION / most-permissive-
+ * wins. Mirrors _sched_perm_find()'s WHERE shape exactly except
+ * `target_id = ?` becomes `target_id IN (...)` and every matching row is
+ * combined rather than just the first.
+ *
+ * A member with exactly one team_members row degrades to the identical
+ * single-row result _sched_perm_find() would have returned for the old
+ * member.team_id lookup — see tests/test_scheduling_perms_multiteam_union.php.
+ */
+function _sched_perm_find_team_union(string $prefix, array $criteria): ?array
+{
+    $where = "`scope_type` = ?";
+    $params = [$criteria['scope_type']];
+
+    if ($criteria['scope_id'] === null) {
+        $where .= " AND `scope_id` IS NULL";
+    } else {
+        $where .= " AND `scope_id` = ?";
+        $params[] = $criteria['scope_id'];
+    }
+
+    $where .= " AND `target_type` = 'team'";
+    $ids = $criteria['target_ids'] ?? [];
+    if (empty($ids)) return null;
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $where .= " AND `target_id` IN ({$placeholders})";
+    $params = array_merge($params, $ids);
+
+    try {
+        $rows = db_fetch_all(
+            "SELECT spp.*
+             FROM `{$prefix}scheduling_permission_assignments` spa
+             JOIN `{$prefix}scheduling_permission_profiles` spp ON spa.`profile_id` = spp.`id`
+             WHERE $where",
+            $params
+        );
+    } catch (Exception $e) {
+        return null;
+    }
+
+    if (empty($rows)) return null;
+
+    $combined = _sched_perm_to_array($rows[0]);
+    if (count($rows) === 1) return $combined;
+
+    // Union / most-permissive-wins: OR every boolean capability flag
+    // across every matching team profile at this scope. A member gets a
+    // capability if ANY of their teams' profiles here grant it.
+    $combined['profile_code'] = 'combined_team_union';
+    $combined['profile_name'] = 'Combined (multiple teams)';
+    for ($i = 1; $i < count($rows); $i++) {
+        $next = _sched_perm_to_array($rows[$i]);
+        foreach ($next as $k => $v) {
+            if ($k === 'profile_code' || $k === 'profile_name') continue;
+            $combined[$k] = ((int) $combined[$k] || (int) $v) ? 1 : 0;
+        }
+    }
+    return $combined;
 }
 
 function _sched_perm_to_array(array $row): array

@@ -14,10 +14,23 @@
  *   org_descendant_ids(int $orgId): array
  *   org_user_home_id(int $userId): int
  *   org_query_filter(string $column, ?int $userId = null): array
+ *   org_can_see_ticket(int $ticketId, ?int $userId = null): bool
+ *   org_ticket_query_filter(?int $userId = null, string $ticketAlias = 't'): array   [Phase 141]
+ *   org_can_mutate_ticket(int $ticketId, ?int $userId = null): bool                  [Phase 141]
+ *   org_ticket_is_owned_by_caller(int $ticketId, ?int $userId = null): bool          [Phase 141]
  *
  * NULL return from org_visible_ids() / empty filter from
  * org_query_filter() means "no restriction" (Super Admin scope).
  * Callers should treat NULL specifically — not as "empty list".
+ *
+ * Phase 141 (2026-08-17, specs/phase-141-cross-org-ticket-sharing/) added
+ * cross-org ticket sharing: org_can_see_ticket() gained one more OR-branch
+ * (an active incident_shares grant), and three new sibling functions were
+ * added for ticket-list filtering and tier-aware write gating. Every
+ * OTHER function in this file — org_visible_ids(), org_query_filter(),
+ * org_descendant_ids(), org_member_query_filter(), org_can_see_row(),
+ * org_can_see_member() — is untouched, in any commit, at all. That
+ * boundary is deliberate: sharing a ticket must never leak a roster.
  */
 
 declare(strict_types=1);
@@ -300,6 +313,13 @@ function org_query_filter(string $column, ?int $userId = null): array {
  * belongs to a different tenant. Super Admin (org_visible_ids
  * returns NULL) always wins; tickets with NULL org_id stay visible
  * for legacy-data compatibility (same fallback as the list filter).
+ *
+ * Phase 141 (2026-08-17) addition: a caller whose own org does NOT
+ * own the ticket may still see it if an active (non-revoked)
+ * incident_shares row grants their org visibility. This is a READ
+ * gate only — mutation additionally requires org_can_mutate_ticket()
+ * below. Wrapped in try/catch so a pre-Phase-141 database (table
+ * missing) falls back to the exact pre-Phase-141 result, unchanged.
  */
 function org_can_see_ticket(int $ticketId, ?int $userId = null): bool
 {
@@ -316,8 +336,294 @@ function org_can_see_ticket(int $ticketId, ?int $userId = null): bool
         // table missing / column missing → fall open (legacy installs)
         return true;
     }
+    $visibleInt = array_map('intval', $visible);
     if ($orgId === null || $orgId === '') {
         // Legacy NULL row — visible unless F-014 strict isolation is on.
+        return !org_strict_isolation_enabled();
+    }
+    if (in_array((int) $orgId, $visibleInt, true)) return true;
+
+    // Phase 141 — cross-org share fallback.
+    try {
+        $placeholders = implode(',', array_fill(0, count($visibleInt), '?'));
+        $shared = db_fetch_value(
+            "SELECT 1 FROM `{$prefix}incident_shares`
+              WHERE `ticket_id` = ? AND `shared_with_org_id` IN ($placeholders)
+                AND `revoked_at` IS NULL LIMIT 1",
+            array_merge([$ticketId], $visibleInt)
+        );
+        if ($shared) return true;
+    } catch (Throwable $e) {
+        // incident_shares table not present yet (pre-Phase-141 install) —
+        // no share can exist, fall through to the pre-Phase-141 result.
+    }
+
+    // Phase 143 (2026-08-17) — cross-org STANDING RELATIONSHIP fallback.
+    // Read-time only: liveness of any activation is recomputed fresh, in
+    // SQL, against NOW() on every single call — see
+    // inc/org-relationships.php's org_relationship_activation_live_join_sql()
+    // docblock. Lazy-loaded (org-scope.php does not unconditionally require
+    // org-relationships.php, avoiding a require cycle) and try/catch
+    // wrapped: falls back silently to the pre-Phase-143 result if the
+    // org_relationships tables, or the file itself, are not present yet.
+    if (!function_exists('org_relationship_activation_live_join_sql') && is_file(__DIR__ . '/org-relationships.php')) {
+        require_once __DIR__ . '/org-relationships.php';
+    }
+    if (function_exists('org_relationship_activation_live_join_sql')) {
+        try {
+            $liveJoin = org_relationship_activation_live_join_sql('ra');
+            $placeholders = implode(',', array_fill(0, count($visibleInt), '?'));
+            $related = db_fetch_value(
+                "SELECT 1
+                   FROM `{$prefix}org_relationships` r
+                   JOIN `{$prefix}org_relationships_members` mine
+                     ON mine.relationship_id = r.id AND mine.status = 'approved' AND mine.org_id IN ($placeholders)
+                   JOIN `{$prefix}org_relationships_members` theirs
+                     ON theirs.relationship_id = r.id AND theirs.status = 'approved' AND theirs.org_id = ?
+                   LEFT JOIN `{$prefix}org_relationships_activations` ra
+                     ON ra.relationship_id = r.id AND {$liveJoin}
+                  WHERE r.status = 'active'
+                    AND (r.requires_activation = 0 OR ra.id IS NOT NULL)
+                  LIMIT 1",
+                array_merge($visibleInt, [(int) $orgId])
+            );
+            if ($related) return true;
+        } catch (Throwable $e) {
+            // org_relationships tables not present yet (pre-Phase-143
+            // install) — fall through to the pre-Phase-143 result.
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Phase 141 (2026-08-17) — ticket-specific sibling of org_query_filter().
+ * DOES NOT modify org_query_filter() itself, which stays byte-identical
+ * and column-generic for its other callers (statistics.php's r.org_id,
+ * any future non-ticket caller).
+ *
+ * Builds the same base same-org fragment org_query_filter() would, then
+ * — unless the caller is Super Admin — ORs in an EXISTS clause against
+ * incident_shares so a routed ticket appears in the caller's ticket-list
+ * queries without changing what org_query_filter() returns for anyone
+ * else. Wrapped in try/catch: if incident_shares doesn't exist yet
+ * (pre-migration install), falls back to the base org_query_filter()
+ * result unchanged, silently.
+ *
+ *   [$frag, $vars] = org_ticket_query_filter('t');
+ *   $sql = "SELECT * FROM ticket t WHERE 1=1" . $frag . " ORDER BY ...";
+ */
+function org_ticket_query_filter(?int $userId = null, string $ticketAlias = 't'): array
+{
+    [$frag, $vars] = org_query_filter("{$ticketAlias}.org_id", $userId);
+
+    $visible = org_visible_ids($userId);
+    if ($visible === null) return [$frag, $vars];   // Super Admin — no filter to widen
+    if (empty($visible))    return [$frag, $vars];   // unauthenticated — 0=1, sharing can't widen "see nothing"
+
+    $prefix = $GLOBALS['db_prefix'] ?? '';
+    $visibleInt = array_map('intval', $visible);
+    $placeholders = implode(',', array_fill(0, count($visibleInt), '?'));
+
+    // $frag is always of the shape " AND <condition>" (org_query_filter's
+    // own contract — both its strict-mode branch, "$column IN (...)", and
+    // its legacy branch, "($column IN (...) OR $column IS NULL)", start
+    // with " AND "), and is never empty for a non-NULL, non-empty visible
+    // set. Building an OR-list of parts (rather than nesting string
+    // replacements) lets each additional grant source (incident_shares,
+    // then Phase 143's org_relationships) widen independently without
+    // re-deriving the strict-vs-legacy paren-shape handling for each one.
+    $orParts = [preg_replace('/^\s*AND\s+/', '', $frag, 1)];
+    $orVars  = $vars;
+
+    try {
+        $hasSharesTable = (bool) db_fetch_value(
+            "SELECT 1 FROM information_schema.TABLES
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? LIMIT 1",
+            [$prefix . 'incident_shares']
+        );
+    } catch (Throwable $e) {
+        $hasSharesTable = false;
+    }
+    if ($hasSharesTable) {
+        $orParts[] = "EXISTS (SELECT 1 FROM `{$prefix}incident_shares` `ish` "
+                   . "WHERE `ish`.`ticket_id` = {$ticketAlias}.`id` "
+                   . "AND `ish`.`shared_with_org_id` IN ({$placeholders}) "
+                   . "AND `ish`.`revoked_at` IS NULL)";
+        $orVars = array_merge($orVars, $visibleInt);
+    }
+
+    // Phase 143 (2026-08-17) — cross-org STANDING RELATIONSHIP widening,
+    // mirror-image of org_can_see_ticket()'s own addition above, keyed off
+    // {ticketAlias}.org_id rather than a bound ticket id. Same lazy-load +
+    // try/catch discipline: no widening if the org_relationships tables, or
+    // inc/org-relationships.php itself, are not available yet — the exact
+    // condition that keeps this function's ROW-SET output unchanged for
+    // every install that has never used a relationship (proven by
+    // tests/test_org_relationships_noop.php), even though the SQL TEXT now
+    // always carries an inert EXISTS() once the tables exist but are empty.
+    if (!function_exists('org_relationship_activation_live_join_sql') && is_file(__DIR__ . '/org-relationships.php')) {
+        require_once __DIR__ . '/org-relationships.php';
+    }
+    if (function_exists('org_relationship_activation_live_join_sql')) {
+        try {
+            $hasRelTable = (bool) db_fetch_value(
+                "SELECT 1 FROM information_schema.TABLES
+                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? LIMIT 1",
+                [$prefix . 'org_relationships']
+            );
+        } catch (Throwable $e) {
+            $hasRelTable = false;
+        }
+        if ($hasRelTable) {
+            $liveJoin = org_relationship_activation_live_join_sql('ra');
+            $orParts[] = "EXISTS (
+                SELECT 1
+                  FROM `{$prefix}org_relationships` r
+                  JOIN `{$prefix}org_relationships_members` mine
+                    ON mine.relationship_id = r.id AND mine.status = 'approved' AND mine.org_id IN ({$placeholders})
+                  JOIN `{$prefix}org_relationships_members` theirs
+                    ON theirs.relationship_id = r.id AND theirs.status = 'approved' AND theirs.org_id = {$ticketAlias}.org_id
+                  LEFT JOIN `{$prefix}org_relationships_activations` ra
+                    ON ra.relationship_id = r.id AND {$liveJoin}
+                 WHERE r.status = 'active'
+                   AND (r.requires_activation = 0 OR ra.id IS NOT NULL)
+              )";
+            $orVars = array_merge($orVars, $visibleInt);
+        }
+    }
+
+    if (count($orParts) === 1) {
+        // Nothing widened it at all (neither incident_shares nor
+        // org_relationships tables exist yet) — return the ORIGINAL
+        // fragment unchanged, byte-identical to org_query_filter()'s own
+        // output, not a redundant "(condition)" wrapper.
+        return [$frag, $vars];
+    }
+
+    return [" AND (" . implode(' OR ', $orParts) . ")", $orVars];
+}
+
+/**
+ * Phase 141 (2026-08-17) — the tier-aware WRITE gate. NOT a drop-in
+ * replacement for org_can_see_ticket() at every call site: only the
+ * mutation endpoints (incident-update.php, incident-assign.php, the
+ * external API's PATCH) should call this instead of the plain read gate.
+ * External API DELETE deliberately uses org_ticket_is_owned_by_caller()
+ * below instead — see that function's docblock.
+ *
+ * Same-org access (the ticket's own org_id is in the caller's
+ * org_visible_ids()) is unconditionally allowed — same-org write
+ * behavior is completely unchanged by this phase. A share only grants
+ * mutation when its access_tier is 'assist'; 'view' tier (or no share at
+ * all) is refused.
+ */
+function org_can_mutate_ticket(int $ticketId, ?int $userId = null): bool
+{
+    if (!org_can_see_ticket($ticketId, $userId)) return false; // no visibility, no mutation
+
+    $visible = org_visible_ids($userId);
+    if ($visible === null) return true;              // Super Admin
+
+    $prefix = $GLOBALS['db_prefix'] ?? '';
+    try {
+        $orgId = db_fetch_value(
+            "SELECT `org_id` FROM `{$prefix}ticket` WHERE `id` = ? LIMIT 1",
+            [$ticketId]
+        );
+    } catch (Exception $e) {
+        return true; // table/column missing — fall open, matches org_can_see_ticket's own fallback
+    }
+    $visibleInt = array_map('intval', $visible);
+    if ($orgId !== null && $orgId !== '' && in_array((int) $orgId, $visibleInt, true)) {
+        return true; // same-org — unchanged write behavior
+    }
+    if (($orgId === null || $orgId === '') && !org_strict_isolation_enabled()) {
+        return true; // legacy NULL-org row, same-org-equivalent fallback
+    }
+
+    // Not same-org — mutation requires an 'assist'-tier grant from ANY
+    // source (incident_shares OR an active org_relationships grant — Phase
+    // 143's third OR-branch, per plan.md: "existence-of-write-capability
+    // is a yes/no question where any valid source is sufficient").
+    try {
+        $placeholders = implode(',', array_fill(0, count($visibleInt), '?'));
+        $tier = db_fetch_value(
+            "SELECT `access_tier` FROM `{$prefix}incident_shares`
+              WHERE `ticket_id` = ? AND `shared_with_org_id` IN ($placeholders)
+                AND `revoked_at` IS NULL
+              ORDER BY (`access_tier` = 'assist') DESC LIMIT 1",
+            array_merge([$ticketId], $visibleInt)
+        );
+        if ($tier === 'assist') return true;
+    } catch (Throwable $e) {
+        // incident_shares missing — fall through to the relationship check.
+    }
+
+    // Phase 143 (2026-08-17) — the same live-join relationship check
+    // org_can_see_ticket() uses, but testing r.access_tier = 'assist'
+    // specifically (the write-capability CEILING, not redaction_profile —
+    // see plan.md's "Two independent axes"). Same lazy-load + try/catch
+    // discipline as the other two additions in this file.
+    if (!function_exists('org_relationship_activation_live_join_sql') && is_file(__DIR__ . '/org-relationships.php')) {
+        require_once __DIR__ . '/org-relationships.php';
+    }
+    if (function_exists('org_relationship_activation_live_join_sql') && $orgId !== null && $orgId !== '') {
+        try {
+            $liveJoin = org_relationship_activation_live_join_sql('ra');
+            $placeholders = implode(',', array_fill(0, count($visibleInt), '?'));
+            $related = db_fetch_value(
+                "SELECT 1
+                   FROM `{$prefix}org_relationships` r
+                   JOIN `{$prefix}org_relationships_members` mine
+                     ON mine.relationship_id = r.id AND mine.status = 'approved' AND mine.org_id IN ($placeholders)
+                   JOIN `{$prefix}org_relationships_members` theirs
+                     ON theirs.relationship_id = r.id AND theirs.status = 'approved' AND theirs.org_id = ?
+                   LEFT JOIN `{$prefix}org_relationships_activations` ra
+                     ON ra.relationship_id = r.id AND {$liveJoin}
+                  WHERE r.status = 'active' AND r.access_tier = 'assist'
+                    AND (r.requires_activation = 0 OR ra.id IS NOT NULL)
+                  LIMIT 1",
+                array_merge($visibleInt, [(int) $orgId])
+            );
+            if ($related) return true;
+        } catch (Throwable $e) {
+            // org_relationships tables not present — no relationship path.
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Phase 141 (2026-08-17) — the ownership-only gate. Used at exactly ONE
+ * call site: the external API's DELETE (soft-delete). Deliberately does
+ * NOT accept a share at any tier and does NOT delegate to
+ * org_can_mutate_ticket() — soft-deleting a ticket removes it from the
+ * OWNING org's own visibility, which spec.md reserves for a 'full' tier
+ * that does not exist in Phase 1. See plan.md's open-question-2 for the
+ * full reasoning; this is deliberately a separate function so a future
+ * "simplify the four org_can_see_ticket-shaped call sites into one
+ * helper" refactor cannot silently fold this one in and change its
+ * behavior.
+ */
+function org_ticket_is_owned_by_caller(int $ticketId, ?int $userId = null): bool
+{
+    $visible = org_visible_ids($userId);
+    if ($visible === null) return true; // Super Admin
+    if (empty($visible))   return false;
+
+    $prefix = $GLOBALS['db_prefix'] ?? '';
+    try {
+        $orgId = db_fetch_value(
+            "SELECT `org_id` FROM `{$prefix}ticket` WHERE `id` = ? LIMIT 1",
+            [$ticketId]
+        );
+    } catch (Exception $e) {
+        return true; // table/column missing — fall open, matches this file's other fallbacks
+    }
+    if ($orgId === null || $orgId === '') {
         return !org_strict_isolation_enabled();
     }
     return in_array((int) $orgId, array_map('intval', $visible), true);

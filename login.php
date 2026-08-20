@@ -115,22 +115,31 @@ if (isset($_GET['logout'])) {
 // otherwise dashboard.
 if (!empty($_SESSION['user_id'])) {
     $redirectTo = 'index.php';
-    try {
-        $mobileRole = db_fetch_one(
-            "SELECT ur.id FROM " . db_table('user_roles') . " ur
-             JOIN " . db_table('roles') . " r ON r.id = ur.role_id
-             WHERE ur.user_id = ?
-               AND r.mobile_first = 1
-               AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
-             LIMIT 1",
-            [(int) $_SESSION['user_id']]
-        );
-        if ($mobileRole) {
-            $redirectTo = 'mobile.php';
+    // Phase 145 (2026-08-19, GH#90) — a facility-confined session
+    // (see inc/facility-scope.php) always lands on its own portal,
+    // ahead of the mobile_first check below. facility_id is a
+    // per-USER column, not a role flag, so this is a separate
+    // condition rather than another row in the mobile_first query.
+    if (!empty($_SESSION['facility_id'])) {
+        $redirectTo = 'facility-portal.php';
+    } else {
+        try {
+            $mobileRole = db_fetch_one(
+                "SELECT ur.id FROM " . db_table('user_roles') . " ur
+                 JOIN " . db_table('roles') . " r ON r.id = ur.role_id
+                 WHERE ur.user_id = ?
+                   AND r.mobile_first = 1
+                   AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+                 LIMIT 1",
+                [(int) $_SESSION['user_id']]
+            );
+            if ($mobileRole) {
+                $redirectTo = 'mobile.php';
+            }
+        } catch (Exception $e) {
+            // mobile_first column / user_roles table may not exist on
+            // a pre-Phase-11d install — fall back to the dashboard.
         }
-    } catch (Exception $e) {
-        // mobile_first column / user_roles table may not exist on
-        // a pre-Phase-11d install — fall back to the dashboard.
     }
     header('Location: ' . $redirectTo);
     exit;
@@ -205,6 +214,31 @@ function complete_login($row, $theme, $clientIp)
     } catch (Exception $e) {
         // user_roles table missing — session role_name stays unset and
         // current_role_name() will fall back to "—".
+    }
+
+    // Phase 145 (2026-08-19, GH#90) — facility-account confinement.
+    // user.facility_id (repurposed — previously a dead v3 column, see
+    // GH#91) links this login to exactly one facility. Read it fresh
+    // from the DATABASE ROW here, once, at login — never trust a
+    // client-supplied value. > 0 means every request in this session
+    // funnels through inc/facility-scope.php's confinement (see that
+    // file's docblock). Explicitly unset (not left stale) when the
+    // column is 0/absent, in case a session is reused across accounts
+    // in a test harness.
+    try {
+        $facilityIdVal = (int) db_fetch_value(
+            "SELECT `facility_id` FROM " . db_table('user') . " WHERE `id` = ? LIMIT 1",
+            [(int) $row['id']]
+        );
+        if ($facilityIdVal > 0) {
+            $_SESSION['facility_id'] = $facilityIdVal;
+        } else {
+            unset($_SESSION['facility_id']);
+        }
+    } catch (Exception $e) {
+        // user.facility_id column missing (very old pre-repurpose schema,
+        // should not happen post-Phase-145 migration) — treat as unset.
+        unset($_SESSION['facility_id']);
     }
 
     // Phase 8b i18n: seed session lang from the user's persisted
@@ -381,21 +415,29 @@ function complete_login($row, $theme, $clientIp)
     // roles.mobile_first instead of hardcoded level/role-id.
     // See the comment block at the top of login.php for the rationale.
     $loginRedirect = 'index.php';
-    try {
-        $mobileRole = db_fetch_one(
-            "SELECT ur.id FROM " . db_table('user_roles') . " ur
-             JOIN " . db_table('roles') . " r ON r.id = ur.role_id
-             WHERE ur.user_id = ?
-               AND r.mobile_first = 1
-               AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
-             LIMIT 1",
-            [(int) $row['id']]
-        );
-        if ($mobileRole) {
-            $loginRedirect = 'mobile.php';
+    // Phase 145 (2026-08-19, GH#90) — facility-confined session (see
+    // inc/facility-scope.php) always lands on its own portal, checked
+    // ahead of mobile_first. $_SESSION['facility_id'] was just set a
+    // few lines above this function's earlier section, from the DB row.
+    if (!empty($_SESSION['facility_id'])) {
+        $loginRedirect = 'facility-portal.php';
+    } else {
+        try {
+            $mobileRole = db_fetch_one(
+                "SELECT ur.id FROM " . db_table('user_roles') . " ur
+                 JOIN " . db_table('roles') . " r ON r.id = ur.role_id
+                 WHERE ur.user_id = ?
+                   AND r.mobile_first = 1
+                   AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+                 LIMIT 1",
+                [(int) $row['id']]
+            );
+            if ($mobileRole) {
+                $loginRedirect = 'mobile.php';
+            }
+        } catch (Exception $e) {
+            // Schema may be pre-Phase-11d — fall back to dashboard.
         }
-    } catch (Exception $e) {
-        // Schema may be pre-Phase-11d — fall back to dashboard.
     }
     // a beta tester GH #13-followup (2026-07-03) — if this login is bound
     // for mobile.php, the session_start() there will run under the

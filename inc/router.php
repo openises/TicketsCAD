@@ -178,6 +178,32 @@ function router_current_role_id(): int {
     }
 }
 
+/**
+ * GH#89 — true when a message flowing through the local_chat channel is a
+ * direct/private message rather than public room/broadcast traffic.
+ *
+ * Deliberately duplicates (rather than calls into) the identical one-line
+ * predicate inc/channels/local_chat.php's _chat_send() already uses to
+ * decide SSE delivery scope ($recipientUid = (is_numeric($to) && (int)
+ * $to > 0) ? (int) $to : 0). Kept as a separate, self-contained function
+ * here — rather than requiring local_chat.php from router.php, or vice
+ * versa — so this file's only real caller of the guard, router_evaluate()/
+ * router_test(), never depends on channel-handler load order. If the
+ * local_chat recipient convention ever changes, update BOTH copies.
+ *
+ * The convention: `to` absent, 'all', or any non-numeric string (a room/
+ * channel name) is public room traffic. `to` a positive numeric string is
+ * a specific recipient user id — a direct message.
+ *
+ * @param array $message  The message array as passed to broker_send() /
+ *                         router_evaluate() — reads $message['to'].
+ * @return bool
+ */
+function _router_message_is_local_chat_dm(array $message): bool {
+    $to = $message['to'] ?? 'all';
+    return is_numeric($to) && (int) $to > 0;
+}
+
 function router_evaluate($channel, $direction, array $message, $sourceMessageId = null) {
     // Phase 73u — caller-controlled loop-prevention metadata is a
     // forgery surface. Without this guard, any caller of broker_send
@@ -238,6 +264,18 @@ function router_evaluate($channel, $direction, array $message, $sourceMessageId 
         return [];
     }
 
+    // GH#89 — local_chat direct/private messages must never be forwarded
+    // to another channel by ANY route — system-managed chat-bridge rule
+    // (inc/chat-bridge.php) or hand-created — regardless of what that
+    // route's filters_json is configured to match. This is deliberately
+    // NOT a filter: filters_json is admin-editable via the Message Routing
+    // UI, so a filter-based exclusion could be (accidentally or
+    // otherwise) configured away. Enforced here instead, structurally,
+    // before any route is even considered, so no configuration path can
+    // bypass it. See _router_message_is_local_chat_dm() below and
+    // docs/CHAT-BRIDGE.md.
+    $isLocalChatDm = ($channel === 'local_chat') && _router_message_is_local_chat_dm($message);
+
     $results = [];
 
     foreach ($routes as $route) {
@@ -248,6 +286,21 @@ function router_evaluate($channel, $direction, array $message, $sourceMessageId 
 
         // Check direction filter
         if ($route['direction'] !== 'both' && $route['direction'] !== $direction) {
+            continue;
+        }
+
+        if ($isLocalChatDm) {
+            $summary = substr($message['body'] ?? '', 0, 200);
+            $error = 'local_chat direct/private messages are never bridged externally (GH#89)';
+            _router_log((int) $route['id'], $channel, $route['dest_channel'], $sourceMessageId, null,
+                'skipped', $error, $summary);
+            $results[] = [
+                'route_id'   => (int) $route['id'],
+                'route_name' => $route['name'],
+                'dest'       => $route['dest_channel'],
+                'status'     => 'skipped',
+                'error'      => $error,
+            ];
             continue;
         }
 
@@ -299,6 +352,14 @@ function router_evaluate($channel, $direction, array $message, $sourceMessageId 
 function router_test($channel, $direction, array $message) {
     $routes = _router_get_routes($channel);
     $matches = [];
+
+    // GH#89 — mirror router_evaluate()'s hard DM guard so a dry-run test
+    // against a direct-message payload truthfully reports "nothing would
+    // forward" instead of showing a route that would never actually fire.
+    $isLocalChatDm = ($channel === 'local_chat') && _router_message_is_local_chat_dm($message);
+    if ($isLocalChatDm) {
+        return [];
+    }
 
     foreach ($routes as $route) {
         if ($route['direction'] !== 'both' && $route['direction'] !== $direction) {

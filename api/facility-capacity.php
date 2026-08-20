@@ -69,20 +69,14 @@ try {
 if ($method === 'GET') {
     // Summary across all facilities
     if (!empty($_GET['summary'])) {
-        try {
-            $rows = db_fetch_all(
-                "SELECT f.id AS facility_id, f.name AS facility_name, f.`type` AS fac_type,
-                        cc.name AS category_name, cc.icon, cc.unit_label,
-                        fc.total, fc.available, fc.updated_at
-                 FROM `{$prefix}facility_capacity` fc
-                 JOIN `{$prefix}facilities` f ON fc.facility_id = f.id
-                 JOIN `{$prefix}capacity_categories` cc ON fc.category_id = cc.id
-                 WHERE fc.total > 0
-                 ORDER BY f.name, cc.sort_order"
-            );
-        } catch (Exception $e) {
-            $rows = [];
-        }
+        // IDOR — this used to run the unfiltered JOIN below directly, with
+        // no facility-access check at all, so any authenticated user could
+        // see bed/capacity counts for EVERY facility via ?summary=1 even
+        // when ?facility_id=X for that same facility 404s them a few lines
+        // down. facility_capacity_summary_rows() (inc/access.php) applies
+        // the same user_can_access_entity('facility', ...) scoping the
+        // single-facility path uses, so the two paths can't disagree.
+        $rows = facility_capacity_summary_rows();
 
         // Also return totals
         $totals = [];

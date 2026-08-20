@@ -141,6 +141,13 @@ control-size: weather-alerts.php :: form-control without form-control-sm in clas
 # ── theme-color (201) ───────────────────────────────────────────────
 theme-color: api/ics-forms.php :: style="background:#dc3545;color:#fff;padding:2px 6px;border-radius:3px;"
 theme-color: api/ics-forms.php :: style="background:#e5e5e5"
+# Phase 140 (2026-08-16) — ics_form_custom_print_html() (custom ICS form
+# types' print renderer) matches the SAME #e5e5e5 section-header background
+# the 9 built-in printICSxxx() functions above already use, in the SAME
+# kind of standalone print document (own <!DOCTYPE html>, own <style>
+# block, opened in a new window for printing) — not part of the live
+# themed app UI, so Bootstrap CSS variables don't apply there either.
+theme-color: inc/ics-form-types.php :: style="background:#e5e5e5"
 theme-color: aprs-map.php :: style="position:relative;width:28px;height:28px;' + 'border-radius:50%;background:#fff;border:' + borderWidth + ' sol...
 theme-color: assets/css/callboard.css :: background-color: #0d6efd
 theme-color: assets/css/callboard.css :: background-color: #198754
@@ -329,10 +336,8 @@ theme-color: beta-tester.php :: style="font-family:sans-serif;white-space:pre-wr
 theme-color: ics-forms.php :: style="background-color:var(--bs-indigo);color:#fff"
 theme-color: ics-forms.php :: style="background-color:var(--bs-orange);color:#fff"
 theme-color: ics-forms.php :: style="background-color:var(--bs-teal);color:#fff"
-theme-color: settings.php :: style="background:#00ff00;color:#000;"
 theme-color: settings.php :: style="background:#198754;color:#fff;"
-theme-color: settings.php :: style="background:#ff0000;color:#fff;"
-theme-color: settings.php :: style="background:#ffff00;color:#000;"
+theme-color: settings.php :: style="background:#6c757d;color:#fff;"
 theme-color: situation.php :: style="color:#0d6efd"
 theme-color: situation.php :: style="color:#198754"
 theme-color: situation.php :: style="color:#6f42c1"

@@ -28,6 +28,9 @@
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/access.php';
+require_once __DIR__ . '/../inc/severity.php';
+// GH#64 — pure interval-math helpers for the 'interval_report' case below.
+require_once __DIR__ . '/../inc/interval-report.php';
 
 // Suppress PHP warnings from corrupting JSON output
 $prevDisplay = ini_get('display_errors');
@@ -60,8 +63,16 @@ $prefix = $GLOBALS['db_prefix'] ?? '';
 // (see the gate above), so the org filter only narrows things when an
 // Org Admin (vs Super Admin) runs a report. Super Admin gets ('', [])
 // so all queries are unchanged.
+// Phase 141 (2026-08-17) — org_ticket_query_filter() is org_query_filter()'s
+// ticket-specific sibling: widens the aggregate ticket-count reports to
+// include cross-org-shared tickets (per plan.md's tier matrix, reports.php
+// only ever surfaces counts, never field-level PII, so both tiers are
+// simply "allowed" with no redaction wiring needed here). Deliberately NOT
+// applied to org_member_query_filter('m.id') on the next line -- that call
+// is untouched, on purpose, per plan.md's roster-isolation boundary.
 require_once __DIR__ . '/../inc/org-scope.php';
-[$rptTicketFrag, $rptTicketVars] = org_query_filter('t.org_id');
+require_once __DIR__ . '/../inc/org-sharing.php';
+[$rptTicketFrag, $rptTicketVars] = org_ticket_query_filter(null, 't');
 [$rptMemberFrag, $rptMemberVars] = org_member_query_filter('m.id');
 
 // Helper: safe query that returns empty array on failure
@@ -116,6 +127,9 @@ $incident_id    = $incident_input !== '' ? incnum_resolve_input($incident_input)
 $valid_reports = [
     'unit_log', 'dispatch_log', 'incident_summary', 'incident_report',
     'facility_log', 'after_action', 'notes_log',
+    // GH#64 — response/scene/transport interval reporting over the assigns
+    // milestones (dispatched/responding/on_scene/u2fenr/u2farr/clear).
+    'interval_report',
     // Personnel / membership reports (#21)
     'license_expirations', 'roster_snapshot', 'dmr_inventory',
     'membership_due', 'inactive_members', 'time_summary',
@@ -246,6 +260,24 @@ $report_title = '';
 // "second table" concept, and the existing incident-type breakdown (this
 // case's original columns/rows/summary) must not change shape.
 $disposition_breakdown = [];
+// GH#87/GH#88 (2026-08-19) — same "own top-level key" treatment as
+// disposition_breakdown immediately above, and for the same reason:
+// $columns/$rows are a plain positional table, and the severity
+// breakdown is now a variable-length list (however many severity
+// levels are configured), not a fixed 3-column shape a positional
+// array could safely carry alongside a growing/shrinking column set.
+// Only ever populated by the 'incident_summary' case below.
+$severity_breakdown = [];
+// GH#64 — same "own top-level key" treatment, for the SAME reason: a
+// variable-length aggregate breakdown doesn't fit the fixed-shape
+// columns/rows table. Only ever populated by the 'interval_report' case
+// below; every other report gets [] and the JS only renders these when
+// currentReport === 'interval_report' (see assets/js/reports.js), so a
+// caller that doesn't know about these keys is unaffected either way —
+// same discipline severity_breakdown/disposition_breakdown already
+// established just above.
+$interval_by_type = [];
+$interval_by_unit = [];
 // Eric, 2026-08-13 (GH#51 follow-up + drill-down requests) — every report
 // that lists incidents/units/facilities/members/teams should let a user
 // click through to that record's real page. rows[] is a plain positional
@@ -423,7 +455,10 @@ switch ($report) {
 
         $incident_link_cols[] = 0;
         $unit_link_cols[] = 4;
-        $sev_labels = [0 => 'Low', 1 => 'Medium', 2 => 'High'];
+        // GH#87/GH#88 (2026-08-19) — sourced from the configurable
+        // severity_levels table (inc/severity.php) instead of a
+        // hardcoded 3-entry map.
+        $sev_labels = severity_label_map();
         $total_time_sum = 0;
         $total_time_count = 0;
 
@@ -439,7 +474,7 @@ switch ($report) {
             $rows[] = [
                 (!empty($row['incident_number']) ? $row['incident_number'] : ($row['ticket_id'] ? '#' . $row['ticket_id'] : '')),
                 $row['incident_type'] ?? '',
-                $sev_labels[(int) ($row['severity'] ?? 0)] ?? 'Low',
+                $sev_labels[(int) ($row['severity'] ?? 0)] ?? 'Unknown',
                 $row['scope'] ?? '',
                 $row['unit_name'] ?? '',
                 $row['dispatched'] ?? '',
@@ -459,10 +494,209 @@ switch ($report) {
         ];
         break;
 
+    // ── INTERVAL REPORT (GH#64) ─────────────────────────────────────────────
+    // Response / scene / transport time intervals over the six assigns
+    // milestones (dispatched, responding, on_scene, u2fenr, u2farr, clear).
+    // GH#64's reporter confirmed the facility-leg columns (u2fenr/u2farr)
+    // are populated by real dispatch traffic (v4.2.21) but that nothing in
+    // the tree computed intervals from ANY of the six milestones for
+    // reporting purposes -- api/statistics.php's dashboard averages and
+    // unit_log/dispatch_log's own response_secs/total_secs are the closest
+    // things that existed, and none of them touch on_scene->clear (scene
+    // time), the facility leg, or a by-type/by-unit breakdown. This case
+    // is the first place all six are read together.
+    //
+    // Interval math lives in inc/interval-report.php (interval_report_compute()/
+    // interval_report_fmt()) -- pure functions, unit-tested directly in
+    // tests/test_interval_report_math.php, and driven here against real
+    // `assigns` rows. Per GH#64's explicit requirement: an incident missing
+    // some milestones (the common no-transport case has no u2fenr/u2farr at
+    // all) computes whichever legs it CAN from the milestones it has, and
+    // leaves the rest blank -- never an error, never a garbage duration.
+    case 'interval_report':
+        $report_title = 'Interval Report';
+        $columns = ['Incident #', 'Type', 'Unit', 'Dispatched', 'Responding', 'On-Scene',
+                    'To Facility', 'At Facility', 'Clear',
+                    'Turnout', 'Travel', 'Response', 'Scene', 'Transport', 'Total'];
+
+        // Soft-delete sweep (issue #25 follow-up) — see 'unit_log' above.
+        $where_parts = [
+            "`a`.`dispatched` BETWEEN ? AND ?",
+            "(`t`.`deleted_at` IS NULL OR `t`.`deleted_at` = '0000-00-00 00:00:00')",
+        ];
+        $params = [$date_start_sql, $date_end_sql];
+
+        if ($responder_id > 0) {
+            $where_parts[] = "`a`.`responder_id` = ?";
+            $params[] = $responder_id;
+        }
+        if ($incident_id > 0) {
+            $where_parts[] = "`a`.`ticket_id` = ?";
+            $params[] = $incident_id;
+        }
+
+        $where = implode(' AND ', $where_parts);
+        // Phase 99j-7 — append org-scope filter (empty for Super Admin).
+        $where .= $rptTicketFrag;
+        $params = array_merge($params, $rptTicketVars);
+
+        $data = safe_fetch_all_rpt(
+            "SELECT
+                `t`.`id` AS `ticket_id`,
+                `t`.`incident_number`,
+                `it`.`id` AS `type_id`,
+                COALESCE(`it`.`type`, 'Unknown') AS `incident_type`,
+                `r`.`id` AS `responder_id`,
+                `r`.`name` AS `unit_name`,
+                `r`.`handle`,
+                `a`.`dispatched`,
+                `a`.`responding`,
+                `a`.`on_scene`,
+                `a`.`u2fenr`,
+                `a`.`u2farr`,
+                `a`.`clear`
+            FROM `{$prefix}assigns` `a`
+            LEFT JOIN `{$prefix}responder` `r` ON `a`.`responder_id` = `r`.`id`
+            LEFT JOIN `{$prefix}ticket` `t` ON `a`.`ticket_id` = `t`.`id`
+            LEFT JOIN `{$prefix}in_types` `it` ON `t`.`in_types_id` = `it`.`id`
+            WHERE {$where}
+            ORDER BY `a`.`dispatched` DESC",
+            $params
+        );
+
+        $incident_link_cols[] = 0;
+        $unit_link_cols[] = 2;
+
+        // Running sums for the overall (period-wide) averages, one
+        // accumulator per leg so a leg with fewer populated rows than
+        // another (e.g. far fewer transports than responses) still
+        // averages correctly over only the rows that actually have it.
+        $legSums   = ['turnout' => 0, 'travel' => 0, 'response' => 0, 'scene' => 0, 'transport' => 0, 'total' => 0];
+        $legCounts = ['turnout' => 0, 'travel' => 0, 'response' => 0, 'scene' => 0, 'transport' => 0, 'total' => 0];
+
+        // By-type / by-unit breakdown accumulators (Eric, GH#64 — "average
+        // response time this month, by incident type, by unit"). Keyed by
+        // id so rows for the same type/unit accumulate together regardless
+        // of how many separate assignment rows they came from.
+        $byType = [];
+        $byUnit = [];
+
+        foreach ($data as $row) {
+            $legs = interval_report_compute($row);
+
+            $rows[] = [
+                (!empty($row['incident_number']) ? $row['incident_number'] : ($row['ticket_id'] ? '#' . $row['ticket_id'] : '')),
+                $row['incident_type'] ?? '',
+                trim((string) ($row['handle'] ?: $row['unit_name'])),
+                $row['dispatched'] ?? '',
+                $row['responding'] ?? '',
+                $row['on_scene'] ?? '',
+                $row['u2fenr'] ?? '',
+                $row['u2farr'] ?? '',
+                $row['clear'] ?? '',
+                interval_report_fmt($legs['turnout_secs']),
+                interval_report_fmt($legs['travel_secs']),
+                interval_report_fmt($legs['response_secs']),
+                interval_report_fmt($legs['scene_secs']),
+                interval_report_fmt($legs['transport_secs']),
+                interval_report_fmt($legs['total_secs']),
+            ];
+            $row_ticket_ids[] = (int) ($row['ticket_id'] ?? 0);
+            $row_responder_ids[] = (int) ($row['responder_id'] ?? 0);
+
+            foreach (['turnout' => 'turnout_secs', 'travel' => 'travel_secs', 'response' => 'response_secs',
+                      'scene' => 'scene_secs', 'transport' => 'transport_secs', 'total' => 'total_secs'] as $legKey => $secsKey) {
+                if ($legs[$secsKey] !== null) {
+                    $legSums[$legKey]   += $legs[$secsKey];
+                    $legCounts[$legKey] += 1;
+                }
+            }
+
+            $typeId = (int) ($row['type_id'] ?? 0);
+            $typeLabel = $row['incident_type'] ?? 'Unknown';
+            if (!isset($byType[$typeId])) {
+                $byType[$typeId] = ['id' => $typeId, 'label' => $typeLabel, 'count' => 0,
+                                     'resp_sum' => 0, 'resp_n' => 0, 'scene_sum' => 0, 'scene_n' => 0];
+            }
+            $byType[$typeId]['count']++;
+            if ($legs['response_secs'] !== null) { $byType[$typeId]['resp_sum'] += $legs['response_secs']; $byType[$typeId]['resp_n']++; }
+            if ($legs['scene_secs'] !== null)    { $byType[$typeId]['scene_sum'] += $legs['scene_secs']; $byType[$typeId]['scene_n']++; }
+
+            $unitId = (int) ($row['responder_id'] ?? 0);
+            $unitLabel = trim((string) ($row['handle'] ?: $row['unit_name'])) ?: ('unit #' . $unitId);
+            if (!isset($byUnit[$unitId])) {
+                $byUnit[$unitId] = ['id' => $unitId, 'label' => $unitLabel, 'count' => 0,
+                                     'resp_sum' => 0, 'resp_n' => 0, 'scene_sum' => 0, 'scene_n' => 0];
+            }
+            $byUnit[$unitId]['count']++;
+            if ($legs['response_secs'] !== null) { $byUnit[$unitId]['resp_sum'] += $legs['response_secs']; $byUnit[$unitId]['resp_n']++; }
+            if ($legs['scene_secs'] !== null)    { $byUnit[$unitId]['scene_sum'] += $legs['scene_secs']; $byUnit[$unitId]['scene_n']++; }
+        }
+
+        $avgFmt = function (int $sum, int $n): ?string {
+            return $n > 0 ? interval_report_fmt((int) round($sum / $n)) : null;
+        };
+
+        foreach ($byType as $t) {
+            $interval_by_type[] = [
+                'id'                => $t['id'],
+                'label'             => $t['label'],
+                'count'             => $t['count'],
+                'avg_response_time' => $avgFmt($t['resp_sum'], $t['resp_n']),
+                'avg_scene_time'    => $avgFmt($t['scene_sum'], $t['scene_n']),
+            ];
+        }
+        usort($interval_by_type, fn($a, $b) => $b['count'] <=> $a['count']);
+
+        foreach ($byUnit as $u) {
+            $interval_by_unit[] = [
+                'id'                => $u['id'],
+                'label'             => $u['label'],
+                'count'             => $u['count'],
+                'avg_response_time' => $avgFmt($u['resp_sum'], $u['resp_n']),
+                'avg_scene_time'    => $avgFmt($u['scene_sum'], $u['scene_n']),
+            ];
+        }
+        usort($interval_by_unit, fn($a, $b) => $b['count'] <=> $a['count']);
+
+        $summary = [
+            'total_assignments'  => count($data),
+            'avg_turnout_time'   => $legCounts['turnout']   > 0 ? interval_report_fmt((int) round($legSums['turnout']   / $legCounts['turnout']))   : 'N/A',
+            'avg_travel_time'    => $legCounts['travel']    > 0 ? interval_report_fmt((int) round($legSums['travel']    / $legCounts['travel']))    : 'N/A',
+            'avg_response_time'  => $legCounts['response']  > 0 ? interval_report_fmt((int) round($legSums['response']  / $legCounts['response']))  : 'N/A',
+            'avg_scene_time'     => $legCounts['scene']     > 0 ? interval_report_fmt((int) round($legSums['scene']     / $legCounts['scene']))     : 'N/A',
+            'avg_transport_time' => $legCounts['transport'] > 0 ? interval_report_fmt((int) round($legSums['transport'] / $legCounts['transport'])) : 'N/A',
+            'avg_total_time'     => $legCounts['total']     > 0 ? interval_report_fmt((int) round($legSums['total']     / $legCounts['total']))     : 'N/A',
+            'transports_count'   => $legCounts['transport'],
+        ];
+        break;
+
     // ── INCIDENT SUMMARY ──────────────────────────────────────────────────
     case 'incident_summary':
         $report_title = 'Incident Summary';
-        $columns = ['Incident Type', 'Total', 'High Severity', 'Medium Severity', 'Low Severity', 'Open', 'Closed'];
+
+        // GH#87/GH#88 (2026-08-19) — this breakdown used to be 3
+        // hardcoded `severity = 2/1/0` SQL buckets labeled "High/Medium/
+        // Low Severity", so any level beyond the historical 3 was
+        // silently absent from both the per-type rows and the grand
+        // totals below — exactly the "would need a decision, not just an
+        // edit" gap GH#88's own investigation named. Built from whatever
+        // severity_levels are actually configured (inc/severity.php),
+        // in the same display order the New Incident dropdown uses.
+        // $columns/$rows is a plain positional table (assets/js/reports.js
+        // renders it generically — see the column-count-agnostic loop
+        // there), so a variable number of severity columns is safe here.
+        $sevLevels = severity_levels_load();
+        $sevCaseSql = [];
+        foreach ($sevLevels as $lvl) {
+            $v = (int) $lvl['value'];
+            $sevCaseSql[] = "SUM(CASE WHEN `t`.`severity` = {$v} THEN 1 ELSE 0 END) AS `sev_{$v}`";
+        }
+        $columns = array_merge(
+            ['Incident Type', 'Total'],
+            array_map(function ($lvl) { return $lvl['label'] . ' Severity'; }, $sevLevels),
+            ['Open', 'Closed']
+        );
 
         // Soft-delete sweep (issue #25 follow-up) — both queries in this
         // case excluded, so a deleted incident can't skew the summary
@@ -472,9 +706,7 @@ switch ($report) {
                 `it`.`id` AS `type_id`,
                 COALESCE(`it`.`type`, 'Unknown') AS `incident_type`,
                 COUNT(*) AS `total`,
-                SUM(CASE WHEN `t`.`severity` = 2 THEN 1 ELSE 0 END) AS `high`,
-                SUM(CASE WHEN `t`.`severity` = 1 THEN 1 ELSE 0 END) AS `medium`,
-                SUM(CASE WHEN `t`.`severity` = 0 THEN 1 ELSE 0 END) AS `low`,
+                " . implode(",\n                ", $sevCaseSql) . ",
                 SUM(CASE WHEN `t`.`status` = 2 THEN 1 ELSE 0 END) AS `open`,
                 SUM(CASE WHEN `t`.`status` = 1 THEN 1 ELSE 0 END) AS `closed`
             FROM `{$prefix}ticket` `t`
@@ -493,29 +725,37 @@ switch ($report) {
         $incident_type_link_cols[] = 0;
 
         $grand_total = 0;
-        $grand_high = 0;
-        $grand_medium = 0;
-        $grand_low = 0;
+        $grand_sev = [];
+        foreach ($sevLevels as $lvl) { $grand_sev[(int) $lvl['value']] = 0; }
         $grand_open = 0;
         $grand_closed = 0;
 
         foreach ($data as $row) {
-            $rows[] = [
-                $row['incident_type'],
-                (int) $row['total'],
-                (int) $row['high'],
-                (int) $row['medium'],
-                (int) $row['low'],
-                (int) $row['open'],
-                (int) $row['closed']
-            ];
+            $rowOut = [$row['incident_type'], (int) $row['total']];
+            foreach ($sevLevels as $lvl) {
+                $v = (int) $lvl['value'];
+                $c = (int) ($row['sev_' . $v] ?? 0);
+                $rowOut[] = $c;
+                $grand_sev[$v] += $c;
+            }
+            $rowOut[] = (int) $row['open'];
+            $rowOut[] = (int) $row['closed'];
+            $rows[] = $rowOut;
+
             $row_type_ids[] = (int) ($row['type_id'] ?? 0);
             $grand_total  += (int) $row['total'];
-            $grand_high   += (int) $row['high'];
-            $grand_medium += (int) $row['medium'];
-            $grand_low    += (int) $row['low'];
             $grand_open   += (int) $row['open'];
             $grand_closed += (int) $row['closed'];
+        }
+
+        foreach ($sevLevels as $lvl) {
+            $v = (int) $lvl['value'];
+            $severity_breakdown[] = [
+                'value' => $v,
+                'label' => $lvl['label'],
+                'color' => $lvl['color'],
+                'count' => $grand_sev[$v] ?? 0,
+            ];
         }
 
         // ── Disposition breakdown (Phase 132 Step 5, GH #16) ──────────
@@ -561,11 +801,15 @@ switch ($report) {
             [$date_start_sql, $date_end_sql]
         );
 
+        // GH#87/GH#88 (2026-08-19) — 'high_severity'/'medium_severity'/
+        // 'low_severity' (a fixed 3-key shape) are replaced by the
+        // variable-length 'severity_breakdown' top-level key (built
+        // above, one entry per configured level — see its own
+        // declaration near the top of this file). Confirmed unused by
+        // assets/js/reports.js before removing: nothing in the tree read
+        // these three keys.
         $summary = [
             'total_incidents'     => $grand_total,
-            'high_severity'       => $grand_high,
-            'medium_severity'     => $grand_medium,
-            'low_severity'        => $grand_low,
             'open_incidents'      => $grand_open,
             'closed_incidents'    => $grand_closed,
             'avg_close_time_mins' => $avg_close !== null ? round((float) $avg_close) : null
@@ -636,7 +880,10 @@ switch ($report) {
         );
 
         $incident_link_cols[] = 0;
-        $sev_labels = [0 => 'Low', 1 => 'Medium', 2 => 'High'];
+        // GH#87/GH#88 (2026-08-19) — sourced from the configurable
+        // severity_levels table (inc/severity.php) instead of a
+        // hardcoded 3-entry map.
+        $sev_labels = severity_label_map();
         $status_labels = [1 => 'Closed', 2 => 'Open', 3 => 'Scheduled'];
 
         foreach ($data as $row) {
@@ -644,7 +891,7 @@ switch ($report) {
                 (!empty($row['incident_number']) ? $row['incident_number'] : '#' . $row['id']),
                 $row['scope'] ?? '',
                 $row['incident_type'],
-                $sev_labels[(int) ($row['severity'] ?? 0)] ?? 'Low',
+                $sev_labels[(int) ($row['severity'] ?? 0)] ?? 'Unknown',
                 $status_labels[(int) ($row['status'] ?? 2)] ?? 'Open',
                 $row['location'] ?? '',
                 $row['created'] ?? '',
@@ -831,7 +1078,10 @@ switch ($report) {
             json_error('Incident not found', 404);
         }
 
-        $sev_labels  = [0 => 'Low', 1 => 'Medium', 2 => 'High'];
+        // GH#87/GH#88 (2026-08-19) — sourced from the configurable
+        // severity_levels table (inc/severity.php) instead of a
+        // hardcoded 3-entry map.
+        $sev_labels  = severity_label_map();
         $stat_labels = [1 => 'Closed', 2 => 'Open', 3 => 'Scheduled'];
 
         // Assignments
@@ -914,7 +1164,7 @@ switch ($report) {
             'incident_number' => $ticket['incident_number'] ?? '',
             'scope'          => $ticket['scope'] ?? '',
             'incident_type'  => $ticket['incident_type'] ?? '',
-            'severity'       => $sev_labels[(int) ($ticket['severity'] ?? 0)] ?? 'Low',
+            'severity'       => $sev_labels[(int) ($ticket['severity'] ?? 0)] ?? 'Unknown',
             'status'         => $stat_labels[(int) ($ticket['status'] ?? 2)] ?? 'Open',
             'location'       => $location,
             'description'    => $ticket['description'] ?? '',
@@ -1381,5 +1631,16 @@ json_response([
     // every other report type gets [] and callers that don't know about
     // this key are unaffected.
     'disposition_breakdown' => $disposition_breakdown,
+    // GH#87/GH#88 (2026-08-19) — same treatment: only non-empty for
+    // 'incident_summary'. One entry per configured severity level
+    // (value/label/color/count), replacing the old fixed
+    // high_severity/medium_severity/low_severity summary keys.
+    'severity_breakdown' => $severity_breakdown,
+    // GH#64 — only non-empty for 'interval_report'. One entry per
+    // incident type / per unit seen in the period, each carrying a
+    // count + formatted average response/scene time (see the
+    // 'interval_report' case above for how these are built).
+    'interval_by_type' => $interval_by_type,
+    'interval_by_unit' => $interval_by_unit,
     'links' => $links,
 ]);

@@ -26,6 +26,7 @@ declare(strict_types=1);
 // number allocation and rendered as "#16", "#15" etc. in the UI
 // instead of "26-0007".
 require_once __DIR__ . '/incident-number.php';
+require_once __DIR__ . '/severity.php';
 
 /**
  * Create an incident from a key-value input array. Mirrors the input
@@ -73,7 +74,11 @@ function incident_create_internal(array $input, int $userId): array {
     $lat = isset($input['lat']) && $input['lat'] !== '' ? (float) $input['lat'] : null;
     $lng = isset($input['lng']) && $input['lng'] !== '' ? (float) $input['lng'] : null;
 
-    $severity = max(0, min(2, (int) ($input['severity'] ?? 0)));
+    // GH#87 — used to be a hardcoded max(0, min(2, ...)) clamp, unaware
+    // of anything beyond a 3-level scale. severity_clamp() clamps to
+    // whatever levels are actually configured (inc/severity.php) and
+    // falls back to the default level for anything not a real value.
+    $severity = severity_clamp($input['severity'] ?? 0);
     $status   = (int) ($input['status'] ?? 2);
     if (!in_array($status, [1, 2, 3], true)) $status = 2;
 
@@ -93,14 +98,30 @@ function incident_create_internal(array $input, int $userId): array {
     $to_address = trim((string) ($input['to_address'] ?? ''));
     $signal     = trim((string) ($input['signal'] ?? ''));
 
-    // Auto-set severity from incident type if configured
+    // Auto-set severity from incident type if configured.
+    //
+    // GH#87 — this used to assign `(int) $type_row['set_severity']`
+    // straight into $severity with NO re-clamp, even though the line
+    // above had just clamped $severity from user input. A `set_severity`
+    // that somehow held a value outside the configured scale (e.g. left
+    // over from before a level was deleted, or written by a direct API
+    // call bypassing the config-admin.php range check that GH#87 also
+    // fixed) would land in `ticket.severity` unclamped, past every label
+    // map. severity_clamp() here closes that — it's a no-op for any
+    // value that's still a real configured level.
+    //
+    // `set_severity > 0` remains the pre-existing "0 = don't auto-set"
+    // sentinel (see GH#88's own note on this — a genuinely separate,
+    // still-open design question about distinguishing "auto-set to the
+    // lowest level" from "don't auto-set at all"; not something either
+    // GH#87 or GH#88 asked to change here).
     try {
         $type_row = db_fetch_one(
             "SELECT `set_severity` FROM `{$prefix}in_types` WHERE `id` = ?",
             [$in_types_id]
         );
         if ($type_row && (int) $type_row['set_severity'] > 0) {
-            $severity = (int) $type_row['set_severity'];
+            $severity = severity_clamp($type_row['set_severity']);
         }
     } catch (Exception $e) { /* in_types may differ on legacy installs */ }
 
@@ -161,6 +182,19 @@ function incident_create_internal(array $input, int $userId): array {
 
     if (!$ticket_id) {
         return ['errors' => ['Failed to create incident — no id returned']];
+    }
+
+    // ── Phase 141 (2026-08-17) — cross-org auto-routing (best-effort) ──
+    // Must run before the centralized audit_log('incident','create',...)
+    // call further down, so a routed ticket's very first audit trail
+    // entry already reflects that it was shared, in creation order.
+    // Wrapped in try/catch, non-fatal to incident creation — same
+    // tolerance pattern as the assign_responders loop just below.
+    try {
+        require_once __DIR__ . '/org-sharing.php';
+        org_sharing_apply_routing_on_create($ticket_id, $in_types_id, (int) $orgId, $userId);
+    } catch (Throwable $e) {
+        error_log('[incident-write] org_sharing_apply_routing_on_create failed for ticket ' . $ticket_id . ': ' . $e->getMessage());
     }
 
     // ── Allocate to user's groups (best-effort) ──

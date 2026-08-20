@@ -44,7 +44,7 @@
     // inc/map-layer-prefs.php's map_layer_catalog() defaults, so a page in that
     // state behaves exactly as it did before this feature existed.
     var SHIPPED_DEFAULTS = {
-        incidents: true, units: true, facilities: true, event_zones: true,
+        incidents: true, units: true, units_live: true, facilities: true, event_zones: true,
         markups: false, road_conditions: false,
         weather_alerts: true, radar: false, radar_us: false,
         temperature: false, precipitation: false, rain: false, snow: false,

@@ -209,12 +209,41 @@ function ics_form_soft_delete(int $formId, int $userId, bool $privileged): array
 /**
  * Display label for a form row — used by the audit summary and by the
  * wastebasket list. "ICS-214 — Bridge collapse (final)".
+ *
+ * Phase 140 (2026-08-16): a custom type has no fixed "ICS-nnn" number, so
+ * its type label comes from the instance's own frozen `_meta` snapshot
+ * (form_data_json._meta.form_number, falling back to form_title) rather
+ * than 'ICS-' . strtoupper($type) -- reading a fresh ics_form_types row
+ * here would violate the whole point of the _meta snapshot (an existing
+ * submission's label must never change just because the type definition
+ * was edited or archived later). $row['form_data_json'] is optional --
+ * callers that select a narrower column list (e.g. the wastebasket list)
+ * simply get the generic "Custom Form" fallback below.
  */
 function ics_form_label(array $row): string {
-    $type  = strtoupper((string) ($row['form_type'] ?? ''));
+    $type = strtoupper((string) ($row['form_type'] ?? ''));
     $title = trim((string) ($row['title'] ?? ''));
-    $out   = $type !== '' ? 'ICS-' . $type : 'ICS form';
-    $out  .= ' — ' . ($title !== '' ? $title : '(untitled)');
+
+    if ($type === 'CUSTOM') {
+        $typeLabel = 'Custom Form';
+        $rawData = $row['form_data_json'] ?? null;
+        if (is_string($rawData) && $rawData !== '') {
+            $decoded = json_decode($rawData, true);
+            $meta = is_array($decoded) && isset($decoded['_meta']) && is_array($decoded['_meta']) ? $decoded['_meta'] : [];
+            $formNumber = trim((string) ($meta['form_number'] ?? ''));
+            $formTitle = trim((string) ($meta['form_title'] ?? ''));
+            if ($formNumber !== '') {
+                $typeLabel = $formNumber;
+            } elseif ($formTitle !== '') {
+                $typeLabel = $formTitle;
+            }
+        }
+        $out = $typeLabel;
+    } else {
+        $out = $type !== '' ? 'ICS-' . $type : 'ICS form';
+    }
+
+    $out .= ' — ' . ($title !== '' ? $title : '(untitled)');
     $status = trim((string) ($row['status'] ?? ''));
     if ($status !== '') $out .= ' (' . $status . ')';
     return $out;

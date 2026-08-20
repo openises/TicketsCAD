@@ -2550,6 +2550,90 @@ function health_check_schema(): array
  *
  * Delegates to sched_jobs_status(); shaped like the other sections.
  */
+/**
+ * GH#76 Phase 144 (2026-08-18) — team membership reconciliation.
+ *
+ * Reports how many legacy member.team_id assignments have been
+ * reconciled into team_members (the sole source of truth for team
+ * assignment as of this release), and names any member whose team_id
+ * still lacks a matching team_members row — which should never happen
+ * once sql/run_phase144_team_membership_unification.php has run, but
+ * this makes the "nothing was silently dropped" guarantee verifiable
+ * in-app rather than only asserted in a commit message. Mirrors
+ * health_check_public_board()'s "report a fact, don't infer a fault"
+ * shape — an install with zero legacy team_id values (the common case;
+ * see the design spec's live-data findings) reports 'ok' with 0
+ * reconciled, not a warning.
+ */
+function health_check_team_membership_reconciliation(): array
+{
+    try {
+        if (!function_exists('db_fetch_all') || !function_exists('db_table')) {
+            return ['checked' => false, 'severity' => 'ok', 'error' => 'database not available in this context'];
+        }
+
+        $members = [];
+        try {
+            $members = db_fetch_all(
+                "SELECT m.id, m.team_id, m.first_name, m.last_name
+                 FROM " . db_table('member') . " m
+                 WHERE m.team_id IS NOT NULL AND m.team_id > 0"
+            );
+        } catch (Throwable $e) {
+            return ['checked' => false, 'severity' => 'ok', 'error' => 'member/team_members not queryable'];
+        }
+
+        $reconciled = 0;
+        $orphaned   = [];   // team_id -> a team that no longer exists (expected, informational)
+        $unresolved = [];   // still no matching row (should never happen post-migration)
+
+        foreach ($members as $m) {
+            $mid  = (int) $m['id'];
+            $tid  = (int) $m['team_id'];
+            $name = trim(($m['first_name'] ?? '') . ' ' . ($m['last_name'] ?? ''));
+
+            $teamExists = false;
+            try {
+                $teamExists = (bool) db_fetch_value("SELECT id FROM " . db_table('teams') . " WHERE id = ?", [$tid]);
+            } catch (Throwable $e) {}
+            if (!$teamExists) {
+                $orphaned[] = "#{$mid} {$name} -> team #{$tid} (team no longer exists)";
+                continue;
+            }
+
+            $matching = false;
+            try {
+                $matching = (bool) db_fetch_value(
+                    "SELECT id FROM " . db_table('team_members') . " WHERE team_id = ? AND member_id = ?",
+                    [$tid, $mid]
+                );
+            } catch (Throwable $e) {}
+            if ($matching) {
+                $reconciled++;
+            } else {
+                $unresolved[] = "#{$mid} {$name} -> team #{$tid}";
+            }
+        }
+
+        $severity = empty($unresolved) ? 'ok' : 'critical';
+
+        return [
+            'checked'             => true,
+            'severity'            => $severity,
+            'total_with_team_id'  => count($members),
+            'reconciled'          => $reconciled,
+            'orphaned'            => $orphaned,
+            'unresolved'          => $unresolved,
+            'summary'             => $reconciled . ' legacy team assignment(s) reconciled into Team Memberships'
+                . (!empty($unresolved) ? '; ' . count($unresolved) . ' UNRESOLVED (run php sql/run_phase144_team_membership_unification.php)' : '')
+                . (!empty($orphaned) ? '; ' . count($orphaned) . ' orphaned (team since deleted)' : ''),
+            'remedy'              => empty($unresolved) ? '' : 'Run: php sql/run_phase144_team_membership_unification.php',
+        ];
+    } catch (Throwable $e) {
+        return ['checked' => false, 'error' => 'team membership reconciliation check failed', 'severity' => 'ok'];
+    }
+}
+
 function health_check_scheduled_jobs(): array
 {
     try {
@@ -2695,6 +2779,189 @@ function health_check_geocoding(bool $probe = false): array
         // is its own answer and must not read as "fine" or as "broken".
         return ['checked' => false, 'severity' => 'ok', 'error' => 'geocoding check failed'];
     }
+}
+
+/**
+ * ── Cache-directory write capability (2026-08-19) ───────────────────────────
+ *
+ * `health_check_geocoding()` above reports on the geocode PROVIDER (API key,
+ * circuit breaker, cache byte count) — it never asks whether the cache
+ * directory can actually be WRITTEN to. On your-server.example.com it could
+ * not: a CLI/SSH process had won the race to create GEOCODE_CACHE_DIR before
+ * any real web request did, leaving it owned ejosterberg:ejosterberg mode
+ * 0700. `geocode_cache_write()` is documented "best effort: a cache we
+ * cannot write is not an error", so nothing anywhere logged the failure —
+ * every geocode lookup silently bypassed the cache for weeks. This is the
+ * "A REASSURING STATUS CODE IS NOT PROOF" lesson applied one more time:
+ * `is_dir()` would have reported the directory present and told the reader
+ * nothing about whether it actually WORKS.
+ *
+ * `health_check_dirs()` already has a graded severity model for exactly this
+ * question (exists+writable=ok, exists+NOT writable=critical, missing+parent
+ * writable=warn i.e. "created on demand" — never critical for a cache that
+ * simply hasn't been touched yet, missing+parent-not-writable=critical,
+ * account undetermined=unknown — never ok, never critical), built via
+ * `_health_path_writable_for()`, which prefers asking the KERNEL
+ * (`is_writable()`) whenever the account being asked about is the one
+ * actually running this code — the one context where that answer is not a
+ * simulation. This function reuses that exact machinery for identity
+ * correctness (so a CLI run over SSH as the operator never reports a false
+ * "ok" for www-data's own access, the precise bug fixed 2026-07-31 and
+ * documented at length above), and adds ONE thing on top: whenever the
+ * verdict is "yes, writable, and I am actually asking as that account", it
+ * does not stop at the permission bits — it writes a short-lived probe file,
+ * reads it back, and deletes it, the same write-prove-cleanup discipline
+ * `health_check_dir_probe()` already uses for the exposure question. That
+ * catches what a permission-bit check cannot: a read-only mount, a full
+ * filesystem, a restrictive ACL or SELinux context that `is_writable()`
+ * itself accounts for but that a caller re-deriving the verdict from stat()
+ * alone would miss.
+ *
+ * @param string     $dir     Absolute path (GEOCODE_CACHE_DIR / TILE_CACHE_DIR),
+ *                            or '' when the constant is not defined.
+ * @param string     $label   Human name for the note text, e.g. "The geocode
+ *                            lookup cache".
+ * @param string     $fixHint One command to suggest when broken.
+ * @param array|null $webUser Override the resolved web server account —
+ *                            exists so the severity model can be driven
+ *                            directly in tests, exactly like
+ *                            health_check_dirs()'s own $webUser parameter.
+ */
+function health_check_cache_dir_writable(
+    string $dir,
+    string $label,
+    string $fixHint,
+    ?array $webUser = null
+): array {
+    try {
+        if ($dir === '') {
+            return ['checked' => false, 'severity' => 'ok', 'dir' => $dir, 'label' => $label,
+                    'exists' => null, 'writable' => null, 'note' => 'not configured on this install'];
+        }
+
+        $webUser = $webUser ?? health_check_web_user();
+        $exists  = @is_dir($dir);
+
+        if (!$exists) {
+            // Same "missing, is the nearest ancestor writable" logic
+            // health_check_dirs() uses — a cache directory that has simply
+            // never been touched yet is normal, not a fault.
+            $parent = dirname($dir);
+            while ($parent !== '' && $parent !== dirname($parent) && !@is_dir($parent)) {
+                $parent = dirname($parent);
+            }
+            $creatable = ($parent !== '' && @is_dir($parent))
+                ? _health_path_writable_for($parent, $webUser)
+                : false;
+
+            if ($creatable === true) {
+                return ['checked' => true, 'severity' => 'warn', 'dir' => $dir, 'label' => $label,
+                        'exists' => false, 'writable' => null,
+                        'note' => $label . ' does not exist yet. It will be created automatically '
+                                . 'the first time it is needed, owned by whichever process gets there '
+                                . 'first — run `sudo php tools/fix-permissions.php` to create it '
+                                . 'correctly up front instead (this already runs on every '
+                                . '`tools/deploy.sh` deploy).'];
+            }
+            if ($creatable === false) {
+                return ['checked' => true, 'severity' => 'critical', 'dir' => $dir, 'label' => $label,
+                        'exists' => false, 'writable' => null,
+                        'note' => $label . ' does not exist, and its nearest existing ancestor ('
+                                . $parent . ') cannot be written to by ' . ($webUser['name'] ?? 'the web server')
+                                . ' either — it can never be created without help. ' . $fixHint];
+            }
+            return ['checked' => true, 'severity' => 'unknown', 'dir' => $dir, 'label' => $label,
+                    'exists' => false, 'writable' => null,
+                    'note' => $label . ' does not exist; whether it could be created could not be established.'];
+        }
+
+        $writable = _health_path_writable_for($dir, $webUser);
+        $owner    = _health_file_owner($dir);
+        $mode     = null;
+        $perms    = @fileperms($dir);
+        if ($perms !== false) {
+            $mode = sprintf('%04o', $perms & 0777);
+        }
+        $ownerTxt = $owner !== null ? ' (owner ' . $owner . ($mode !== null ? ', mode ' . $mode : '') . ')' : '';
+
+        if ($writable === null) {
+            return ['checked' => true, 'severity' => 'unknown', 'dir' => $dir, 'label' => $label,
+                    'exists' => true, 'writable' => null, 'owner' => $owner, 'mode' => $mode,
+                    'note' => 'Whether ' . ($webUser['name'] ?? 'the web server') . ' can write to '
+                            . $label . ' could not be established.'];
+        }
+        if ($writable === false) {
+            return ['checked' => true, 'severity' => 'critical', 'dir' => $dir, 'label' => $label,
+                    'exists' => true, 'writable' => false, 'owner' => $owner, 'mode' => $mode,
+                    'note' => $label . ' exists but ' . ($webUser['name'] ?? 'the web server')
+                            . ' cannot write to it' . $ownerTxt . ' — every write to it is silently '
+                            . 'skipped (this cache is best-effort by design, so nothing else would have '
+                            . 'told you). ' . $fixHint];
+        }
+
+        // Permission bits say writable. Whenever we are actually asking as the
+        // account in question (real web request, or a CLI run as/via the web
+        // user), prove it rather than trust it: write, read back, delete.
+        if (!empty($webUser['is_this_process'])) {
+            $token = bin2hex(random_bytes(8));
+            $probe = rtrim($dir, '/\\') . DIRECTORY_SEPARATOR . '.health-write-probe-' . $token . '.tmp';
+            $wrote = @file_put_contents($probe, $token, LOCK_EX);
+            $readBack = ($wrote !== false) ? @file_get_contents($probe) : false;
+            @unlink($probe);
+
+            if ($wrote === false || $readBack !== $token) {
+                return ['checked' => true, 'severity' => 'critical', 'dir' => $dir, 'label' => $label,
+                        'exists' => true, 'writable' => false, 'owner' => $owner, 'mode' => $mode,
+                        'note' => $label . ' looks writable by permission bits' . $ownerTxt . ' but a real '
+                                . 'write failed — check free disk space and, if this is a network '
+                                . 'filesystem, whether it is mounted read-only. ' . $fixHint];
+            }
+        }
+
+        return ['checked' => true, 'severity' => 'ok', 'dir' => $dir, 'label' => $label,
+                'exists' => true, 'writable' => true, 'owner' => $owner, 'mode' => $mode, 'note' => ''];
+    } catch (Throwable $e) {
+        return ['checked' => false, 'severity' => 'ok', 'dir' => $dir, 'label' => $label,
+                'exists' => null, 'writable' => null, 'note' => 'could not run the write check'];
+    }
+}
+
+/**
+ * GEOCODE_CACHE_DIR specifically. See health_check_cache_dir_writable().
+ *
+ * @param array|null $webUser Override, for tests — see health_check_cache_dir_writable().
+ */
+function health_check_geocode_cache_writable(?array $webUser = null): array
+{
+    if (!defined('GEOCODE_CACHE_DIR')) {
+        try { require_once __DIR__ . '/geocode.php'; } catch (Throwable $e) { /* optional */ }
+    }
+    $dir = defined('GEOCODE_CACHE_DIR') ? GEOCODE_CACHE_DIR : '';
+    return health_check_cache_dir_writable(
+        $dir,
+        'The geocode lookup cache',
+        'sudo php tools/fix-permissions.php',
+        $webUser
+    );
+}
+
+/**
+ * TILE_CACHE_DIR specifically. See health_check_cache_dir_writable().
+ *
+ * @param array|null $webUser Override, for tests — see health_check_cache_dir_writable().
+ */
+function health_check_tile_cache_writable(?array $webUser = null): array
+{
+    if (!defined('TILE_CACHE_DIR')) {
+        try { require_once __DIR__ . '/tile-proxy.php'; } catch (Throwable $e) { /* optional */ }
+    }
+    $dir = defined('TILE_CACHE_DIR') ? TILE_CACHE_DIR : '';
+    return health_check_cache_dir_writable(
+        $dir,
+        'The map tile cache',
+        'sudo php tools/fix-permissions.php',
+        $webUser
+    );
 }
 
 /**
@@ -3051,7 +3318,10 @@ function health_check_all(): array
         $keys       = health_check_keys();
         $exposure   = health_check_web_exposure();
         $geocoding  = health_check_geocoding();
+        $geocodeCacheWritable = health_check_geocode_cache_writable();
+        $tileCacheWritable    = health_check_tile_cache_writable();
         $publicBoard = health_check_public_board();
+        $teamMembership = health_check_team_membership_reconciliation();
 
         $critical = 0;
         $warn     = 0;
@@ -3092,7 +3362,8 @@ function health_check_all(): array
         } elseif (($jobs['severity'] ?? '') === 'warn') {
             $warn++;
         }
-        foreach ([$backups, $keys, $exposure, $geocoding, $publicBoard] as $sec) {
+        foreach ([$backups, $keys, $exposure, $geocoding, $geocodeCacheWritable, $tileCacheWritable,
+                  $publicBoard, $teamMembership] as $sec) {
             if (($sec['severity'] ?? '') === 'critical') {
                 $critical++;
             } elseif (($sec['severity'] ?? '') === 'warn') {
@@ -3126,7 +3397,10 @@ function health_check_all(): array
             'keys'         => $keys,
             'web_exposure' => $exposure,
             'geocoding'    => $geocoding,
+            'geocode_cache_writable' => $geocodeCacheWritable,
+            'tile_cache_writable'    => $tileCacheWritable,
             'public_board' => $publicBoard,
+            'team_membership' => $teamMembership,
             'summary'      => ['critical' => $critical, 'warn' => $warn, 'unknown' => $unknown],
         ];
     } catch (Throwable $e) {

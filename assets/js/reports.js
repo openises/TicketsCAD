@@ -67,6 +67,10 @@
     var noDataState       = document.getElementById('noDataState');
     var afterActionPanel  = document.getElementById('afterActionPanel');
     var afterActionInfo   = document.getElementById('afterActionInfo');
+    // GH#64 — Interval Report by-type/by-unit breakdown panel.
+    var intervalBreakdownPanel = document.getElementById('intervalBreakdownPanel');
+    var intervalByTypeBody     = document.getElementById('intervalByTypeBody');
+    var intervalByUnitBody     = document.getElementById('intervalByUnitBody');
 
     // ── Init ──────────────────────────────────────────────────────────────────
 
@@ -197,9 +201,11 @@
         // supports it (a responder_id EXISTS filter against assigns,
         // scoped so a ticket with multiple assigned units doesn't get
         // duplicated).
+        // GH#64 — Interval Report accepts the same responder_id filter as
+        // unit_log/dispatch_log (api/reports.php's interval_report case).
         var showResponder = (type === 'unit_log' || type === 'dispatch_log' ||
                              type === 'facility_log' || type === 'notes_log' ||
-                             type === 'incident_report');
+                             type === 'incident_report' || type === 'interval_report');
         responderFilterCol.classList.toggle('d-none', !showResponder);
         if (!showResponder) {
             responderFilter.value = '0';
@@ -444,6 +450,7 @@
         reportHeader.classList.add('d-none');
         summaryCards.classList.add('d-none');
         afterActionPanel.classList.add('d-none');
+        intervalBreakdownPanel.classList.add('d-none');
         btnExportCSV.disabled = true;
         btnPrint.disabled = true;
     }
@@ -524,6 +531,13 @@
             renderAfterActionPanel(reportData.summary);
         } else {
             afterActionPanel.classList.add('d-none');
+        }
+
+        // GH#64 — Interval Report by-type/by-unit breakdown panel.
+        if (currentReport === 'interval_report') {
+            renderIntervalBreakdown();
+        } else {
+            intervalBreakdownPanel.classList.add('d-none');
         }
     }
 
@@ -736,6 +750,29 @@
         if (currentReport === 'dispatch_log' && summary.avg_total_time) {
             cards.push({ label: 'Avg Dispatch Time', value: summary.avg_total_time, color: 'warning', icon: 'bi-stopwatch' });
         }
+        // GH#64 — Interval Report's own period-wide averages. Each is 'N/A'
+        // (not sent as null) when zero rows in the period had that leg's
+        // pair of milestones, so a call-heavy period with no transports at
+        // all just quietly omits the "Avg Transport" card rather than
+        // rendering it as a confusing "N/A" — 'N/A' still passes the
+        // summary.avg_x_time truthy check below, so guard on it explicitly.
+        if (currentReport === 'interval_report') {
+            if (summary.avg_turnout_time && summary.avg_turnout_time !== 'N/A') {
+                cards.push({ label: 'Avg Turnout', value: summary.avg_turnout_time, color: 'info', icon: 'bi-hourglass-split' });
+            }
+            if (summary.avg_travel_time && summary.avg_travel_time !== 'N/A') {
+                cards.push({ label: 'Avg Travel', value: summary.avg_travel_time, color: 'info', icon: 'bi-signpost-split' });
+            }
+            if (summary.avg_response_time && summary.avg_response_time !== 'N/A') {
+                cards.push({ label: 'Avg Response', value: summary.avg_response_time, color: 'warning', icon: 'bi-stopwatch' });
+            }
+            if (summary.avg_scene_time && summary.avg_scene_time !== 'N/A') {
+                cards.push({ label: 'Avg Scene Time', value: summary.avg_scene_time, color: 'secondary', icon: 'bi-clock-history' });
+            }
+            if (summary.avg_transport_time && summary.avg_transport_time !== 'N/A') {
+                cards.push({ label: 'Avg Transport', value: summary.avg_transport_time, color: 'primary', icon: 'bi-truck' });
+            }
+        }
         if (currentReport === 'incident_summary' && summary.avg_close_time_mins !== null && summary.avg_close_time_mins !== undefined) {
             var hrs = Math.floor(summary.avg_close_time_mins / 60);
             var mins = summary.avg_close_time_mins % 60;
@@ -845,6 +882,61 @@
 
             afterActionInfo.appendChild(protoDiv);
         }
+    }
+
+    // ── Interval Report Breakdown Panel (GH#64) ──────────────────────────────
+
+    /**
+     * Populate the By Incident Type / By Unit mini-tables from
+     * reportData.interval_by_type / interval_by_unit (api/reports.php's
+     * 'interval_report' case — one entry per type/unit seen in the period,
+     * each carrying count + formatted avg_response_time/avg_scene_time,
+     * already sorted by count descending server-side). Built with plain DOM
+     * methods (textContent, not innerHTML) — same convention every other
+     * render function in this file already follows.
+     */
+    function renderIntervalBreakdown() {
+        var byType = (reportData && reportData.interval_by_type) || [];
+        var byUnit = (reportData && reportData.interval_by_unit) || [];
+
+        if (byType.length === 0 && byUnit.length === 0) {
+            intervalBreakdownPanel.classList.add('d-none');
+            return;
+        }
+        intervalBreakdownPanel.classList.remove('d-none');
+
+        function fillTable(tbody, items, labelFallback) {
+            tbody.innerHTML = '';
+            for (var i = 0; i < items.length; i++) {
+                var item = items[i];
+                var tr = document.createElement('tr');
+
+                var tdLabel = document.createElement('td');
+                tdLabel.className = 'small';
+                tdLabel.textContent = item.label || labelFallback;
+                tr.appendChild(tdLabel);
+
+                var tdCount = document.createElement('td');
+                tdCount.className = 'small text-end';
+                tdCount.textContent = String(item.count);
+                tr.appendChild(tdCount);
+
+                var tdResp = document.createElement('td');
+                tdResp.className = 'small text-end';
+                tdResp.textContent = item.avg_response_time || '—';
+                tr.appendChild(tdResp);
+
+                var tdScene = document.createElement('td');
+                tdScene.className = 'small text-end';
+                tdScene.textContent = item.avg_scene_time || '—';
+                tr.appendChild(tdScene);
+
+                tbody.appendChild(tr);
+            }
+        }
+
+        fillTable(intervalByTypeBody, byType, 'Unknown');
+        fillTable(intervalByUnitBody, byUnit, 'Unknown Unit');
     }
 
     // ── CSV Export ─────────────────────────────────────────────────────────────

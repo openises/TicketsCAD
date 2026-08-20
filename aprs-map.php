@@ -279,7 +279,7 @@ $active_page = 'aprs-map';
         <span id="aprsListenerDetail" class="small ms-1"></span>
         The map shows whatever was last received; new stations won't appear
         until the listener service is running. See
-        <a href="docs/LOCATION-PROVIDERS-GUIDE.md" target="_blank" class="alert-link">Location Providers Guide</a>
+        <a href="documentation/?doc=LOCATION-PROVIDERS-GUIDE" target="_blank" class="alert-link">Location Providers Guide</a>
         for setup instructions.
     </div>
 

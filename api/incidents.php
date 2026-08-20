@@ -12,6 +12,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/security-labels.php';
+require_once __DIR__ . '/../inc/severity.php';
 // Phase 104b (a beta tester GH #17) — inc/par.php provides par_due_at() so
 // we can surface per-incident PAR-overdue state on the incidents API,
 // which situation.php reads to render a warning icon.
@@ -57,8 +58,11 @@ if (!empty($_GET['search'])) {
     } else {
         $sFilter = ' AND 1=0';               // no view perm, no groups → nothing
     }
+    // Phase 141 (2026-08-17) — ticket-specific sibling of org_query_filter();
+    // widens visibility to include cross-org-shared tickets, no-op otherwise.
     require_once __DIR__ . '/../inc/org-scope.php';
-    [$sOrgFrag, $sOrgVars] = org_query_filter('t.org_id');
+    require_once __DIR__ . '/../inc/org-sharing.php';
+    [$sOrgFrag, $sOrgVars] = org_ticket_query_filter(null, 't');
     if ($sOrgFrag !== '') {
         $sFilter .= $sOrgFrag;
         $sParams = array_merge($sParams, $sOrgVars);
@@ -66,7 +70,7 @@ if (!empty($_GET['search'])) {
     $sParams[] = $limit;
 
     $searchRows = db_fetch_all(
-        "SELECT t.id, t.scope, t.street, t.city, t.description,
+        "SELECT t.id, t.org_id, t.scope, t.street, t.city, t.description,
                 t.date, t.updated, t.status, t.severity,
                 it.type AS type_name
          FROM `{$prefix}ticket` t
@@ -81,6 +85,10 @@ if (!empty($_GET['search'])) {
          LIMIT ?",
         $sParams
     );
+
+    // Phase 141 — redact/annotate any share-derived row (description is
+    // stripped for view tier per plan.md's allowlist; no-op otherwise).
+    $searchRows = org_sharing_apply_list_redaction($searchRows);
 
     json_response(['incidents' => $searchRows]);
 }
@@ -233,8 +241,11 @@ if ($is_admin || $rbacIncidentView) {
 // gets an empty fragment (no filter). Org Admin sees own + descendant
 // orgs. Ordinary users see their home org. Composes additively with
 // the legacy group/RBAC filter above. See specs/phase-99j-org-scoping/.
+// Phase 141 (2026-08-17) — ticket-specific sibling of org_query_filter();
+// widens visibility to include cross-org-shared tickets, no-op otherwise.
 require_once __DIR__ . '/../inc/org-scope.php';
-[$orgFrag, $orgVars] = org_query_filter('t.org_id');
+require_once __DIR__ . '/../inc/org-sharing.php';
+[$orgFrag, $orgVars] = org_ticket_query_filter(null, 't');
 if ($orgFrag !== '') {
     $group_filter .= $orgFrag;
     $params = array_merge($params, $orgVars);
@@ -247,6 +258,7 @@ if ($orgFrag !== '') {
 $sql = "SELECT
     `t`.`id` AS `id`,
     `t`.`incident_number`,
+    `t`.`org_id`,
     `t`.`scope` AS `scope`,
     `t`.`street` AS `street`,
     `t`.`city` AS `city`,
@@ -283,12 +295,9 @@ $params[] = $offset;
 
 $rows = db_fetch_all($sql, $params);
 
-// Severity color map
-$sev_colors = [
-    0 => get_variable('sev_0_color') ?: '#00ff00',
-    1 => get_variable('sev_1_color') ?: '#ffff00',
-    2 => get_variable('sev_2_color') ?: '#ff0000',
-];
+// GH#87/GH#88 (2026-08-19) — sourced from the configurable severity_levels
+// table (inc/severity.php) instead of a hardcoded 3-entry map.
+$sev_colors = severity_color_map();
 
 $severity_counts = [0 => 0, 1 => 0, 2 => 0];
 $incidents = [];
@@ -364,6 +373,7 @@ foreach ($rows as $row) {
     $incidents[] = [
         'id'              => $id,
         'incident_number' => $row['incident_number'] ?? null,
+        'org_id'          => isset($row['org_id']) ? (int) $row['org_id'] : null,
         'scope'           => $row['scope'],
         'street'          => $row['street'],
         'city'            => $row['city'],
@@ -386,6 +396,7 @@ foreach ($rows as $row) {
         'lng'             => (float) $row['lng'],
         'severity'        => $sev,
         'severity_color'  => $sev_colors[$sev] ?? '#ffffff',
+        'severity_label'  => severity_label($sev),
         'status'          => (int) $row['status'],
         'description'     => $row['description'],
         'incident_type'   => $row['incident_type'],
@@ -406,6 +417,14 @@ foreach ($rows as $row) {
         'par_overdue_secs' => $parOverdueSec,
     ];
 }
+
+// Phase 141 (2026-08-17) — redact/annotate any share-derived row. Fields
+// this view builds that are NOT on org_share_view_tier_field_allowlist()
+// (description, actions_count, patients_count, par_due_at/par_overdue_secs,
+// facility_lat/lng) are stripped for view tier by design — deliberately
+// excluded per plan.md's redaction table, not an oversight. No-op on a
+// no-rule database or for same-org rows.
+$incidents = org_sharing_apply_list_redaction($incidents);
 
 json_response([
     'incidents'       => $incidents,

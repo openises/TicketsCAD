@@ -73,14 +73,30 @@ if ($method === 'POST') {
     if ($ticketId <= 0)    ext_api_error('invalid_ticket_id', 400);
     if ($responderId <= 0) ext_api_error('invalid_responder_id', 400);
 
+    // GH#82/GH#83 — same dispatch-level / Multi-Assign gate as the
+    // internal endpoint. A headless caller can't answer a confirm dialog,
+    // so a WARN-level result is reported back as a 409 (not silently
+    // allowed, and not silently dropped) — the caller must explicitly
+    // resend with `"force": true` once it has decided to proceed, exactly
+    // like api/incident-assign.php's interactive confirm-and-resubmit.
+    // A hard BLOCK (Dispatch level: Unavailable) is never bypassable by
+    // force, from either endpoint.
+    $force = !empty($input['force']);
+
     try {
-        $result = assign_create_internal($ticketId, $responderId, $role, $userId);
+        $result = assign_create_internal($ticketId, $responderId, $role, $userId, $force);
     } catch (Exception $e) {
         ext_api_db_error('db_query', $e);
     }
 
+    if (!empty($result['needs_confirmation'])) {
+        ext_api_error('dispatch_confirmation_required', 409, ['message' => $result['message']]);
+    }
+
     if (!empty($result['errors'])) {
-        ext_api_error('validation_failed', 422, ['errors' => $result['errors']]);
+        $status = !empty($result['blocked']) ? 409 : 422;
+        $code   = !empty($result['blocked']) ? 'dispatch_blocked' : 'validation_failed';
+        ext_api_error($code, $status, ['errors' => $result['errors']]);
     }
 
     $assignId = (int) $result['id'];

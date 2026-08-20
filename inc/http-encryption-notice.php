@@ -100,7 +100,7 @@ function http_enc_ack_banner_html(string $csrf): string {
         Traffic between browsers and this server is not encrypted in transit.
     </div>
     <div class="d-flex align-items-center gap-2">
-        <a href="docs/HTTPS-SETUP.md" target="_blank" rel="noopener" class="btn btn-sm btn-outline-warning">
+        <a href="documentation/?doc=HTTPS-SETUP" target="_blank" rel="noopener" class="btn btn-sm btn-outline-warning">
             <i class="bi bi-book me-1"></i>How to enable HTTPS
         </a>
         <button type="button" class="btn btn-sm btn-warning" id="btnAckHttpEncryption" data-csrf="<?php echo $c; ?>">

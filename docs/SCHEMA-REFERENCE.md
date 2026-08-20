@@ -1,6 +1,6 @@
 # TicketsCAD NewUI — Schema Reference
 
-**Generated:** 2026-08-13 05:37 by `tools/gen_schema_reference.php` — do not hand-edit, regenerate instead.
+**Generated:** 2026-08-19 02:07 by `tools/gen_schema_reference.php` — do not hand-edit, regenerate instead.
 
 Purely informational — every column on every table in this live database, for an agent to `Read` or `Grep` instead of running a one-off `SHOW COLUMNS`/`SHOW INDEX` query. NOT load-bearing: nothing checks this file against the live schema (that job belongs to `sql/schema_manifest.json` + `inc/schema-verify.php`, which cover columns the code actually writes to). A stale copy here is misleading, not breaking — regenerate when the schema changes meaningfully.
 
@@ -44,7 +44,7 @@ Has NO `member_id` column — a query written against a remembered `responder.me
 
 Fully data-driven: `fields_json` on each row defines the per-mode form field shape, and the existing Roster -> member -> Comm/Location IDs UI renders any row generically. Adding a new identifier type (a new messaging channel, a new device type) is a migration seeding one row plus a reverse-map entry in `inc/comm_resolve.php` -- it is NOT new UI code.
 
-## Tables (254)
+## Tables (262)
 
 | Table | Jump |
 |---|---|
@@ -131,8 +131,10 @@ Fully data-driven: `fields_json` on each row defines the per-mode form field sha
 | `hints` | [#`hints`](#hints) |
 | `ics` | [#`ics`](#ics) |
 | `ics_forms` | [#`ics_forms`](#ics_forms) |
+| `ics_form_types` | [#`ics_form_types`](#ics_form_types) |
 | `ics_positions` | [#`ics_positions`](#ics_positions) |
 | `inbound_message_dedupe` | [#`inbound_message_dedupe`](#inbound_message_dedupe) |
+| `incident_shares` | [#`incident_shares`](#incident_shares) |
 | `insurance` | [#`insurance`](#insurance) |
 | `internal_messages` | [#`internal_messages`](#internal_messages) |
 | `in_types` | [#`in_types`](#in_types) |
@@ -203,6 +205,10 @@ Fully data-driven: `fields_json` on each row defines the per-mode form field sha
 | `notify` | [#`notify`](#notify) |
 | `organisations` | [#`organisations`](#organisations) |
 | `organizations` | [#`organizations`](#organizations) |
+| `org_relationships` | [#`org_relationships`](#org_relationships) |
+| `org_relationships_activations` | [#`org_relationships_activations`](#org_relationships_activations) |
+| `org_relationships_members` | [#`org_relationships_members`](#org_relationships_members) |
+| `org_type_routing` | [#`org_type_routing`](#org_type_routing) |
 | `owntracks_outbox` | [#`owntracks_outbox`](#owntracks_outbox) |
 | `par_config` | [#`par_config`](#par_config) |
 | `par_cycles` | [#`par_cycles`](#par_cycles) |
@@ -217,6 +223,7 @@ Fully data-driven: `fields_json` on each row defines the per-mode form field sha
 | `pin_ctrl` | [#`pin_ctrl`](#pin_ctrl) |
 | `places` | [#`places`](#places) |
 | `push_subscriptions` | [#`push_subscriptions`](#push_subscriptions) |
+| `quick_notes` | [#`quick_notes`](#quick_notes) |
 | `radioid_users` | [#`radioid_users`](#radioid_users) |
 | `region` | [#`region`](#region) |
 | `region_type` | [#`region_type`](#region_type) |
@@ -237,6 +244,7 @@ Fully data-driven: `fields_json` on each row defines the per-mode form field sha
 | `scheduling_permission_profiles` | [#`scheduling_permission_profiles`](#scheduling_permission_profiles) |
 | `security_labels` | [#`security_labels`](#security_labels) |
 | `settings` | [#`settings`](#settings) |
+| `severity_levels` | [#`severity_levels`](#severity_levels) |
 | `showin_contactlist` | [#`showin_contactlist`](#showin_contactlist) |
 | `signals` | [#`signals`](#signals) |
 | `skills` | [#`skills`](#skills) |
@@ -1841,13 +1849,43 @@ Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
 | `status` | varchar(16) | NO | MUL | 'draft' |  |
 | `deleted_at` | datetime | YES | MUL | NULL |  |
 | `deleted_by` | int(11) | YES |  | NULL |  |
+| `custom_type_id` | int(11) | YES | MUL | NULL |  |
 
 Indexes:
 - `KEY idx_deleted_at` (deleted_at)
 - `KEY idx_ics_created_at` (created_at)
+- `KEY idx_ics_custom_type_id` (custom_type_id)
 - `KEY idx_ics_form_type` (form_type)
 - `KEY idx_ics_incident_id` (incident_id)
 - `KEY idx_ics_status` (status)
+
+### `ics_form_types`
+
+Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
+
+| Column | Type | Null | Key | Default | Extra |
+|---|---|---|---|---|---|
+| `id` | int(11) | NO | PRI |  | auto_increment |
+| `slug` | varchar(60) | NO |  |  |  |
+| `form_number` | varchar(40) | NO |  | '' |  |
+| `form_title` | varchar(255) | NO |  | '' |  |
+| `description` | varchar(500) | NO |  | '' |  |
+| `fields_json` | mediumtext | NO |  |  |  |
+| `badge_color` | varchar(20) | NO |  | 'secondary' |  |
+| `icon` | varchar(40) | NO |  | 'bi-file-earmark-text' |  |
+| `org_id` | int(11) | YES | MUL | NULL |  |
+| `org_key` | int(11) | YES | MUL | NULL | STORED GENERATED |
+| `status` | varchar(16) | NO | MUL | 'active' |  |
+| `restrict_to_permission` | varchar(64) | YES |  | NULL |  |
+| `created_by` | int(11) | NO |  | 0 |  |
+| `created_by_name` | varchar(128) | NO |  | '' |  |
+| `created_at` | datetime | NO |  | current_timestamp() |  |
+| `updated_at` | datetime | NO |  | current_timestamp() | on update current_timestamp() |
+
+Indexes:
+- `KEY idx_ics_form_type_org` (org_id)
+- `KEY idx_ics_form_type_status` (status)
+- `UNIQUE KEY uk_ics_form_type_slug_org` (org_key, slug)
 
 ### `ics_positions`
 
@@ -1882,6 +1920,33 @@ Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
 Indexes:
 - `KEY idx_seen_at` (seen_at)
 - `UNIQUE KEY uk_channel_external_id` (channel, external_id)
+
+### `incident_shares`
+
+Engine: InnoDB · Collation: utf8mb4_unicode_ci
+
+| Column | Type | Null | Key | Default | Extra |
+|---|---|---|---|---|---|
+| `id` | int(11) | NO | PRI |  | auto_increment |
+| `ticket_id` | bigint(8) | NO | MUL |  |  |
+| `shared_with_org_id` | int(11) | NO | MUL |  |  |
+| `owning_org_id` | int(11) | NO |  |  |  |
+| `routing_rule_id` | int(11) | YES | MUL | NULL |  |
+| `access_tier` | enum('view','assist') | NO |  | 'view' |  |
+| `created_at` | datetime | NO |  | current_timestamp() |  |
+| `created_by` | int(11) | YES |  | NULL |  |
+| `created_by_name` | varchar(128) | NO |  | '' |  |
+| `share_reason` | varchar(255) | YES |  | NULL |  |
+| `revoked_at` | datetime | YES |  | NULL |  |
+| `revoked_reason` | varchar(255) | YES |  | NULL |  |
+| `revoked_by` | int(11) | YES |  | NULL |  |
+| `revoked_by_name` | varchar(128) | NO |  | '' |  |
+
+Indexes:
+- `KEY idx_incident_share_org` (shared_with_org_id, revoked_at)
+- `KEY idx_incident_share_rule` (routing_rule_id)
+- `KEY idx_incident_share_ticket` (ticket_id)
+- `UNIQUE KEY uk_incident_share` (ticket_id, shared_with_org_id)
 
 ### `insurance`
 
@@ -1941,7 +2006,7 @@ Engine: MyISAM · Collation: latin1_swedish_ci
 | `notify_when` | int(1) | NO |  | 1 |  |
 | `match_pattern` | text | YES |  | NULL |  |
 | `default_security_label_id` | int(10) unsigned | YES |  | NULL |  |
-| `public_board_never_publish` | tinyint(1) | NO |  | 0 |  |
+| `public_board_never_publish` | tinyint(1) | NO |  | 1 |  |
 | `public_board_publish_delay_secs` | int(10) unsigned | YES |  | NULL |  |
 | `public_board_visibility` | enum('full','presence_only') | NO |  | 'full' |  |
 | `public_board_stub_label` | varchar(64) | YES |  | NULL |  |
@@ -3450,7 +3515,7 @@ Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
 | `event_type` | enum('incident_create','incident_close','incident_status','unit_assign','unit_clear','severity_high','has_broadcast') | NO | MUL |  |  |
 | `severity_filter` | tinyint(4) | YES |  | NULL |  |
 | `incident_type_filter` | int(10) unsigned | YES |  | NULL |  |
-| `channel` | enum('email','sms','local_chat','all') | NO |  | 'email' |  |
+| `channel` | varchar(20) | NO |  | 'email' |  |
 | `recipients` | text | YES |  | NULL |  |
 | `email_list_id` | int(10) unsigned | YES |  | NULL |  |
 | `subject_template` | varchar(255) | YES |  | '' |  |
@@ -3533,6 +3598,105 @@ Indexes:
 - `KEY idx_active` (active)
 - `KEY idx_org_parent` (parent_org_id)
 - `UNIQUE KEY uk_public_board_slug` (public_board_slug)
+
+### `org_relationships`
+
+Engine: InnoDB · Collation: utf8mb4_unicode_ci
+
+| Column | Type | Null | Key | Default | Extra |
+|---|---|---|---|---|---|
+| `id` | int(11) | NO | PRI |  | auto_increment |
+| `name` | varchar(128) | NO |  |  |  |
+| `relationship_type` | varchar(40) | NO |  | 'mutual_aid' |  |
+| `access_tier` | enum('view','assist') | NO |  | 'view' |  |
+| `redaction_profile` | enum('view','assist') | NO |  | 'view' |  |
+| `requires_activation` | tinyint(1) | NO |  | 1 |  |
+| `max_activation_minutes` | int(11) | YES |  | NULL |  |
+| `status` | enum('pending','active','rejected') | NO | MUL | 'pending' |  |
+| `created_by` | int(11) | NO |  | 0 |  |
+| `created_by_name` | varchar(128) | NO |  | '' |  |
+| `created_at` | datetime | NO |  | current_timestamp() |  |
+| `updated_at` | datetime | NO |  | current_timestamp() | on update current_timestamp() |
+
+Indexes:
+- `KEY idx_org_rel_status` (status)
+
+### `org_relationships_activations`
+
+Engine: InnoDB · Collation: utf8mb4_unicode_ci
+
+| Column | Type | Null | Key | Default | Extra |
+|---|---|---|---|---|---|
+| `id` | int(11) | NO | PRI |  | auto_increment |
+| `relationship_id` | int(11) | NO | MUL |  |  |
+| `activated_at` | datetime | NO |  | current_timestamp() |  |
+| `activated_by` | int(11) | NO |  |  |  |
+| `activated_by_name` | varchar(128) | NO |  | '' |  |
+| `activation_reason` | varchar(255) | YES |  | NULL |  |
+| `max_activation_minutes` | int(11) | YES |  | NULL |  |
+| `deactivated_at` | datetime | YES |  | NULL |  |
+| `deactivated_by` | int(11) | YES |  | NULL |  |
+| `deactivated_by_name` | varchar(128) | NO |  | '' |  |
+| `deactivated_reason` | varchar(255) | YES |  | NULL |  |
+| `live_key` | varchar(24) | YES | UNI | NULL | STORED GENERATED |
+
+Indexes:
+- `KEY idx_org_rel_activation_rel` (relationship_id, deactivated_at)
+- `UNIQUE KEY uk_org_rel_activation_live` (live_key)
+
+### `org_relationships_members`
+
+Engine: InnoDB · Collation: utf8mb4_unicode_ci
+
+| Column | Type | Null | Key | Default | Extra |
+|---|---|---|---|---|---|
+| `id` | int(11) | NO | PRI |  | auto_increment |
+| `relationship_id` | int(11) | NO | MUL |  |  |
+| `org_id` | int(11) | NO | MUL |  |  |
+| `status` | enum('pending','approved','rejected') | NO |  | 'pending' |  |
+| `proposed_by` | int(11) | NO |  | 0 |  |
+| `proposed_by_name` | varchar(128) | NO |  | '' |  |
+| `proposed_at` | datetime | NO |  | current_timestamp() |  |
+| `approved_by` | int(11) | YES |  | NULL |  |
+| `approved_by_name` | varchar(128) | NO |  | '' |  |
+| `approved_at` | datetime | YES |  | NULL |  |
+| `rejected_by` | int(11) | YES |  | NULL |  |
+| `rejected_by_name` | varchar(128) | NO |  | '' |  |
+| `rejected_at` | datetime | YES |  | NULL |  |
+| `rejection_reason` | varchar(255) | YES |  | NULL |  |
+
+Indexes:
+- `KEY idx_org_rel_member_org` (org_id, status)
+- `UNIQUE KEY uk_org_rel_member` (relationship_id, org_id)
+
+### `org_type_routing`
+
+Engine: InnoDB · Collation: utf8mb4_unicode_ci
+
+| Column | Type | Null | Key | Default | Extra |
+|---|---|---|---|---|---|
+| `id` | int(11) | NO | PRI |  | auto_increment |
+| `owning_org_id` | int(11) | NO | MUL |  |  |
+| `shared_with_org_id` | int(11) | NO | MUL |  |  |
+| `match_scope` | enum('group','type') | NO |  | 'group' |  |
+| `match_group` | varchar(20) | YES | MUL | NULL |  |
+| `match_in_type_id` | int(11) | YES | MUL | NULL |  |
+| `match_key` | varchar(24) | YES |  | NULL | STORED GENERATED |
+| `access_tier` | enum('view','assist') | NO |  | 'view' |  |
+| `active` | tinyint(1) | NO |  | 1 |  |
+| `created_by` | int(11) | NO |  | 0 |  |
+| `created_by_name` | varchar(128) | NO |  | '' |  |
+| `created_at` | datetime | NO |  | current_timestamp() |  |
+| `updated_at` | datetime | NO |  | current_timestamp() | on update current_timestamp() |
+| `deactivated_at` | datetime | YES |  | NULL |  |
+| `deactivated_by` | int(11) | YES |  | NULL |  |
+
+Indexes:
+- `KEY idx_org_routing_group` (match_group)
+- `KEY idx_org_routing_owner` (owning_org_id, active)
+- `KEY idx_org_routing_shared` (shared_with_org_id, active)
+- `KEY idx_org_routing_type` (match_in_type_id)
+- `UNIQUE KEY uk_org_routing_rule` (owning_org_id, shared_with_org_id, match_key)
 
 ### `owntracks_outbox`
 
@@ -3830,6 +3994,24 @@ Indexes:
 - `KEY idx_channel` (channel)
 - `KEY idx_user` (user_id)
 - `UNIQUE KEY uk_user_endpoint` (user_id, endpoint)
+
+### `quick_notes`
+
+Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
+
+| Column | Type | Null | Key | Default | Extra |
+|---|---|---|---|---|---|
+| `id` | int(11) | NO | PRI |  | auto_increment |
+| `user_id` | int(11) | NO | MUL |  |  |
+| `note_text` | mediumtext | NO |  |  |  |
+| `captured_at` | datetime | NO |  |  |  |
+| `done` | tinyint(1) | NO |  | 0 |  |
+| `created_at` | datetime | NO |  | current_timestamp() |  |
+| `updated_at` | datetime | NO |  | current_timestamp() | on update current_timestamp() |
+
+Indexes:
+- `KEY idx_qn_user` (user_id)
+- `KEY idx_qn_user_done` (user_id, done)
 
 ### `radioid_users`
 
@@ -4275,6 +4457,27 @@ Indexes:
 - `UNIQUE KEY ID` (id)
 - `UNIQUE KEY uq_name` (name)
 
+### `severity_levels`
+
+Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
+
+| Column | Type | Null | Key | Default | Extra |
+|---|---|---|---|---|---|
+| `id` | int(11) | NO | PRI |  | auto_increment |
+| `value` | int(11) | NO | UNI |  |  |
+| `label` | varchar(30) | NO |  |  |  |
+| `color` | varchar(7) | NO |  | '#6c757d' |  |
+| `sort_order` | int(11) | NO | MUL | 0 |  |
+| `is_default` | tinyint(1) | NO |  | 0 |  |
+| `is_high_alert` | tinyint(1) | NO |  | 0 |  |
+| `_by` | int(11) | YES |  | NULL |  |
+| `_from` | varchar(45) | YES |  | NULL |  |
+| `_on` | timestamp | NO |  | current_timestamp() |  |
+
+Indexes:
+- `KEY idx_sort_order` (sort_order)
+- `UNIQUE KEY uq_severity_value` (value)
+
 ### `showin_contactlist`
 
 Engine: MyISAM · Collation: latin1_swedish_ci
@@ -4342,6 +4545,7 @@ Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
 | `title` | varchar(255) | NO |  |  |  |
 | `content` | mediumtext | NO |  |  |  |
 | `parent_id` | int(11) | YES | MUL | NULL |  |
+| `owner_user_id` | int(11) | YES | MUL | NULL |  |
 | `sort_order` | int(11) | YES |  | 0 |  |
 | `created_by` | int(11) | NO |  |  |  |
 | `created_at` | datetime | NO |  |  |  |
@@ -4349,6 +4553,7 @@ Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
 | `updated_at` | datetime | YES |  | NULL |  |
 
 Indexes:
+- `KEY idx_sop_owner` (owner_user_id)
 - `KEY parent_id` (parent_id)
 - `UNIQUE KEY slug` (slug)
 
@@ -4607,6 +4812,7 @@ Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
 | `position_code` | varchar(16) | YES |  | NULL |  |
 | `assigned_date` | date | YES |  | NULL |  |
 | `notes` | varchar(255) | YES |  | NULL |  |
+| `source` | varchar(20) | YES |  | NULL |  |
 
 Indexes:
 - `KEY member_id` (member_id)
@@ -4984,7 +5190,7 @@ Engine: MyISAM · Collation: latin1_swedish_ci
 | `sort` | int(11) | NO |  | 0 |  |
 | `bg_color` | varchar(16) | NO |  | 'transparent' |  |
 | `text_color` | varchar(16) | NO |  | '#000000' |  |
-| `incident_action` | enum('','dispatched','responding','on_scene','clear') | NO |  | '' |  |
+| `incident_action` | enum('','dispatched','responding','on_scene','facility_enroute','facility_arrived','clear') | NO |  | '' |  |
 | `resets_par` | tinyint(1) | NO |  | 0 |  |
 | `extra_data_type` | enum('none','facility','mileage','location','note','numeric') | NO |  | 'none' |  |
 | `extra_data_required` | tinyint(1) | NO |  | 0 |  |

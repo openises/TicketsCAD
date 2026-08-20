@@ -950,7 +950,7 @@ if (http_enc_should_prompt_admin((int) ($_SESSION['user_id'] ?? 0))) {
         <a href="migrations.php" class="btn btn-sm btn-outline-warning">
             <i class="bi bi-list-check me-1"></i>Status &amp; preview
         </a>
-        <a href="docs/INSTALL.md" target="_blank" class="btn btn-sm btn-outline-warning">
+        <a href="documentation/?doc=INSTALL" target="_blank" class="btn btn-sm btn-outline-warning">
             <i class="bi bi-book me-1"></i>Docs
         </a>
         <button type="button" class="btn btn-sm btn-outline-secondary" id="btnDismissMigrationsBanner" title="Hide for this session">
@@ -1010,7 +1010,20 @@ include_once __DIR__ . '/health-banner.php';
 // setting; both widgets read `--ptt-color`. Sanitize to a hex color so a
 // bad/hostile value can never break out of the <style> — anything that
 // isn't #rgb / #rrggbb / #rrggbbaa falls back to the default red.
-$__pttColor = function_exists('get_setting') ? (string) get_setting('ptt_button_color', '#dc3545') : '#dc3545';
+//
+// GH #91 audit (2026-08-19): this was the GH #79 cross-store bug live —
+// get_setting() reads the separate bootstrap `config` table (key/value),
+// but the Settings color picker (settings.php, data-key="ptt_button_color")
+// writes the `settings` table (name/value) via the generic
+// api/config-admin.php?section=settings path, same as every other
+// data-key control. Nothing ever wrote ptt_button_color into `config`, so
+// the picker always silently fell back to the hardcoded default — an
+// admin changing the color saw it "save" and never take effect.
+// get_variable() is the function that actually reads `settings`; it
+// returns false (not a default) when the row doesn't exist yet, so the
+// fallback is applied here instead of via a second parameter.
+$__pttColorRaw = function_exists('get_variable') ? get_variable('ptt_button_color') : false;
+$__pttColor = ($__pttColorRaw !== false && $__pttColorRaw !== '') ? (string) $__pttColorRaw : '#dc3545';
 if (!preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/', $__pttColor)) {
     $__pttColor = '#dc3545';
 }

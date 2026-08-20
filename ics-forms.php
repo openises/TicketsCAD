@@ -76,7 +76,10 @@ include_once NEWUI_ROOT . '/inc/navbar.php';
     <div id="hubSection">
 
         <!-- Form Type Cards -->
-        <div class="row g-3 mb-4">
+        <!-- Phase 140: id="formTypeCardsRow" is where JS appends one card
+             per active, in-scope custom ICS form type (assets/js/ics-forms.js
+             loadCustomTypeCards()), after these 9 static built-in cards. -->
+        <div class="row g-3 mb-4" id="formTypeCardsRow">
 
             <!-- ICS-213: General Message -->
             <div class="col-md-6 col-lg-4 col-xl-3">
@@ -277,6 +280,7 @@ include_once NEWUI_ROOT . '/inc/navbar.php';
                         <option value="213rr">ICS-213RR</option>
                         <option value="214a">ICS-214a</option>
                         <option value="221">ICS-221</option>
+                        <option value="custom">Custom</option>
                     </select>
                 </div>
             </div>

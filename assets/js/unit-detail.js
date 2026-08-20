@@ -375,11 +375,64 @@
                 else btns[i].classList.add('btn-danger');
             }
             btns[i].addEventListener('click', function () {
-                // Placeholder: dispatch level change not yet wired to API
                 var v = parseInt(this.getAttribute('data-dispatch'), 10);
-                showAlert('Dispatch level change to ' + v + ' not yet implemented.', 'info');
+                changeDispatchLevel(v);
             });
         }
+    }
+
+    // GH#83 (2026-08-18) — was a stub ("not yet implemented"). Dispatch
+    // level lives on the un_status ROW, not the responder — it's a
+    // property of the STATUS the unit is currently in (e.g. "Out of
+    // Service"), shared by every unit that status applies to, same as
+    // Settings -> Unit Statuses already edits. api/unit-status-manage.php's
+    // `update` action overwrites the whole row, so this resends every
+    // field from the loaded status object (allStatuses, from
+    // api/unit-statuses.php) with only `dispatch` changed — never a
+    // partial/blank overwrite. Admin-only server-side (same as Settings);
+    // a non-admin gets a clear error instead of a silent no-op.
+    function changeDispatchLevel(newLevel) {
+        if (!unitData || !unitData.responder) return;
+        var statusId = parseInt(unitData.responder.status_id, 10);
+        var status = findStatusById(statusId);
+        if (!status) {
+            showAlert('Could not determine this unit\'s current status — reload and try again.', 'danger');
+            return;
+        }
+        fetch('api/unit-status-manage.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'update',
+                id: status.id,
+                status_val: status.status_val,
+                description: status.description,
+                dispatch: newLevel,
+                watch: status.watch,
+                hide: status.hide,
+                excl_from_reset: status.excl_from_reset,
+                group: status.group,
+                sort: status.sort,
+                bg_color: status.bg_color,
+                text_color: status.text_color,
+                csrf_token: getCsrfToken()
+            })
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.error) {
+                showAlert('Failed to change dispatch level: ' + escHtml(data.error)
+                    + (String(data.error).indexOf('Admin') !== -1
+                        ? ' (change it from Settings → Unit Statuses instead)' : ''), 'danger');
+                return;
+            }
+            showAlert('Dispatch level for "' + escHtml(status.description || status.status_val) + '" updated.', 'success');
+            loadStatuses();
+            loadUnit(getUnitId());
+        })
+        .catch(function (err) {
+            showAlert('Failed to change dispatch level: ' + escHtml(err.message), 'danger');
+        });
     }
 
     // ── Change status via API ──

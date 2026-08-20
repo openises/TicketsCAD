@@ -204,6 +204,25 @@ function sched_job_registry(): array {
             'purpose'    => 'Polls opted-in channels (e.g. Telegram, Slack) for inbound messages and '
                           . 'routes them to the sender\'s assigned incident',
         ],
+        // Phase 143 (2026-08-17) — standing cross-org relationships,
+        // activation-window cleanup. 5 min, not daily -- matches
+        // par_tick/pending_messages_tick's cadence, not the daily purge
+        // jobs: an activation window can be measured in tens of minutes,
+        // and its audit-closure record should not lag a whole day behind
+        // the read-time expiry it merely notes. NON-AUTHORITATIVE by
+        // construction -- see inc/org-relationships.php's
+        // org_relationship_deactivate() and tools/org_relationship_cleanup_tick.php's
+        // own docblocks: access is already gone via the read-time
+        // predicate before this job ever runs.
+        'org_relationship_activation_cleanup' => [
+            'label'      => 'Standing-relationship activation cleanup',
+            'interval_s' => 300,
+            'grace_mult' => 3,
+            'unit'       => $win ? 'TicketsCAD Background Jobs' : 'ticketscad-org-relationship-cleanup.timer',
+            'unit_kind'  => $win ? 'schtasks' : 'systemd',
+            'command'    => $win ? 'php tools\\org_relationship_cleanup_tick.php' : 'php tools/org_relationship_cleanup_tick.php',
+            'purpose'    => 'Closes out (deactivated_at) activation windows that have already expired by the read-time predicate, for audit-trail hygiene only',
+        ],
     ];
 }
 
@@ -425,6 +444,27 @@ function sched_job_required(string $jobKey): array {
             'required' => false,
             'why'      => 'No channel has inbound polling enabled (Settings → Telegram / Slack)',
         ];
+    }
+
+    if ($jobKey === 'org_relationship_activation_cleanup') {
+        // Same "shipped default configuration is not evidence of use"
+        // discipline as pending_messages_tick/channel_receive_tick above --
+        // required only when a live-but-already-expired activation row
+        // actually EXISTS (the negation of the same predicate
+        // org_relationship_activation_live_join_sql() encodes), so a fresh
+        // install or one that has never activated a relationship reports
+        // this job as not-required, not critical.
+        try {
+            $n = (int) db_fetch_value(
+                "SELECT COUNT(*) FROM `{$prefix}org_relationships_activations`
+                  WHERE `deactivated_at` IS NULL
+                    AND `max_activation_minutes` IS NOT NULL
+                    AND `activated_at` <= DATE_SUB(NOW(), INTERVAL `max_activation_minutes` MINUTE)");
+            if ($n > 0) {
+                return ['required' => true, 'why' => "{$n} activation window(s) have expired and are awaiting audit-trail closure"];
+            }
+        } catch (Exception $e) {}
+        return ['required' => false, 'why' => 'No standing-relationship activation windows have expired'];
     }
 
     return ['required' => false, 'why' => 'Unknown job'];

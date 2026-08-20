@@ -169,3 +169,75 @@ function team_soft_delete_internal(int $id, int $userId): array {
 
     return ['deleted' => true, 'errors' => [], 'name' => $existing['name']];
 }
+
+/**
+ * GH#76 Phase 144 (2026-08-18) — add (or update the role of) a member on a
+ * team. Extracted from api/teams.php's add_member action so the roster
+ * page's Team Memberships card and any test can drive the SAME code the
+ * Teams tab drives — identical SQL, identical ON DUPLICATE KEY UPDATE
+ * upsert semantics (a caller adding an already-member updates their role
+ * rather than erroring). This is the ONE new write path this phase's
+ * design spec allows: the roster card calls api/teams.php's EXISTING
+ * add_member action (unchanged endpoint, unchanged action.manage_teams
+ * gate) — this extraction does not add a second gate or a second endpoint,
+ * it just gives the existing one a directly-testable, directly-reusable
+ * body, mirroring team_upsert_internal()/team_soft_delete_internal()'s own
+ * extraction shape in this same file.
+ *
+ * $source: NULL (default) for a human coordinator's direct action (Teams
+ * tab or the roster card); 'external_api' for the external-API compat
+ * shim (api/external/v1/members.php). Never set to 'legacy_migration'
+ * here — that value is written only by
+ * sql/run_phase144_team_membership_unification.php's one-time backfill.
+ *
+ * @return array ['success' => bool, 'errors' => string[]]
+ */
+function team_add_member_internal(int $teamId, int $memberId, string $role = 'Member', ?string $posCode = null, ?string $source = null): array {
+    if ($teamId <= 0 || $memberId <= 0) {
+        return ['success' => false, 'errors' => ['missing team_id or member_id']];
+    }
+    try {
+        db_query(
+            "INSERT INTO " . db_table('team_members') . "
+             (team_id, member_id, role, position_code, assigned_date, source)
+             VALUES (?, ?, ?, ?, CURDATE(), ?)
+             ON DUPLICATE KEY UPDATE role = VALUES(role), position_code = VALUES(position_code)",
+            [$teamId, $memberId, $role, $posCode, $source]
+        );
+    } catch (Exception $e) {
+        return ['success' => false, 'errors' => ['db_error: ' . $e->getMessage()]];
+    }
+    return ['success' => true, 'errors' => []];
+}
+
+/**
+ * GH#76 Phase 144 (2026-08-18) — remove a member from a team by
+ * team_members.id (the "assignment id"). Extracted from api/teams.php's
+ * remove_member action — see team_add_member_internal()'s docblock for
+ * why. Returns the removed row's team_id/member_id (needed for the
+ * caller's audit_log() detail payload) since the row is gone after this
+ * call.
+ *
+ * @return array ['success' => bool, 'team_id' => ?int, 'member_id' => ?int, 'errors' => string[]]
+ */
+function team_remove_member_internal(int $assignmentId): array {
+    if ($assignmentId <= 0) {
+        return ['success' => false, 'team_id' => null, 'member_id' => null, 'errors' => ['missing assignment_id']];
+    }
+    $tm = null;
+    try {
+        $tm = db_fetch_one(
+            "SELECT team_id, member_id FROM " . db_table('team_members') . " WHERE id = ?",
+            [$assignmentId]
+        );
+        db_query("DELETE FROM " . db_table('team_members') . " WHERE id = ?", [$assignmentId]);
+    } catch (Exception $e) {
+        return ['success' => false, 'team_id' => null, 'member_id' => null, 'errors' => ['db_error: ' . $e->getMessage()]];
+    }
+    return [
+        'success'   => true,
+        'team_id'   => $tm ? (int) $tm['team_id'] : null,
+        'member_id' => $tm ? (int) $tm['member_id'] : null,
+        'errors'    => [],
+    ];
+}

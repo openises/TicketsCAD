@@ -106,6 +106,29 @@ foreach ($roles as $r) {
 }
 echo "[OK] $inserted default roles seeded\n";
 
+// Phase 145 (2026-08-19, GH#90) — external facility account. Deliberately
+// NO explicit id, unlike roles 1-6 above (seeded once at the very start
+// of an install's life, before any custom role can exist). roles.id is a
+// plain AUTO_INCREMENT; a real, months-old install can already have
+// custom roles occupying low ids by the time this migration first runs —
+// confirmed live on a dev database, where a pre-existing custom role
+// already held id 7 and a literal `(7, 'Facility', ...)` INSERT IGNORE
+// silently no-op'd, leaving the intended row never created.
+// `uk_role_name_org` (name, org_id) is the real uniqueness guard; the
+// role is resolved by NAME everywhere else (api/config-admin.php,
+// assets/js/config.js, this file's own grant block below) — the same
+// lesson run_phase11d_mobile_first.php already learned for Field Unit's
+// id ("Magic id=6 doesn't survive... rename").
+try {
+    db_query(
+        "INSERT IGNORE INTO `{$prefix}roles` (`name`, `description`, `is_default`, `sort_order`) VALUES (?, ?, ?, ?)",
+        ['Facility', 'External facility account — confined to the facility portal', 0, 7]
+    );
+    echo "[OK] Facility role seeded\n";
+} catch (Exception $e) {
+    echo "[WARN] Facility role: " . $e->getMessage() . "\n";
+}
+
 // 6. Seed permissions
 $perms = [
     // Screens
@@ -237,12 +260,95 @@ $perms = [
     // must name both explicitly (done there).
     ['action.manage_public_board', 'Manage Public Incident Board (install-wide)', 'action'],
     ['action.manage_public_board_org', "Manage Own Org's Public Board URL", 'action'],
+    // Phase 140 (2026-08-16) — custom (data-driven) ICS form types, GH#69.
+    // Same two-permission split as Phase 138 directly above, same reasoning:
+    // action.manage_ics_form_types is install-wide type authoring (Super
+    // Admin ONLY — see the Org Admin `NOT IN` exclusion below).
+    // action.manage_ics_form_types_org is org-scoped self-service authoring
+    // (Super Admin + Org Admin via the broad Org Admin NOT IN grant below,
+    // deliberately NOT added to that exclusion list). Dispatcher/Operator/
+    // Read-Only/Field Unit mappings in THIS file are allow-lists that name
+    // neither code, so both are correctly withheld there with no edit
+    // needed — asymmetric with sql/rbac.sql, whose Dispatcher mapping IS a
+    // broad NOT IN and so must name both explicitly (done there). Neither
+    // gate may fall back to `is_admin()` — see plan.md's RBAC section.
+    ['action.manage_ics_form_types', 'Manage Custom ICS Form Types (install-wide)', 'action'],
+    ['action.manage_ics_form_types_org', "Manage Own Org's Custom ICS Form Types", 'action'],
+    // Phase 141 (2026-08-17) — cross-org ticket sharing / auto-routing, GH#70.
+    // TWO permissions, but UNLIKE Phase 138/140, BOTH are Super-Admin-only in
+    // Phase 1 (plan.md open-question-1): a routing rule grants a DIFFERENT
+    // org visibility into the CREATING org's ticket data, and Phase 1 has no
+    // two-party-awareness mechanism for the receiving org to consent or veto.
+    // action.manage_org_routing is install-wide authoring (any owning org);
+    // action.manage_org_routing_org is org-scoped self-service (only the
+    // caller's own org as owning_org_id) -- created now so Phase 2/3 (or a
+    // Super Admin, per-install, via the Roles & Permissions UI) can widen
+    // access later by REMOVING an exclusion-list entry, no new migration
+    // needed. Both are added to the Org Admin `NOT IN` exclusion below.
+    // Dispatcher/Operator/Read-Only/Field Unit mappings in THIS file are
+    // allow-lists that name neither code, so both are correctly withheld
+    // there with no edit needed -- asymmetric with sql/rbac.sql, whose
+    // Dispatcher mapping IS a broad NOT IN and so must name both explicitly
+    // (done there). Neither gate may fall back to `is_admin()` -- see
+    // plan.md's RBAC section.
+    ['action.manage_org_routing', 'Manage Cross-Org Ticket Routing Rules (install-wide)', 'action'],
+    ['action.manage_org_routing_org', "Manage Own Org's Cross-Org Ticket Routing Rules", 'action'],
+    // Phase 142 (2026-08-17) — manual cross-org ticket sharing, GH#70 Phase 2.
+    // TWO permissions, but UNLIKE Phase 141's routing-rule codes directly
+    // above, BOTH are granted to Dispatcher AND Org Admin by default
+    // (plan.md's RBAC section) -- a manual share is bounded to one ticket,
+    // one decision, made once, by a person already actively working that
+    // specific call, not a standing rule with unbounded future scope. The
+    // real protection is org_ticket_is_owned_by_caller(), re-checked on
+    // every request -- not RBAC. Org Admin's NOT IN exclusion below does
+    // NOT name either code (absence grants by construction). Dispatcher's
+    // mapping in THIS file is an ALLOW-list (the opposite mechanism from
+    // sql/rbac.sql's broad NOT IN), so both codes ARE explicitly added to
+    // the Dispatcher allow-list below -- the one file/role combination in
+    // this phase that needs an edit for Dispatcher (plan.md verified this
+    // asymmetry rather than assuming it). Neither gate may fall back to
+    // `is_admin()` -- see plan.md's RBAC section.
+    ['action.share_incident', 'Share Incident With Another Organization', 'action'],
+    ['action.revoke_incident_share', 'Revoke a Cross-Org Incident Share', 'action'],
+    // Phase 143 (2026-08-17) — cross-org STANDING relationships + time-boxed
+    // activation windows, GH#70 Phase 3. THREE codes, two default postures:
+    // action.manage_org_relationships (install-wide) is Super-Admin-only,
+    // added to the Org Admin `NOT IN` exclusion below. The other two --
+    // action.manage_org_relationships_org (org-scoped propose/admin, a
+    // deliberate departure from Phase 141's own `_org` precedent: proposing
+    // grants zero visibility by itself, the real boundary is the
+    // counterpart's own per-row consent) and action.activate_org_relationship
+    // (bounded, per-instance activation, gated per-relationship by
+    // org_relationship_can_act_for_org() against the caller's own
+    // membership) -- are BOTH granted to Org Admin AND Dispatcher by
+    // default. Org Admin's mapping in THIS file is a broad NOT-IN exclusion
+    // that already grants by omission (both codes absent from that list --
+    // no edit needed there). Dispatcher's mapping in THIS file is a named
+    // ALLOW-list (the opposite mechanism), so both codes ARE explicitly
+    // added to the Dispatcher allow-list below -- the same asymmetry Phase
+    // 142's plan.md already verified for its own two broadly-granted codes.
+    // Neither gate may fall back to `is_admin()` -- see plan.md's RBAC section.
+    ['action.manage_org_relationships', 'Manage Cross-Org Standing Relationships (install-wide)', 'action'],
+    ['action.manage_org_relationships_org', "Manage Own Org's Cross-Org Standing Relationships", 'action'],
+    ['action.activate_org_relationship', 'Activate/Deactivate a Cross-Org Standing Relationship', 'action'],
     // Data Visibility
     ['field.view_patient',     'View Patient Info',    'field'],
     ['field.view_contact',     'View Contact Info',    'field'],
     ['field.view_address',     'View Full Address',    'field'],
     ['field.view_notes',       'View Notes',           'field'],
     ['field.view_medical',     'View Medical Info',    'field'],
+    // Phase 145 (2026-08-19, GH#90) — facility-account portal. Category
+    // 'facility_account' (not 'screen'/'action') deliberately sidesteps
+    // Operator's/Read-Only's category-based broad grants below; only the
+    // Org Admin NOT-IN exclusion (below) needs both codes named, since
+    // that grant has no category restriction. Dispatcher/Operator/
+    // Read-Only/Field Unit mappings in THIS file are allow-lists that
+    // name neither code, so all three are correctly withheld with no
+    // edit needed there — asymmetric with sql/rbac.sql, whose Dispatcher
+    // mapping IS a broad NOT IN and so must name both explicitly (done
+    // there).
+    ['screen.facility_portal',      'Facility Portal',             'facility_account'],
+    ['action.facility_self_report', 'Facility Self-Report Status', 'facility_account'],
 ];
 
 $pInserted = 0;
@@ -281,18 +387,68 @@ try {
               SELECT 2, `id` FROM `{$prefix}permissions`
               WHERE `code` NOT IN ('action.manage_config', 'action.manage_roles', 'action.bulk_delete_members',
                                     'action.manage_audit_retention', 'action.manage_dispositions',
-                                    'action.manage_public_board')");
+                                    'action.manage_public_board', 'action.manage_ics_form_types',
+                                    'action.manage_org_routing', 'action.manage_org_routing_org',
+                                    'screen.facility_portal', 'action.facility_self_report',
+                                    'action.manage_org_relationships')");
     echo "[OK] Org Admin permissions mapped\n";
 } catch (Exception $e) {}
 
+// Repair (2026-08-16, RBAC canonical-alias privilege-leak fix — identical
+// mechanism and rationale as the matching repair in sql/rbac.sql; see that
+// file's comment for the full explanation). The broad grant above matches
+// this file's exclusion list by LITERAL STRING and is purely ADDITIVE
+// (INSERT IGNORE) -- two distinct mechanisms leak an excluded permission
+// back onto Org Admin: (1) DIRECT -- a role can hold the OLD code itself
+// from before it was added to this exclusion list, and nothing ever
+// retroactively revokes that when the string is later added (confirmed
+// live on your-server 2026-08-16, Org Admin held all seven
+// excluded codes directly); (2) ALIAS -- sql/run_rbac_v2.php's A8 step
+// independently creates a CANONICAL `<resource>.<verb>` code for every
+// permission and links the old code to it via `deprecated_alias_of`, and
+// rbac_can() treats old code and canonical alias as interchangeable, so
+// any re-run of this script after A8 has canonicalized an excluded
+// permission re-grants it under its new name (confirmed live on the dev
+// database and your-server.example.com, including action.manage_config
+// and action.manage_roles). Both DELETEs below are self-healing on every
+// run.
+try {
+    db_query("DELETE `{$prefix}role_permissions` FROM `{$prefix}role_permissions`
+              JOIN `{$prefix}permissions` p ON p.id = `{$prefix}role_permissions`.`permission_id`
+              WHERE `{$prefix}role_permissions`.`role_id` = 2
+                AND p.`code` IN ('action.manage_config', 'action.manage_roles', 'action.bulk_delete_members',
+                                  'action.manage_audit_retention', 'action.manage_dispositions',
+                                  'action.manage_public_board', 'action.manage_ics_form_types',
+                                  'action.manage_org_routing', 'action.manage_org_routing_org',
+                                  'action.manage_org_relationships',
+                                  'screen.facility_portal', 'action.facility_self_report')");
+    db_query("DELETE rp FROM `{$prefix}role_permissions` rp
+              JOIN `{$prefix}permissions` canon ON canon.id = rp.permission_id
+              JOIN `{$prefix}permissions` old_p ON old_p.deprecated_alias_of = canon.code
+              WHERE rp.role_id = 2
+                AND old_p.code IN ('action.manage_config', 'action.manage_roles', 'action.bulk_delete_members',
+                                    'action.manage_audit_retention', 'action.manage_dispositions',
+                                    'action.manage_public_board', 'action.manage_ics_form_types',
+                                    'action.manage_org_routing', 'action.manage_org_routing_org',
+                                    'action.manage_org_relationships',
+                                    'screen.facility_portal', 'action.facility_self_report')");
+    echo "[OK] Org Admin canonical-alias privilege leak repaired (if any)\n";
+} catch (Exception $e) {}
+
 // Dispatcher gets screens + widgets + operational actions
+// Phase 142 (2026-08-17): action.share_incident / action.revoke_incident_share
+// added here -- this mapping is a named-code ALLOW-list, so (unlike
+// sql/rbac.sql's broad NOT-IN exclusion) a code absent from this list is
+// withheld regardless of what the exclusion list in rbac.sql does. Both
+// codes belong to Dispatcher by default per plan.md's RBAC section.
 try {
     db_query("INSERT IGNORE INTO `{$prefix}role_permissions` (`role_id`, `permission_id`)
               SELECT 3, `id` FROM `{$prefix}permissions`
               WHERE `category` IN ('screen', 'widget')
                  OR `code` IN ('action.create_incident', 'action.edit_incident', 'action.close_incident',
                                'action.assign_unit', 'action.add_note', 'action.set_own_zone',
-                               'action.net_checkin')");
+                               'action.net_checkin', 'action.share_incident', 'action.revoke_incident_share',
+                               'action.manage_org_relationships_org', 'action.activate_org_relationship')");
     echo "[OK] Dispatcher permissions mapped\n";
 } catch (Exception $e) {}
 
@@ -327,6 +483,22 @@ try {
                   'field.view_contact', 'field.view_address', 'field.view_notes'
               )");
     echo "[OK] Field Unit permissions mapped\n";
+} catch (Exception $e) {}
+
+// Facility gets exactly the two facility-portal permissions (Phase 145,
+// 2026-08-19, GH#90). See sql/rbac.sql's comment on the Facility role
+// INSERT above for why this role's narrow grant is not itself the
+// security boundary, and why it is resolved by NAME (never a hardcoded
+// id — roles.id is a plain AUTO_INCREMENT that a custom role may have
+// already claimed by the time this migration runs).
+try {
+    db_query("INSERT IGNORE INTO `{$prefix}role_permissions` (`role_id`, `permission_id`)
+              SELECT r.`id`, p.`id`
+                FROM `{$prefix}roles` r
+                CROSS JOIN `{$prefix}permissions` p
+               WHERE r.`name` = 'Facility'
+                 AND p.`code` IN ('screen.facility_portal', 'action.facility_self_report')");
+    echo "[OK] Facility permissions mapped\n";
 } catch (Exception $e) {}
 
 // 8. Auto-assign Super Admin role to user #1 (only if user #1 exists)

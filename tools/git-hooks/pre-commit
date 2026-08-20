@@ -10,6 +10,7 @@
 #   3c. tools/timezone_audit.php                 (stored clock ↔ the clock queried)
 #   3d. tools/ui_consistency_audit.php           (new UI ↔ the product's conventions)
 #   3e. tools/rbac_permission_audit.php          (rbac_can() code ↔ real permissions row)
+#   3f. tools/dead_control_audit.php             (a control/column ↔ anything that reads it)
 #   4. tools/gen_schema_manifest.php --check     (manifest ↔ what the code writes)
 #   5. tools/generate-sbom.php --check/--verify  (SBOM ↔ dependencies + signature)
 #
@@ -131,6 +132,26 @@ if [ -f tools/rbac_permission_audit.php ]; then
         echo "⚠ RBAC permission-code audit skipped (database unreachable) — CI will run it"
     elif [ $CODE -ne 0 ]; then
         echo "✗ RBAC permission-code audit found a code with no permissions-table row:"
+        echo "$OUT" | tail -20
+        FAILED=1
+    fi
+fi
+
+# ── 3f. Dead-control audit (needs DB for the column half; warn-and-pass if
+#      unreachable) ──────────────────────────────────────────────────────
+# GH #91: a `data-key="foo"` control that saves and persists with no
+# get_variable('foo') anywhere (Chat Bridge, Severity Levels labels before
+# the same-night fix), or a database column with a confirmed write path
+# whose value is read nowhere. "The cost isn't the dead code itself, it's
+# that it reads as live" — a checkbox that persists looks exactly like a
+# working switch.
+if [ -f tools/dead_control_audit.php ]; then
+    OUT="$("$PHP" tools/dead_control_audit.php 2>&1)"
+    CODE=$?
+    if echo "$OUT" | grep -qi "connection failed\|Access denied\|Unknown database"; then
+        echo "⚠ dead-control audit's column check skipped (database unreachable) — CI will run it"
+    elif [ $CODE -ne 0 ]; then
+        echo "✗ dead-control audit found a NEW dead setting/column:"
         echo "$OUT" | tail -20
         FAILED=1
     fi

@@ -244,6 +244,20 @@ $csrf     = csrf_token();
                 </div>
                 <div class="small text-body-secondary mb-2" id="assignAddress">--</div>
                 <div class="small mb-2" id="assignDesc"></div>
+
+                <!-- GH#82 (2026-08-18) — a unit can legitimately hold more than
+                     one active call at once (Multi-Assign, or a dispatcher
+                     confirmed "assign anyway?"). The card above always shows
+                     the unit's ORIGINAL/oldest active call as primary; this
+                     strip lists any OTHER active calls so none of them are
+                     silently hidden from the crew — tap one to swap it into
+                     the primary card above. -->
+                <div class="d-none mt-2 pt-2 border-top" id="otherAssignments">
+                    <div class="small text-warning fw-semibold mb-1">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>Also assigned to:
+                    </div>
+                    <div id="otherAssignmentsList"></div>
+                </div>
                 <!-- Phase 71 — big tap-friendly Navigate button.
                      Previously a tiny corner icon nobody could hit with
                      gloves. Now full-width, opens the multi-app

@@ -244,6 +244,11 @@ function handlePost() {
     }
 
     // ── Add member to team ──
+    // GH#76 Phase 144 (2026-08-18): delegates to inc/team-write.php ::
+    // team_add_member_internal() — same extraction pattern as
+    // team_upsert_internal()/team_soft_delete_internal() below. Both the
+    // Teams tab AND the roster page's Team Memberships card call this SAME
+    // action (unchanged endpoint, unchanged action.manage_teams gate).
     if ($action === 'add_member') {
         $teamId = intval($input['team_id'] ?? 0);
         $memberId = intval($input['member_id'] ?? 0);
@@ -252,40 +257,33 @@ function handlePost() {
         $role = trim($input['role'] ?? 'Member');
         $posCode = trim($input['position_code'] ?? '') ?: null;
 
-        try {
-            db_query(
-                "INSERT INTO " . db_table('team_members') . "
-                 (team_id, member_id, role, position_code, assigned_date)
-                 VALUES (?, ?, ?, ?, CURDATE())
-                 ON DUPLICATE KEY UPDATE role = VALUES(role), position_code = VALUES(position_code)",
-                [$teamId, $memberId, $role, $posCode]
-            );
-            audit_log('personnel', 'assign', 'team_member', null, "Added member #{$memberId} to team #{$teamId} as {$role}", [
-                'team_id' => $teamId,
-                'member_id' => $memberId,
-                'role' => $role,
-                'position_code' => $posCode
-            ]);
-        } catch (Exception $e) {
-            json_error('Failed to add member: ' . $e->getMessage());
+        $result = team_add_member_internal($teamId, $memberId, $role, $posCode);
+        if (!empty($result['errors'])) {
+            json_error('Failed to add member: ' . implode(', ', $result['errors']));
         }
+        audit_log('personnel', 'assign', 'team_member', null, "Added member #{$memberId} to team #{$teamId} as {$role}", [
+            'team_id' => $teamId,
+            'member_id' => $memberId,
+            'role' => $role,
+            'position_code' => $posCode
+        ]);
         json_response(['success' => true]);
     }
 
     // ── Remove member from team ──
+    // GH#76 Phase 144 (2026-08-18): delegates to inc/team-write.php ::
+    // team_remove_member_internal().
     if ($action === 'remove_member') {
         $id = intval($input['assignment_id'] ?? 0);
         if (!$id) json_error('Missing assignment_id');
-        try {
-            $tm = safe_fetch_teams("SELECT team_id, member_id FROM " . db_table('team_members') . " WHERE id = ?", [$id]);
-            db_query("DELETE FROM " . db_table('team_members') . " WHERE id = ?", [$id]);
-            audit_log('personnel', 'unassign', 'team_member', $id, "Removed member from team", [
-                'team_id' => !empty($tm) ? $tm[0]['team_id'] : null,
-                'member_id' => !empty($tm) ? $tm[0]['member_id'] : null
-            ]);
-        } catch (Exception $e) {
-            json_error('Failed: ' . $e->getMessage());
+        $result = team_remove_member_internal($id);
+        if (!empty($result['errors'])) {
+            json_error('Failed: ' . implode(', ', $result['errors']));
         }
+        audit_log('personnel', 'unassign', 'team_member', $id, "Removed member from team", [
+            'team_id' => $result['team_id'],
+            'member_id' => $result['member_id']
+        ]);
         json_response(['success' => true]);
     }
 

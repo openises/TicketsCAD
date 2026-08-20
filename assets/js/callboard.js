@@ -232,10 +232,25 @@
 
         var statusLabel = getStatusLabel(inc.status);
         var statusClass = getStatusClass(inc.status);
-        var sevLabel = getSeverityLabel(inc.severity);
+        // GH#87/GH#88 (2026-08-19) — severity_label/severity_color now
+        // come from api/callboard.php's configured severity_levels
+        // lookup (inc/severity.php). getSeverityLabel()'s switch below is
+        // kept only as a fallback for a response that somehow lacks the
+        // field. sevBadgeClass (cb-sev-0/1/2 — CSS-defined colors) still
+        // applies for the historical 3-level default so an install that
+        // hasn't touched the Severity Levels admin panel sees an
+        // unchanged look; the inline style below is what makes a
+        // 4th+ level, or a recolored 0-2, render correctly, since inline
+        // style always wins the cascade over the class.
+        var sevLabel = inc.severity_label || getSeverityLabel(inc.severity);
+        var sevColor = inc.severity_color || '#6c757d';
         var sevBadgeClass = 'cb-sev-' + (inc.severity || 0);
 
-        var html = '<tr id="cb-row-' + inc.id + '" class="' + sevClass + newClass + '">';
+        // Full border-left shorthand, not just -color: a level beyond the
+        // historical 0-2 (no matching .cb-row-sev-N CSS class) would
+        // otherwise have no border WIDTH set for a color-only override to
+        // apply to.
+        var html = '<tr id="cb-row-' + inc.id + '" class="' + sevClass + newClass + '" style="border-left:4px solid ' + escAttr(sevColor) + ';">';
 
         // Phase 99p — show admin-configured case number, fall back
         // to "#<id>" for legacy tickets without one.
@@ -247,10 +262,20 @@
         if (inc.type_color) {
             html += '<span class="cb-type-dot" style="background:' + escAttr(inc.type_color) + ';"></span>';
         }
-        html += esc(inc.incident_type || 'Unknown') + '</td>';
+        html += esc(inc.incident_type || 'Unknown');
+        // Phase 141 (GH#70) — cross-org sharing indicator. Present only when
+        // api/callboard.php's org_sharing_apply_list_redaction() call
+        // annotated this row as share-derived; absent for every same-org row.
+        if (inc.shared_from_org_name) {
+            html += ' <span class="badge bg-info text-dark" title="Shared from ' + escAttr(inc.shared_from_org_name) + '">'
+                + '<i class="bi bi-share"></i> ' + esc(inc.shared_from_org_name) + '</span>';
+        }
+        html += '</td>';
 
-        // Severity
-        html += '<td><span class="cb-sev-badge ' + sevBadgeClass + '">' + esc(sevLabel) + '</span></td>';
+        // Severity — inline style wins over the cb-sev-N class so a
+        // recolored/4th+ level always renders its actual configured color.
+        html += '<td><span class="cb-sev-badge ' + sevBadgeClass + '" style="background-color:' +
+            escAttr(sevColor) + ';color:' + contrastTextColor(sevColor) + ';">' + esc(sevLabel) + '</span></td>';
 
         // Location
         html += '<td>' + esc(addr) + '</td>';
@@ -467,6 +492,23 @@
         EventBus.on('responder:assign', function () {
             loadIncidents();
         });
+        // Phase 142 (GH#70 Phase 2) — a share grant/revoke adds/removes a
+        // ticket from this org's board, same treatment as incident:new/close.
+        EventBus.on('incident:shared', function () {
+            loadIncidents();
+        });
+        EventBus.on('incident:unshared', function () {
+            loadIncidents();
+        });
+        // Phase 143 (GH#70 Phase 3) — a standing relationship activating (or
+        // expiring) adds/removes an entire org's worth of tickets from this
+        // board at once, same treatment as a share grant/revoke above.
+        EventBus.on('org_relationship:activated', function () {
+            loadIncidents();
+        });
+        EventBus.on('org_relationship:deactivated', function () {
+            loadIncidents();
+        });
         EventBus.on('system:refresh', function () {
             loadIncidents();
         });
@@ -513,6 +555,20 @@
         if (!str) return '';
         return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
                   .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // GH#87/GH#88 (2026-08-19) — readable text color for an arbitrary
+    // admin-picked severity color, via relative luminance. See
+    // incident-detail.js's copy of this helper for the full rationale.
+    function contrastTextColor(hexColor) {
+        var hex = (hexColor || '').replace('#', '');
+        if (hex.length !== 6) return '#000';
+        var r = parseInt(hex.substr(0, 2), 16);
+        var g = parseInt(hex.substr(2, 2), 16);
+        var b = parseInt(hex.substr(4, 2), 16);
+        if (isNaN(r) || isNaN(g) || isNaN(b)) return '#000';
+        var luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        return luminance > 0.55 ? '#000' : '#fff';
     }
 
     // ── Start ───────────────────────────────────────────────────────

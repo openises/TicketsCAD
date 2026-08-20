@@ -377,9 +377,24 @@
             "hint",
             "tag"
         ],
+        "ics_form_types": [
+            "badge_color",
+            "created_by",
+            "created_by_name",
+            "description",
+            "fields_json",
+            "form_number",
+            "form_title",
+            "icon",
+            "org_id",
+            "restrict_to_permission",
+            "slug",
+            "status"
+        ],
         "ics_forms": [
             "created_by",
             "created_by_name",
+            "custom_type_id",
             "deleted_at",
             "deleted_by",
             "form_data_json",
@@ -418,6 +433,27 @@
         "inbound_message_dedupe": [
             "channel",
             "external_id"
+        ],
+        "incident_shares": [
+            "access_tier",
+            "created_at",
+            "created_by",
+            "created_by_name",
+            "owning_org_id",
+            "revoked_at",
+            "revoked_by",
+            "revoked_by_name",
+            "revoked_reason",
+            "routing_rule_id",
+            "share_reason",
+            "shared_with_org_id",
+            "ticket_id"
+        ],
+        "insurance": [
+            "_by",
+            "_from",
+            "ins_value",
+            "sort_order"
         ],
         "internal_messages": [
             "body",
@@ -628,6 +664,8 @@
             "direction",
             "enabled",
             "filters_json",
+            "managed",
+            "managed_key",
             "name",
             "priority",
             "recipient_predicate_json",
@@ -762,6 +800,56 @@
             "subject",
             "ticket_id"
         ],
+        "org_relationships": [
+            "access_tier",
+            "created_by",
+            "created_by_name",
+            "max_activation_minutes",
+            "name",
+            "redaction_profile",
+            "relationship_type",
+            "requires_activation",
+            "status"
+        ],
+        "org_relationships_activations": [
+            "activated_by",
+            "activated_by_name",
+            "activation_reason",
+            "deactivated_at",
+            "deactivated_by",
+            "deactivated_by_name",
+            "deactivated_reason",
+            "max_activation_minutes",
+            "relationship_id"
+        ],
+        "org_relationships_members": [
+            "approved_at",
+            "approved_by",
+            "approved_by_name",
+            "org_id",
+            "proposed_at",
+            "proposed_by",
+            "proposed_by_name",
+            "rejected_at",
+            "rejected_by",
+            "rejected_by_name",
+            "rejection_reason",
+            "relationship_id",
+            "status"
+        ],
+        "org_type_routing": [
+            "access_tier",
+            "active",
+            "created_by",
+            "created_by_name",
+            "deactivated_at",
+            "deactivated_by",
+            "match_group",
+            "match_in_type_id",
+            "match_scope",
+            "owning_org_id",
+            "shared_with_org_id"
+        ],
         "organizations": [
             "public_board_enabled",
             "public_board_slug"
@@ -797,8 +885,11 @@
             "date",
             "description",
             "dob",
+            "facility_contact",
+            "facility_id",
             "fullname",
             "gender",
+            "insurance_id",
             "name",
             "ticket_id",
             "updated",
@@ -986,6 +1077,16 @@
             "name",
             "value"
         ],
+        "severity_levels": [
+            "_by",
+            "_from",
+            "color",
+            "is_default",
+            "is_high_alert",
+            "label",
+            "sort_order",
+            "value"
+        ],
         "signals": [
             "code",
             "description",
@@ -1043,6 +1144,7 @@
             "member_id",
             "position_code",
             "role",
+            "source",
             "team_id"
         ],
         "team_types": [
@@ -1191,6 +1293,7 @@
         ],
         "user": [
             "can_login",
+            "facility_id",
             "home_org_id",
             "level",
             "member",
@@ -1407,10 +1510,13 @@
         "geofence_unit_state",
         "geofences",
         "hints",
+        "ics_form_types",
         "ics_forms",
         "ics_positions",
         "in_types",
         "inbound_message_dedupe",
+        "incident_shares",
+        "insurance",
         "internal_messages",
         "languages",
         "location_ingest_tokens",
@@ -1462,6 +1568,10 @@
         "notification_log",
         "notification_preferences",
         "notification_rules",
+        "org_relationships",
+        "org_relationships_activations",
+        "org_relationships_members",
+        "org_type_routing",
         "organizations",
         "owntracks_outbox",
         "par_config",
@@ -1489,6 +1599,7 @@
         "scheduling_permission_profiles",
         "security_labels",
         "settings",
+        "severity_levels",
         "signals",
         "sop_pages",
         "sop_revisions",
@@ -1534,8 +1645,8 @@
     "_meta": {
         "generated_by": "tools/gen_schema_manifest.php",
         "purpose": "columns this code writes to + tables it references; checked by inc/schema-verify.php",
-        "tables": 138,
-        "columns": 1077,
-        "required_tables": 175
+        "tables": 146,
+        "columns": 1164,
+        "required_tables": 183
     }
 }

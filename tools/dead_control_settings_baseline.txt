@@ -1,0 +1,103 @@
+# Baseline for tools/dead_control_audit.php, settings-key check (GH #91).
+#
+# One "setting:<key>" per line, exactly as printed by the audit. A key
+# belongs here only with a comment explaining why it's accepted rather
+# than fixed — matching every other baseline file in this project.
+#
+# GH #91 sweep (2026-08-19): every entry below except telegram_poll_inbound
+# is a control that was found genuinely dead (saves to `settings`, nothing
+# reads the key back) and has been MARKED per Eric's explicit policy in the
+# issue — disabled in the UI with a "Not yet wired" badge/note, matching
+# this file's own comment at each control's markup, rather than DROPPED.
+# None of these represent a removed mechanism (the "drop" case); all are
+# plausible future features that were simply never connected end to end.
+# Two related findings from the same sweep were FIXED, not marked, and so
+# do not appear here: ptt_button_color (a live GH #79 cross-store bug —
+# get_setting() was reading the wrong table; fixed in inc/navbar.php) and
+# the redundant `timezone` field (removed outright — a dead duplicate of
+# the working `area_timezone` control in Settings -> Display Settings).
+
+# --- Chat Bridge checkboxes (chat_bridge_telegram/slack/email/mesh) —
+#     NOT dead. GH #89 (a concurrent fix, separate from this sweep) wires
+#     these to inc/chat-bridge.php + sql/run_phase146_chat_bridge_routing.php.
+#     Excluded from this sweep's scope per explicit instruction — do not
+#     remove these four lines; whether they're still needed depends on
+#     GH #89's own commit timing relative to this one, not on this file.
+setting:chat_bridge_telegram
+setting:chat_bridge_slack
+setting:chat_bridge_email
+setting:chat_bridge_mesh
+
+# --- Chat Settings panel (Retention & Persistence + Channel Structure
+#     groups) — the built-in chat feature runs fixed behavior regardless
+#     of these six keys. The Cross-platform Bridges group in the same
+#     panel (chat_bridge_*) is NOT here — those are real, wired to
+#     inc/chat-bridge.php (GH #89).
+setting:chat_retention_days
+setting:chat_max_chars
+setting:chat_dm_clear_logout
+setting:chat_all_room_enabled
+setting:chat_role_rooms_enabled
+setting:chat_incident_rooms_enabled
+setting:chat_dm_enabled
+setting:chat_typing_indicators
+setting:chat_read_receipts
+
+# --- Zello panel (Channels/Audio Settings/Behavior groups + Message
+#     Retention) — proxy/zello-proxy.php's $config array loads every
+#     zello_% settings row generically but only some are actually pulled
+#     out and used downstream; these nine are loaded and never consulted.
+setting:zello_retention_days
+setting:zello_alert_channel
+setting:zello_codec
+setting:zello_sample_rate
+setting:zello_frame_duration
+setting:zello_listen_only
+setting:zello_auto_connect
+setting:zello_text_alerts
+setting:zello_transcribe
+
+# --- Display Settings panel (Dashboard + Appearance groups)
+setting:refresh_seconds
+setting:abbreviation_mode
+setting:default_theme
+setting:compact_tables
+setting:login_banner
+
+# --- System Settings panel (Date & Time Format group) — every date/time
+#     display in the app uses a fixed format; Recent Close, Stale
+#     Location, and Distance Unit in the same group ARE genuinely read
+#     and are unaffected.
+setting:time_format
+setting:date_format
+
+# --- Login Settings panel — login.php never queries any of these three;
+#     it shows only the separate, working CJIS click-through notice.
+setting:login_userlist
+setting:require_https
+
+# --- Map Settings panel — default_lat/default_lng/default_zoom (same
+#     group) ARE read by api/map-config.php; default_map_layer never is.
+setting:default_map_layer
+
+# --- APRS panel — config.js's own fix comment nearby already documents
+#     that the SAVE path was fixed; the listener never reads the key back
+#     to build an APRS-IS filter command.
+setting:aprs_recv_filter
+
+# --- Location Ingest Auth panel — api/location.php's rate_limit_ok()
+#     calls use a hardcoded 600, never this setting.
+setting:location_ingest_rate_limit_per_min
+
+# --- Tool limitation, not a dead control (2026-08-19): telegram_poll_inbound
+# IS genuinely read — inc/scheduled-jobs.php:430 does
+# `get_variable($ch['code'] . '_poll_inbound')`, where $ch['code'] comes
+# from a live channel-registry DATABASE ROW at runtime, not a literal
+# array in the same file. This tool's dynamic-call broadening only unions
+# literal snake_case strings found in the SAME FILE as the dynamic call;
+# a key built from a DB-sourced code fragment has no literal anywhere for
+# the broadening to find. Documented as a known limitation in the tool's
+# own docblock. Verified live: inc/channel-receive.php explicitly
+# discusses `telegram_poll_inbound` and `slack_poll_inbound` as the two
+# real per-channel opt-in flags this mechanism drives.
+setting:telegram_poll_inbound

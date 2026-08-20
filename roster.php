@@ -48,6 +48,12 @@ $canApproveTime = rbac_can('time_entry.approve') ? 1 : 0;
 // action.bulk_delete_members (Super Admin by default). is_admin() is the
 // super-admin escape hatch. api/members.php enforces the same gate server-side.
 $canBulkDeleteMembers = (rbac_can('action.bulk_delete_members') || is_admin()) ? 1 : 0;
+// GH#76 Phase 144 (2026-08-18) — the Team Memberships card's Add/Remove
+// controls write to team_members via api/teams.php, which is gated on
+// action.manage_teams (unchanged). Hiding the controls client-side for a
+// viewer who lacks that permission is UX politeness only — the real
+// boundary is the server-side gate on api/teams.php itself.
+$canManageTeams = rbac_can('action.manage_teams') ? 1 : 0;
 ?>
 <!DOCTYPE html>
 <html lang="<?php echo e(i18n_lang()); ?>" data-bs-theme="<?php echo $bs_theme; ?>">
@@ -712,10 +718,16 @@ $canBulkDeleteMembers = (rbac_can('action.bulk_delete_members') || is_admin()) ?
                                             <label class="form-label form-label-sm mb-0" for="editStatus">Status</label>
                                             <select class="form-select form-select-sm" id="editStatus"></select>
                                         </div>
-                                        <div class="col-6">
-                                            <label class="form-label form-label-sm mb-0" for="editTeam">Team</label>
-                                            <select class="form-select form-select-sm" id="editTeam"></select>
-                                        </div>
+                                        <!-- GH#76 Phase 144 (2026-08-18): the Team dropdown that used to
+                                             live here is retired. It wrote member.team_id, a single-value
+                                             column, while the Team Memberships card below (in the read/
+                                             detail view) reads from team_members and supports multiple
+                                             teams — so the two disagreed the moment a coordinator used
+                                             team_members (add_member) for a member who also had a stale
+                                             team_id. Team assignment now happens exclusively via that
+                                             card's Add/Remove controls (or the Teams tab), both routed
+                                             through api/teams.php's existing action.manage_teams-gated
+                                             actions. See CLAUDE.md's GH#76 pitfall entry. -->
                                         <div class="col-6">
                                             <label class="form-label form-label-sm mb-0" for="editAvailable">Available</label>
                                             <select class="form-select form-select-sm" id="editAvailable">
@@ -795,6 +807,7 @@ $canBulkDeleteMembers = (rbac_can('action.bulk_delete_members') || is_admin()) ?
 <input type="hidden" id="csrfToken" value="<?php echo e($csrf); ?>">
 <input type="hidden" id="canApproveTime" value="<?php echo $canApproveTime; ?>">
 <input type="hidden" id="canBulkDeleteMembers" value="<?php echo $canBulkDeleteMembers; ?>">
+<input type="hidden" id="canManageTeams" value="<?php echo $canManageTeams; ?>">
 
 <?php if ($canBulkDeleteMembers): ?>
 <!-- GH #55 follow-on (Billy/K9OH) — bulk roster removal confirmation. -->

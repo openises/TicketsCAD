@@ -60,6 +60,7 @@ if ($haveTable === 0) {
 }
 
 require_once __DIR__ . '/../inc/ics-forms-write.php';
+require_once __DIR__ . '/../inc/ics-form-types.php';
 
 // ═════════════════════════════════════════════════════════════════════════
 // 1. Migration — applies the columns, and is idempotent (run it twice)
@@ -106,28 +107,56 @@ $apiSrc = file_get_contents($root . '/api/ics-forms.php');
  * writer's column list ever changes, this stops matching (or the bound
  * parameter count stops lining up) and every test below fails loudly — which
  * is the point. A fixture that drifts from the writer proves nothing.
+ *
+ * Phase 140 (2026-08-16): api/ics-forms.php's save handler now branches on
+ * ics_forms_has_custom_type_columns() and writes ONE OF TWO literal INSERT
+ * statements -- an 8-column one (adds custom_type_id) on a migrated
+ * install, the original 7-column one otherwise. Both literally appear in
+ * the source, so a single "grab the first INSERT INTO ics_forms" regex no
+ * longer identifies THE writer -- it has to pick the SAME branch the real
+ * endpoint would take for this database's actual schema state, matching
+ * ics_forms_has_soft_delete()'s existing role in this same test file. These
+ * fixtures are all built-in-type (213) rows, so custom_type_id is always
+ * NULL when that column exists.
  */
 function make_form(string $src, string $formType, ?int $incidentId, string $title,
                    int $createdBy, string $createdByName, string $status): int {
     $prefix = $GLOBALS['db_prefix'] ?? '';
-    if (!preg_match('/"INSERT INTO `\{\$prefix\}ics_forms`(.*?)"/s', $src, $m)) {
-        throw new RuntimeException('could not find the ics_forms INSERT in api/ics-forms.php');
+    $hasCustomCols = ics_forms_has_custom_type_columns(true);
+
+    if (!preg_match_all('/"INSERT INTO `\{\$prefix\}ics_forms`(.*?)"/s', $src, $matches)) {
+        throw new RuntimeException('could not find any ics_forms INSERT in api/ics-forms.php');
     }
-    $sql = 'INSERT INTO `' . $prefix . 'ics_forms`' . $m[1];
-    db_query($sql, [
-        $formType,
-        $incidentId,
-        $title,
+    $params = [$formType, $incidentId, $title,
         json_encode(['subject' => $title, 'message' => 'fixture body'], JSON_UNESCAPED_UNICODE),
-        $createdBy,
-        $createdByName,
-        $status,
-    ]);
+        $createdBy, $createdByName, $status];
+
+    $chosen = null;
+    foreach ($matches[1] as $fragment) {
+        $placeholderCount = substr_count($fragment, '?');
+        $wantsCustomCol = strpos($fragment, 'custom_type_id') !== false;
+        if ($hasCustomCols === $wantsCustomCol && $placeholderCount === ($hasCustomCols ? 8 : 7)) {
+            $chosen = $fragment;
+            break;
+        }
+    }
+    if ($chosen === null) {
+        throw new RuntimeException('none of the ' . count($matches[1])
+            . ' extracted ics_forms INSERT variant(s) match this database\'s schema state '
+            . '(has_custom_type_columns=' . ($hasCustomCols ? 'true' : 'false') . ')');
+    }
+    if ($hasCustomCols) {
+        $params[] = null; // custom_type_id -- these fixtures are always built-in-type rows
+    }
+
+    $sql = 'INSERT INTO `' . $prefix . 'ics_forms`' . $chosen;
+    db_query($sql, $params);
     return (int) db_insert_id();
 }
 
-ok(preg_match('/"INSERT INTO `\{\$prefix\}ics_forms`/', $apiSrc) === 1,
-   'the save action still writes ics_forms with the INSERT this test reuses');
+$icsFormsInsertCount = preg_match_all('/"INSERT INTO `\{\$prefix\}ics_forms`/', $apiSrc);
+ok($icsFormsInsertCount === 1 || $icsFormsInsertCount === 2,
+   'the save action writes ics_forms via one INSERT (or the Phase 140 schema-conditional pair this test now selects between)');
 
 $adminId   = test_admin_user_id();
 $creatorId = 990101;   // a real-shaped id that is not the admin

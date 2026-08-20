@@ -1,0 +1,122 @@
+# Baseline for tools/dead_control_audit.php, database-column check (GH #91).
+#
+# One "column:<table>.<col>" per line, exactly as printed by the audit.
+# A column belongs here only with a comment explaining why it's accepted
+# rather than fixed (DROP) or marked (MARK) — matching every other
+# baseline file in this project.
+
+# --- `user` table sweep (the GH #91 issue's own subject), fully
+#     individually verified and resolved — see sql/run_phase147_user_table_cleanup.php.
+#     No user.* entries below: the 10 confirmed-dead columns were DROPPED,
+#     the 7 never-wired profile fields were MARKED (comment updated, kept),
+#     and user.level's comment was corrected. Re-running the audit against
+#     `user` finds nothing (see tests/test_dead_control_audit.php).
+
+# --- Confirmed tool false positive: hyphenated column name ---
+# teams.sub-group: the bare-array-key regex (`[\s*['"]([a-zA-Z0-9_]+)['"]\s*]`)
+# does not include `-` in its character class, so `$row['sub-group']` (a real,
+# legitimate read — this column IS used, see Phase 125's CLAUDE.md pitfall
+# entry which documents the writer) can never register as a read. Known
+# limitation, not fixed here (adding `-` to the class risks matching CSS-class-
+# style strings elsewhere); documented in the tool's own docblock.
+column:teams.sub-group
+
+# --- GH #91 wider sweep (2026-08-19): 79 further findings, NOT
+# individually triaged the way the settings-key sweep and the `user`
+# table were. Eric's explicit scope was the settings controls + the
+# `user` table; this tool's own docblock says its output for other
+# tables is "a lead, not a verdict." None of these is a UI CONTROL
+# promising behavior the way a checkbox/dropdown is (the class of bug
+# GH #91 is centrally about) — every one is a backend audit/metadata/
+# security column (who-did-it / when-did-it-happen / hash / dedupe-key
+# shape), so the "control that accepts a click and does nothing" harm
+# GH #91 is centered on does not apply to any of them the way it did to
+# the settings panel. Spot-checked a sample (ticket.security_set_by/
+# _set_at/security_reason, permission_review_dismissals.dismissed_at/
+# _by, user_tfa.last_used_at) and confirmed each is a genuine write-only
+# audit trail with no UI element implying it does anything — plausibly a
+# real "not yet surfaced in an admin viewer" gap, not the GH #91 bug
+# shape, but NOT individually verified column-by-column the way the
+# `user` table was. Flagged as explicit follow-up work (see the GH #91
+# closing comment) rather than guessed at under time pressure.
+column:ai_conversations.exchange_count
+column:ai_conversations.first_seen_at
+column:ai_pending_responses.decided_by
+column:allocates.al_as_of
+column:aprs_watchlist.added_by
+column:assigns.as_of
+column:audit_log_purges.archive_filename
+column:audit_log_purges.archive_sha256
+column:audit_log_purges.cutoff_date
+column:audit_log_purges.rows_purged
+column:beta_tester_applications.agreed_v
+column:beta_tester_applications.expected_user_count
+column:beta_tester_applications.submitted_ip
+column:beta_tester_applications.submitted_ua
+column:bridge_tokens.last_used_at
+column:console_view_strips.view_id
+column:console_views.owner_user_id
+column:email_list_members.added_by
+column:equipment_assignments.issued_by
+column:equipment_assignments.returned_by
+column:external_api_tokens.token_hash
+column:facility_notes.source_ip
+column:file_uploads.file_size
+column:file_uploads.mime_type
+column:file_uploads.uploaded_by
+column:file_uploads.uploaded_by_name
+column:files.filetype
+column:geofence_unit_state.exited_at
+column:inbound_message_dedupe.external_id
+column:incident_shares.revoked_by
+column:incident_shares.revoked_by_name
+column:incident_shares.revoked_reason
+column:location_ingest_tokens.secret_hash
+column:login_attempts.cleared_at
+column:member_tracking_tokens.secret_hash
+column:mesh_nodes.self_info_at
+column:mesh_outbox.claimed_by_bridge_id
+column:mesh_outbox.result_json
+column:mileage_log.miles
+column:mmarkup.line_status
+column:newui_event_participants.check_out_time
+column:newui_shift_assignments.assigned_by
+column:notification_log.rule_id
+column:org_relationships_activations.activated_by
+column:org_relationships_activations.deactivated_by
+column:org_relationships_activations.deactivated_by_name
+column:org_relationships_activations.deactivated_reason
+column:org_relationships_members.approved_by
+column:org_relationships_members.proposed_by
+column:org_relationships_members.rejected_by
+column:org_type_routing.deactivated_by
+column:par_cycles.initiated_by
+column:par_unit_acks.acked_by
+column:par_unit_acks.acked_via
+column:par_unit_acks.expected
+column:pending_routed_messages.killed_at
+column:pending_routed_messages.killed_by
+column:pending_routed_messages.killed_reason
+column:pending_routed_messages.send_error
+column:permission_review_dismissals.dismissed_at
+column:permission_review_dismissals.dismissed_by
+column:push_subscriptions.last_used_at
+column:radioid_users.fetched_at
+column:scheduled_job_runs.job_key
+column:scheduled_job_runs.last_duration_ms
+column:sop_pages.owner_user_id
+column:sse_events.visibility_ids
+column:sse_events.visibility_scope
+column:tfa_remember_tokens.token_hash
+column:ticket.security_reason
+column:ticket.security_set_at
+column:ticket.security_set_by
+column:user_tfa.enrolled_at
+column:user_tfa.last_used_at
+column:weather_alert_dispatch.alert_id
+column:weather_alert_dispatch.nws_message_type
+column:weather_alert_dispatch.rule_id
+column:webhook_deliveries.response_body
+column:webhook_deliveries.webhook_id
+column:routing_log.dest_message_id
+column:routing_log.payload_summary

@@ -19,6 +19,7 @@ require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/audit.php';
 require_once __DIR__ . '/../inc/password-policy.php';
 require_once __DIR__ . '/../inc/schema-heal.php';
+require_once __DIR__ . '/../inc/severity.php';
 
 // Suppress display_errors to keep JSON clean
 $prevDisplay = ini_get('display_errors');
@@ -120,7 +121,16 @@ if ($section === 'types') {
         $typeName    = trim($input['type'] ?? '');
         $description = trim($input['description'] ?? '');
         $protocol    = trim($input['protocol'] ?? '');
-        $severity    = (int) ($input['set_severity'] ?? 0);
+        // GH#87 — this used to take the raw int with no range check at
+        // all, so a value from a stale client or a direct API call could
+        // land in `set_severity` outside every configured level's `value`
+        // (nothing here clamped it, and nothing downstream re-clamped it
+        // either — see inc/incident-write.php). severity_clamp() falls
+        // back to the default level for anything not currently a real
+        // configured value; 0 (the "don't auto-set" sentinel — see
+        // inc/incident-write.php's docblock) is always a valid value
+        // since severity_next_value() never reassigns value=0 once seeded.
+        $severity    = severity_clamp($input['set_severity'] ?? 0);
         $group       = trim($input['group'] ?? '');
         $radius      = (int) ($input['radius'] ?? 0);
         $color       = trim($input['color'] ?? '#0d6efd');
@@ -809,6 +819,130 @@ if ($section === 'signal_codes') {
     }
 }
 
+// ── Patient Insurance Types (GH TicketsCAD#68, 2026-08-18) ──────
+// Admin CRUD for the `insurance` lookup table — mirrors the `signal_codes`
+// section immediately above it (same shape: small admin-sorted reference
+// list). The read side dispatchers actually pick from when adding/editing
+// a patient is the separate, non-admin-gated api/insurance-types.php (see
+// that file's docblock for why it's a standalone endpoint).
+if ($section === 'insurance_types') {
+    if ($method === 'GET') {
+        try {
+            $rows = db_fetch_all(
+                "SELECT `id`, `ins_value`, `sort_order`
+                   FROM `{$prefix}insurance`
+                  ORDER BY `sort_order` ASC, `ins_value` ASC"
+            );
+        } catch (Exception $e) {
+            // Table missing — treat as empty list rather than 500.
+            $rows = [];
+        }
+        json_response(['rows' => $rows]);
+    }
+
+    if ($method === 'POST') {
+        $id    = isset($input['id']) && $input['id'] !== '' ? (int) $input['id'] : null;
+        $value = trim((string) ($input['ins_value'] ?? ''));
+        $sort  = (int) ($input['sort_order'] ?? 0);
+
+        if ($value === '') json_error('Insurance name is required');
+        if (strlen($value) > 64) $value = substr($value, 0, 64);
+
+        try {
+            if ($id) {
+                db_query(
+                    "UPDATE `{$prefix}insurance`
+                        SET `ins_value` = ?, `sort_order` = ?, `_by` = ?, `_from` = ?
+                      WHERE `id` = ?",
+                    [$value, $sort, $current_user_id, $current_user, $id]
+                );
+                audit_log('config', 'update', 'insurance_type', $id, "Updated insurance type '{$value}'");
+            } else {
+                db_query(
+                    "INSERT INTO `{$prefix}insurance` (`ins_value`, `sort_order`, `_by`, `_from`)
+                     VALUES (?, ?, ?, ?)",
+                    [$value, $sort, $current_user_id, $current_user]
+                );
+                $id = (int) db_insert_id();
+                audit_log('config', 'create', 'insurance_type', $id, "Created insurance type '{$value}'");
+            }
+            json_response(['saved' => true, 'id' => $id]);
+        } catch (Exception $e) {
+            error_log('insurance_types save failed: ' . $e->getMessage());
+            json_error('Save failed. Check that the name is unique.', 500);
+        }
+    }
+
+    if ($method === 'DELETE') {
+        $id = (int) ($_GET['id'] ?? 0);
+        if (!$id) json_error('Missing id');
+        try {
+            db_query("DELETE FROM `{$prefix}insurance` WHERE `id` = ?", [$id]);
+            audit_log('config', 'delete', 'insurance_type', $id, "Deleted insurance type #{$id}");
+            json_response(['deleted' => true]);
+        } catch (Exception $e) {
+            error_log('insurance_types delete failed: ' . $e->getMessage());
+            json_error('Delete failed.', 500);
+        }
+    }
+}
+
+// ── Severity Levels (GH#87 / GH#88, 2026-08-19) ──────────────────
+// Admin CRUD for the `severity_levels` lookup table — mirrors the
+// `insurance_types` / `signal_codes` sections above (same shape: a
+// small admin-sorted reference list). The read side every other screen
+// actually consumes (New Incident dropdown, Incident Type editor,
+// incident badges) is the separate, non-admin-gated api/severity-levels.php
+// — same split as insurance_types. See inc/severity.php's docblock for
+// the full design (why `value` is immutable, why `sort_order` is a
+// separate field, why `is_high_alert` replaces a hardcoded `>= 2`).
+if ($section === 'severity_levels') {
+    if ($method === 'GET') {
+        json_response(['rows' => severity_levels_for_json()]);
+    }
+
+    if ($method === 'POST') {
+        $id           = isset($input['id']) && $input['id'] !== '' ? (int) $input['id'] : null;
+        $label        = trim((string) ($input['label'] ?? ''));
+        $color        = trim((string) ($input['color'] ?? ''));
+        $sort         = (int) ($input['sort_order'] ?? 0);
+        $isDefault    = !empty($input['is_default']);
+        $isHighAlert  = !empty($input['is_high_alert']);
+
+        // The actual writes live in inc/severity.php (severity_level_create()
+        // / severity_level_update()) so a test can drive the real writer
+        // directly, not a hand-seeded reproduction of this endpoint's SQL.
+        if ($id) {
+            $result = severity_level_update($id, $label, $color, $sort, $isDefault, $isHighAlert, $current_user_id, $current_user);
+            if ($result['ok']) {
+                audit_log('config', 'update', 'severity_level', $id, "Updated severity level '{$label}'");
+                json_response(['saved' => true, 'id' => $id]);
+            }
+        } else {
+            $result = severity_level_create($label, $color, $sort, $isDefault, $isHighAlert, $current_user_id, $current_user);
+            if ($result['ok']) {
+                audit_log('config', 'create', 'severity_level', $result['id'], "Created severity level '{$label}' (value={$result['value']})");
+                json_response(['saved' => true, 'id' => $result['id']]);
+            }
+        }
+        json_error($result['error'] ?: 'Save failed.', $result['error'] === 'Label is required' ? 400 : 500);
+    }
+
+    if ($method === 'DELETE') {
+        $id = (int) ($_GET['id'] ?? 0);
+        if (!$id) json_error('Missing id');
+
+        $before = db_fetch_one("SELECT `value` FROM `{$prefix}severity_levels` WHERE `id` = ?", [$id]);
+        $result = severity_level_delete($id);
+        if ($result['ok']) {
+            audit_log('config', 'delete', 'severity_level', $id, "Deleted severity level #{$id} (value=" . ($before['value'] ?? '?') . ")");
+            json_response(['deleted' => true]);
+        }
+        $status = $result['error'] === 'Not found' ? 404 : 409;
+        json_error($result['error'] ?: 'Delete failed.', $status);
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  FACILITIES
 // ═══════════════════════════════════════════════════════════════
@@ -1023,6 +1157,26 @@ if ($section === 'settings') {
                 'kept_secrets' => $keptSecrets,
             ]);
         }
+
+        // GH#89 — the four Chat Bridge checkboxes (chat_bridge_telegram/
+        // slack/email/mesh) drive system-managed Message Routing rules.
+        // Only sync when this save actually touched one of them, so every
+        // OTHER settings save on the system doesn't pay an extra query.
+        // chat_bridge_sync() re-reads the settings table itself (not
+        // get_variable(), which would return this same request's
+        // pre-save cached value) so it always acts on what was just
+        // written, not what was cached before it. See
+        // inc/chat-bridge.php.
+        $chatBridgeKeys = ['chat_bridge_telegram', 'chat_bridge_slack', 'chat_bridge_email', 'chat_bridge_mesh'];
+        if (array_intersect(array_keys($pairs), $chatBridgeKeys)) {
+            require_once __DIR__ . '/../inc/chat-bridge.php';
+            try {
+                chat_bridge_sync();
+            } catch (Exception $e) {
+                error_log('[config-admin settings] chat_bridge_sync failed: ' . $e->getMessage());
+            }
+        }
+
         json_response(['saved' => $saved, 'kept_secrets' => $keptSecrets]);
     }
 }
@@ -1107,6 +1261,8 @@ if ($section === 'users') {
                 "SELECT u.`id`, u.`user`, u.`can_login`, u.`member`,
                         u.`must_change_password`, u.`login` AS `last_login`,
                         u.`home_org_id`,
+                        u.`facility_id`,
+                        fac.`name` AS `facility_name`,
                         (SELECT COUNT(*) FROM `{$prefix}user_tfa` t WHERE t.`user_id` = u.id) AS `tfa_enrolled`,
                         CONCAT(m.`first_name`, ' ', m.`last_name`) AS `member_name`,
                         m.`callsign` AS `member_callsign`,
@@ -1138,6 +1294,7 @@ if ($section === 'users') {
                           LIMIT 1) AS `role_org_name`
                  FROM `{$prefix}user` u
                  LEFT JOIN `{$prefix}member` m ON u.`member` = m.`id`
+                 LEFT JOIN `{$prefix}facilities` fac ON u.`facility_id` = fac.`id`
                  ORDER BY u.`user`"
             );
         } catch (Exception $e) {
@@ -1203,7 +1360,23 @@ if ($section === 'users') {
             }
         }
 
-        json_response(['rows' => $rows, 'members' => $members]);
+        // Phase 145 (2026-08-19, GH#90) — facilities list for the Linked
+        // Facility picker, shown only when Role = Facility. Same shape
+        // as the members list above.
+        $facilitiesList = [];
+        try {
+            $facilitiesList = db_fetch_all(
+                "SELECT `id`, `name` FROM `{$prefix}facilities`
+                  WHERE (`deleted_at` IS NULL OR `deleted_at` = '0000-00-00 00:00:00')
+                  ORDER BY `name`"
+            );
+        } catch (Exception $e) {
+            try {
+                $facilitiesList = db_fetch_all("SELECT `id`, `name` FROM `{$prefix}facilities` ORDER BY `name`");
+            } catch (Exception $e2) { /* ignore */ }
+        }
+
+        json_response(['rows' => $rows, 'members' => $members, 'facilities' => $facilitiesList]);
     }
 
     if ($method === 'POST') {
@@ -1251,6 +1424,37 @@ if ($section === 'users') {
             }
         } else {
             $lvl = (int) ($input['level'] ?? 2);
+        }
+
+        // Phase 145 (2026-08-19, GH#90) — facility-account link, validated
+        // BEFORE any write so a bad request fails atomically. The Facility
+        // role is resolved by NAME, never a hardcoded id — see the
+        // matching comment in sql/rbac.sql on the Facility role INSERT.
+        $facilityRoleId = null;
+        try {
+            $facilityRoleId = (int) db_fetch_value(
+                "SELECT `id` FROM `{$prefix}roles` WHERE `name` = 'Facility' LIMIT 1"
+            );
+        } catch (Exception $e) {
+            $facilityRoleId = null;
+        }
+        $isFacilityRoleSelected = $facilityRoleId && $explicitRoleId === $facilityRoleId;
+
+        $facilityIdSent = isset($input['facility_id']) && $input['facility_id'] !== ''
+            ? (int) $input['facility_id'] : null;
+        if ($isFacilityRoleSelected) {
+            if ($facilityIdSent === null || $facilityIdSent <= 0) {
+                json_error('A linked facility is required for the Facility role', 400);
+            }
+            $facExists = (bool) db_fetch_value(
+                "SELECT 1 FROM `{$prefix}facilities` WHERE `id` = ? LIMIT 1",
+                [$facilityIdSent]
+            );
+            if (!$facExists) {
+                json_error('Unknown facility_id', 400);
+            }
+        } else {
+            $facilityIdSent = 0;
         }
 
         $canLogin = isset($input['can_login']) ? (int) $input['can_login'] : 1;
@@ -1611,6 +1815,31 @@ if ($section === 'users') {
             } catch (Throwable $rbacErr) {
                 // user_roles table may not exist on a pre-v2 install; that
                 // path uses the legacy fallback in inc/rbac.php and is fine.
+            }
+
+            // Phase 145 (2026-08-19, GH#90) — write the validated facility
+            // link, audited separately per CLAUDE.md's standing
+            // audit-trail requirement.
+            try {
+                $oldFacilityId = (int) db_fetch_value(
+                    "SELECT `facility_id` FROM `{$prefix}user` WHERE `id` = ?", [$id]
+                );
+                if ($oldFacilityId !== $facilityIdSent) {
+                    db_query("UPDATE `{$prefix}user` SET `facility_id` = ? WHERE `id` = ?",
+                        [$facilityIdSent, $id]);
+                    if ($facilityIdSent > 0) {
+                        audit_log('auth', 'facility_link_set', 'user', $id,
+                            "Linked user #{$id} ('{$username}') to facility #{$facilityIdSent} (Facility role)",
+                            ['user_id' => $id, 'facility_id' => $facilityIdSent,
+                             'previous_facility_id' => $oldFacilityId]);
+                    } else {
+                        audit_log('auth', 'facility_link_cleared', 'user', $id,
+                            "Cleared facility link on user #{$id} ('{$username}')",
+                            ['user_id' => $id, 'previous_facility_id' => $oldFacilityId]);
+                    }
+                }
+            } catch (Throwable $facErr) {
+                error_log('[config-admin users facility_id] ' . $facErr->getMessage());
             }
 
             audit_log('auth', $id ? 'update' : 'create', 'user', $id, ($id ? "Updated" : "Created") . " user account '{$username}'", [

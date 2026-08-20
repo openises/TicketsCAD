@@ -38,14 +38,41 @@ tcheck(strpos($locSrc, "rbac_can('action.change_unit_status')") !== false
     'location.php action=report gated by dispatch / unit-status / admin');
 
 // ── 3. mobile-data.php report_location server-side resolve ───────
+// GH #77 (2026-08-18): report_location's resolution moved from its own
+// inline 3-path lookup into the shared mobile_resolve_responder_id()
+// helper (also used by add_note and the GET handler, so the three call
+// sites can't independently drift the way add_note/report_location had —
+// see GH #77). The resolver still takes ONLY session-derived values
+// ($current_user_id, $current_member_id, $current_user) and never a
+// client-supplied id, so the Phase 73v guarantee this file protects is
+// unchanged; these two assertions were updated to match the new call
+// shape instead of grepping for the exact inline code it replaced.
 $mobSrc = file_get_contents(__DIR__ . '/../api/mobile-data.php');
 tcheck(strpos($mobSrc, "// Phase 73v — CRITICAL") !== false,
     'mobile-data.php carries Phase 73v marker on report_location');
-tcheck(strpos($mobSrc, '$resolved = safe_mobile_fetch(') !== false
-    && strpos($mobSrc, '`user_id` = ? AND') !== false,
-    'mobile-data.php report_location resolves responder server-side');
-tcheck(strpos($mobSrc, '$responderId = !empty($resolved) ? (int) $resolved[0][\'id\'] : 0;') !== false,
-    'mobile-data.php discards client-supplied responder_id');
+tcheck(
+    (bool) preg_match(
+        '/\$responderId\s*=\s*mobile_resolve_responder_id\(\s*\$prefix,\s*\$current_user_id,\s*\$current_member_id,\s*\$current_user\s*\);/',
+        $mobSrc
+    ),
+    'mobile-data.php report_location resolves responder server-side via the shared resolver'
+);
+// The report_location action block itself must never read a responder id
+// out of the client-supplied POST body. Isolate that block's text (from
+// its `if ($action === 'report_location')` to its own closing
+// `json_response(['success' => true]);`) and confirm it never references
+// input['responder_id'] to decide $responderId.
+$blockStart = strpos($mobSrc, "if (\$action === 'report_location')");
+$blockEnd = $blockStart !== false
+    ? strpos($mobSrc, "json_response(['success' => true]);", $blockStart)
+    : false;
+$reportLocationBlock = ($blockStart !== false && $blockEnd !== false)
+    ? substr($mobSrc, $blockStart, $blockEnd - $blockStart)
+    : '';
+tcheck(
+    $reportLocationBlock !== '' && strpos($reportLocationBlock, "responder_id'") === false,
+    'mobile-data.php discards client-supplied responder_id (report_location never reads a responder_id out of the POST body)'
+);
 tcheck(strpos($mobSrc, 'No responder linked to this account') !== false,
     'mobile-data.php returns a clear error when caller has no linked responder');
 

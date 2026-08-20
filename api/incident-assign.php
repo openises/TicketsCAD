@@ -78,9 +78,20 @@ if (!$ticket) {
 // Phase 99j-4 (Billy beta 2026-06-29) — org-scope gate. Stops an Org
 // Admin from assigning units to a ticket that belongs to another
 // tenant. Same 404-not-403 to avoid confirming existence.
+//
+// Phase 141 (2026-08-17) — org_can_mutate_ticket() is the tier-aware WRITE
+// gate: same-org access unchanged; a cross-org share only permits
+// assign/update_status/unassign at 'assist' tier (same actions a same-org
+// dispatcher gets — plan.md's resolved open-question-2, no narrower
+// per-action split in Phase 1). 403, not 404, when the caller already has
+// confirmed 'view'-tier read visibility — see incident-update.php's
+// identical pattern / plan.md's open-question-2.
 require_once __DIR__ . '/../inc/org-scope.php';
-if (!org_can_see_ticket($ticket_id)) {
+if (!org_can_mutate_ticket($ticket_id)) {
     ini_set('display_errors', $prevDisplay);
+    if (org_can_see_ticket($ticket_id)) {
+        json_error("Your organization's access to this incident does not permit this action", 403);
+    }
     json_error('Ticket not found', 404);
 }
 
@@ -113,7 +124,24 @@ if ($action === 'assign') {
     $respName = _ia_responder_name($responder_id);
     $role     = trim((string) ($input['role'] ?? ''));
 
-    $result = assign_create_internal($ticket_id, $responder_id, $role, (int) $current_user_id);
+    // GH#82/GH#83 — an operator who has already seen and accepted the
+    // "Assign anyway?" confirmation resubmits with force:true.
+    $force = !empty($input['force']);
+
+    $result = assign_create_internal($ticket_id, $responder_id, $role, (int) $current_user_id, $force);
+
+    // WARN level, not yet confirmed — NOT an error. Same response shape
+    // api/unit-assignments.php already uses for its own confirm-and-retry
+    // flow (needs_confirmation + message), so the frontend pattern is
+    // identical on both endpoints.
+    if (!empty($result['needs_confirmation'])) {
+        ini_set('display_errors', $prevDisplay);
+        json_response([
+            'needs_confirmation' => true,
+            'message'            => $result['message'],
+        ]);
+    }
+
     if (!empty($result['errors'])) {
         $first = (string) $result['errors'][0];
         // Map known helper errors to the legacy endpoint's status codes
@@ -124,6 +152,12 @@ if ($action === 'assign') {
         if (strpos($first, 'not found') !== false) {
             ini_set('display_errors', $prevDisplay);
             json_error($first, 404);
+        }
+        // GH#83 — hard block (Dispatch level: Unavailable). 409 Conflict,
+        // not 500 — this is a policy refusal, not a server error.
+        if (!empty($result['blocked'])) {
+            ini_set('display_errors', $prevDisplay);
+            json_error($first, 409);
         }
         ini_set('display_errors', $prevDisplay);
         json_error($first, 500);

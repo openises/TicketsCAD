@@ -15,6 +15,7 @@
 ini_set('display_errors', '0');
 
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/../inc/severity.php';
 
 $prefix = $GLOBALS['db_prefix'] ?? '';
 
@@ -27,6 +28,7 @@ try {
     $sql = "SELECT
         `t`.`id`,
         `t`.`incident_number`,
+        `t`.`org_id`,
         `t`.`scope`,
         `t`.`street`,
         `t`.`city`,
@@ -60,8 +62,12 @@ try {
     // first clause above forever.
 
     // Phase 99j-4 — org-scope filter. See specs/phase-99j-org-scoping.
+    // Phase 141 (2026-08-17) — org_ticket_query_filter() is the
+    // ticket-specific sibling: widens visibility to cross-org-shared
+    // tickets, no-op on a database with no routing rules.
     require_once __DIR__ . '/../inc/org-scope.php';
-    [$orgFrag, $orgVars] = org_query_filter('t.org_id');
+    require_once __DIR__ . '/../inc/org-sharing.php';
+    [$orgFrag, $orgVars] = org_ticket_query_filter(null, 't');
     $sql .= $orgFrag;
     $sql .= " ORDER BY `t`.`severity` DESC, `t`.`updated` DESC";
 
@@ -118,6 +124,7 @@ try {
         $incidents[] = [
             'id'              => $id,
             'incident_number' => $row['incident_number'] ?? null,  // Phase 99p
+            'org_id'          => isset($row['org_id']) ? (int) $row['org_id'] : null,
             'scope'           => $row['scope'],
             'street'          => $row['street'],
             'city'            => $row['city'],
@@ -125,6 +132,12 @@ try {
             'lat'             => (float) $row['lat'],
             'lng'             => (float) $row['lng'],
             'severity'        => (int) $row['severity'],
+            // GH#87/GH#88 (2026-08-19) — sourced from the configurable
+            // severity_levels table instead of assets/js/callboard.js's
+            // own hardcoded switch statement (which used YET ANOTHER
+            // spelling of the same 3 integers — "Normal/Medium/High").
+            'severity_label'  => severity_label((int) $row['severity']),
+            'severity_color'  => severity_color((int) $row['severity']),
             'status'          => (int) $row['status'],
             'description'     => $row['description'],
             'incident_type'   => $type_name,
@@ -142,6 +155,11 @@ try {
     // Sort type names for filter dropdown
     $types = array_keys($type_set);
     sort($types);
+
+    // Phase 141 (2026-08-17) — redact/annotate any share-derived row
+    // (description stripped for view tier; unit_names/units_assigned kept
+    // -- "which units, and their current status" is explicitly allowed).
+    $incidents = org_sharing_apply_list_redaction($incidents);
 
     json_response([
         'ok'        => true,

@@ -11,6 +11,7 @@
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/access.php';
+require_once __DIR__ . '/../inc/severity.php';
 
 $prevDisplay = ini_get('display_errors');
 ini_set('display_errors', '0');
@@ -32,18 +33,27 @@ if (!user_can_access_entity('incident', $id)) {
 // Phase 99j-4 (Billy beta 2026-06-29) — org-scope gate. Stops an Org
 // Admin from URL-hopping to a ticket that belongs to a different
 // tenant. Same 404-not-403 convention.
+//
+// Phase 141 (2026-08-17) — org_can_see_ticket() itself was extended in
+// place to also allow an active cross-org incident_shares grant; this
+// call site needs NO code change to inherit that (plan.md tasks.md 5.7).
 require_once __DIR__ . '/../inc/org-scope.php';
+require_once __DIR__ . '/../inc/org-sharing.php';
 if (!org_can_see_ticket($id)) {
     ini_set('display_errors', $prevDisplay);
     json_error('Incident not found', 404);
 }
 
-// Severity color map
-$sev_colors = [
-    0 => get_variable('sev_0_color') ?: '#00ff00',
-    1 => get_variable('sev_1_color') ?: '#ffff00',
-    2 => get_variable('sev_2_color') ?: '#ff0000',
-];
+// Phase 141 — resolves to the caller's winning incident_shares row iff
+// their visibility into this ticket came from a share rather than
+// same-org access; null for Super Admin / same-org / no share.
+$shareCtx = org_share_context_for_ticket($id);
+
+// GH#87/GH#88 (2026-08-19) — was a hardcoded 3-entry color map read
+// straight from settings; now sourced from the configurable
+// severity_levels table (inc/severity.php) so a 4th+ level (or a
+// relabeled/recolored one) resolves correctly here too.
+$sev_colors = severity_color_map();
 
 $status_labels = [1 => 'Closed', 2 => 'Open', 3 => 'Scheduled'];
 
@@ -151,6 +161,7 @@ $result_incident = [
     'lng'                 => $incident['lng'] ? (float) $incident['lng'] : null,
     'severity'            => $sev,
     'severity_color'      => $sev_colors[$sev] ?? '#ffffff',
+    'severity_label'      => severity_label($sev), // GH#87/GH#88 — replaces the client's own hardcoded label array
     'status'              => (int) $incident['status'],
     'status_text'         => $status_labels[(int) $incident['status']] ?? 'Unknown',
     'created'             => $incident['date'],
@@ -388,6 +399,93 @@ try {
 } catch (Exception $e) {
     // action log failure is non-fatal
 }
+
+// ── Phase 141 (2026-08-17) — cross-org share redaction + audit ──
+//
+// Only runs when $shareCtx is non-null, i.e. the caller's visibility into
+// THIS ticket came from a cross-org share rather than same-org access
+// (Super Admin and same-org callers are always null here and this whole
+// block is a no-op for them — see tests/test_org_sharing_noop.php).
+if ($shareCtx !== null) {
+    $tier = $shareCtx['access_tier'];
+    // Phase 143 (2026-08-17) -- redaction reads the REDACTION tier, which
+    // can genuinely differ from access_tier for a relationship-sourced
+    // context (plan.md's "Two independent axes"). Equal to $tier for an
+    // incident_shares-sourced context (unchanged behavior); the ?? falls
+    // back to $tier defensively if an older-shaped $shareCtx ever reaches
+    // here without the key.
+    $redactionTier = $shareCtx['redaction_tier'] ?? $tier;
+
+    // Ticket-level fields: view tier gets plan.md's allowlist only
+    // (contact/phone/nine_one_one/description/comments/affected/
+    // to_address never leave this function for view tier); assist tier
+    // is unchanged — same field set a same-org dispatcher gets.
+    $result_incident = org_share_redact_ticket_fields($result_incident, $redactionTier);
+
+    // Per-assignment fields: view tier drops crew/comments/distance_km/
+    // responder_updated/u2fenr/u2farr (the "never leak a roster" boundary
+    // — crew names INDIVIDUAL personnel, distance_km/responder_updated are
+    // derived from the responding org's own responder.lat/lng/updated).
+    // Unit identity + status timeline survive — "assigned-unit status" is
+    // explicitly dispatch-relevant per plan.md.
+    $assignments = array_map(
+        fn($a) => org_share_redact_assignment_fields($a, $redactionTier),
+        $assignments
+    );
+
+    // Action log (notes/narrative) is EXCLUDED ENTIRELY at view tier — not
+    // field-filtered, because there is no field of an action-log entry
+    // that plan.md's allowlist permits ("never... free-text activity-log
+    // narrative beyond what dispatch needs"). Assist tier is unchanged.
+    if ($redactionTier !== 'assist') {
+        $actions = [];
+    }
+
+    // "Shared from [Org]" indicator — same annotation shape
+    // org_sharing_apply_list_redaction() adds to list rows.
+    $owningOrgId = (int) ($incident['org_id'] ?? 0);
+    $owningOrgName = null;
+    if ($owningOrgId > 0) {
+        try {
+            $owningOrgName = db_fetch_value(
+                "SELECT `name` FROM `{$prefix}organizations` WHERE `id` = ? LIMIT 1",
+                [$owningOrgId]
+            );
+        } catch (Throwable $e) { /* organizations table missing — name stays null */ }
+    }
+    $result_incident['shared_from_org_id']   = $owningOrgId ?: null;
+    $result_incident['shared_from_org_name'] = $owningOrgName;
+
+    // Audit — fired ONLY here (not from any list-shaped endpoint, to avoid
+    // flooding the log with one row per dashboard poll interval), and
+    // ONLY when the read was genuinely share-mediated.
+    if (!function_exists('audit_log') && is_file(__DIR__ . '/../inc/audit.php')) {
+        require_once __DIR__ . '/../inc/audit.php';
+    }
+    if (function_exists('audit_log')) {
+        $sharedWithOrgId = (int) $shareCtx['shared_with_org_id'];
+        audit_log(
+            'incident', 'view_shared', 'ticket', $id,
+            "Incident #{$id} opened via cross-org share (org #{$sharedWithOrgId}, {$tier} access / {$redactionTier} redaction tier)",
+            ['shared_with_org_id' => $sharedWithOrgId, 'access_tier' => $tier, 'redaction_tier' => $redactionTier],
+            defined('AUDIT_INFO') ? AUDIT_INFO : 1
+        );
+    }
+}
+
+// Phase 142 (2026-08-17) — "can I manage sharing OUT of this ticket?"
+// Deliberately UNCONDITIONAL (not inside the `if ($shareCtx !== null)`
+// block above) — the owning org's own dispatcher, who this field exists
+// for, is by definition NOT viewing via a share ($shareCtx is null for
+// same-org/Super-Admin callers), so gating this on $shareCtx would make
+// it permanently false for the exact audience who needs it true. Display
+// only, same caveat every existing display gate in this codebase carries
+// — every write is re-checked server-side by api/incident-share.php via
+// the same two checks (RBAC + org_ticket_is_owned_by_caller()).
+$result_incident['can_manage_sharing'] =
+    (function_exists('rbac_can')
+        && (rbac_can('action.share_incident') || rbac_can('action.revoke_incident_share')))
+    && org_ticket_is_owned_by_caller($id);
 
 ini_set('display_errors', $prevDisplay);
 

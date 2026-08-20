@@ -13,6 +13,8 @@
  *   incident:update    — Incident fields changed
  *   incident:close     — Incident closed/reopened
  *   incident:note      — Note added to incident
+ *   incident:shared    — Incident shared with another org (Phase 142)
+ *   incident:unshared  — Cross-org share revoked (Phase 142)
  *   responder:status   — Responder status changed
  *   responder:assign   — Responder assigned/unassigned
  *   facility:update    — Facility data changed
@@ -79,6 +81,16 @@ $userGroups = array_values(array_filter(array_map('intval', is_array($userGroups
 
 $userIsAdmin = is_admin();
 
+// Phase 142 (2026-08-17) — cross-org-share visibility. Computed once, at
+// connection-open, from the session's own org membership (org_visible_ids()
+// is a fact about THIS USER, not about any specific ticket's share state —
+// see inc/sse.php's docblock and plan.md's SSE section for why that split is
+// safe: the volatile fact, "which orgs have an active share on THIS ticket",
+// is resolved fresh by the WRITER on every publish instead). null for Super
+// Admin (org_visible_ids()'s own documented contract — no restriction).
+require_once __DIR__ . '/../inc/org-scope.php';
+$userOrgIds = org_visible_ids($userId);
+
 // GH #13 (2026-07-07) — RBAC entitlement, computed while the session is
 // still open. Mirrors the READ path (inc/access.php + api/incidents.php):
 // a user holding an entity's RBAC view permission can see that entity on
@@ -139,7 +151,10 @@ $visibilityClauses = ["`visibility_scope` = 'public'"];
 $visibilityParams  = [];
 
 if ($userIsAdmin) {
-    $visibilityClauses[] = "`visibility_scope` IN ('admin','group','entitled')";
+    // Phase 142 — Super Admin already reaches every org via org_visible_ids()'s
+    // own null-means-unrestricted contract, so 'org' is added here too rather
+    // than needing a separate FIND_IN_SET clause for them.
+    $visibilityClauses[] = "`visibility_scope` IN ('admin','group','entitled','org')";
 } else {
     if (!empty($userGroups)) {
         $groupOrs = [];
@@ -155,6 +170,23 @@ if ($userIsAdmin) {
     foreach ($entitledPrefixes as $pfx) {
         $visibilityClauses[] = "(`visibility_scope` IN ('group','entitled') AND `event_type` LIKE ?)";
         $visibilityParams[] = $pfx;
+    }
+    // Phase 142 (2026-08-17) — cross-org-share recipients. $userOrgIds is
+    // the connection-open snapshot of this session's own org membership
+    // (see the comment above its computation); the volatile per-ticket fact
+    // — which orgs currently hold an active share — was already resolved by
+    // the WRITER at publish time (inc/sse.php's _sse_share_orgs_for_ticket()),
+    // so no per-iteration re-check is needed here: a revoked share simply
+    // never appears in a future event's visibility_ids, and an already-open
+    // connection just never matches it. Mirrors the $userGroups block above
+    // exactly, one OR-clause per org id this session belongs to.
+    if ($userOrgIds !== null && !empty($userOrgIds)) {
+        $orgOrs = [];
+        foreach ($userOrgIds as $oid) {
+            $orgOrs[] = "FIND_IN_SET(?, `visibility_ids`) > 0";
+            $visibilityParams[] = (string) $oid;
+        }
+        $visibilityClauses[] = "(`visibility_scope` = 'org' AND (" . implode(' OR ', $orgOrs) . "))";
     }
 }
 

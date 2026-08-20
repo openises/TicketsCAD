@@ -31,6 +31,7 @@ whichever one drifted.
 | The audit had a blind spot (Phase 125) | `schema_audit.php` looked at each string literal in isolation, missing SQL built via concatenation (`"INSERT INTO " . db_table('x') . " (...)"`). Fixed by `tools/sql_extract.php` stitching concatenation chains. |
 | A migration tracker proves the script RAN, not that the schema still EXISTS | Drop a table during crash recovery and a tracker-based "already applied" check still says yes. `sql/schema_manifest.json` + `inc/schema-verify.php` check the LIVE schema instead. |
 | UNIQUE key ending in a NULLable column constrains nothing for NULL rows (Phase 129) | MySQL/MariaDB treat every NULL as distinct in a unique index. Verify uniqueness by attempting a real duplicate INSERT, never by reading the DDL. |
+| A NULLable LIFECYCLE column collapses the same way a NULLable discriminant does (Phase 143 `live_key`) | Generalizes `org_type_routing.match_key`'s NULL-collapse technique one step further: from "collapse a NULLable discriminant" to "collapse a NULLable lifecycle column" (`org_relationships_activations.deactivated_at`). A generated column can't reference its own table's `AUTO_INCREMENT` column (MariaDB SQLSTATE[HY000] 1901) — use plain `NULL` for the "never collides" case instead of a fabricated per-row string; verified live, not from the DDL, exactly like the original technique. |
 | Self-healed columns exist at runtime, not in the base schema | `member_comm_identifiers.sort_order` is the known case — see `docs/SCHEMA-REFERENCE.md`'s gotchas section. A fresh CI install never triggers the self-heal. |
 | `assigns.user_id` / `responder.description` etc. are `NOT NULL` with no default | Must be included in every INSERT to these tables. |
 | MyISAM tables don't support transactions | Seed SQL uses individual statements, not BEGIN/COMMIT, for MyISAM tables. |
@@ -44,6 +45,8 @@ whichever one drifted.
 | Broad re-runnable RBAC grants sweep up later permissions | `rbac.sql`/`run_00_rbac.php` grant via `NOT IN (...)` exclusion lists — every new admin-only permission MUST be added or a lower role silently acquires it on the next re-import. |
 | Admin is NOT necessarily user id 1 | `base_schema.sql` pins `AUTO_INCREMENT=3` on `user` (legacy-dump artefact). Use `tests/_test_admin.php`'s `test_admin_user_id()`, never a hardcoded `1`. |
 | Page gate and API gate must name the SAME permission | A page correctly gated on RBAC + an API still gated on `user.level`/a different permission produces a screen that refuses to do anything. |
+| `rbac_can($narrowCode) \|\| is_admin()` leaks a narrower-tier permission (Phase 138, reconfirmed Phase 141) | `is_admin()`'s own `action.manage_config` fallback can satisfy a correctly-scoped Org Admin's narrower gate, silently handing them the install-wide control the two-permission split existed to withhold. Never `\|\|` it onto a gate that's deliberately narrower than `action.manage_config` — `rbac_can()`'s own `is_super` short-circuit already covers every real Super Admin. |
+| An exclusion-list `NOT IN (...)` grant leaks through a permission's canonical alias, or through a grant made before the code was excluded (2026-08-16) | `sql/rbac.sql`/`run_00_rbac.php`'s "everything except" seed is purely additive (`INSERT IGNORE`) and matches by literal string — it can neither revoke a pre-existing DIRECT grant of a code added to the list later, nor know about a CANONICAL ALIAS `run_rbac_v2.php`'s A8 step creates after the list was written (`rbac_can()` treats a code and its alias as interchangeable). Both leak paths now have a self-healing repair `DELETE` immediately after the broad grant — but the repair only takes effect the next time the seed file is actually RE-RUN against a database, not on a plain code deploy. |
 
 ## Scheduled jobs / migrations
 
@@ -70,6 +73,12 @@ whichever one drifted.
 | A real, unbounded `INSERT IGNORE` dedupe check still needs asking the database | Never trust reading the DDL — insert the same pair twice through the real table and assert the second is silently ignored. |
 | A setting can have a full write path, UI, and migration and STILL have no consumer (`tile_mode`) | The acceptance test for a new setting must assert an *observable output changes*, not just that the value round-trips through the DB. |
 
+## Real-time (SSE)
+
+| Topic | One-line gist |
+|---|---|
+| Authorize at publish time, not read time, when a per-subscriber fact changes faster than a connection's lifetime (Phase 142) | A connection's own visibility snapshot (org membership, RBAC entitlement) is stable and safe to compute once at connection-open; a volatile per-resource fact (does an active cross-org share still exist for THIS ticket) must be re-resolved fresh by the WRITER on every publish instead — otherwise a revoked grant only stops mattering after `$maxRuntime` (up to 5 minutes), not the next event. `_sse_share_orgs_for_ticket()` re-queries live on every `sse_publish_for_incident()` call; the reader-side `$userOrgIds` snapshot never needs to shrink for the leak to stop, because the server just stops sending. |
+
 ## API ↔ JS contract
 
 | Topic | One-line gist |
@@ -86,6 +95,16 @@ whichever one drifted.
 | An emergency hand-applied mitigation is not a shipped fix | A blanket `services/` deny applied by hand broke the documented mesh-bridge `curl` path. Grep the app for anything that fetches a path before denying it wholesale; ship the fix in the tree, not just on two servers by hand. |
 | `hiddenSegments` (IIS) matches ANY path segment, not just top-level dirs | Following our own hardening doc's example segment list unstyled the whole site (`vendor`/`tests`/`backups` collide with nested real paths). Derive the collision set from the tree, never a remembered list. |
 | IIS `<authorization>` is optional; Request Filtering is not | A `web.config` referencing an absent role service returns 500.19 (an admin then deletes the file, re-opening everything). Use `requestFiltering` + `directoryBrowse enabled="false"` instead. |
+| A raw `docs/*.md` link 404s on IIS even though it renders fine on Apache (GH#81) | IIS has no MIME mapping for `.md` (404.3) and no `web.config` rewrote it; Apache serves `.md` as plain text, which hid all 15 instances for months. Route every in-app doc link through `documentation/?doc=NAME` (the app's own viewer — a plain folder + query string, no server rewrite needed anywhere) instead of a raw filesystem path. `tools/app_doc_link_audit.php` gates it. |
+
+## Dispatch / assignment safety
+
+| Topic | One-line gist |
+|---|---|
+| A "no other active assignment" gate must cover BOTH directions (GH#82) | Clear/unassign correctly checked for another active assignment before reverting a unit to Available; assign_create_internal()'s promote-to-Dispatched had no matching check, so a unit given a SECOND call had its real status (On Scene, etc.) silently stomped. Same gate, applied to the missing side. |
+| A displayed-but-unenforced setting reads as a promise (GH#83) | `un_status.dispatch` was stored, returned by the API, and rendered as badges/colours everywhere — but nothing in the assignment path ever READ it. The UI showing current state is not evidence the state does anything; grep for where a value is used, not just where it's displayed. |
+| Two independent gates combine by taking the MORE restrictive | GH#82's Multi-Assign flag and GH#83's Dispatch level are separately configurable; `_assign_dispatch_gate()` (inc/assignment-write.php) takes `max()` of both so an admin-configured hard block is never softened by Multi-Assign, and Multi-Assign never invents a block, only waives an implied warn. |
+| A test fixture that double-books a responder needs to say so | Any test creating the same responder id assigned to two open tickets must set `responder.multi = 1` (or pass `force: true`) once assign_create_internal() gates on it — otherwise the second assignment silently returns `needs_confirmation` instead of a row, and later assertions fail confusingly far from the real cause. |
 
 ## Release process
 
@@ -103,3 +122,5 @@ whichever one drifted.
 | A test that deliberately wedges a subprocess must kill the whole tree | `proc_terminate()` alone leaves the real worker running under `cmd.exe /c`'s wrapper on Windows; use `['bypass_shell' => true]` + `taskkill /T /F`. |
 | `git apply --cached --unidiff-zero` can silently corrupt a staged blob | When staging partial hunks in a tree another session is also editing, verify the STAGED blob (`git show :<path>`), never just the working-tree file. |
 | Never `chown -R` an install directory | Takes `.git` with it — the next `git pull` dies with "dubious ownership" (git ≥ 2.35.2). `backups/` is the one shared-writer exception; `keys/` lives outside the tree entirely. |
+| A test that `file_get_contents()`s a live-DB artifact is only as safe as the smallest dev DB it's ever run against (GH#53, Phase 141) | `test_gh53_backup_generated_columns.php` loaded backup_dump_sql()'s ENTIRE output into one PHP string just to `preg_match` two small sections out of it — fine until a dev install's optional FCC reference tables (~380MB) pushed the real dump past the CLI memory limit. `backup_dump_sql()` itself streams correctly; fixed by scanning the file line-by-line for just the needed table sections instead. Not a code bug — a test-hygiene one, but it fails exactly the same way a real one would (ERROR, not FAIL, per the runner contract). |
+| A `git show HEAD:...` diff may assert EQUALITY only, never INEQUALITY/ABSENCE (Phase 142) | The moment a test's own commit becomes HEAD (every future checkout, starting with the next CI run), "this function did NOT exist in HEAD" / "is NO LONGER identical to HEAD" flips from true to permanently, structurally false — not flaky. Assert only "this function IS byte-identical to HEAD" (stays trivially true forever post-commit, since working tree == HEAD) for content a phase promises not to touch; verify genuine novelty/inequality by CONTENT alone (the new call/function is present), never by diffing against git history. |

@@ -183,6 +183,41 @@ is not a false alarm, it is telling you the purge you asked for isn't
 running. Install the timer FIRST, or leave the setting at its default (`0`,
 disabled) until you do.
 
+The standing-relationship activation cleanup (Phase 143, 2026-08-17 — GH#70
+Phase 3) is the same shape again — `ticketscad-org-relationship-cleanup.service`
+running `/usr/bin/php /var/www/newui/tools/org_relationship_cleanup_tick.php`,
+and `ticketscad-org-relationship-cleanup.timer` pointing `Unit=` at it — every
+5 minutes, not every minute like `par-tick`:
+
+```ini
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=ticketscad-org-relationship-cleanup.service
+```
+
+**This job is explicitly NON-authoritative — read this before assuming it
+"expires" anything.** Cross-org standing relationships (`org-relationships-admin.php`)
+grant read-time-checked access: `org_can_see_ticket()` /
+`org_ticket_query_filter()` / `org_can_mutate_ticket()` recompute an
+activation's liveness fresh, in SQL, against `NOW()`, on every single
+request. The moment an activation's `max_activation_minutes` window
+elapses, access is ALREADY gone on the very next request — with or without
+this job ever running. All this job does is stamp `deactivated_at` on
+already-expired activation rows and fire the matching `relationship_deactivated`
+audit entry (`auto_expired: true`), so the audit trail and the admin UI's
+own "is this relationship currently activated" display read cleanly for a
+human reviewing history later. Same discipline as `par_tick`/
+`pending_messages_tick`'s own "an on/off switch gates behaviour; cleanup
+that closes out work nobody can answer runs either way" (CLAUDE.md,
+2026-07-29) — this is the third application of that lesson in this project,
+and the one it was written to hold up against. Installing this timer is
+safe and harmless on any install that has never used a standing
+relationship (0 expired-but-open activations = a genuine no-op sweep, same
+as the channel-poll timer above).
+
 #### If you use Web Push, SMS, e-mail, Slack or webhooks: run that one every 15 seconds
 
 Since 2026-07-31 the pending-message sweep also **sends the outbound
@@ -226,6 +261,10 @@ sudo systemctl enable --now ticketscad-audit-purge.timer
 # Only if you have turned on message-log retention (Settings → Pending Messages → Message Log Retention) --
 # but install this ONE before turning the setting on, not after (see note above):
 sudo systemctl enable --now ticketscad-message-log-purge.timer
+# Safe to enable unconditionally, same reasoning as channel-receive-tick --
+# a genuine no-op sweep on any install that has never used a standing
+# cross-org relationship:
+sudo systemctl enable --now ticketscad-org-relationship-cleanup.timer
 sudo systemctl list-timers --all | grep ticketscad
 sudo journalctl -u ticketscad-par-tick.service -n 20 --no-pager
 
@@ -267,6 +306,7 @@ fresh `scheduled_send_at`. Expiry is reversible by design.
 | `tools/audit_log_purge_tick.php` | daily | Archives (gzip NDJSON, written first) then removes `newui_audit_log` rows older than `audit_log_retention_days`, if that setting is nonzero. Off by default. | Nothing — the job is only *required* once retention is turned on, at which point a missed run is **flagged on the Status page** exactly like the two above. Disabled installs are never nagged about it. |
 | `tools/channel_receive_tick.php` | every minute | Polls opted-in broker channels (Telegram, Slack) for inbound messages; routes them via `broker_receive()` (dedup + logging + whatever routes exist). Off per-channel by default (`telegram_poll_inbound` / `slack_poll_inbound`). | Nothing — required only once at least one channel's inbound polling is turned on (Settings → Telegram / Slack), at which point a missed run is **flagged on the Status page**. Disabled/unconfigured installs are never nagged about it. |
 | `tools/message_log_purge_tick.php` | daily | Removes outbound message-log rows (SMS/e-mail/Slack delivery-status rows) older than `message_log_retention_days`, if that setting is nonzero. Off by default. | Nothing while disabled. Once `message_log_retention_days` is turned on, install the timer BEFORE (not after) — otherwise the job is stuck at "never run" and the Status page reports it **Critical**, correctly. |
+| `tools/org_relationship_cleanup_tick.php` | every 5 min | Stamps `deactivated_at` on standing cross-org relationship activations whose `max_activation_minutes` window has already elapsed by the read-time predicate; fires the `relationship_deactivated` audit entry (`auto_expired: true`). **Non-authoritative** — access is already gone via the read-time predicate before this job ever runs; it only closes the audit record. | Nothing — the audit trail lags reality (a `deactivated_at` that should be set stays NULL a little longer), but nobody's access changes. **Flagged on the Status page** only once an expired-but-open activation actually exists. |
 | location-reports trim *(planned)* | daily 03:30 | Same idea for `location_reports`; same workaround | DB bloat; map slowness |
 | backup *(planned)* | daily 02:00 | No all-in-one script yet — use `mysqldump` via cron per [BACKUP-RECOVERY-RUNBOOK.md](BACKUP-RECOVERY-RUNBOOK.md) | No fresh backup if a disaster hits |
 | `certbot renew` | twice daily (auto) | Renews Let's Encrypt cert | TLS cert expires; site breaks |

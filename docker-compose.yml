@@ -40,7 +40,7 @@ services:
 
   app:
     build: .
-    image: ticketscad-newui:local
+    image: ticketscad-newui:local  # built locally, never published — never `docker compose pull` this service
     container_name: ticketscad_newui
     restart: unless-stopped
     depends_on:

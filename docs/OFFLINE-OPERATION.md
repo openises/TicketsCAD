@@ -348,13 +348,24 @@ Raise the limits first, or the cache will evict your work
 | Setting | Default | Suggested for offline resilience |
 |---|---|---|
 | `tile_cache_max_mb` | 512 MB | 4096 or more, if you have the disk |
-| `tile_cache_days` | 30 days | 365 |
+| `tile_cache_days` | 30 days | up to 9999 (~27 years — as far as this project's testing bothers going, since nothing here claims a literal "forever") |
 | `tile_cache_min_free_mb` | 1024 MB | leave as is — it stops the cache filling your disk |
 
-**Where this runs out:** it only covers what somebody actually looked at, it
-expires, and it is evicted under pressure. It is a sensible precaution, not a
-plan. For a genuinely air-gapped install, or for guaranteed coverage of your
-whole district, use a real local tile server below.
+These are two **independent** limits, and raising one does not touch the
+other. `tile_cache_days` only bounds how long a cached tile is trusted before
+it is re-fetched — it has no effect on eviction. `tile_cache_max_mb` (with
+`tile_cache_min_free_mb` as the floor) is a separate, size-based limit: once
+the cache hits that ceiling, the least-recently-used tiles are evicted to make
+room for new ones, **regardless of how high `tile_cache_days` is set.** Set
+`tile_cache_days` to 9999 and leave `tile_cache_max_mb` at 512 and the cache
+will still evict old tiles the moment your response area doesn't fit in
+512 MB — see the size table further down this section for what your area
+actually needs. For a genuinely permanent cache, raise both together.
+
+**Where this runs out:** it only covers what somebody actually looked at. It
+is a sensible precaution, not a plan. For a genuinely air-gapped install, or
+for guaranteed coverage of your whole district, use a real local tile server
+below.
 
 ### The recommendation
 

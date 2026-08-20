@@ -7,6 +7,7 @@
  */
 
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/../inc/severity.php';
 
 // Suppress PHP warnings/notices from corrupting JSON output
 $prevDisplay = ini_get('display_errors');
@@ -115,12 +116,14 @@ if (empty($responders)) {
     );
 }
 
-// Severity color map
-$sev_colors = [
-    0 => get_variable('sev_0_color') ?: '#00ff00',
-    1 => get_variable('sev_1_color') ?: '#ffff00',
-    2 => get_variable('sev_2_color') ?: '#ff0000',
-];
+// GH#87/GH#88 (2026-08-19) — the full configured severity scale, not just
+// a 3-entry color map. assets/js/new-incident.js populates the Severity
+// dropdown AND resolves the incident type's auto-set value from this same
+// list, which is what makes the two agree by construction (see
+// inc/severity.php's docblock). $sev_colors is kept, unchanged shape, for
+// any external consumer that was already reading it.
+$sev_colors = severity_color_map();
+$severity_levels = severity_levels_for_json();
 
 // States for address dropdown
 $states = safe_fetch_all(
@@ -200,6 +203,7 @@ json_response([
     'facilities'       => $facilities,
     'responders'       => $responders,
     'sev_colors'       => $sev_colors,
+    'severity_levels'  => $severity_levels,
     'states'           => $states,
     'signals'          => $signals,
     'major_incidents'  => $major_incidents,

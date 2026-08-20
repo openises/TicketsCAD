@@ -354,6 +354,7 @@ GET /api/external/v1/incidents
 - Scope: `incidents:read`
 - RBAC: `action.view_incident` OR `action.view_incidents`
 - Returns: `{ "incidents": [...], "limit": N, "offset": N }`
+- **Cross-org ticket sharing (GH#70, Phase 1-3, 2026-08-17):** the result set can include tickets owned by a *different* organization than the token's caller, if an admin-configured routing rule, a dispatcher's manual share, or a standing relationship currently grants access. A same-org row is returned unchanged. A share-derived row is annotated with `shared_from_org_id` / `shared_from_org_name` and, at `view` tier, has `contact`/`phone` and every other non-allowlisted field stripped (see [`CROSS-ORG-TICKET-SHARING.md`](CROSS-ORG-TICKET-SHARING.md) for the exact allowlist); at `assist` tier the row is returned in full, same as a same-org row. This is off by default — a fresh install or one with no routing rules/shares/relationships never returns a cross-org row and this note doesn't apply.
 
 #### Detail
 
@@ -365,6 +366,7 @@ GET /api/external/v1/incidents/<id>
 - RBAC: `action.view_incident` OR `action.view_incidents`
 - Returns: full ticket row including `in_type_name`
 - Statuses: `200`, `400 invalid_id`, `404 not_found`
+- **Cross-org ticket sharing:** same annotation/redaction behavior as the list endpoint above, applied to the single row. Opening a share-derived ticket's detail via this endpoint logs a distinct `incident` / `view_shared` audit entry (see `CROSS-ORG-TICKET-SHARING.md`'s "Audit trail" section) — the list endpoint does not log a view event per row, to avoid flooding the audit log on every poll.
 
 #### Create
 
@@ -396,9 +398,21 @@ Content-Type: application/json
 
 ```
 PATCH /api/external/v1/incidents/<id>
+Content-Type: application/json
+
+{ "severity": 3, "status": 2 }
 ```
 
-**Status:** PENDING (Phase 94 Stage 4a follow-up). Returns `405 method_not_allowed` today.
+**Status:** SHIPPED (Phase 94 Stage 4a follow-up, commit `3412329`). This section previously described PATCH as pending/405 — that was stale; PATCH has been live since Phase 94 and was extended for cross-org sharing in Phase 141 (below).
+
+The fields to update may be sent at the top level of the body (as above) or nested under a `fields` key, matching the internal endpoint's shape — either form works. `id` may also be sent in the body instead of relying on the URL.
+
+- Scope: `incidents:write`
+- RBAC: `action.edit_incident`
+- Returns: `200 { "id": <id>, "fields_changed": [...] }`
+- Side effects: audit row (`category=incident`, `activity=update`); SSE `incident:update` event; webhook `incident.updated` event (via audit-driven fan-out, per `WEBHOOKS-INTEGRATOR-GUIDE.md`)
+- Statuses: `200`, `400 invalid_json_body`/`invalid_id`, `403 forbidden_rbac`/`forbidden`, `404 not_found`, `422 validation_failed` (response includes a `details.errors` array)
+- **Cross-org ticket sharing:** a same-org ticket is unaffected. A share-derived ticket can only be PATCHed at `assist` tier — `view`-tier access is read-only. If the caller can see the ticket (via any tier) but the tier doesn't permit writing, the response is `403 forbidden` rather than `404 not_found`, so a legitimate `view`-tier integration gets a clear signal rather than an ambiguous "does this even exist."
 
 #### Soft-delete
 
@@ -406,7 +420,14 @@ PATCH /api/external/v1/incidents/<id>
 DELETE /api/external/v1/incidents/<id>
 ```
 
-**Status:** PENDING (Phase 94 Stage 4a follow-up). Returns `405 method_not_allowed` today. When shipped, will route through `incident_soft_delete()` (wastebasket) and fire `incident.deleted` webhook.
+**Status:** SHIPPED (Phase 94 Stage 4a follow-up, commit `3412329`). This section previously described DELETE as pending/405 — that was stale; DELETE has been live since Phase 94. Routes through `incident_soft_delete()` (wastebasket) and fires the `incident.deleted` webhook, as originally documented.
+
+- Scope: `incidents:write`
+- RBAC: `action.delete_incident` OR `action.edit_incident`
+- Returns: `200 { "deleted": true }`
+- Side effects: audit row (`category=incident`, `activity=delete`); `incident.deleted` webhook
+- Statuses: `200`, `400 invalid_id`, `403 forbidden_rbac`, `404 not_found`, `500 db_error`
+- **Cross-org ticket sharing:** deliberately the ONE incidents endpoint that does not honor sharing at any tier, including `assist` (which otherwise behaves like full same-org access). Soft-deleting removes a ticket from its *owning* org's own visibility, and no tier in the current 3-phase design grants ownership transfer — see `CROSS-ORG-TICKET-SHARING.md`'s "The one thing sharing can never do" / "Not built yet" sections. A caller whose only access to the ticket is share-derived gets `404 not_found` (not `403`) — the same response as a ticket that doesn't exist, so the API can't be used to probe which tickets exist outside the caller's own org even indirectly through this endpoint.
 
 #### Add action note
 
@@ -478,7 +499,13 @@ DELETE /api/external/v1/incidents/<ticket_id>/assignments/<assign_id>
 
 ### 6.3 Members (personnel)
 
-**Status:** SHIPPED (Stage 4d), partial — POST + GET + DELETE; PATCH pending.
+**Status:** SHIPPED — GET (list + detail), POST (create), PATCH (partial update),
+DELETE (soft-delete), and PATCH `/status` (status change) are all implemented.
+(This doc previously said PATCH and the status-change endpoint were pending —
+both shipped some time ago; corrected 2026-08-18 alongside GH#76's `team_id`
+compatibility-shim documentation below. If you're reading this in a much
+later version and something here looks stale again, verify against the
+actual file — `api/external/v1/members.php` — before trusting the prose.)
 
 #### List
 
@@ -530,9 +557,43 @@ Content-Type: application/json
 
 ```
 PATCH /api/external/v1/members/<id>
+Content-Type: application/json
+
+{ "notes": "Updated via integration" }
 ```
 
-**Status:** PENDING (Stage 4d follow-up). The internal members.php's partial-update path is being factored out; not yet in `inc/member-write.php`.
+Fields may be top-level or nested under `"fields"`. Only the keys you send
+are touched — an absent key means "leave it alone"; sending an empty
+string clears that field.
+
+- Scope: `members:write`
+- RBAC: `action.manage_members`
+- Returns: `200 { "id": <member_id>, "fields_changed": [...] }`
+- Side effects: audit `personnel|update|member`
+
+**`team_id` compatibility shim (GH#76 Phase 144, 2026-08-18):** internally,
+team assignment moved entirely to the `team_members` junction table — the
+web UI's Roster page and Teams tab both write there, never to a
+`member.team_id` column. This endpoint is the ONE place that still accepts
+`team_id` as an input field on POST create and PATCH update, so existing
+integrations don't need a version bump. Sending it does NOT write
+`member.team_id` — it upserts a `team_members` row for that team/member
+pair, additively (any OTHER team the member already belongs to, from any
+source, is left alone). GET (list and detail) returns `team_id`/`team_name`
+resolved live from that same data (never a stale column value) for
+backward compatibility, plus a new `team_memberships` array (every team
+the member belongs to, with `team_id`, `team_name`, `role`) mirroring the
+internal API's own shape.
+
+**Shipped default you should know if you rely on `team_id`:** clearing it
+— `PATCH { "team_id": null }` — does **not** remove the member from that
+team. Only a human action in the web UI (the Roster page's Team
+Memberships card, or the Teams tab) actually removes a team assignment.
+If your integration needs to remove a member from a team, do that through
+the web UI, not this field. (Rationale: an external caller clearing a
+legacy compatibility field is a weaker signal of intent than a human
+clicking "Remove" — the shim is deliberately conservative about deleting
+data a coordinator placed there through the app.)
 
 #### Soft-delete
 
@@ -553,7 +614,10 @@ Or via clean URL: `DELETE /api/external/v1/members/<id>`.
 PATCH /api/external/v1/members/<id>/status
 ```
 
-**Status:** PENDING (Phase 94 Stage 4e). Handler file `member-status.php` not on disk yet — calls return `501 endpoint_not_implemented`.
+**Status:** SHIPPED. Sets `member_status_id` and bumps `updated_at`.
+(Corrected 2026-08-18 — this doc previously said the handler wasn't on disk;
+it is, and works. Verify against `api/external/v1/member-status.php` if this
+looks stale again.)
 
 ### 6.4 Responders (units)
 

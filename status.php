@@ -955,6 +955,41 @@ $csrf     = csrf_token();
             html += '</span></div>';
         }
 
+        // ── Can the cache directories actually be WRITTEN to? (2026-08-19) ──
+        // GEOCODE_CACHE_DIR and TILE_CACHE_DIR are created by whichever
+        // process reaches them first — a real web request, or a CLI/SSH
+        // diagnostic run as the operator. On your-server.example.com the CLI
+        // won that race, leaving the directory owned by the wrong account,
+        // and every geocode lookup silently bypassed the cache for weeks —
+        // both caches are "best effort" by design, so nothing else would
+        // have shown this. is_dir() alone would say "present" and tell you
+        // nothing about whether it works, so this reports a real write test.
+        [['Geocode lookup cache', 'geocode_cache_writable'],
+         ['Map tile cache', 'tile_cache_writable']].forEach(function (row) {
+            var key = row[1];
+            var cc = data[key] || {};
+            if (!cc.checked) { return; }
+            html += '<div class="status-detail-row">';
+            html += '<span class="status-detail-label">' + esc(row[0]) +
+                    ' <small class="text-body-secondary">(cache writable?)</small></span>';
+            html += '<span class="status-detail-value">';
+            if (cc.severity === 'critical' || cc.severity === 'warn' || cc.severity === 'unknown') {
+                var ccClass = cc.severity === 'critical' ? 'text-danger'
+                            : (cc.severity === 'warn' ? 'text-warning' : 'text-body-secondary');
+                var ccState = cc.exists === false ? 'not created yet'
+                            : (cc.writable === false ? 'NOT WRITABLE' : 'unknown');
+                html += '<span class="' + ccClass + ' fw-bold">' + esc(ccState) + '</span> ' +
+                        sevBadge(cc.severity);
+            } else {
+                html += '<code>' + esc(cc.dir || '') + '</code> ' + sevBadge('ok');
+            }
+            if (cc.note) {
+                html += '<br><span class="text-muted" style="white-space:pre-wrap">' +
+                        esc(cc.note) + '</span>';
+            }
+            html += '</span></div>';
+        });
+
         // ── Where the backups are ──────────────────────────────────
         var bk = data.backups || {};
         if (bk.checked) {
@@ -1193,6 +1228,30 @@ $csrf     = csrf_token();
                     'Work more than <strong>' + esc(sj.cutoff_min) + ' min</strong> past due is recorded as ' +
                     '<em>expired</em> rather than acted on retroactively ' +
                     '(setting <code>sched_stale_cutoff_min</code>).</div>';
+        }
+
+        // ── Team membership reconciliation (GH#76 Phase 144) ───────
+        var tmr = data.team_membership || {};
+        if (tmr.checked) {
+            html += '<div class="mt-3 mb-1 fw-semibold" style="font-size:0.8rem">' +
+                    '<i class="bi bi-people-fill me-1"></i>Team membership reconciliation' +
+                    '</div>';
+            html += '<div style="font-size:0.78rem" class="' + (tmr.severity === 'critical' ? 'text-danger' : 'text-body-secondary') + '">' +
+                    esc(tmr.summary || '') + '</div>';
+            if ((tmr.unresolved || []).length > 0) {
+                html += '<ul class="mb-1" style="font-size:0.72rem;color:var(--bs-danger)">';
+                for (var tu = 0; tu < tmr.unresolved.length; tu++) {
+                    html += '<li>' + esc(tmr.unresolved[tu]) + '</li>';
+                }
+                html += '</ul>';
+                if (tmr.remedy) {
+                    html += '<div class="alert alert-danger py-1 px-2 mb-2" style="font-size:0.75rem">' + esc(tmr.remedy) + '</div>';
+                }
+            }
+            if ((tmr.orphaned || []).length > 0) {
+                html += '<div class="text-body-secondary" style="font-size:0.72rem">' +
+                        (tmr.orphaned.length) + ' orphaned (team since deleted) — informational, not a fault.</div>';
+            }
         }
 
         body.innerHTML = html;

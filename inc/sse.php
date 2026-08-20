@@ -19,6 +19,19 @@
  *   group   — only clients whose user_groups intersect visibility_ids receive
  *             (admins always receive). visibility_ids is a comma-separated list.
  *   user    — only the user whose id matches visibility_ids receives.
+ *   org     — Phase 142 (2026-08-17) — only clients whose org_visible_ids()
+ *             intersect visibility_ids receive. Used for cross-org-share
+ *             recipients; visibility_ids carries organization ids, resolved
+ *             fresh at PUBLISH time by _sse_share_orgs_for_ticket() /
+ *             _org_sharing_notify_share_change() (inc/org-sharing.php) so a
+ *             revoked share stops matching starting with the next publish —
+ *             no reader-side re-check needed. Phase 143 (2026-08-17) reuses
+ *             this SAME scope, unchanged, for standing-relationship
+ *             recipients — see _org_relationship_orgs_for_ticket_owner()
+ *             and the two coarse 'org_relationship:activated'/
+ *             'org_relationship:deactivated' lifecycle events
+ *             (inc/org-relationships.php) — zero reader-side change needed
+ *             for either.
  *
  * Usage:
  *   sse_publish('system:refresh', ['reason' => 'config_change']);
@@ -97,14 +110,17 @@ if (!function_exists('sse_publish')) {
         // api/incidents.php), where an RBAC view permission alone grants
         // visibility and allocates only gates users without one. Still NOT
         // public: users with no view permission receive nothing (F-007).
-        $allowedScopes = ['public', 'admin', 'group', 'user', 'entitled'];
+        // 'org' (Phase 142, 2026-08-17) — cross-org-share recipients, see
+        // _sse_share_orgs_for_ticket() below. visibility_ids carries org ids
+        // (never user or allocates-group ids) for this scope specifically.
+        $allowedScopes = ['public', 'admin', 'group', 'user', 'entitled', 'org'];
         if (!in_array($scope, $allowedScopes, true)) {
             $scope = 'public';
         }
 
         // Normalize scopeIds to comma-separated string of positive ints.
         $idsStr = null;
-        if ($scope === 'group' || $scope === 'user') {
+        if ($scope === 'group' || $scope === 'user' || $scope === 'org') {
             $list = is_array($scopeIds) ? $scopeIds : ($scopeIds === null ? [] : [$scopeIds]);
             $clean = [];
             foreach ($list as $v) {
@@ -176,16 +192,99 @@ if (!function_exists('sse_publish')) {
     function sse_publish_for_incident(string $eventType, array $payload, int $ticketId, $userId = null): bool
     {
         $groups = _sse_groups_for_resource($ticketId, 1);
-        if (empty($groups)) {
-            // No allocates rows — 'entitled': admins + RBAC view-permission
-            // holders receive (GH #13). The old 'admin' fallback was STRICTER
-            // than the read path, so on installs that don't use group
-            // allocation (allocates empty — the common case), field users who
-            // could see the incident on every page received NO events for it:
-            // exactly the CAD→mobile real-time gap a beta tester reported.
-            return sse_publish($eventType, $payload, $userId, 'entitled');
+        // No allocates rows — 'entitled': admins + RBAC view-permission
+        // holders receive (GH #13). The old 'admin' fallback was STRICTER
+        // than the read path, so on installs that don't use group
+        // allocation (allocates empty — the common case), field users who
+        // could see the incident on every page received NO events for it:
+        // exactly the CAD→mobile real-time gap a beta tester reported.
+        $delivered = empty($groups)
+            ? sse_publish($eventType, $payload, $userId, 'entitled')
+            : sse_publish($eventType, $payload, $userId, 'group', $groups);
+
+        // Phase 142 (2026-08-17) — also reach every org with an ACTIVE
+        // cross-org share on this ticket. This is what closes Phase 141's
+        // named SSE limitation for ORDINARY ticket events (incident:update,
+        // incident:note, responder:status, etc.) at every one of the
+        // existing call sites, with ZERO code change at any of them.
+        // "Authorize at publish time, not read time" — the check re-queries
+        // incident_shares fresh on every publish, so a revoked share simply
+        // stops being included starting with the very next published event
+        // for this ticket. No propagation-delay window on the write side to
+        // go stale, unlike stream.php's per-connection $userOrgIds snapshot
+        // (plan.md's SSE section — see also api/stream.php's own comment).
+        //
+        // Deliberately a SECOND, independent sse_publish() call rather than
+        // folding both audiences into one row: the two id-namespaces (legacy
+        // allocates group ids and org ids) are not comparable without a
+        // prefix-disambiguation scheme this problem doesn't need. Accepted,
+        // named risk: a session that is BOTH an allocates-group member for
+        // this ticket AND the shared-with org's member receives the same
+        // logical event twice (two sse_events rows) — requires an allocates
+        // row naming a group belonging to an org OTHER than the ticket's
+        // owning org, which nothing in this codebase's org model or
+        // assignment UI ever creates today.
+        //
+        // Zero-share case (every ticket that has never used sharing) is a
+        // pure no-op: _sse_share_orgs_for_ticket() returns [] and this
+        // branch never runs — proven directly by
+        // tests/test_org_sharing_sse_noop.php.
+        $shareOrgIds = _sse_share_orgs_for_ticket($ticketId);
+        if (!empty($shareOrgIds)) {
+            sse_publish($eventType, $payload, $userId, 'org', $shareOrgIds);
         }
-        return sse_publish($eventType, $payload, $userId, 'group', $groups);
+
+        // Phase 143 (2026-08-17) — THIRD, independent sse_publish() call:
+        // every org with an ACTIVE standing-relationship grant into this
+        // ticket's owning org (relationships are a property of the owning
+        // org, not the ticket — see inc/org-relationships.php's
+        // _org_relationship_orgs_for_ticket_owner()). Same reasoning Phase
+        // 142 already gave for its own second call above: the id-namespaces
+        // don't need disambiguating for this problem, and the zero-
+        // relationship case is a pure no-op — proven by
+        // tests/test_org_relationships_sse_noop.php. Lazy-loaded so an
+        // install without the Phase 143 tables/file is unaffected.
+        if (!function_exists('_org_relationship_orgs_for_ticket_owner')) {
+            if (is_file(__DIR__ . '/org-relationships.php')) require_once __DIR__ . '/org-relationships.php';
+        }
+        if (function_exists('_org_relationship_orgs_for_ticket_owner')) {
+            $relOrgIds = _org_relationship_orgs_for_ticket_owner($ticketId);
+            if (!empty($relOrgIds)) {
+                sse_publish($eventType, $payload, $userId, 'org', $relOrgIds);
+            }
+        }
+
+        return $delivered;
+    }
+
+    /**
+     * Phase 142 (2026-08-17) — active incident_shares recipients for a
+     * ticket (both Phase 141 auto-routed AND Phase 142 manual shares — the
+     * table doesn't distinguish origin for this purpose). Wrapped in
+     * try/catch: [] if incident_shares doesn't exist (pre-Phase-141
+     * install) or the ticket has none — the exact condition that keeps
+     * sse_publish_for_incident() byte-identical to its pre-Phase-142
+     * behavior for every install/ticket that has never used sharing.
+     */
+    function _sse_share_orgs_for_ticket(int $ticketId): array
+    {
+        if ($ticketId <= 0) return [];
+        $prefix = $GLOBALS['db_prefix'] ?? '';
+        try {
+            $rows = db_fetch_all(
+                "SELECT DISTINCT `shared_with_org_id` FROM `{$prefix}incident_shares`
+                  WHERE `ticket_id` = ? AND `revoked_at` IS NULL",
+                [$ticketId]
+            );
+            $out = [];
+            foreach ($rows as $r) {
+                $oid = (int) ($r['shared_with_org_id'] ?? 0);
+                if ($oid > 0) $out[] = $oid;
+            }
+            return $out;
+        } catch (Throwable $e) {
+            return [];
+        }
     }
 
     function sse_publish_for_responder(string $eventType, array $payload, int $responderId, $userId = null): bool

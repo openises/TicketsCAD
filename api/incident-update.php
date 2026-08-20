@@ -107,9 +107,21 @@ if (!$ticket) {
 // Admin from mutating a ticket that belongs to a different tenant
 // even if they construct the POST by hand. Same 404-not-403 to avoid
 // confirming the ticket exists.
+//
+// Phase 141 (2026-08-17) — org_can_mutate_ticket() is the tier-aware WRITE
+// gate: same-org access is unchanged, a cross-org share only permits
+// mutation at 'assist' tier ('view' tier / no share is refused). The
+// caller already has CONFIRMED read visibility if refused here (they
+// could see the ticket at 'view' tier), so this is a 403 "action refused"
+// rather than the 404 "ticket not found" shape org_can_see_ticket() uses
+// to avoid an existence-leak to a caller with no visibility at all — see
+// plan.md's open-question-2 for the reasoning.
 require_once __DIR__ . '/../inc/org-scope.php';
-if (!org_can_see_ticket($ticket_id)) {
+if (!org_can_mutate_ticket($ticket_id)) {
     ini_set('display_errors', $prevDisplay);
+    if (org_can_see_ticket($ticket_id)) {
+        json_error("Your organization's access to this incident does not permit this action", 403);
+    }
     json_error('Ticket not found', 404);
 }
 

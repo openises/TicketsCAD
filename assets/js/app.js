@@ -245,6 +245,33 @@
         EventBus.on('incident:note', function () {
             onWidgetRefresh({ widget: 'log' });
         });
+        // Phase 142 (GH#70 Phase 2) — a share genuinely adds/removes a
+        // ticket from this org's visible board, the same class of change
+        // as new/close, not a mere in-place field update.
+        EventBus.on('incident:shared', function () {
+            onWidgetRefresh({ widget: 'incidents' });
+            onWidgetRefresh({ widget: 'stats' });
+            onWidgetRefresh({ widget: 'log' });
+        });
+        EventBus.on('incident:unshared', function () {
+            onWidgetRefresh({ widget: 'incidents' });
+            onWidgetRefresh({ widget: 'stats' });
+            onWidgetRefresh({ widget: 'log' });
+        });
+        // Phase 143 (GH#70 Phase 3) — a standing relationship activating (or
+        // expiring) genuinely adds/removes an entire org's worth of tickets
+        // from this dashboard's visible set at once, same class of change
+        // as a share grant/revoke above.
+        EventBus.on('org_relationship:activated', function () {
+            onWidgetRefresh({ widget: 'incidents' });
+            onWidgetRefresh({ widget: 'stats' });
+            onWidgetRefresh({ widget: 'log' });
+        });
+        EventBus.on('org_relationship:deactivated', function () {
+            onWidgetRefresh({ widget: 'incidents' });
+            onWidgetRefresh({ widget: 'stats' });
+            onWidgetRefresh({ widget: 'log' });
+        });
         EventBus.on('responder:status', function () {
             onWidgetRefresh({ widget: 'responders' });
         });
@@ -1196,9 +1223,6 @@
 
             // Start real-time unit tracking overlay (10s refresh)
             if (typeof UnitTracking !== 'undefined' && !window._unitTracker) {
-                var trackerLayer = L.layerGroup().addTo(map);
-                overlays['<span style="color:#ff6600">&#9679;</span> Live Tracking'] = trackerLayer;
-
                 window._unitTracker = UnitTracking.init(map, {
                     refreshInterval: 10000,
                     showLabels: true,
@@ -1211,6 +1235,43 @@
                     }
                 });
                 window._unitTracker.start();
+
+                // GH #78 (cbyrdmo, 2026-08-18) — this used to build its OWN
+                // decoy overlay here: a fresh `L.layerGroup().addTo(map)`,
+                // spliced into the `overlays` object AFTER `layersControl`
+                // (L.control.layers(), above) had already been constructed and
+                // added to the map. Two independent bugs, both required for the
+                // reported symptom ("orange dots" with no way to hide them):
+                //   1. Leaflet's layer control only reads `overlays` at
+                //      construction time. Mutating that object later never
+                //      reaches the already-rendered checkbox list, so "Live
+                //      Tracking" never even appeared as an option — the correct
+                //      way to add a control entry after construction is
+                //      layersControl.addOverlay(), which this same file already
+                //      does correctly for markup categories above.
+                //   2. Even if it had appeared, the decoy group was always
+                //      empty — UnitTracking.init() draws markers into its OWN
+                //      internal layer group (added straight to the map) and
+                //      never touches an externally-passed one.
+                // Same root cause GH #74/#73 already fixed on situation.php;
+                // follow that file's proven fix exactly: pull the tracker's
+                // REAL layer group via getLayerGroup() and register it with
+                // the already-built control via addOverlay(), then register it
+                // with MapLayerPrefs so the choice persists per-user like every
+                // other overlay on this page ('units_live' is already in
+                // inc/map-layer-prefs.php's catalog and the JS SHIPPED_DEFAULTS
+                // fallback — situation.php registers under the same key).
+                if (layersControl && typeof window._unitTracker.getLayerGroup === 'function') {
+                    var liveGpsLayer = window._unitTracker.getLayerGroup();
+                    if (liveGpsLayer) {
+                        overlays['<span style="color:#ff6600">&#9679;</span> Live Tracking'] = liveGpsLayer;
+                        layersControl.addOverlay(liveGpsLayer,
+                            '<span style="color:#ff6600">&#9679;</span> Live Tracking');
+                        if (window.MapLayerPrefs && typeof window.MapLayerPrefs.register === 'function') {
+                            window.MapLayerPrefs.register(map, 'units_live', liveGpsLayer);
+                        }
+                    }
+                }
             }
         }
 
@@ -2055,25 +2116,40 @@
         }
     }
 
-    function _submitDispatchAssignment(respId, handle, ticketId, caseNum) {
+    function _submitDispatchAssignment(respId, handle, ticketId, caseNum, force) {
         // Post to the same endpoint the per-assignment action bar
         // uses. action=assign creates a new assigns row in 'dispatched'
         // state with the current timestamp. Error/success pattern
         // matches the rest of the modal flow in this file: alert() on
         // failure, hide modal + refresh widgets on success.
+        //
+        // GH#82/GH#83 (2026-08-18) — the server now gates on the unit's
+        // current-status Dispatch level and Multi-Assign flag. A WARN
+        // comes back as needs_confirmation (not an error); mirror
+        // unit-detail.js's doAssignPersonnel confirm-and-resubmit pattern
+        // rather than inventing a new one.
+        var body = {
+            action: 'assign',
+            ticket_id: ticketId,
+            responder_id: respId,
+            csrf_token: _csrf()
+        };
+        if (force) body.force = true;
+
         fetch('api/incident-assign.php', {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'assign',
-                ticket_id: ticketId,
-                responder_id: respId,
-                csrf_token: _csrf()
-            })
+            body: JSON.stringify(body)
         })
         .then(function (r) { return r.json(); })
         .then(function (data) {
+            if (data.needs_confirmation) {
+                if (confirm(data.message)) {
+                    _submitDispatchAssignment(respId, handle, ticketId, caseNum, true);
+                }
+                return;
+            }
             if (data.error) {
                 alert('Failed to dispatch ' + handle + ' to ' + caseNum + ': ' + data.error);
                 return;

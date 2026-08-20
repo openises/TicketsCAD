@@ -513,10 +513,14 @@ foreach ($personnelSections as $sec) {
                         </div>
                         <div class="col-md-2">
                             <label for="typeSeverity" class="form-label form-label-sm">Severity</label>
+                            <!-- GH#87/GH#88 (2026-08-19) — options are populated at
+                                 runtime from api/severity-levels.php (loadSeverityLevelOptions(),
+                                 assets/js/config.js), the SAME admin-configured scale the
+                                 New Incident form's Severity dropdown reads. Was hardcoded
+                                 0/1/2 "Normal/Elevated/Critical" here while the client-side
+                                 auto-fill on new-incident.php independently treated this
+                                 column as a 1-5 scale — the two never agreed (GH#87). -->
                             <select class="form-select form-select-sm" id="typeSeverity" name="set_severity">
-                                <option value="0">Normal</option>
-                                <option value="1">Elevated</option>
-                                <option value="2">Critical</option>
                             </select>
                         </div>
                         <div class="col-md-2">
@@ -986,70 +990,82 @@ foreach ($personnelSections as $sec) {
             <div class="config-status-bar" id="statusesStatus">Loading...</div>
         </div>
 
-        <!-- ── Severity Levels ──────────────────────────────────────── -->
+        <!-- ── Severity Levels (GH#87/GH#88, 2026-08-19) ───────────────
+             Rebuilt from a fixed 3-card panel into an admin-configurable
+             list. Was fixed at exactly 3 hardcoded levels (Normal/
+             Elevated/Critical), and its Label inputs saved to
+             sev_0_label/sev_1_label/sev_2_label settings keys that
+             NOTHING ever read back (GH#88's own investigation — only the
+             sev_N_color half was wired). Now backed by the
+             severity_levels lookup table (inc/severity.php) — the SAME
+             scale the New Incident form and the Incident Types editor's
+             Severity dropdown both read, which is what makes GH#87's
+             client/server mismatch structurally impossible: there is
+             only one definition. -->
         <div class="config-panel" id="panel-severity-levels">
             <div class="config-panel-title">
                 <i class="bi bi-exclamation-triangle text-warning"></i> Severity Levels
             </div>
-            <form id="severityForm">
-                <p class="text-body-secondary small mb-3">Configure the color coding for each severity level. These colors are used throughout the system on incident badges, map markers, and dashboard widgets.</p>
-                <div class="row g-3">
-                    <div class="col-md-4">
-                        <div class="card">
-                            <div class="card-body p-3">
-                                <h6 class="card-title small fw-bold">Normal (Severity 0)</h6>
-                                <label for="sevColor0" class="form-label form-label-sm">Color</label>
-                                <div class="input-group input-group-sm">
-                                    <input type="color" class="form-control form-control-color" id="sevColor0Picker" value="#00ff00" style="width:38px;" aria-label="Normal severity color picker">
-                                    <input type="text" class="form-control" id="sevColor0" data-key="sev_0_color" maxlength="7" placeholder="#00ff00">
-                                </div>
-                                <label for="sevLabel0" class="form-label form-label-sm mt-2">Label</label>
-                                <input type="text" class="form-control form-control-sm" id="sevLabel0" data-key="sev_0_label" maxlength="30" placeholder="Normal">
-                                <div class="mt-2">
-                                    <span class="badge rounded-pill px-3 py-2" id="sevPreview0" style="background:#00ff00;color:#000;">Normal</span>
-                                </div>
+            <p class="text-body-secondary small mb-3">
+                Configure how many severity levels your agency uses, their labels, and their colors. These are the levels dispatchers choose from on the New Incident form and that incident types can auto-set — and the colors used on incident badges, map markers, and dashboard widgets. Every install starts with the historical three (Normal / Elevated / Critical); add, rename, recolor, or reorder as your agency's own vocabulary requires (e.g. Priority 1-4, Code 1-3, Low/Medium/High).
+            </p>
+            <div class="card border-0 bg-body-tertiary mb-3">
+                <div class="card-body py-2">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-3">
+                            <label class="form-label form-label-sm mb-0" for="sevLevelLabel">Label</label>
+                            <input type="text" class="form-control form-control-sm" id="sevLevelLabel" maxlength="30" placeholder="e.g. Priority 1">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label form-label-sm mb-0" for="sevLevelColor">Color</label>
+                            <div class="input-group input-group-sm">
+                                <input type="color" class="form-control form-control-color" id="sevLevelColorPicker" value="#6c757d" style="width:38px;" aria-label="Severity level color picker">
+                                <input type="text" class="form-control" id="sevLevelColor" maxlength="7" placeholder="#6c757d">
                             </div>
                         </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="card">
-                            <div class="card-body p-3">
-                                <h6 class="card-title small fw-bold">Elevated (Severity 1)</h6>
-                                <label for="sevColor1" class="form-label form-label-sm">Color</label>
-                                <div class="input-group input-group-sm">
-                                    <input type="color" class="form-control form-control-color" id="sevColor1Picker" value="#ffff00" style="width:38px;" aria-label="Elevated severity color picker">
-                                    <input type="text" class="form-control" id="sevColor1" data-key="sev_1_color" maxlength="7" placeholder="#ffff00">
-                                </div>
-                                <label for="sevLabel1" class="form-label form-label-sm mt-2">Label</label>
-                                <input type="text" class="form-control form-control-sm" id="sevLabel1" data-key="sev_1_label" maxlength="30" placeholder="Elevated">
-                                <div class="mt-2">
-                                    <span class="badge rounded-pill px-3 py-2" id="sevPreview1" style="background:#ffff00;color:#000;">Elevated</span>
-                                </div>
+                        <div class="col-md-2">
+                            <label class="form-label form-label-sm mb-0" for="sevLevelSort">Sort</label>
+                            <input type="number" class="form-control form-control-sm" id="sevLevelSort" value="0" min="0">
+                        </div>
+                        <div class="col-md-2">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="sevLevelDefault">
+                                <label class="form-check-label form-label-sm" for="sevLevelDefault">Default</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="sevLevelHighAlert">
+                                <label class="form-check-label form-label-sm" for="sevLevelHighAlert">High alert</label>
                             </div>
                         </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="card">
-                            <div class="card-body p-3">
-                                <h6 class="card-title small fw-bold">Critical (Severity 2)</h6>
-                                <label for="sevColor2" class="form-label form-label-sm">Color</label>
-                                <div class="input-group input-group-sm">
-                                    <input type="color" class="form-control form-control-color" id="sevColor2Picker" value="#ff0000" style="width:38px;" aria-label="Critical severity color picker">
-                                    <input type="text" class="form-control" id="sevColor2" data-key="sev_2_color" maxlength="7" placeholder="#ff0000">
-                                </div>
-                                <label for="sevLabel2" class="form-label form-label-sm mt-2">Label</label>
-                                <input type="text" class="form-control form-control-sm" id="sevLabel2" data-key="sev_2_label" maxlength="30" placeholder="Critical">
-                                <div class="mt-2">
-                                    <span class="badge rounded-pill px-3 py-2" id="sevPreview2" style="background:#ff0000;color:#fff;">Critical</span>
-                                </div>
-                            </div>
+                        <div class="col-md-auto">
+                            <button type="button" class="btn btn-sm btn-primary" id="btnAddSevLevel">
+                                <i class="bi bi-plus-lg me-1"></i>Add
+                            </button>
+                        </div>
+                        <div class="col-12">
+                            <span class="badge rounded-pill px-3 py-2" id="sevLevelPreview" style="background:#6c757d;color:#fff;">Preview</span>
                         </div>
                     </div>
+                    <input type="hidden" id="sevLevelEditId" value="0">
                 </div>
-                <div class="d-flex gap-2 mt-3">
-                    <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-check-lg me-1"></i>Save Severity Settings</button>
-                </div>
-            </form>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th class="ps-3">Label</th>
+                            <th class="text-center" style="width:70px;">Color</th>
+                            <th class="text-center" style="width:60px;">Sort</th>
+                            <th class="text-center" style="width:80px;">Default</th>
+                            <th class="text-center" style="width:90px;">High Alert</th>
+                            <th class="text-center" style="width:90px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sevLevelsBody">
+                        <tr><td colspan="6" class="text-center text-body-secondary py-3">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <!-- ── Display Settings ────────────────────────────────────── -->
@@ -1112,16 +1128,17 @@ foreach ($personnelSections as $sec) {
                         <div class="col-md-3">
                             <label for="setRefreshRate" class="form-label form-label-sm">
                                 Auto-Refresh (seconds)
+                                <span class="badge bg-secondary fw-normal">Not yet wired</span>
                                 <i class="bi bi-question-circle text-body-secondary" tabindex="0"
                                    data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
                                    data-bs-content="How often the dashboard polls the server for updates. Lower values are more responsive but use more bandwidth. 0 = manual refresh only."
                                    title="Refresh rate help"></i>
                             </label>
-                            <input type="number" class="form-control form-control-sm" id="setRefreshRate" data-key="refresh_seconds" min="0" max="300" placeholder="30">
+                            <input type="number" class="form-control form-control-sm" id="setRefreshRate" data-key="refresh_seconds" min="0" max="300" placeholder="30" disabled>
                         </div>
                         <div class="col-md-3">
-                            <label for="setAbbrev" class="form-label form-label-sm">Abbreviation Mode</label>
-                            <select class="form-select form-select-sm" id="setAbbrev" data-key="abbreviation_mode">
+                            <label for="setAbbrev" class="form-label form-label-sm">Abbreviation Mode <span class="badge bg-secondary fw-normal">Not yet wired</span></label>
+                            <select class="form-select form-select-sm" id="setAbbrev" data-key="abbreviation_mode" disabled>
                                 <option value="0">Full text</option>
                                 <option value="1">Abbreviate long text</option>
                             </select>
@@ -1137,32 +1154,58 @@ foreach ($personnelSections as $sec) {
                             <input type="number" class="form-control form-control-sm" id="setSessionTimeout" data-key="session_timeout_minutes" min="0" max="1440" placeholder="480">
                         </div>
                     </div>
+                    <!-- GH #91 audit (2026-08-19): Auto-Refresh and Abbreviation Mode
+                         save and persist but nothing reads either key back — the
+                         dashboard's own polling interval and text truncation are
+                         both fixed in code, not settings-driven. Disabled rather
+                         than removed so the intent stays visible; wiring either up
+                         is a real (small) feature, not done here. -->
+                    <div class="form-text small text-body-secondary mt-1">
+                        <i class="bi bi-slash-circle me-1"></i>Fields marked "Not yet wired" save but have no effect yet (tracked in GH #91).
+                    </div>
                 </div>
 
                 <div class="settings-group">
                     <div class="settings-group-title">Appearance</div>
                     <div class="row g-2">
                         <div class="col-md-3">
-                            <label for="setDefaultTheme" class="form-label form-label-sm">Default Theme</label>
-                            <select class="form-select form-select-sm" id="setDefaultTheme" data-key="default_theme">
+                            <label for="setDefaultTheme" class="form-label form-label-sm">Default Theme <span class="badge bg-secondary fw-normal">Not yet wired</span></label>
+                            <select class="form-select form-select-sm" id="setDefaultTheme" data-key="default_theme" disabled>
                                 <option value="Day">Day (Light)</option>
                                 <option value="Night">Night (Dark)</option>
                             </select>
                         </div>
                         <div class="col-md-3">
-                            <label for="setCompactMode" class="form-label form-label-sm">Table Density</label>
-                            <select class="form-select form-select-sm" id="setCompactMode" data-key="compact_tables">
+                            <label for="setCompactMode" class="form-label form-label-sm">Table Density <span class="badge bg-secondary fw-normal">Not yet wired</span></label>
+                            <select class="form-select form-select-sm" id="setCompactMode" data-key="compact_tables" disabled>
                                 <option value="0">Normal</option>
                                 <option value="1">Compact</option>
                             </select>
                         </div>
                         <div class="col-md-6">
-                            <label for="setLoginBanner" class="form-label form-label-sm">Login Banner Text</label>
-                            <input type="text" class="form-control form-control-sm" id="setLoginBanner" data-key="login_banner" maxlength="500" placeholder="Authorized users only. All activity is logged.">
+                            <label for="setLoginBanner" class="form-label form-label-sm">Login Banner Text <span class="badge bg-secondary fw-normal">Not yet wired</span></label>
+                            <input type="text" class="form-control form-control-sm" id="setLoginBanner" data-key="login_banner" maxlength="500" placeholder="Authorized users only. All activity is logged." disabled>
                         </div>
                     </div>
+                    <!-- GH #91 audit (2026-08-19): each of the three fields above
+                         is a real login-page setting an admin would reasonably
+                         expect to work — the day/night default, table row density,
+                         and a banner shown on the login screen — but nothing
+                         anywhere reads any of the three keys back. Disabled with a
+                         note rather than removed: each is a plausible, small future
+                         feature, not a superseded mechanism. -->
+                    <div class="form-text small text-body-secondary mt-1">
+                        <i class="bi bi-slash-circle me-1"></i>Fields marked "Not yet wired" save but have no effect yet (tracked in GH #91).
+                    </div>
                     <!-- GH #55 (Eric 2026-07-04) — shared Push-to-Talk button
-                         color for the Zello + DMR Radio consoles. -->
+                         color for the Zello + DMR Radio consoles. GH #91 audit
+                         found this control WAS a live cross-store bug (GH #79
+                         class): the picker wrote `settings.ptt_button_color` but
+                         inc/navbar.php read it with get_setting(), which reads the
+                         separate `config` table — so the write and the read never
+                         met. Fixed by pointing the reader at get_variable(), the
+                         function that actually reads the `settings` table this
+                         control writes to. Left enabled; it now works. -->
                     <div class="row g-2 mt-1">
                         <div class="col-md-4">
                             <label for="setPttColor" class="form-label form-label-sm">PTT Button Color</label>
@@ -3055,14 +3098,24 @@ foreach ($personnelSections as $sec) {
                         <input type="number" class="form-control form-control-sm" id="setMapZoom" data-key="default_zoom" min="1" max="20" placeholder="12">
                     </div>
                     <div class="col-md-4">
-                        <label for="setMapLayer" class="form-label form-label-sm">Default Layer</label>
-                        <select class="form-select form-select-sm" id="setMapLayer" data-key="default_map_layer">
+                        <label for="setMapLayer" class="form-label form-label-sm">Default Layer <span class="badge bg-secondary fw-normal">Not yet wired</span></label>
+                        <select class="form-select form-select-sm" id="setMapLayer" data-key="default_map_layer" disabled>
                             <option value="0">Street</option>
                             <option value="1">Satellite</option>
                             <option value="2">Terrain</option>
                         </select>
                     </div>
                 </div>
+                <!-- GH #91 audit (2026-08-19): Default Layer saves but nothing
+                     reads it back — api/map-config.php reads default_lat/
+                     default_lng/default_zoom (all live, above) but never
+                     default_map_layer; the map's initial tile layer comes from
+                     the SEPARATE, working map_layer_defaults JSON mechanism
+                     (inc/map-layer-prefs.php). Disabled rather than removed —
+                     unlike the duplicate Timezone field above, this control has
+                     no existing working equivalent for "which basemap loads by
+                     default," so it is a plausible small feature, not a
+                     superseded one. -->
                 <!-- GH #58 — reset a locked Situation overview when a new incident lands off-screen -->
                 <div class="row g-2 mt-1">
                     <div class="col-md-8">
@@ -3189,8 +3242,8 @@ foreach ($personnelSections as $sec) {
                         </div>
                         <div class="col-md-3">
                             <label for="setTileCacheDays" class="form-label form-label-sm">Cache Duration (days)</label>
-                            <input type="number" class="form-control form-control-sm" id="setTileCacheDays" data-key="tile_cache_days" min="0" max="365" placeholder="30">
-                            <div class="form-text small">Ceiling on how long a cached tile is reused. The provider's own cache headers are honoured when they ask for less.</div>
+                            <input type="number" class="form-control form-control-sm" id="setTileCacheDays" data-key="tile_cache_days" min="0" max="9999" placeholder="30">
+                            <div class="form-text small">Ceiling on how long a cached tile is reused. The provider's own cache headers are honoured when they ask for less. Set to 9999 (~27 years) to keep tiles effectively forever, e.g. for an offline-capable install — but the cache size limit below still evicts the oldest tiles under disk pressure regardless of this setting.</div>
                         </div>
                         <div class="col-md-5">
                             <label for="setTileApiKey" class="form-label form-label-sm">Map Tile API Key (if required)</label>
@@ -3375,21 +3428,23 @@ foreach ($personnelSections as $sec) {
                             <label for="setAreaTitle" class="form-label form-label-sm">Area Title</label>
                             <input type="text" class="form-control form-control-sm" id="setAreaTitle" data-key="area_title" maxlength="200" placeholder="My County CAD">
                         </div>
-                        <div class="col-md-3">
-                            <label for="setTimezone" class="form-label form-label-sm">Timezone</label>
-                            <input type="text" class="form-control form-control-sm" id="setTimezone" data-key="timezone"
-                                   list="timezoneList" maxlength="50" placeholder="Start typing... e.g. America/">
-                            <datalist id="timezoneList"></datalist>
-                        </div>
                     </div>
+                    <!-- GH #91 audit (2026-08-19): removed a duplicate, dead
+                         "Timezone" free-text field that saved to a `timezone`
+                         settings key nothing ever read. The real, working
+                         timezone control is "Agency Time Zone" under Settings ->
+                         Display Settings -> Time (settings.area_timezone,
+                         applied at every request via config.php). This one
+                         predated it and was never wired to anything — config.php
+                         has only ever read area_timezone. -->
                 </div>
 
                 <div class="settings-group">
                     <div class="settings-group-title">Date &amp; Time Format</div>
                     <div class="row g-2">
                         <div class="col-md-3">
-                            <label for="setTimeFmt" class="form-label form-label-sm">Time Format</label>
-                            <select class="form-select form-select-sm" id="setTimeFmt" data-key="time_format">
+                            <label for="setTimeFmt" class="form-label form-label-sm">Time Format <span class="badge bg-secondary fw-normal">Not yet wired</span></label>
+                            <select class="form-select form-select-sm" id="setTimeFmt" data-key="time_format" disabled>
                                 <option value="24">24-hour (14:30)</option>
                                 <option value="12">12-hour (2:30 PM)</option>
                             </select>
@@ -3397,13 +3452,14 @@ foreach ($personnelSections as $sec) {
                         <div class="col-md-3">
                             <label for="setDateFmt" class="form-label form-label-sm">
                                 Date Format
+                                <span class="badge bg-secondary fw-normal">Not yet wired</span>
                                 <i class="bi bi-question-circle text-body-secondary" tabindex="0"
                                    data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
                                    data-bs-html="true"
                                    data-bs-content="PHP date format codes:<br><b>m</b> = month (01-12)<br><b>d</b> = day (01-31)<br><b>Y</b> = 4-digit year<br><b>y</b> = 2-digit year<br><b>H</b> = 24h hour<br><b>h</b> = 12h hour<br><b>i</b> = minutes<br><b>A</b> = AM/PM<br><br>Examples:<br><code>m/d/Y</code> = 03/16/2026<br><code>d-m-Y</code> = 16-03-2026<br><code>Y-m-d</code> = 2026-03-16"
                                    title="Date format help"></i>
                             </label>
-                            <input type="text" class="form-control form-control-sm" id="setDateFmt" data-key="date_format" maxlength="20" placeholder="m/d/Y">
+                            <input type="text" class="form-control form-control-sm" id="setDateFmt" data-key="date_format" maxlength="20" placeholder="m/d/Y" disabled>
                         </div>
                         <div class="col-md-3">
                             <label for="setRecentMins" class="form-label form-label-sm">
@@ -3455,6 +3511,14 @@ foreach ($personnelSections as $sec) {
                                 <option value="nmi">Nautical miles (nmi)</option>
                             </select>
                         </div>
+                    </div>
+                    <!-- GH #91 audit (2026-08-19): Time Format and Date Format save
+                         but nothing reads either key — every date/time display in
+                         the app uses a fixed format. Recent Close, Stale Location,
+                         and Distance Unit ARE all genuinely consumed (grep confirms
+                         real readers) and are unaffected. -->
+                    <div class="form-text small text-body-secondary mt-1">
+                        <i class="bi bi-slash-circle me-1"></i>Fields marked "Not yet wired" save but have no effect yet (tracked in GH #91).
                     </div>
                 </div>
 
@@ -3769,23 +3833,40 @@ foreach ($personnelSections as $sec) {
                             </div>
                         </div>
                         <div class="col-md-8">
-                            <label class="form-label form-label-sm" for="setLoginPanelBanner">Login Banner Text</label>
-                            <input type="text" class="form-control form-control-sm" id="setLoginPanelBanner" data-key="login_banner" placeholder="Displayed on the login page">
+                            <label class="form-label form-label-sm" for="setLoginPanelBanner">Login Banner Text <span class="badge bg-secondary fw-normal">Not yet wired</span></label>
+                            <input type="text" class="form-control form-control-sm" id="setLoginPanelBanner" data-key="login_banner" placeholder="Displayed on the login page" disabled>
                         </div>
                     </div>
+                    <!-- GH #91 audit (2026-08-19): login_banner, login_userlist,
+                         and require_https all save to the `settings` table but
+                         nothing reads any of the three back — login.php shows
+                         only the separate, working CJIS click-through notice
+                         (cjis_login_notice_enabled/_text) and never queries these.
+                         require_https in particular looks like a security control
+                         and is not one: inc/https.php's is_https()/is_https_verified()
+                         detect the CURRENT request's scheme, they do not enforce or
+                         redirect based on this toggle. Disabled rather than wired up
+                         here — a redirect-on-toggle needs care around trusted-proxy
+                         detection (see inc/https.php's own docblock) to avoid a
+                         redirect loop for operators behind a reverse proxy, and that
+                         is a real change deserving its own review, not a byproduct
+                         of a dead-control sweep. -->
                     <div class="row g-2 mt-1">
                         <div class="col-md-6">
                             <div class="form-check">
-                                <input type="checkbox" class="form-check-input" data-key="login_userlist" id="setShowUserList">
-                                <label class="form-check-label" for="setShowUserList">Show user list on login page</label>
+                                <input type="checkbox" class="form-check-input" data-key="login_userlist" id="setShowUserList" disabled>
+                                <label class="form-check-label" for="setShowUserList">Show user list on login page <span class="badge bg-secondary fw-normal">Not yet wired</span></label>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="form-check">
-                                <input type="checkbox" class="form-check-input" data-key="require_https" id="setRequireHttps">
-                                <label class="form-check-label" for="setRequireHttps">Require HTTPS</label>
+                                <input type="checkbox" class="form-check-input" data-key="require_https" id="setRequireHttps" disabled>
+                                <label class="form-check-label" for="setRequireHttps">Require HTTPS <span class="badge bg-secondary fw-normal">Not yet wired</span></label>
                             </div>
                         </div>
+                    </div>
+                    <div class="form-text small text-body-secondary mt-1">
+                        <i class="bi bi-slash-circle me-1"></i>Fields marked "Not yet wired" save but have no effect yet (tracked in GH #91).
                     </div>
                     <div class="row g-2 mt-1">
                         <div class="col-12">
@@ -5094,9 +5175,14 @@ foreach ($personnelSections as $sec) {
                             <div class="form-text">Proxy handles JWT auth server-side. Direct mode requires a dev auth token.</div>
                         </div>
                         <div class="col-md-4">
-                            <label for="zelloRetention" class="form-label form-label-sm">Message Retention (days)</label>
+                            <label for="zelloRetention" class="form-label form-label-sm">Message Retention (days) <span class="badge bg-secondary fw-normal">Not yet wired</span></label>
                             <input type="number" class="form-control form-control-sm" id="zelloRetention" data-key="zello_retention_days"
-                                   placeholder="90" min="1" max="365">
+                                   placeholder="90" min="1" max="365" disabled>
+                            <!-- GH #91 audit (2026-08-19): no purge job of any kind
+                                 reads this — Zello messages/audio are never
+                                 auto-purged today. Wiring this up means writing
+                                 the cleanup job itself, not just reading a
+                                 setting; out of scope for this sweep. -->
                             <div class="form-text">Auto-purge messages and audio older than this. Default: <code>90</code> days.</div>
                         </div>
                     </div>
@@ -5174,9 +5260,9 @@ foreach ($personnelSections as $sec) {
                             <div class="form-text">Primary dispatch channel for voice communication.</div>
                         </div>
                         <div class="col-md-4">
-                            <label for="zelloAlertChannel" class="form-label form-label-sm">Alert Channel (optional)</label>
+                            <label for="zelloAlertChannel" class="form-label form-label-sm">Alert Channel (optional) <span class="badge bg-secondary fw-normal">Not yet wired</span></label>
                             <input type="text" class="form-control form-control-sm" id="zelloAlertChannel" data-key="zello_alert_channel"
-                                   placeholder="alerts">
+                                   placeholder="alerts" disabled>
                             <div class="form-text">Channel for automated text alerts and status updates.</div>
                         </div>
                         <div class="col-md-4">
@@ -5186,20 +5272,25 @@ foreach ($personnelSections as $sec) {
                             <div class="form-text">Comma-separated. Zello Work supports up to 100 channels.</div>
                         </div>
                     </div>
+                    <!-- GH #91 audit (2026-08-19): zello_alert_channel saves but
+                         nothing reads it — no automated alert/status-update path
+                         posts to a Zello channel today. Dispatch Channel and
+                         Additional Channels ARE read (proxy/zello-proxy.php's
+                         $config array) and are unaffected. -->
                 </div>
 
                 <div class="settings-group">
-                    <div class="settings-group-title">Audio Settings</div>
+                    <div class="settings-group-title">Audio Settings <span class="badge bg-secondary fw-normal">Not yet wired</span></div>
                     <div class="row g-2">
                         <div class="col-md-3">
                             <label for="zelloCodec" class="form-label form-label-sm">Codec</label>
-                            <select class="form-select form-select-sm" id="zelloCodec" data-key="zello_codec">
+                            <select class="form-select form-select-sm" id="zelloCodec" data-key="zello_codec" disabled>
                                 <option value="opus">Opus (recommended)</option>
                             </select>
                         </div>
                         <div class="col-md-3">
                             <label for="zelloSampleRate" class="form-label form-label-sm">Sample Rate</label>
-                            <select class="form-select form-select-sm" id="zelloSampleRate" data-key="zello_sample_rate">
+                            <select class="form-select form-select-sm" id="zelloSampleRate" data-key="zello_sample_rate" disabled>
                                 <option value="16000">16 kHz (default)</option>
                                 <option value="8000">8 kHz (low bandwidth)</option>
                                 <option value="24000">24 kHz (high quality)</option>
@@ -5208,7 +5299,7 @@ foreach ($personnelSections as $sec) {
                         </div>
                         <div class="col-md-3">
                             <label for="zelloFrameDuration" class="form-label form-label-sm">Frame Duration (ms)</label>
-                            <select class="form-select form-select-sm" id="zelloFrameDuration" data-key="zello_frame_duration">
+                            <select class="form-select form-select-sm" id="zelloFrameDuration" data-key="zello_frame_duration" disabled>
                                 <option value="20">20ms (default)</option>
                                 <option value="40">40ms</option>
                                 <option value="60">60ms</option>
@@ -5216,35 +5307,44 @@ foreach ($personnelSections as $sec) {
                         </div>
                         <div class="col-md-3">
                             <label for="zelloListenOnly" class="form-label form-label-sm">Mode</label>
-                            <select class="form-select form-select-sm" id="zelloListenOnly" data-key="zello_listen_only">
+                            <select class="form-select form-select-sm" id="zelloListenOnly" data-key="zello_listen_only" disabled>
                                 <option value="0">Full (talk + listen)</option>
                                 <option value="1">Listen only</option>
                             </select>
                         </div>
                     </div>
+                    <div class="form-text small text-body-secondary mt-1">
+                        <i class="bi bi-slash-circle me-1"></i>All four fields above save but have no effect yet — the proxy
+                        (proxy/zello-proxy.php, ZelloUpstream.php) detects codec/sample-rate/frame-duration from the incoming
+                        audio stream itself and runs full talk+listen unconditionally (tracked in GH #91).
+                    </div>
                 </div>
 
                 <div class="settings-group">
-                    <div class="settings-group-title">Behavior</div>
+                    <div class="settings-group-title">Behavior <span class="badge bg-secondary fw-normal">Not yet wired</span></div>
                     <div class="row g-2">
                         <div class="col-md-4">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="zelloAutoConnect" data-key="zello_auto_connect">
+                                <input class="form-check-input" type="checkbox" id="zelloAutoConnect" data-key="zello_auto_connect" disabled>
                                 <label class="form-check-label small" for="zelloAutoConnect">Auto-connect on page load</label>
                             </div>
                         </div>
                         <div class="col-md-4">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="zelloTextAlerts" data-key="zello_text_alerts">
+                                <input class="form-check-input" type="checkbox" id="zelloTextAlerts" data-key="zello_text_alerts" disabled>
                                 <label class="form-check-label small" for="zelloTextAlerts">Send dispatch alerts as text messages</label>
                             </div>
                         </div>
                         <div class="col-md-4">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="zelloTranscribe" data-key="zello_transcribe">
+                                <input class="form-check-input" type="checkbox" id="zelloTranscribe" data-key="zello_transcribe" disabled>
                                 <label class="form-check-label small" for="zelloTranscribe">Enable voice transcription (Work only)</label>
                             </div>
                         </div>
+                    </div>
+                    <div class="form-text small text-body-secondary mt-1">
+                        <i class="bi bi-slash-circle me-1"></i>All three switches above save but have no effect yet — none is
+                        consulted by the Zello widget or proxy today (tracked in GH #91).
                     </div>
                 </div>
 
@@ -5443,7 +5543,13 @@ foreach ($personnelSections as $sec) {
                         </div>
                         <div class="col-md-4">
                             <label for="roadCondAddress" class="form-label form-label-sm">Address / Location</label>
-                            <input type="text" class="form-control form-control-sm" id="roadCondAddress" name="address" maxlength="255">
+                            <div class="input-group input-group-sm">
+                                <input type="text" class="form-control form-control-sm" id="roadCondAddress" name="address" maxlength="255">
+                                <button type="button" class="btn btn-outline-secondary" id="btnRoadCondLookup" title="Look up coordinates from address">
+                                    <i class="bi bi-search"></i> Lookup
+                                </button>
+                            </div>
+                            <div id="roadCondGeoStatus" class="form-text small"></div>
                         </div>
                         <div class="col-md-4">
                             <label for="roadCondType" class="form-label form-label-sm">Condition Type</label>
@@ -5464,6 +5570,9 @@ foreach ($personnelSections as $sec) {
                         <div class="col-md-2">
                             <label for="roadCondLng" class="form-label form-label-sm">Longitude</label>
                             <input type="number" class="form-control form-control-sm" id="roadCondLng" name="lng" step="any" value="0">
+                            <div id="roadCondNoMapHint" class="form-text small text-warning d-none">
+                                <i class="bi bi-exclamation-triangle"></i> No location set &mdash; this report won't appear on the map overlay.
+                            </div>
                         </div>
                     </div>
                     <div class="d-flex gap-2 mt-3">
@@ -6739,6 +6848,68 @@ foreach ($personnelSections as $sec) {
                 </div>
                 <div id="mapCatsBody">
                     <div class="text-body-secondary p-3 small">Loading categories…</div>
+                </div>
+            </div>
+
+            <!-- Eric (2026-08-19): New Category / Edit Category used to be a
+                 chain of native prompt()/confirm() dialogs -- including asking
+                 for a color as raw hex text with no picker, and a confirm()
+                 titled "Show by default on the map?" offering only OK/Cancel
+                 where a real Yes/No choice belongs. One modal now backs both
+                 New and Edit, mirroring the GH#39 Places-panel fix just above
+                 this panel: a real color picker synced with a hex text field
+                 (syncColorPair(), the same helper the Severity Levels panel
+                 uses), an icon field with a live glyph preview, and a
+                 checkbox for default visibility instead of a confirm(). -->
+            <div class="modal fade" id="mapCatEditModal" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header py-2">
+                            <h6 class="modal-title" id="mapCatEditModalTitle"><i class="bi bi-layers-fill me-1"></i>New Category</h6>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body py-2">
+                            <input type="hidden" id="mapCatEditId" value="">
+                            <div class="mb-2">
+                                <label class="form-label form-label-sm mb-0" for="mapCatEditName">Name <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control form-control-sm" id="mapCatEditName" maxlength="24" placeholder="e.g. Patrol Zones">
+                            </div>
+                            <div class="row g-2 mb-2">
+                                <div class="col-md-6">
+                                    <label class="form-label form-label-sm mb-0" for="mapCatEditColor">Color</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="color" class="form-control form-control-color" id="mapCatEditColorPicker" value="#1976d2" style="width:38px;" aria-label="Category color picker" title="Choose a color">
+                                        <input type="text" class="form-control" id="mapCatEditColor" maxlength="7" placeholder="#1976d2">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label form-label-sm mb-0" for="mapCatEditIcon">Icon <i class="bi bi-circle text-body-secondary" id="mapCatEditIconPreview"></i></label>
+                                    <input type="text" class="form-control form-control-sm" id="mapCatEditIcon" maxlength="32" placeholder="circle">
+                                </div>
+                            </div>
+                            <div class="form-text small mb-2 mt-n1">
+                                A <a href="https://icons.getbootstrap.com/" target="_blank" rel="noopener">Bootstrap Icons</a> name, without the "bi-" prefix (e.g. shield, flag, map).
+                            </div>
+                            <div class="row g-2 align-items-center">
+                                <div class="col-md-5">
+                                    <label class="form-label form-label-sm mb-0" for="mapCatEditSort">Sort Order</label>
+                                    <input type="number" class="form-control form-control-sm" id="mapCatEditSort" value="50" min="0">
+                                </div>
+                                <div class="col-md-7">
+                                    <div class="form-check form-switch mt-4">
+                                        <input class="form-check-input" type="checkbox" id="mapCatEditDefaultVisible" checked>
+                                        <label class="form-check-label form-label-sm" for="mapCatEditDefaultVisible">Show by default on the map</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer py-1">
+                            <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-sm btn-primary" id="btnMapCatEditSave">
+                                <i class="bi bi-check-lg me-1"></i>Save
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -8118,6 +8289,54 @@ foreach ($personnelSections as $sec) {
             </div>
         </div>
 
+        <!-- Patient Insurance Types (GH TicketsCAD#68, 2026-08-18).
+             Populates the Insurance dropdown on a patient's Add/Edit form
+             (incident-detail.php's Patients card). Writes to the
+             `insurance` table — restored v3 functionality (tickets/patient.php
+             had the identical admin "Insurance table maint" link). -->
+        <div class="config-panel" id="panel-patient-insurance">
+            <div class="config-panel-title">
+                <i class="bi bi-shield-check text-primary"></i> Patient Insurance Types
+            </div>
+            <p class="text-body-secondary small mb-3">
+                Insurance carriers/types shown in the Insurance dropdown when a dispatcher adds or edits a patient on an incident (e.g. <code>Medicare</code>, <code>Private</code>, <code>Self-Pay</code>). Populate this list with the values your org actually uses.
+            </p>
+            <div class="card border-0 bg-body-tertiary mb-3">
+                <div class="card-body py-2">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-6">
+                            <label class="form-label form-label-sm mb-0" for="insValue">Name</label>
+                            <input type="text" class="form-control form-control-sm" id="insValue" maxlength="64" placeholder="e.g. Medicare">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label form-label-sm mb-0" for="insSort">Sort</label>
+                            <input type="number" class="form-control form-control-sm" id="insSort" value="0" min="0">
+                        </div>
+                        <div class="col-md-auto">
+                            <button type="button" class="btn btn-sm btn-primary" id="btnAddInsType">
+                                <i class="bi bi-plus-lg me-1"></i>Add
+                            </button>
+                        </div>
+                    </div>
+                    <input type="hidden" id="insEditId" value="0">
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th class="ps-3">Name</th>
+                            <th class="text-center" style="width:60px;">Sort</th>
+                            <th class="text-center" style="width:90px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="insTypesBody">
+                        <tr><td colspan="3" class="text-center text-body-secondary py-3">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <!-- ── Standard Messages ─────────────────────────────────── -->
         <div class="config-panel" id="panel-std-messages">
             <div class="config-panel-title">
@@ -8137,74 +8356,92 @@ foreach ($personnelSections as $sec) {
             <p class="text-body-secondary small mb-2">Real-time text chat between logged-in TicketsCAD users. Backed by Server-Sent Events (no external dependencies; works on the same TLS port as the rest of the app).</p>
 
             <form id="chatSettingsForm">
+                <!-- GH #91 audit (2026-08-19): every control in "Retention &
+                     Persistence" and "Channel Structure" below saves to the
+                     `settings` table and nothing reads any of the six keys back
+                     — the chat feature (inc/broker.php, the local_chat channel,
+                     SSE-driven chat UI) runs with fixed built-in behavior
+                     regardless of what's configured here (retention/max-length
+                     are unenforced, room structure and typing/read-receipts are
+                     not conditional on these toggles). Disabled with a "Not yet
+                     wired" note rather than removed — the CROSS-PLATFORM
+                     BRIDGES group below is untouched: those four checkboxes
+                     (chat_bridge_*) are real, wired to inc/chat-bridge.php
+                     (GH #89), a separate and already-completed fix. -->
                 <div class="settings-group">
                     <div class="settings-group-title">Retention &amp; Persistence</div>
                     <div class="row g-2">
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm" for="setChatRetentionDays">Message retention (days)</label>
-                            <input type="number" class="form-control form-control-sm" id="setChatRetentionDays" data-key="chat_retention_days" min="1" max="3650" placeholder="365">
+                            <label class="form-label form-label-sm" for="setChatRetentionDays">Message retention (days) <span class="badge bg-secondary fw-normal">Not yet wired</span></label>
+                            <input type="number" class="form-control form-control-sm" id="setChatRetentionDays" data-key="chat_retention_days" min="1" max="3650" placeholder="365" disabled>
                             <div class="form-text small">Messages older than this are purged by the nightly cleanup job. 0 disables retention (forever).</div>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm" for="setChatMaxChars">Max message length</label>
-                            <input type="number" class="form-control form-control-sm" id="setChatMaxChars" data-key="chat_max_chars" min="32" max="8000" placeholder="2000">
+                            <label class="form-label form-label-sm" for="setChatMaxChars">Max message length <span class="badge bg-secondary fw-normal">Not yet wired</span></label>
+                            <input type="number" class="form-control form-control-sm" id="setChatMaxChars" data-key="chat_max_chars" min="32" max="8000" placeholder="2000" disabled>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label form-label-sm" for="setChatDmClearLogout">Idle DM clear-on-logout</label>
-                            <select class="form-select form-select-sm" id="setChatDmClearLogout" data-key="chat_dm_clear_logout">
+                            <label class="form-label form-label-sm" for="setChatDmClearLogout">Idle DM clear-on-logout <span class="badge bg-secondary fw-normal">Not yet wired</span></label>
+                            <select class="form-select form-select-sm" id="setChatDmClearLogout" data-key="chat_dm_clear_logout" disabled>
                                 <option value="off">Off — keep history</option>
                                 <option value="user">User chooses at logout</option>
                                 <option value="force">Force-clear on logout</option>
                             </select>
                         </div>
                     </div>
+                    <div class="form-text small text-body-secondary mt-1">
+                        <i class="bi bi-slash-circle me-1"></i>Fields marked "Not yet wired" save but have no effect yet (tracked in GH #91).
+                    </div>
                 </div>
 
                 <div class="settings-group">
-                    <div class="settings-group-title">Channel Structure</div>
+                    <div class="settings-group-title">Channel Structure <span class="badge bg-secondary fw-normal">Not yet wired</span></div>
                     <div class="row g-2">
                         <div class="col-md-4">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="setChatAllRoom" data-key="chat_all_room_enabled">
+                                <input class="form-check-input" type="checkbox" id="setChatAllRoom" data-key="chat_all_room_enabled" disabled>
                                 <label class="form-check-label small" for="setChatAllRoom">Global "All" room (everyone)</label>
                             </div>
                         </div>
                         <div class="col-md-4">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="setChatRoleRooms" data-key="chat_role_rooms_enabled">
+                                <input class="form-check-input" type="checkbox" id="setChatRoleRooms" data-key="chat_role_rooms_enabled" disabled>
                                 <label class="form-check-label small" for="setChatRoleRooms">Per-role rooms (Dispatcher, Field Unit, etc.)</label>
                             </div>
                         </div>
                         <div class="col-md-4">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="setChatIncRooms" data-key="chat_incident_rooms_enabled">
+                                <input class="form-check-input" type="checkbox" id="setChatIncRooms" data-key="chat_incident_rooms_enabled" disabled>
                                 <label class="form-check-label small" for="setChatIncRooms">Auto-create room for each open incident</label>
                             </div>
                         </div>
                         <div class="col-md-4">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="setChatDM" data-key="chat_dm_enabled">
+                                <input class="form-check-input" type="checkbox" id="setChatDM" data-key="chat_dm_enabled" disabled>
                                 <label class="form-check-label small" for="setChatDM">Allow direct messages between users</label>
                             </div>
                         </div>
                         <div class="col-md-4">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="setChatTyping" data-key="chat_typing_indicators">
+                                <input class="form-check-input" type="checkbox" id="setChatTyping" data-key="chat_typing_indicators" disabled>
                                 <label class="form-check-label small" for="setChatTyping">Show typing indicators</label>
                             </div>
                         </div>
                         <div class="col-md-4">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="setChatReadReceipts" data-key="chat_read_receipts">
+                                <input class="form-check-input" type="checkbox" id="setChatReadReceipts" data-key="chat_read_receipts" disabled>
                                 <label class="form-check-label small" for="setChatReadReceipts">Read receipts</label>
                             </div>
                         </div>
+                    </div>
+                    <div class="form-text small text-body-secondary mt-1">
+                        <i class="bi bi-slash-circle me-1"></i>All six switches above save but have no effect yet — chat rooms, DMs, typing indicators, and read receipts currently run with fixed built-in behavior (tracked in GH #91).
                     </div>
                 </div>
 
                 <div class="settings-group">
                     <div class="settings-group-title">Cross-platform Bridges</div>
-                    <p class="form-text small mb-2">Chat messages can fan out to external networks. Configure each in its own panel; this section only toggles the bridge on/off.</p>
+                    <p class="form-text small mb-2">Public chat-room messages can fan out to external networks as they're sent. Configure delivery for each channel in its own panel (Slack, Telegram, Email, Mesh Radio under Settings); this section only turns the bridge on or off. Direct/private messages are never bridged, on any of these — see <a href="documentation/?doc=CHAT-BRIDGE" target="_blank" rel="noopener">Chat Bridge documentation</a>.</p>
                     <div class="row g-2">
                         <div class="col-md-3">
                             <div class="form-check form-switch">
@@ -8221,7 +8458,7 @@ foreach ($personnelSections as $sec) {
                         <div class="col-md-3">
                             <div class="form-check form-switch">
                                 <input class="form-check-input" type="checkbox" id="setChatBridgeEmail" data-key="chat_bridge_email">
-                                <label class="form-check-label small" for="setChatBridgeEmail">Bridge → Email (digest)</label>
+                                <label class="form-check-label small" for="setChatBridgeEmail">Bridge → Email</label>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -8231,6 +8468,7 @@ foreach ($personnelSections as $sec) {
                             </div>
                         </div>
                     </div>
+                    <p class="form-text small mb-0 mt-1">Each toggle creates or enables/disables a system-managed rule under <a href="settings.php#message-routing">Message Routing</a> (source: Local Chat). Fine-tune keywords, incident types, or transforms there — this checkbox only controls whether it's active.</p>
                 </div>
 
                 <div class="mt-2">
@@ -9025,6 +9263,7 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                             <div class="col-md-6">
                                 <label for="setAprsRecvFilter" class="form-label form-label-sm">
                                     Receive Filter (listener)
+                                    <span class="badge bg-secondary fw-normal">Not yet wired</span>
                                     <i class="bi bi-question-circle text-body-secondary" tabindex="0"
                                        data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
                                        data-bs-html="true"
@@ -9033,13 +9272,22 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                                 </label>
                                 <div class="input-group input-group-sm">
                                     <input type="text" class="form-control form-control-sm" id="setAprsRecvFilter"
-                                           data-key="aprs_recv_filter" placeholder="r/45.0/-93.0/200">
+                                           data-key="aprs_recv_filter" placeholder="r/45.0/-93.0/200" disabled>
                                     <button type="button" class="btn btn-outline-secondary" id="btnAprsFilterMap"
                                             data-bs-toggle="modal" data-bs-target="#aprsFilterMapModal"
-                                            title="Pick a center + radius on a map">
+                                            title="Pick a center + radius on a map" disabled>
                                         <i class="bi bi-geo-alt"></i> Map
                                     </button>
                                 </div>
+                                <!-- GH #91 audit (2026-08-19): saves but nothing reads it —
+                                     confirmed by config.js's own 2026-0x fix comment nearby
+                                     ("never saved aprs_recv_filter at all despite the markup
+                                     promising that"), which fixed the SAVE path but the
+                                     listener (inc/channels/aprs.php / tools/aprs-poller.php)
+                                     never consults the key to build its APRS-IS filter
+                                     command either. Disabled rather than removed — the field,
+                                     map picker, and backend hook (an APRS-IS `# filter`
+                                     command) are all plausible, it's just never connected. -->
                                 <div class="form-text">Default 200km around Twin Cities. Restart listener after change.</div>
                             </div>
                         </div>
@@ -9292,7 +9540,7 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                 see <a href="mesh-console.php">Mesh Console</a> for the bridges themselves and
                 the channels they're assigned to. This panel only controls the <em>ATAK policy</em>
                 layered onto those channels (sensitive flag, push toggles, marker action).
-                Operator guide: <a href="docs/ATAK-SETUP.md" target="_blank" rel="noopener">docs/ATAK-SETUP.md</a>.
+                Operator guide: <a href="documentation/?doc=ATAK-SETUP" target="_blank" rel="noopener">docs/ATAK-SETUP.md</a>.
             </p>
 
             <!-- ── Channels list (mesh_channels with ATAK policy) ───── -->
@@ -9563,7 +9811,7 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                 Authentication and monitoring for the native Traccar / OpenGTS
                 HTTP receiver. OwnTracks has its own panel under
                 <button class="btn btn-link btn-sm p-0 align-baseline" data-tab="owntracks-defaults">OwnTracks Defaults</button>.
-                Operator guide: <a href="docs/TRACCAR-SETUP.md" target="_blank" rel="noopener">docs/TRACCAR-SETUP.md</a>.
+                Operator guide: <a href="documentation/?doc=TRACCAR-SETUP" target="_blank" rel="noopener">docs/TRACCAR-SETUP.md</a>.
             </p>
 
             <!-- ── Auth & guard flags ───────────────────────────── -->
@@ -9630,10 +9878,20 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                         <div class="col-md-4">
                             <label for="setLocIngestRateLimit" class="form-label form-label-sm">
                                 Rate limit (per IP, per minute)
+                                <span class="badge bg-secondary fw-normal">Not yet wired</span>
                             </label>
                             <input type="number" class="form-control form-control-sm" id="setLocIngestRateLimit"
                                    data-key="location_ingest_rate_limit_per_min"
-                                   min="60" max="6000" placeholder="600">
+                                   min="60" max="6000" placeholder="600" disabled>
+                            <!-- GH #91 audit (2026-08-19): the cap IS enforced —
+                                 api/location.php calls rate_limit_ok($key, 600, 60) on
+                                 every ingest — but 600 is a literal, hardcoded in both
+                                 call sites, not read from this setting. Changing this
+                                 field has no effect on the real limit. Disabled rather
+                                 than removed: wiring it up is a one-line change per call
+                                 site plus a test, a real (small) fix, not done here to
+                                 keep this sweep to the audit + the highest-confidence
+                                 fixes only. -->
                             <div class="form-text">Default 600. A misconfigured device flooding the endpoint hits this cap.</div>
                         </div>
                     </div>
@@ -10114,7 +10372,7 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                     <i class="bi bi-plus-lg me-1"></i>Add Caption
                 </button>
                 <small class="text-body-secondary ms-2">
-                    See <a href="docs/I18N-GUIDE.md" target="_blank">I18N-GUIDE.md</a> for retrofit conventions and the full key namespace.
+                    See <a href="documentation/?doc=I18N-GUIDE" target="_blank">I18N-GUIDE.md</a> for retrofit conventions and the full key namespace.
                 </small>
             </div>
         </div>

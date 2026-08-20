@@ -1,0 +1,46 @@
+/**
+ * NewUI v4.0 — Facility Self-Service Portal Styles (Phase 145, GH#90)
+ *
+ * Deliberately minimal — this page has no navbar and no other chrome to
+ * coordinate with. Uses Bootstrap CSS variables throughout so both
+ * light and dark themes (data-bs-theme on <html>) render correctly.
+ */
+
+body {
+    background-color: var(--bs-tertiary-bg);
+}
+
+.fp-header {
+    background-color: var(--bs-body-bg);
+    border-bottom: 2px solid var(--bs-border-color);
+}
+
+.fp-incident-item {
+    border-left: 4px solid transparent;
+}
+
+.fp-incident-item .fp-severity-dot {
+    display: inline-block;
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 50%;
+    margin-right: 0.35rem;
+}
+
+.fp-leg-badge {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.fp-unit-row {
+    font-size: 0.85rem;
+}
+
+.fp-unit-row .fp-unit-status-dot {
+    display: inline-block;
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    margin-right: 0.3rem;
+}

@@ -30,8 +30,14 @@ t('stream.php entitlement map mirrors inc/access.php permission lists',
     strpos($stream, "'incident:%'") !== false && strpos($stream, "'responder:%'") !== false &&
     strpos($stream, "'chat:%'") !== false &&
     strpos($stream, "'screen.incidents'") !== false && strpos($stream, "'screen.units'") !== false);
+// Phase 142 (2026-08-17): the admin branch's IN(...) list widened to
+// include 'org' (cross-org-share recipients -- Super Admin already
+// reaches every org via org_visible_ids()'s own null-means-unrestricted
+// contract, so 'org' rides along with 'admin'/'group'/'entitled' rather
+// than needing a separate clause for them). Assert the widened list
+// rather than the pre-Phase-142 exact string, which no longer appears.
 t('admins receive entitled events; non-admin RBAC holders via prefix clause',
-    strpos($stream, "IN ('admin','group','entitled')") !== false &&
+    strpos($stream, "IN ('admin','group','entitled','org')") !== false &&
     strpos($stream, "IN ('group','entitled') AND `event_type` LIKE ?") !== false);
 // mobile.js must still subscribe to the real event names (regression from the
 // earlier #13 rounds — these are the events the entitled scope now delivers).

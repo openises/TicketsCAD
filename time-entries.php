@@ -275,7 +275,7 @@ $can_approve = rbac_can('time_entry.approve');
         Tip: hours roll up monthly and annually for agency reporting. Export raw entries via
         <code>GET /api/time-entries.php?member_id=N</code> or the rollup via
         <code>GET /api/time-entries.php?summary=1&amp;member_id=N</code>.
-        See <a href="docs/NEWUI-USER-GUIDE.md#part-13b-logging-volunteer-hours">user guide</a>.
+        See <a href="documentation/?doc=NEWUI-USER-GUIDE#part-13b-logging-volunteer-hours">user guide</a>.
     </p>
 </main>
 

@@ -47,6 +47,7 @@ api_guard_install();
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/security-labels.php';
 require_once __DIR__ . '/../inc/public-board.php';
+require_once __DIR__ . '/../inc/severity.php';
 
 $prevDisplay = ini_get('display_errors');
 ini_set('display_errors', '0');
@@ -153,7 +154,13 @@ try {
     );
 
     $status_labels = [1 => 'Closed', 2 => 'Open', 3 => 'Scheduled'];
-    $severity_labels = [0 => 'Low', 1 => 'Medium', 2 => 'High'];
+    // GH#87/GH#88 (2026-08-19) — was a hardcoded 3-entry map (a fourth
+    // spelling of the same 3 integers vs. every other screen — see
+    // GH#88's own investigation table). Sourced from the configurable
+    // severity_levels table now; kept as a fallback below since
+    // pb_build_public_record()'s own severity_text (inc/public-board.php)
+    // already covers the normal case.
+    $severity_labels = severity_label_map();
 
     foreach ($rows as $row) {
         // Phase 138 — Security Label gate. routing_allow_broadcast = 0

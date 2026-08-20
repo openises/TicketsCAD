@@ -21,12 +21,14 @@ REM  "run once a day" -- that describes the RETENTION cadence, not how often
 REM  this script may safely call them. Both are idempotent cutoff-date
 REM  queries (SELECT eligible rows / DELETE WHERE created_at < cutoff):
 REM  calling them every minute costs one cheap query on the minutes nothing
-REM  is due and is otherwise correct. One task drives all five ticks: fewer
-REM  moving parts than five separate tasks, and they are always in step.
+REM  is due and is otherwise correct. One task drives all six ticks: fewer
+REM  moving parts than six separate tasks, and they are always in step.
 REM  (channel_receive_tick, added Phase 134, is a no-op sweep -- 0 channels
 REM  polled -- on any install that hasn't opted a channel in to inbound
 REM  polling, so scheduling it unconditionally alongside the others is safe
-REM  and harmless.)
+REM  and harmless. org_relationship_activation_cleanup, added Phase 143, is
+REM  the same shape: a no-op sweep -- 0 expired-but-open activations -- on
+REM  any install that has never used a standing cross-org relationship.)
 REM
 REM  audit_log_purge_tick and message_log_purge_tick were missing from this
 REM  file entirely until 2026-08-14 -- each got a systemd timer the day it
@@ -85,7 +87,10 @@ if errorlevel 1 set "RC=1"
 "%TICKETSCAD_PHP%" tools\message_log_purge_tick.php >> "%LOGDIR%\message_log_purge_tick.log" 2>&1
 if errorlevel 1 set "RC=1"
 
-REM All five jobs always run: a failure in one must not stop the others. The
+"%TICKETSCAD_PHP%" tools\org_relationship_cleanup_tick.php >> "%LOGDIR%\org_relationship_cleanup_tick.log" 2>&1
+if errorlevel 1 set "RC=1"
+
+REM All six jobs always run: a failure in one must not stop the others. The
 REM exit code reports whether any of them failed, so Task Scheduler's
 REM "Last Run Result" is meaningful.
 exit /b %RC%

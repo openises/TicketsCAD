@@ -83,7 +83,7 @@ $active_page = 'compliance-dashboard';
             <button type="button" class="btn btn-sm btn-outline-secondary" id="btnRefreshCompliance">
                 <i class="bi bi-arrow-clockwise me-1"></i><?php echo e(t('btn.refresh', 'Refresh')); ?>
             </button>
-            <a href="docs/SECURITY-POLICY.md" target="_blank" class="btn btn-sm btn-outline-info">
+            <a href="documentation/?doc=SECURITY-POLICY" target="_blank" class="btn btn-sm btn-outline-info">
                 <i class="bi bi-file-text me-1"></i><?php echo e(t('compliance_dash.btn_policy_doc', 'Security Policy Doc')); ?>
             </a>
             <a href="settings.php" class="btn btn-sm btn-outline-secondary">

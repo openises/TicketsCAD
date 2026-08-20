@@ -58,7 +58,8 @@
         facilities: [],
         users: [],
         warnLocations: [],
-        secLabels: null // null = not yet fetched; [] = fetched, none defined
+        secLabels: null, // null = not yet fetched; [] = fetched, none defined
+        severityLevels: null // GH#87/GH#88 — null = not yet fetched; [] = fetched, none defined
     };
 
     // SearchableSelect instance for the Link-to-Member picker on the
@@ -378,6 +379,7 @@
         else if (tab === 'incident-dispositions') loadDispositions();
         else if (tab === 'par-checks')       loadPARConfig();
         else if (tab === 'net-checkins')     loadNetCheckinConfig();
+        else if (tab === 'patient-insurance') loadInsuranceTypes();
         else if (tab === 'security-labels')  loadSecurityLabels();
         else if (tab === 'pending-messages') loadPendingMessages();
         else if (tab === 'road-conditions')  loadRoadConditions();
@@ -2034,37 +2036,100 @@
         body.innerHTML = html;
         window.__mc_cache = cats;
     }
-    function openNewMapCatPrompt() {
-        var name = prompt('Category name (e.g. "Patrol Zones"):'); if (!name) return;
-        var color = prompt('Color (hex, e.g. #1976d2):', '#1976d2') || '#1976d2';
-        var icon = prompt('Bootstrap icon name (e.g. shield, flag, map):', 'circle') || 'circle';
-        var sort = parseInt(prompt('Sort order (lower = first):', '50'), 10) || 50;
-        var defVis = confirm('Show by default on the map?');
-        fetch('api/map-overlay-categories.php?action=create', {
-            method: 'POST', credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ csrf_token: getCsrfToken(), name: name.trim(), color: color, icon: icon, sort_order: sort, default_visible: defVis ? 1 : 0 })
-        }).then(function (r) { return r.json(); })
-          .then(function (data) {
-            if (data && data.error) return showAlert(data.error, 'danger');
-            showAlert('Created "' + data.name + '"', 'success');
-            loadMapOverlayCategories();
-          });
+    // Eric (2026-08-19): New Category / Edit Category used to be a chain of
+    // native prompt()/confirm() dialogs — including asking for a color as
+    // raw hex text with no picker, and a confirm() titled "Show by default
+    // on the map?" offering only OK/Cancel where a real Yes/No choice
+    // belongs. One modal (#mapCatEditModal, settings.php) now backs both
+    // New and Edit — mirrors the GH#39 Places-panel fix just above this
+    // section: bindX()/openX() guarded-bind pattern, bootstrap.Modal.
+    // getOrCreateInstance()/.getInstance(), a real color picker synced with
+    // a hex text field via the SAME syncColorPair() helper the Severity
+    // Levels panel uses, and a checkbox for default visibility instead of a
+    // confirm(). The calling convention is unchanged — btnNewMapCat still
+    // calls openNewMapCatPrompt() and the row action buttons still call
+    // window.__mc_edit(id) — only what happens inside them changed. The API
+    // endpoints and payload shape are unchanged too (api/map-overlay-
+    // categories.php?action=create|update, same field names).
+    function bindMapCatEditModal() {
+        var picker = document.getElementById('mapCatEditColorPicker');
+        var colorText = document.getElementById('mapCatEditColor');
+        if (picker && colorText && !picker._mapcat) {
+            picker._mapcat = true;
+            syncColorPair(picker, colorText);
+        }
+        var iconInput = document.getElementById('mapCatEditIcon');
+        var iconPreview = document.getElementById('mapCatEditIconPreview');
+        if (iconInput && iconPreview && !iconInput._mapcat) {
+            iconInput._mapcat = true;
+            iconInput.addEventListener('input', function () { updateMapCatIconPreview(); });
+        }
+        var saveBtn = document.getElementById('btnMapCatEditSave');
+        if (saveBtn && !saveBtn._mapcat) {
+            saveBtn._mapcat = true;
+            saveBtn.addEventListener('click', saveMapCatEdit);
+        }
     }
+    function updateMapCatIconPreview() {
+        var iconInput = document.getElementById('mapCatEditIcon');
+        var iconPreview = document.getElementById('mapCatEditIconPreview');
+        if (!iconInput || !iconPreview) return;
+        var name = (iconInput.value || '').trim().replace(/^bi-/, '') || 'circle';
+        iconPreview.className = 'bi bi-' + name + ' text-body-secondary';
+    }
+    function openMapCatEditModal(cat) {
+        bindMapCatEditModal();
+        var isEdit = !!(cat && cat.id);
+        document.getElementById('mapCatEditModalTitle').innerHTML = isEdit
+            ? '<i class="bi bi-layers-fill me-1"></i>Edit Category'
+            : '<i class="bi bi-layers-fill me-1"></i>New Category';
+        document.getElementById('mapCatEditId').value = isEdit ? cat.id : '';
+        document.getElementById('mapCatEditName').value = (cat && cat.name) || '';
+        var color = (cat && /^#[0-9a-fA-F]{6}$/.test(cat.color || '')) ? cat.color : '#1976d2';
+        document.getElementById('mapCatEditColor').value = color;
+        document.getElementById('mapCatEditColorPicker').value = color;
+        document.getElementById('mapCatEditIcon').value = (cat && cat.icon) || 'circle';
+        updateMapCatIconPreview();
+        document.getElementById('mapCatEditSort').value = (cat && cat.sort_order !== undefined && cat.sort_order !== null) ? cat.sort_order : 50;
+        // default_visible only comes from the server on an existing category;
+        // a brand-new one defaults ON to match the DB column's own default
+        // (mmarkup_cats.default_visible TINYINT(1) NOT NULL DEFAULT 1).
+        document.getElementById('mapCatEditDefaultVisible').checked = isEdit ? !!Number(cat.default_visible) : true;
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('mapCatEditModal')).show();
+    }
+    function openNewMapCatPrompt() { openMapCatEditModal(null); }
     window.__mc_edit = function (id) {
         var c = (window.__mc_cache || []).find(function (x) { return x.id === id; });
         if (!c) return;
-        var name = prompt('Name:', c.name); if (name === null) return;
-        var color = prompt('Color:', c.color || '#1976d2');
-        var icon = prompt('Icon:', c.icon || 'circle');
-        var sort = parseInt(prompt('Sort order:', c.sort_order), 10);
-        fetch('api/map-overlay-categories.php?action=update', {
+        openMapCatEditModal(c);
+    };
+    function saveMapCatEdit() {
+        var id = document.getElementById('mapCatEditId').value;
+        var name = document.getElementById('mapCatEditName').value.trim();
+        if (!name) { showAlert('Category name is required.', 'warning'); return; }
+        var color = document.getElementById('mapCatEditColor').value.trim() || '#1976d2';
+        var icon = document.getElementById('mapCatEditIcon').value.trim() || 'circle';
+        var sort = parseInt(document.getElementById('mapCatEditSort').value, 10) || 0;
+        var defVis = document.getElementById('mapCatEditDefaultVisible').checked;
+        var isEdit = !!id;
+        var payload = { csrf_token: getCsrfToken(), name: name, color: color, icon: icon, sort_order: sort, default_visible: defVis ? 1 : 0 };
+        if (isEdit) payload.id = parseInt(id, 10);
+        fetch('api/map-overlay-categories.php?action=' + (isEdit ? 'update' : 'create'), {
             method: 'POST', credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ csrf_token: getCsrfToken(), id: id, name: name, color: color, icon: icon, sort_order: sort })
+            body: JSON.stringify(payload)
         }).then(function (r) { return r.json(); })
-          .then(function () { loadMapOverlayCategories(); });
-    };
+          .then(function (data) {
+            if (data && data.error) return showAlert(data.error, 'danger');
+            var modal = bootstrap.Modal.getInstance(document.getElementById('mapCatEditModal'));
+            if (modal) modal.hide();
+            showAlert(isEdit ? 'Saved "' + name + '"' : 'Created "' + (data.name || name) + '"', 'success');
+            loadMapOverlayCategories();
+          })
+          .catch(function (err) {
+            showAlert('Error saving category: ' + err.message, 'danger');
+          });
+    }
     window.__mc_archive = function (id) {
         if (!confirm('Archive this category? Markups in it will become uncategorised.')) return;
         fetch('api/map-overlay-categories.php?action=archive', {
@@ -4225,12 +4290,17 @@
     }
 
     function loadTypes() {
-        apiGet('types').then(function (data) {
-            cache.types = data.rows || [];
-            populateGroupFilter();
-            renderTypes();
-        }).catch(function (err) {
-            document.getElementById('typesStatus').textContent = 'Error: ' + err.message;
+        // GH#87/GH#88 — severity levels must be cached before renderTypes()
+        // runs, so the table's Severity column shows the configured label
+        // instead of a raw integer while the fetch is still in flight.
+        loadSeverityLevelOptions(function () {
+            apiGet('types').then(function (data) {
+                cache.types = data.rows || [];
+                populateGroupFilter();
+                renderTypes();
+            }).catch(function (err) {
+                document.getElementById('typesStatus').textContent = 'Error: ' + err.message;
+            });
         });
     }
 
@@ -4253,7 +4323,12 @@
         var tbody = document.getElementById('typesTableBody');
         var search = (document.getElementById('typeSearch').value || '').toLowerCase();
         var group = document.getElementById('typeGroupFilter').value;
-        var sevLabels = ['Normal', 'Elevated', 'Critical'];
+        // GH#87/GH#88 (2026-08-19) — was a hardcoded ['Normal','Elevated',
+        // 'Critical'] array, disconnected from whatever scale was actually
+        // configured. severityLabelMap() reads the same severity_levels
+        // list the New Incident dropdown and this same panel's Severity
+        // select (typeSeverity) are populated from.
+        var sevLabels = severityLabelMap();
         var html = '';
         var count = 0;
 
@@ -4267,7 +4342,7 @@
                 '<td>' + t.id + '</td>' +
                 '<td>' + esc(t.type) + '</td>' +
                 '<td>' + esc(t.group || '') + '</td>' +
-                '<td>' + (sevLabels[t.set_severity] || t.set_severity) + '</td>' +
+                '<td>' + esc(sevLabels[t.set_severity] || String(t.set_severity)) + '</td>' +
                 '<td><span class="color-swatch" style="background:' + esc(t.color || '#ccc') + '"></span></td>' +
                 '<td>' + (t.match_pattern ? '<i class="bi bi-regex text-info" title="' + esc(t.match_pattern) + '"></i>' : '') + '</td>' +
                 '<td>' + (t.sort || 0) + '</td>' +
@@ -4316,6 +4391,46 @@
         var html = '<option value="">Use system default</option>';
         for (var i = 0; i < labels.length; i++) {
             html += '<option value="' + labels[i].id + '">' + esc(labels[i].name) + '</option>';
+        }
+        sel.innerHTML = html;
+    }
+
+    // GH#87/GH#88 (2026-08-19) — the admin-configured severity scale
+    // (api/severity-levels.php, backed by inc/severity.php). Cached like
+    // loadSecLabelOptions() immediately above; used to (a) populate the
+    // Incident Types editor's Severity select with the SAME values the
+    // New Incident form's Severity dropdown offers, closing GH#87's
+    // client/server mismatch, and (b) render human labels instead of raw
+    // integers in the incident types table (renderTypes(), above) and
+    // anywhere else this module shows a severity value.
+    function loadSeverityLevelOptions(done) {
+        if (cache.severityLevels !== null) {
+            if (done) done();
+            return;
+        }
+        fetch('api/severity-levels.php', { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                cache.severityLevels = data.severity_levels || [];
+                if (done) done();
+            })
+            .catch(function () {
+                cache.severityLevels = [];
+                if (done) done();
+            });
+    }
+
+    function severityLabelMap() {
+        var map = {};
+        var levels = cache.severityLevels || [];
+        for (var i = 0; i < levels.length; i++) map[levels[i].value] = levels[i].label;
+        return map;
+    }
+
+    function renderSeverityLevelSelectOptions(sel, levels) {
+        var html = '';
+        for (var i = 0; i < levels.length; i++) {
+            html += '<option value="' + levels[i].value + '">' + esc(levels[i].label) + '</option>';
         }
         sel.innerHTML = html;
     }
@@ -4374,6 +4489,15 @@
         loadSecLabelOptions(function () {
             var secSel = document.getElementById('typeDefaultSecLabel');
             secSel.value = item && item.default_security_label_id ? String(item.default_security_label_id) : '';
+        });
+
+        // GH#87/GH#88 — same load-before-set pattern for the Severity
+        // select, sourced from api/severity-levels.php instead of a
+        // hardcoded 0/1/2 option list.
+        loadSeverityLevelOptions(function () {
+            var sevSel = document.getElementById('typeSeverity');
+            renderSeverityLevelSelectOptions(sevSel, cache.severityLevels || []);
+            sevSel.value = item ? String(item.set_severity) : '0';
         });
 
         if (item) {
@@ -4776,73 +4900,144 @@
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  SEVERITY LEVELS (uses settings API)
+    //  SEVERITY LEVELS (GH#87/GH#88, 2026-08-19 — rebuilt from a fixed
+    //  3-card color-only panel into a full CRUD list. Mirrors
+    //  loadInsuranceTypes()/bindInsuranceTypesForm() above: a table +
+    //  an add/edit row, backed by api/config-admin.php?section=
+    //  severity_levels. `value` is never sent by the client — the
+    //  server assigns it once, immutably, on create (see
+    //  inc/severity.php's docblock for why).
     // ═══════════════════════════════════════════════════════════════
     function bindSeverityPanel() {
-        var form = document.getElementById('severityForm');
-        if (!form) return;
+        var picker = document.getElementById('sevLevelColorPicker');
+        var textInput = document.getElementById('sevLevelColor');
+        var preview = document.getElementById('sevLevelPreview');
+        var labelInput = document.getElementById('sevLevelLabel');
+        if (!picker || !textInput) return;
 
-        // Wire up color pickers + live preview for each severity level
-        for (var i = 0; i < 3; i++) {
-            (function (idx) {
-                var picker = document.getElementById('sevColor' + idx + 'Picker');
-                var textInput = document.getElementById('sevColor' + idx);
-                var preview = document.getElementById('sevPreview' + idx);
-                var labelInput = document.getElementById('sevLabel' + idx);
-
-                if (picker && textInput) {
-                    syncColorPair(picker, textInput);
-                    picker.addEventListener('input', function () {
-                        if (preview) preview.style.backgroundColor = picker.value;
-                    });
-                    textInput.addEventListener('input', function () {
-                        if (/^#[0-9a-fA-F]{6}$/.test(textInput.value) && preview) {
-                            preview.style.backgroundColor = textInput.value;
-                        }
-                    });
-                }
-                if (labelInput && preview) {
-                    labelInput.addEventListener('input', function () {
-                        preview.textContent = labelInput.value || ['Normal', 'Elevated', 'Critical'][idx];
-                    });
-                }
-            })(i);
+        syncColorPair(picker, textInput);
+        function updatePreview() {
+            if (/^#[0-9a-fA-F]{6}$/.test(textInput.value)) {
+                preview.style.backgroundColor = textInput.value;
+            }
+            preview.textContent = labelInput.value || 'Preview';
         }
+        picker.addEventListener('input', updatePreview);
+        textInput.addEventListener('input', updatePreview);
+        labelInput.addEventListener('input', updatePreview);
 
-        form.addEventListener('submit', function (e) {
-            e.preventDefault();
-            var pairs = collectSettingsFromForm(form);
-            apiPost('settings', { settings: pairs }).then(function (data) {
-                showAlert('Severity settings saved (' + data.saved + ' updated)');
-            }).catch(function (err) {
-                showAlert(err.message, 'danger');
-            });
-        });
+        bindSeverityLevelsForm();
     }
 
     function loadSeverity() {
-        apiGet('settings').then(function (data) {
-            var settings = data.settings || {};
-            var form = document.getElementById('severityForm');
-            applySettingsToForm(form, settings);
+        var body = document.getElementById('sevLevelsBody');
+        if (!body) return;
+        apiGet('severity_levels').then(function (data) {
+            var rows = data.rows || [];
+            // Keep the module-wide cache (used by the Incident Types
+            // panel's Severity column/select) in sync with whatever this
+            // panel just loaded, so a save here is reflected immediately
+            // without a second round-trip.
+            cache.severityLevels = rows;
 
-            // Sync color pickers and previews after loading
-            for (var i = 0; i < 3; i++) {
-                var textInput = document.getElementById('sevColor' + i);
-                var picker = document.getElementById('sevColor' + i + 'Picker');
-                var preview = document.getElementById('sevPreview' + i);
-                var labelInput = document.getElementById('sevLabel' + i);
+            if (!rows.length) {
+                body.innerHTML = '<tr><td colspan="6" class="text-center text-body-secondary py-3">No severity levels configured.</td></tr>';
+                return;
+            }
+            var html = '';
+            for (var i = 0; i < rows.length; i++) {
+                var r = rows[i];
+                html += '<tr>' +
+                    '<td class="ps-3">' + esc(r.label) + '</td>' +
+                    '<td class="text-center"><span class="color-swatch" style="background:' + esc(r.color || '#6c757d') + '"></span></td>' +
+                    '<td class="text-center">' + parseInt(r.sort_order || 0, 10) + '</td>' +
+                    '<td class="text-center">' + (r.is_default ? '<i class="bi bi-check-circle-fill text-success"></i>' : '') + '</td>' +
+                    '<td class="text-center">' + (r.is_high_alert ? '<i class="bi bi-exclamation-triangle-fill text-danger"></i>' : '') + '</td>' +
+                    '<td class="text-center">' +
+                        '<button class="btn btn-sm btn-link p-0 me-1 sevlvl-edit-btn" data-id="' + parseInt(r.id, 10) + '" title="Edit"><i class="bi bi-pencil text-primary"></i></button>' +
+                        '<button class="btn btn-sm btn-link p-0 sevlvl-del-btn"        data-id="' + parseInt(r.id, 10) + '" data-label="' + esc(r.label) + '" title="Delete"><i class="bi bi-trash text-danger"></i></button>' +
+                    '</td></tr>';
+            }
+            body.innerHTML = html;
 
-                if (textInput && picker && /^#[0-9a-fA-F]{6}$/.test(textInput.value)) {
-                    picker.value = textInput.value;
-                    if (preview) preview.style.backgroundColor = textInput.value;
-                }
-                if (labelInput && preview && labelInput.value) {
-                    preview.textContent = labelInput.value;
-                }
+            var rowsById = {};
+            for (var k = 0; k < rows.length; k++) rowsById[rows[k].id] = rows[k];
+
+            var editBtns = body.querySelectorAll('.sevlvl-edit-btn');
+            for (var e = 0; e < editBtns.length; e++) {
+                (function (btn) {
+                    btn.addEventListener('click', function () {
+                        var row = rowsById[parseInt(btn.getAttribute('data-id'), 10)];
+                        if (!row) return;
+                        document.getElementById('sevLevelEditId').value = row.id;
+                        document.getElementById('sevLevelLabel').value = row.label || '';
+                        var color = /^#[0-9a-fA-F]{6}$/.test(row.color) ? row.color : '#6c757d';
+                        document.getElementById('sevLevelColor').value = color;
+                        document.getElementById('sevLevelColorPicker').value = color;
+                        document.getElementById('sevLevelSort').value = parseInt(row.sort_order || 0, 10);
+                        document.getElementById('sevLevelDefault').checked = !!row.is_default;
+                        document.getElementById('sevLevelHighAlert').checked = !!row.is_high_alert;
+                        document.getElementById('sevLevelPreview').style.backgroundColor = color;
+                        document.getElementById('sevLevelPreview').textContent = row.label || 'Preview';
+                        document.getElementById('btnAddSevLevel').innerHTML = '<i class="bi bi-check-lg me-1"></i>Update';
+                    });
+                })(editBtns[e]);
+            }
+
+            var delBtns = body.querySelectorAll('.sevlvl-del-btn');
+            for (var d = 0; d < delBtns.length; d++) {
+                (function (btn) {
+                    btn.addEventListener('click', function () {
+                        if (!confirm('Delete severity level "' + btn.getAttribute('data-label') + '"?')) return;
+                        apiDelete('severity_levels', parseInt(btn.getAttribute('data-id'), 10)).then(function () {
+                            loadSeverity();
+                        }).catch(function (err) {
+                            showAlert('Delete failed: ' + err.message, 'danger');
+                        });
+                    });
+                })(delBtns[d]);
             }
         }).catch(function (err) {
-            showAlert('Failed to load severity settings: ' + err.message, 'danger');
+            body.innerHTML = '<tr><td colspan="6" class="text-danger py-3">Failed to load: ' + esc(err.message) + '</td></tr>';
+        });
+    }
+
+    function bindSeverityLevelsForm() {
+        var addBtn = document.getElementById('btnAddSevLevel');
+        if (!addBtn || addBtn.hasAttribute('data-bound')) return;
+        addBtn.setAttribute('data-bound', '1');
+        addBtn.addEventListener('click', function () {
+            var label = (document.getElementById('sevLevelLabel').value || '').trim();
+            if (!label) { showAlert('Label is required.', 'warning'); return; }
+            var color = (document.getElementById('sevLevelColor').value || '').trim();
+            if (!/^#[0-9a-fA-F]{6}$/.test(color)) color = '#6c757d';
+            var payload = {
+                id:            parseInt(document.getElementById('sevLevelEditId').value, 10) || 0,
+                label:         label,
+                color:         color,
+                sort_order:    parseInt(document.getElementById('sevLevelSort').value, 10) || 0,
+                is_default:    document.getElementById('sevLevelDefault').checked,
+                is_high_alert: document.getElementById('sevLevelHighAlert').checked
+            };
+            apiPost('severity_levels', payload).then(function () {
+                document.getElementById('sevLevelEditId').value = '0';
+                document.getElementById('sevLevelLabel').value = '';
+                document.getElementById('sevLevelColor').value = '#6c757d';
+                document.getElementById('sevLevelColorPicker').value = '#6c757d';
+                document.getElementById('sevLevelSort').value = '0';
+                document.getElementById('sevLevelDefault').checked = false;
+                document.getElementById('sevLevelHighAlert').checked = false;
+                document.getElementById('sevLevelPreview').style.backgroundColor = '#6c757d';
+                document.getElementById('sevLevelPreview').textContent = 'Preview';
+                addBtn.innerHTML = '<i class="bi bi-plus-lg me-1"></i>Add';
+                // The Incident Types panel's cached label map/select
+                // options must reflect the change on next open, not the
+                // stale pre-save list.
+                cache.severityLevels = null;
+                loadSeverity();
+            }).catch(function (err) {
+                showAlert('Save failed: ' + err.message, 'danger');
+            });
         });
     }
 
@@ -7004,6 +7199,10 @@
         var form = document.getElementById('userForm');
         var panel = document.getElementById('userEditPanel');
 
+        // Phase 145 (2026-08-19, GH#90) — inject the Linked Facility row
+        // once, before the form is ever opened.
+        ensureFacilityFieldInjected();
+
         document.getElementById('btnAddUser').addEventListener('click', function () {
             openUserForm(null);
         });
@@ -7135,6 +7334,18 @@
                 return;   // admin chose Cancel — form stays open, no save
             }
 
+            // Phase 145 (2026-08-19, GH#90): client-side mirror of the
+            // server-side requirement (api/config-admin.php) — a Facility
+            // role account MUST have a linked facility. The server
+            // re-validates this regardless; this just avoids a round trip.
+            if (parseInt(data.role_id || '0', 10) === facilityRoleId()
+                && !String(data.facility_id || '').trim()) {
+                showAlert('A linked facility is required for the Facility role.', 'warning');
+                var facEl = document.getElementById('userFacilityId');
+                if (facEl) facEl.focus();
+                return;
+            }
+
             apiPost('users', data).then(function () {
                 panel.classList.remove('show');
                 showAlert('User saved');
@@ -7148,6 +7359,8 @@
         apiGet('users').then(function (data) {
             cache.users = data.rows || [];
             cache.userMembers = data.members || [];
+            // Phase 145 (2026-08-19, GH#90) — facility-account linking.
+            cache.facilities = data.facilities || [];
             // Eric beta 2026-06-30 — bind sort headers + hide-inactive
             // toggle once. Safe to call on every load (static-guarded).
             bindUsersTableControls();
@@ -7227,6 +7440,12 @@
                 ? esc(u.role_name)
                 : '<span class="text-warning" title="No role assigned — click Edit to assign one, or open Roles &amp; Permissions and use Migrate Legacy Accounts to Roles">' +
                   '— <i class="bi bi-exclamation-triangle"></i></span>';
+            // Phase 145 (2026-08-19, GH#90) — show the linked facility
+            // under the role name for Facility-role accounts.
+            if (u.facility_id && parseInt(u.facility_id, 10) > 0) {
+                roleCell += '<br><span class="text-body-secondary small"><i class="bi bi-hospital"></i> ' +
+                    esc(u.facility_name || ('facility #' + u.facility_id)) + '</span>';
+            }
             // Eric beta 2026-06-30 — Scope column. Org-scoped role grants
             // show the org name; global grants show "Global" in muted text.
             var scopeCell;
@@ -7416,6 +7635,79 @@
             // the legacy "send to mobile.php on login" redirect.
             derived.value = '3';
         }
+        syncFacilityFieldVisibility();
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Phase 145 (2026-08-19, GH#90) — Linked Facility field.
+    //
+    // Injected via JS (not settings.php's markup) — this row is shown
+    // only for the built-in "Facility" role, resolved by NAME from
+    // cache.roles at the moment it's needed — NEVER a hardcoded id.
+    // roles.id is a plain AUTO_INCREMENT; a real, months-old install can
+    // already have custom roles occupying low ids by the time this
+    // feature's migration first runs (confirmed live on a dev database —
+    // see sql/rbac.sql's comment on the Facility role INSERT for the
+    // full story, and run_phase11d_mobile_first.php for the identical
+    // lesson learned earlier for Field Unit's id). The server
+    // (api/config-admin.php) is the actual enforcement point regardless
+    // of what this UI shows — this is convenience only.
+    // ─────────────────────────────────────────────────────────────
+    function facilityRoleId() {
+        var match = (cache.roles || []).filter(function (r) { return r.name === 'Facility'; })[0];
+        return match ? parseInt(match.id, 10) : null;
+    }
+
+    function ensureFacilityFieldInjected() {
+        if (document.getElementById('userFacilityId')) return; // already injected
+        var roleOrgSel = document.getElementById('userRoleOrgId');
+        if (!roleOrgSel) return;
+        var orgRow = roleOrgSel.closest('.row');
+        if (!orgRow) return;
+        var html =
+            '<div class="row g-2 mt-1 d-none" id="userFacilityRow">' +
+            '  <div class="col-md-4">' +
+            '    <label for="userFacilityId" class="form-label form-label-sm">' +
+            '      Linked Facility <span class="text-danger">*</span>' +
+            '      <i class="bi bi-question-circle text-body-secondary" tabindex="0" ' +
+            '         data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top" ' +
+            '         data-bs-content="This account is confined to a self-service portal showing only incidents at or inbound to this one facility. Required for the Facility role.">' +
+            '      </i>' +
+            '    </label>' +
+            '    <select class="form-select form-select-sm" id="userFacilityId" name="facility_id">' +
+            '      <option value="">— Select a facility —</option>' +
+            '    </select>' +
+            '  </div>' +
+            '</div>';
+        orgRow.insertAdjacentHTML('afterend', html);
+    }
+
+    function populateFacilityDropdown() {
+        var sel = document.getElementById('userFacilityId');
+        if (!sel) return;
+        var current = sel.value;
+        var html = '<option value="">— Select a facility —</option>';
+        var facs = cache.facilities || [];
+        for (var i = 0; i < facs.length; i++) {
+            html += '<option value="' + facs[i].id + '">' + escapeHtml(facs[i].name || ('#' + facs[i].id)) + '</option>';
+        }
+        sel.innerHTML = html;
+        if (current) sel.value = current;
+    }
+
+    function syncFacilityFieldVisibility() {
+        var roleSel = document.getElementById('userRoleId');
+        var row = document.getElementById('userFacilityRow');
+        var sel = document.getElementById('userFacilityId');
+        if (!roleSel || !row || !sel) return;
+        var isFacility = parseInt(roleSel.value || '0', 10) === facilityRoleId();
+        row.classList.toggle('d-none', !isFacility);
+        if (isFacility) {
+            sel.setAttribute('required', 'required');
+        } else {
+            sel.removeAttribute('required');
+            sel.value = ''; // never submit a stale facility_id for a non-Facility role
+        }
     }
 
     // Clear a user's account lockout + failed-attempt counter. The lockout
@@ -7497,6 +7789,17 @@
                     ? String(item.role_org_id) : '';
             }
         });
+
+        // Phase 145 (2026-08-19, GH#90) — populate + preselect the Linked
+        // Facility field, then show/hide it based on the role that's
+        // about to be selected above.
+        ensureFacilityFieldInjected();
+        populateFacilityDropdown();
+        var facSel = document.getElementById('userFacilityId');
+        if (facSel) {
+            facSel.value = (item && item.facility_id) ? String(item.facility_id) : '';
+        }
+        syncFacilityFieldVisibility();
 
         // Maintain user.level via the hidden #userLevelDerived input so the
         // server gets a coherent legacy value for backward compat.
@@ -8637,6 +8940,90 @@
                 document.getElementById('sigHide').checked      = false;
                 addBtn.innerHTML = '<i class="bi bi-plus-lg me-1"></i>Add';
                 loadSignalCodes();
+            }).catch(function (err) {
+                showAlert('Save failed: ' + err.message, 'danger');
+            });
+        });
+    }
+
+    // GH TicketsCAD#68 (2026-08-18) — Patient Insurance Types admin panel.
+    // Mirrors loadSignalCodes()/bindSignalCodesForm() immediately above.
+    function loadInsuranceTypes() {
+        var body = document.getElementById('insTypesBody');
+        if (!body) return;
+        apiGet('insurance_types').then(function (data) {
+            var rows = data.rows || [];
+            if (!rows.length) {
+                body.innerHTML = '<tr><td colspan="3" class="text-center text-body-secondary py-3">No insurance types yet. Add one above.</td></tr>';
+                bindInsuranceTypesForm();
+                return;
+            }
+            var html = '';
+            for (var i = 0; i < rows.length; i++) {
+                var r = rows[i];
+                html += '<tr>' +
+                    '<td class="ps-3">' + esc(r.ins_value) + '</td>' +
+                    '<td class="text-center">' + parseInt(r.sort_order || 0, 10) + '</td>' +
+                    '<td class="text-center">' +
+                        '<button class="btn btn-sm btn-link p-0 me-1 ins-edit-btn" data-id="' + parseInt(r.id, 10) + '" title="Edit"><i class="bi bi-pencil text-primary"></i></button>' +
+                        '<button class="btn btn-sm btn-link p-0 ins-del-btn"        data-id="' + parseInt(r.id, 10) + '" data-name="' + esc(r.ins_value) + '" title="Delete"><i class="bi bi-trash text-danger"></i></button>' +
+                    '</td></tr>';
+            }
+            body.innerHTML = html;
+
+            var rowsById = {};
+            for (var k = 0; k < rows.length; k++) rowsById[rows[k].id] = rows[k];
+
+            var editBtns = body.querySelectorAll('.ins-edit-btn');
+            for (var e = 0; e < editBtns.length; e++) {
+                (function (btn) {
+                    btn.addEventListener('click', function () {
+                        var row = rowsById[parseInt(btn.getAttribute('data-id'), 10)];
+                        if (!row) return;
+                        document.getElementById('insEditId').value = row.id;
+                        document.getElementById('insValue').value  = row.ins_value || '';
+                        document.getElementById('insSort').value   = parseInt(row.sort_order || 0, 10);
+                        document.getElementById('btnAddInsType').innerHTML = '<i class="bi bi-check-lg me-1"></i>Update';
+                    });
+                })(editBtns[e]);
+            }
+
+            var delBtns = body.querySelectorAll('.ins-del-btn');
+            for (var d = 0; d < delBtns.length; d++) {
+                (function (btn) {
+                    btn.addEventListener('click', function () {
+                        if (!confirm('Delete insurance type "' + btn.getAttribute('data-name') + '"?')) return;
+                        apiDelete('insurance_types', parseInt(btn.getAttribute('data-id'), 10)).then(function () {
+                            loadInsuranceTypes();
+                        }).catch(function (err) {
+                            showAlert('Delete failed: ' + err.message, 'danger');
+                        });
+                    });
+                })(delBtns[d]);
+            }
+            bindInsuranceTypesForm();
+        }).catch(function (err) {
+            body.innerHTML = '<tr><td colspan="3" class="text-danger py-3">Failed to load: ' + esc(err.message) + '</td></tr>';
+        });
+    }
+    function bindInsuranceTypesForm() {
+        var addBtn = document.getElementById('btnAddInsType');
+        if (!addBtn || addBtn.hasAttribute('data-bound')) return;
+        addBtn.setAttribute('data-bound', '1');
+        addBtn.addEventListener('click', function () {
+            var value = (document.getElementById('insValue').value || '').trim();
+            if (!value) { showAlert('Name is required.', 'warning'); return; }
+            var payload = {
+                id:         parseInt(document.getElementById('insEditId').value, 10) || 0,
+                ins_value:  value,
+                sort_order: parseInt(document.getElementById('insSort').value, 10) || 0
+            };
+            apiPost('insurance_types', payload).then(function () {
+                document.getElementById('insEditId').value = '0';
+                document.getElementById('insValue').value  = '';
+                document.getElementById('insSort').value   = '0';
+                addBtn.innerHTML = '<i class="bi bi-plus-lg me-1"></i>Add';
+                loadInsuranceTypes();
             }).catch(function (err) {
                 showAlert('Save failed: ' + err.message, 'danger');
             });
@@ -10854,6 +11241,84 @@
                 loadRoadConditions();
             }).catch(function (err) { showAlert(err.message, 'danger'); });
         });
+
+        // GH#80 — address-to-coordinate Lookup button (reuses the shared
+        // Geocode helper exactly as the GH#39 Places-panel Lookup does — see
+        // assets/js/geocode.js; no map on this panel, so no viewbox bias).
+        // Bound here (once, when the panel initializes) rather than inside
+        // openRoadCondForm(), which can re-run on every open and would
+        // double-register the handler.
+        var rcLookupBtn = document.getElementById('btnRoadCondLookup');
+        var rcAddrEl = document.getElementById('roadCondAddress');
+        if (rcLookupBtn && rcAddrEl) {
+            rcLookupBtn.addEventListener('click', roadCondGeocodeLookup);
+            // Explicit trigger only (click or Enter) -- deliberately no
+            // auto-lookup on blur, which would burn requests against
+            // inc/geocode.php's shared, install-wide 1 req/s throttle on
+            // incidental focus changes (tabbing through the form, a mobile
+            // keyboard dismissing).
+            rcAddrEl.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') { e.preventDefault(); roadCondGeocodeLookup(); }
+            });
+        }
+        var rcLatEl = document.getElementById('roadCondLat');
+        var rcLngEl = document.getElementById('roadCondLng');
+        if (rcLatEl) rcLatEl.addEventListener('input', updateRoadCondMapHint);
+        if (rcLngEl) rcLngEl.addEventListener('input', updateRoadCondMapHint);
+    }
+
+    // GH#80 — looks up the Address field via the shared Geocode helper and
+    // fills Latitude/Longitude. Geocode.search() never rejects (see its own
+    // docblock in assets/js/geocode.js) -- it always resolves with an
+    // {ok, results, message} shape, so no .catch() is needed here, matching
+    // the GH#39 Places-panel Lookup precedent.
+    function roadCondGeocodeLookup() {
+        var addr = document.getElementById('roadCondAddress').value.trim();
+        var msg = document.getElementById('roadCondGeoStatus');
+        var btn = document.getElementById('btnRoadCondLookup');
+        if (!addr) {
+            msg.innerHTML = '<span class="text-warning">Enter an address to look up.</span>';
+            return;
+        }
+        msg.innerHTML = '<span class="text-body-secondary">Looking up&hellip;</span>';
+        btn.disabled = true;
+        Geocode.search({ q: addr, limit: 1 }).then(function (res) {
+            btn.disabled = false;
+            if (!res.ok) {
+                msg.innerHTML = '<span class="text-warning">' + esc(res.message) + ' You can still enter coordinates manually.</span>';
+                return;
+            }
+            if (!res.results.length) {
+                msg.innerHTML = '<span class="text-warning">Address not found. Enter coordinates directly, or leave at 0 if this report has no single point.</span>';
+                return;
+            }
+            var r = res.results[0];
+            // .toFixed(6) matches the app-wide convention for this varchar(16)
+            // column (see the GH#39 Places-panel Lookup button above).
+            document.getElementById('roadCondLat').value = parseFloat(r.lat).toFixed(6);
+            document.getElementById('roadCondLng').value = parseFloat(r.lon).toFixed(6);
+            msg.innerHTML = '<span class="text-success">Found: ' + esc(r.display_name || (r.lat + ', ' + r.lon)) + '</span>';
+            updateRoadCondMapHint();
+        });
+    }
+
+    // GH#80 — passive hint: lat/lng at 0/0 (or either alone at 0) is a
+    // legitimate, savable state (address-only reports with no single point),
+    // but api/road-conditions.php's own ?map=1 query
+    // ("WHERE ... lat <> 0 AND lng <> 0") excludes a row from the map overlay
+    // the moment EITHER coordinate is 0 -- so this checks the same OR
+    // condition (lat===0 || lng===0), not AND, or a partial 0/non-zero entry
+    // would silently fall into the same excluded state with no warning shown.
+    // This just surfaces that pre-existing behavior in the form; it never
+    // blocks save.
+    function updateRoadCondMapHint() {
+        var latEl = document.getElementById('roadCondLat');
+        var lngEl = document.getElementById('roadCondLng');
+        var hint = document.getElementById('roadCondNoMapHint');
+        if (!latEl || !lngEl || !hint) return;
+        var lat = parseFloat(latEl.value) || 0;
+        var lng = parseFloat(lngEl.value) || 0;
+        hint.classList.toggle('d-none', !(lat === 0 || lng === 0));
     }
 
     function rcApiPost(body) {
@@ -10947,10 +11412,18 @@
         for (var i = 0; i < rcRoadConditions.length; i++) {
             var rc = rcRoadConditions[i];
             var dateStr = rc._on ? rc._on.substring(0, 10) : '';
+            // GH#80 \u2014 surface the pre-existing silent ?map=1 exclusion (either
+            // lat OR lng at 0 -- matching that query's own
+            // "lat <> 0 AND lng <> 0" inclusion rule) in the one place an
+            // admin reviewing all reports sees it. Passive only: never blocks
+            // the save, never alters the query.
+            var noMap = (parseFloat(rc.lat) === 0 || parseFloat(rc.lng) === 0);
             html += '<tr data-id="' + rc.id + '">' +
                 '<td>' + rc.id + '</td>' +
                 '<td><strong>' + esc(rc.title) + '</strong></td>' +
-                '<td>' + esc(rc.address || '') + '</td>' +
+                '<td>' + esc(rc.address || '') +
+                    (noMap ? ' <i class="bi bi-geo-alt text-body-secondary" title="No map location \u2014 not shown on the map overlay"></i>' : '') +
+                '</td>' +
                 '<td>' + esc(rc.condition_title || '\u2014') + '</td>' +
                 '<td>' + esc(dateStr) + '</td>' +
                 '<td>' + esc(rc._by || '') + '</td>' +
@@ -10978,6 +11451,12 @@
         document.getElementById('roadCondLat').value = item ? (item.lat || 0) : 0;
         document.getElementById('roadCondLng').value = item ? (item.lng || 0) : 0;
         document.getElementById('btnDeleteRoadCond').classList.toggle('d-none', !item);
+        // GH#80 — clear any stale "Found: ..." message from a previous edit
+        // session, and refresh the no-map hint for whatever lat/lng just loaded
+        // (0/0 on "add new", the real stored value on "edit").
+        var geoStatus = document.getElementById('roadCondGeoStatus');
+        if (geoStatus) geoStatus.innerHTML = '';
+        updateRoadCondMapHint();
         panel.classList.add('show');
         document.getElementById('roadCondTitle').focus();
     }

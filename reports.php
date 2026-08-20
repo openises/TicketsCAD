@@ -101,6 +101,9 @@ $csrf     = csrf_token();
                     <button type="button" class="btn btn-outline-primary" data-report="unit_log">
                         <i class="bi bi-truck me-1"></i>Unit Log
                     </button>
+                    <button type="button" class="btn btn-outline-primary" data-report="interval_report" title="Response / scene / transport time intervals over the dispatch milestones">
+                        <i class="bi bi-stopwatch me-1"></i>Intervals
+                    </button>
                     <button type="button" class="btn btn-outline-primary" data-report="facility_log">
                         <i class="bi bi-hospital me-1"></i>Facility Log
                     </button>
@@ -257,6 +260,56 @@ $csrf     = csrf_token();
             <span class="fw-semibold small">Incident Information</span>
         </div>
         <div class="card-body py-2 small" id="afterActionInfo">
+        </div>
+    </div>
+
+    <!-- Interval Report: aggregate breakdown (shown only for interval_report) -->
+    <div class="row g-3 mt-1 d-none" id="intervalBreakdownPanel">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header py-1">
+                    <i class="bi bi-tags me-2"></i>
+                    <span class="fw-semibold small">Average Response Time by Incident Type</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th class="small">Type</th>
+                                    <th class="small text-end">Count</th>
+                                    <th class="small text-end">Avg Response</th>
+                                    <th class="small text-end">Avg Scene</th>
+                                </tr>
+                            </thead>
+                            <tbody id="intervalByTypeBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header py-1">
+                    <i class="bi bi-truck me-2"></i>
+                    <span class="fw-semibold small">Average Response Time by Unit</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th class="small">Unit</th>
+                                    <th class="small text-end">Count</th>
+                                    <th class="small text-end">Avg Response</th>
+                                    <th class="small text-end">Avg Scene</th>
+                                </tr>
+                            </thead>
+                            <tbody id="intervalByUnitBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 

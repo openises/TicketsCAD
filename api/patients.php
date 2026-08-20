@@ -6,22 +6,36 @@
  * POST /api/patients.php               — create / update / delete (JSON body)
  *
  *   POST actions:
- *     { action: 'add',    ticket_id, name, dob, gender, description }
- *     { action: 'update', id, name, dob, gender, description }
+ *     { action: 'add',    ticket_id, name, dob, gender, description,
+ *                          insurance_id, facility_id, facility_contact }
+ *     { action: 'update', id, name, dob, gender, description,
+ *                          insurance_id, facility_id, facility_contact }
  *     { action: 'delete', id }
  *
  * Persists to the `patient` table (legacy MyISAM, columns: id, ticket_id,
- * name, fullname, dob, gender, description, date, user, updated). The
- * `description` column is NOT NULL with no default, so all writes pass an
- * empty string when no condition / notes were entered.
+ * name, fullname, dob, gender, insurance_id, facility_id, facility_contact,
+ * description, date, user, updated). The `description` column is NOT NULL
+ * with no default, so all writes pass an empty string when no condition /
+ * notes were entered.
  *
  * Added 2026-06-26 to address a beta tester's beta-tester report that the
  * incident edit flow had no way to manage patients after creation.
+ *
+ * GH TicketsCAD#68 (2026-08-18) — insurance_id / facility_id /
+ * facility_contact restored. Those three columns exist in the schema
+ * (carried over unchanged from v3's `patient` table) but had no NewUI
+ * read or write path at all — vestigial since the original 2026-06-26
+ * implementation. v3 captured all three on the same per-patient
+ * Add/Edit form (tickets/patient.php): an insurance-type dropdown, a
+ * receiving-facility dropdown, and a free-text facility contact. See
+ * inc/patient-write.php's docblock for the full behavioral detail; the
+ * actual read/write logic now lives there so it can be tested directly.
  */
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/access.php';
+require_once __DIR__ . '/../inc/patient-write.php';
 
 $prevDisplay = ini_get('display_errors');
 ini_set('display_errors', '0');
@@ -40,27 +54,8 @@ if ($method === 'GET') {
         ini_set('display_errors', $prevDisplay);
         json_error('Incident not found', 404);
     }
-    $patients = [];
     try {
-        $rows = db_fetch_all(
-            "SELECT `id`, `ticket_id`, `name`, `fullname`, `dob`, `gender`, `description`, `date`
-             FROM `{$prefix}patient`
-             WHERE `ticket_id` = ?
-             ORDER BY `id` ASC",
-            [$ticket_id]
-        );
-        foreach ($rows as $r) {
-            $patients[] = [
-                'id'          => (int) $r['id'],
-                'ticket_id'   => (int) $r['ticket_id'],
-                'name'        => $r['name'] ?? '',
-                'fullname'    => $r['fullname'] ?? '',
-                'dob'         => $r['dob'] ?? '',
-                'gender'      => (int) ($r['gender'] ?? 0),
-                'description' => $r['description'] ?? '',
-                'date'        => $r['date'] ?? '',
-            ];
-        }
+        $patients = patient_list_internal($ticket_id);
     } catch (Exception $e) {
         // table missing or other DB error — return empty list, don't 500
         $patients = [];
@@ -91,7 +86,6 @@ if (!rbac_can('action.edit_incident')) {
 }
 
 $action = trim($input['action'] ?? '');
-$now    = date('Y-m-d H:i:s');
 
 // ── ACTION: add ──
 if ($action === 'add') {
@@ -104,19 +98,9 @@ if ($action === 'add') {
         ini_set('display_errors', $prevDisplay);
         json_error('Incident not found', 404);
     }
-    $name   = trim((string) ($input['name'] ?? ''));
-    $dob    = trim((string) ($input['dob'] ?? ''));
-    $gender = (int) ($input['gender'] ?? 0);
-    $desc   = trim((string) ($input['description'] ?? ''));
 
     try {
-        db_query(
-            "INSERT INTO `{$prefix}patient`
-             (`ticket_id`, `name`, `fullname`, `dob`, `gender`, `description`, `date`, `user`, `updated`)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [$ticket_id, $name, $name, $dob, $gender, $desc, $now, $current_user_id, $now]
-        );
-        $new_id = db_insert_id();
+        $result = patient_add_internal($ticket_id, $input, $current_user_id);
     } catch (Exception $e) {
         ini_set('display_errors', $prevDisplay);
         json_error('Failed to add patient: ' . $e->getMessage(), 500);
@@ -125,7 +109,7 @@ if ($action === 'add') {
     ini_set('display_errors', $prevDisplay);
     json_response([
         'success' => true,
-        'id'      => (int) $new_id,
+        'id'      => $result['id'],
         'message' => 'Patient added',
     ]);
 }
@@ -155,18 +139,8 @@ if ($action === 'update') {
         json_error('Patient not found', 404);
     }
 
-    $name   = trim((string) ($input['name'] ?? ''));
-    $dob    = trim((string) ($input['dob'] ?? ''));
-    $gender = (int) ($input['gender'] ?? 0);
-    $desc   = trim((string) ($input['description'] ?? ''));
-
     try {
-        db_query(
-            "UPDATE `{$prefix}patient`
-             SET `name` = ?, `fullname` = ?, `dob` = ?, `gender` = ?, `description` = ?, `updated` = ?
-             WHERE `id` = ?",
-            [$name, $name, $dob, $gender, $desc, $now, $id]
-        );
+        patient_update_internal($id, $input, $current_user_id);
     } catch (Exception $e) {
         ini_set('display_errors', $prevDisplay);
         json_error('Failed to update patient: ' . $e->getMessage(), 500);

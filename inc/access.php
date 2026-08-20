@@ -111,3 +111,67 @@ if (!function_exists('user_can_access_entity')) {
         }
     }
 }
+
+if (!function_exists('facility_capacity_summary_rows')) {
+
+    /**
+     * Facility-capacity summary rows, scoped to what the CURRENT session
+     * is actually allowed to see (2026-08-19 IDOR fix).
+     *
+     * api/facility-capacity.php's `?facility_id=X` path has always called
+     * user_can_access_entity('facility', $facId) before returning a single
+     * facility's bed/capacity counts. The `?summary=1` sibling path — an
+     * unfiltered JOIN across facility_capacity/facilities/capacity_categories
+     * — had NO such check at all: any authenticated user (the file only
+     * requires basic session auth) could see bed/capacity data for EVERY
+     * facility in the install via the summary, including facilities they
+     * get a 404 for if they request individually. A filter-bypass of the
+     * IDOR gate one path over.
+     *
+     * Extracted into its own function — the same technique
+     * inc/facility-scope.php uses for facility_ticket_visibility_sql() —
+     * so both the real endpoint and a regression test call the exact same
+     * production code, with no HTTP harness and no hand-seeded mock of
+     * "correct" behavior required.
+     *
+     * Admins (is_admin() — is_super OR action.manage_config) see every
+     * facility, matching the single-facility path's own admin bypass
+     * inside user_can_access_entity(). Everyone else is scoped down to
+     * facilities user_can_access_entity('facility', $facilityId) allows —
+     * the same RBAC-view-permission bypass and allocates-group check the
+     * single-facility path already applies, so the two paths can never
+     * disagree about which facilities a given session may see.
+     */
+    function facility_capacity_summary_rows(): array
+    {
+        $prefix = $GLOBALS['db_prefix'] ?? '';
+        try {
+            $rows = db_fetch_all(
+                "SELECT f.id AS facility_id, f.name AS facility_name, f.`type` AS fac_type,
+                        cc.name AS category_name, cc.icon, cc.unit_label,
+                        fc.total, fc.available, fc.updated_at
+                 FROM `{$prefix}facility_capacity` fc
+                 JOIN `{$prefix}facilities` f ON fc.facility_id = f.id
+                 JOIN `{$prefix}capacity_categories` cc ON fc.category_id = cc.id
+                 WHERE fc.total > 0
+                 ORDER BY f.name, cc.sort_order"
+            );
+        } catch (Exception $e) {
+            return [];
+        }
+
+        require_once __DIR__ . '/rbac.php';
+        if (is_admin()) {
+            return $rows;
+        }
+
+        $accessCache = [];
+        return array_values(array_filter($rows, function ($r) use (&$accessCache) {
+            $fid = (int) $r['facility_id'];
+            if (!array_key_exists($fid, $accessCache)) {
+                $accessCache[$fid] = user_can_access_entity('facility', $fid);
+            }
+            return $accessCache[$fid];
+        }));
+    }
+}

@@ -7,7 +7,23 @@ CREATE TABLE IF NOT EXISTS `notification_rules` (
     `event_type` ENUM('incident_create','incident_close','incident_status','unit_assign','unit_clear','severity_high','has_broadcast') NOT NULL,
     `severity_filter` TINYINT DEFAULT NULL COMMENT 'NULL = all, 0-2 = specific severity',
     `incident_type_filter` INT UNSIGNED DEFAULT NULL COMMENT 'NULL = all, or in_types.id',
-    `channel` ENUM('email','sms','local_chat','all') NOT NULL DEFAULT 'email',
+    -- GH #84 (2026-08-18): was ENUM('email','sms','local_chat','all'), which
+    -- meant a rule could never target Slack/Telegram/push/APRS/DMR/Meshtastic/
+    -- MeshCore/SMTP even though inc/broker.php's dispatch (broker_send()) is
+    -- fully generic against every channel registered in inc/channels/*.php.
+    -- Widened to a validated free-form code — the same shape sql/routing.sql
+    -- already uses for message_routes.dest_channel ("Channel code or * for
+    -- any") — rather than another rigid ENUM migration every time an adapter
+    -- is added. 'all' is a reserved value meaning "every currently registered
+    -- broker channel" (inc/notification-engine.php resolves it dynamically).
+    -- Any other value should be validated at save time against
+    -- array_keys($_broker_channels) — see api/routing.php's
+    -- 'save_enabled_channels' action for the pattern once an admin API for
+    -- these rules exists. VARCHAR(20) matches notification_log.channel
+    -- (below) and inc/notification-engine.php's _notification_ensure_tables()
+    -- fallback definition, comfortably covering every current channel code
+    -- (longest today: 'local_chat' / 'meshtastic', 10 chars).
+    `channel` VARCHAR(20) NOT NULL DEFAULT 'email',
     `recipients` TEXT COMMENT 'JSON array of user IDs, email addresses, or phone numbers',
     `email_list_id` INT UNSIGNED DEFAULT NULL COMMENT 'FK to email distribution list',
     `subject_template` VARCHAR(255) DEFAULT '' COMMENT 'Subject line with {placeholders}',

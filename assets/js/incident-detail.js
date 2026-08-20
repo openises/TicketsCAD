@@ -41,6 +41,7 @@
         initTopMayday(id); // 2026-06-11 — always-visible Mayday button
         initSecurityBadge(id); // Phase 18c (2026-06-11) — security label badge + dialog
         initMajorLink(id); // 2026-06 — link this incident to a major incident
+        initShareModal(id); // Phase 142 (GH#70 Phase 2) — manual cross-org sharing
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -361,6 +362,22 @@
         var d = document.createElement('div');
         d.textContent = String(s);
         return d.innerHTML;
+    }
+
+    // GH#87/GH#88 (2026-08-19) — readable text color for an arbitrary
+    // admin-picked severity badge background, via relative luminance
+    // (WCAG-style approximation) instead of a hardcoded "severity >= 2 ->
+    // white text" assumption that only made sense when there were
+    // exactly 3 levels and level 2 was always the dark one.
+    function contrastTextColor(hexColor) {
+        var hex = (hexColor || '').replace('#', '');
+        if (hex.length !== 6) return '#000';
+        var r = parseInt(hex.substr(0, 2), 16);
+        var g = parseInt(hex.substr(2, 2), 16);
+        var b = parseInt(hex.substr(4, 2), 16);
+        if (isNaN(r) || isNaN(g) || isNaN(b)) return '#000';
+        var luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        return luminance > 0.55 ? '#000' : '#fff';
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -2250,12 +2267,20 @@
         document.getElementById('pageTitle').innerHTML =
             '<i class="bi bi-file-earmark-text text-primary me-2"></i>' + label + ' ' + titleId;
 
-        // Severity badge
+        // Severity badge.
+        // GH#87/GH#88 (2026-08-19) — was a hardcoded ['Low','Medium','High']
+        // array (a THIRD spelling of the same 3 integers vs. new-incident.php's
+        // "Normal/Elevated/Critical" and callboard's "Normal/Medium/High" —
+        // see GH#88's own investigation table). api/incident-detail.php now
+        // sends severity_label straight from the same severity_levels config
+        // every other screen reads. Text color is computed from the actual
+        // badge background instead of a hardcoded `>= 2` threshold, so it
+        // stays readable no matter how many levels are configured or what
+        // colors an admin picks.
         var sevBadge = document.getElementById('severityBadge');
-        var sevLabels = ['Low', 'Medium', 'High'];
-        sevBadge.textContent = sevLabels[inc.severity] || 'Unknown';
+        sevBadge.textContent = inc.severity_label || 'Unknown';
         sevBadge.style.backgroundColor = inc.severity_color;
-        sevBadge.style.color = inc.severity >= 2 ? '#fff' : '#000';
+        sevBadge.style.color = contrastTextColor(inc.severity_color);
 
         // Status badge
         var statusBadge = document.getElementById('statusBadge');
@@ -2266,6 +2291,35 @@
         // Type badge
         var typeBadge = document.getElementById('typeBadge');
         typeBadge.textContent = inc.type_name + (inc.type_group ? ' (' + inc.type_group + ')' : '');
+
+        // Phase 141 (GH#70) — cross-org sharing indicator. api/incident-detail.php
+        // sets shared_from_org_name only when this session's visibility into
+        // the incident came from an active incident_shares grant (never for
+        // same-org access, never for Super Admin) -- see
+        // org_share_context_for_ticket() in inc/org-sharing.php. Set via
+        // .textContent on a dedicated child span, matching this file's own
+        // documented convention (see the #secLabelBadge comment in
+        // incident-detail.php) of never letting a badge get clobbered by a
+        // parent .innerHTML replace.
+        var sharedBadge = document.getElementById('sharedFromBadge');
+        var sharedBadgeText = document.getElementById('sharedFromBadgeText');
+        if (sharedBadge && sharedBadgeText) {
+            if (inc.shared_from_org_name) {
+                sharedBadgeText.textContent = 'Shared from ' + inc.shared_from_org_name;
+                sharedBadge.title = 'This incident is shared from ' + inc.shared_from_org_name;
+                sharedBadge.classList.remove('d-none');
+            } else {
+                sharedBadge.classList.add('d-none');
+                sharedBadgeText.textContent = '';
+            }
+        }
+
+        // Phase 142 (GH#70 Phase 2) — "Share…" button. Same per-response,
+        // ticket-specific display gate as sharedFromBadge above (never the
+        // authority for whether a write is allowed — api/incident-share.php
+        // re-checks RBAC + org_ticket_is_owned_by_caller() on every write).
+        var shareBtn = document.getElementById('btnShareIncident');
+        if (shareBtn) shareBtn.classList.toggle('d-none', !inc.can_manage_sharing);
 
         // Scope (title)
         document.getElementById('incidentScope').textContent = inc.scope;
@@ -3448,6 +3502,23 @@
             .catch(function () { facilitiesCache = []; cb(facilitiesCache); });
     }
 
+    // GH TicketsCAD#68 (2026-08-18) — same shared-cache pattern as
+    // loadFacilitiesList() immediately above, for the patient Insurance
+    // dropdown. Reads api/insurance-types.php (non-admin-gated picker;
+    // the admin-managed list itself lives in Settings -> Patient
+    // Insurance Types).
+    var insuranceTypesCache = null;
+    function loadInsuranceTypesList(cb) {
+        if (insuranceTypesCache) { cb(insuranceTypesCache); return; }
+        fetch('api/insurance-types.php', { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                insuranceTypesCache = (data && data.insurance_types) ? data.insurance_types : [];
+                cb(insuranceTypesCache);
+            })
+            .catch(function () { insuranceTypesCache = []; cb(insuranceTypesCache); });
+    }
+
     function applyFacilityOptions(list) {
         var ids = ['editFacility', 'editRecFacility'];
         for (var s = 0; s < ids.length; s++) {
@@ -3590,10 +3661,12 @@
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  Patients (2026-06-26)
+    //  Patients (2026-06-26; insurance/facility/facility contact restored
+    //  2026-08-18, GH TicketsCAD#68)
     //
     //  Loads patients for this incident from api/patients.php and
-    //  renders an inline editable list (name + DOB + gender + condition).
+    //  renders an inline editable list (name + DOB + gender + insurance +
+    //  receiving facility + facility contact + condition).
     //  Add / Save / Remove all hit api/patients.php with CSRF + RBAC.
     //
     //  NEW patients (not yet saved) live in the DOM with data-id="new"
@@ -3641,6 +3714,15 @@
         var dob = patient ? (patient.dob || '') : '';
         var gender = patient ? (patient.gender || 0) : 0;
         var desc = patient ? (patient.description || '') : '';
+        // GH TicketsCAD#68 (2026-08-18) — restored v3 fields. insuranceId
+        // and facilityId are resolved against loadInsuranceTypesList() /
+        // loadFacilitiesList() below once those lists are fetched; the
+        // raw ids are stashed as data attributes so the deferred populate
+        // callback can select the right option even if it runs after
+        // the user has already started typing in this row.
+        var insuranceId = patient ? (parseInt(patient.insurance_id, 10) || 0) : 0;
+        var facilityId = patient ? (parseInt(patient.facility_id, 10) || 0) : 0;
+        var facilityContact = patient ? (patient.facility_contact || '') : '';
 
         var div = document.createElement('div');
         div.className = 'patient-entry card card-body p-2 mb-2';
@@ -3676,6 +3758,22 @@
                         '<option value="3"' + (gender === 3 ? ' selected' : '') + '>Other</option>' +
                     '</select>' +
                 '</div>' +
+                '<div class="col-md-4">' +
+                    '<label class="form-label form-label-sm mb-0 text-body-secondary">Insurance</label>' +
+                    '<select class="form-select form-select-sm patient-insurance" data-current="' + insuranceId + '">' +
+                        '<option value="0">— Insurance…</option>' +
+                    '</select>' +
+                '</div>' +
+                '<div class="col-md-4">' +
+                    '<label class="form-label form-label-sm mb-0 text-body-secondary">Facility</label>' +
+                    '<select class="form-select form-select-sm patient-facility" data-current="' + facilityId + '">' +
+                        '<option value="0">— Facility…</option>' +
+                    '</select>' +
+                '</div>' +
+                '<div class="col-md-4">' +
+                    '<label class="form-label form-label-sm mb-0 text-body-secondary">Facility Contact</label>' +
+                    '<input type="text" class="form-control form-control-sm patient-fac-contact" placeholder="Contact at receiving facility" value="' + escHtmlAttr(facilityContact) + '">' +
+                '</div>' +
                 '<div class="col-12">' +
                     '<textarea class="form-control form-control-sm patient-desc" rows="1" placeholder="Condition / notes">' + escHtml(desc) + '</textarea>' +
                 '</div>' +
@@ -3698,6 +3796,36 @@
             window.DobHelper.bindInput(dobIn, dobAge);
         }
 
+        // GH TicketsCAD#68 — populate the Insurance + Facility selects
+        // (shared caches, same pattern as the per-unit Destination picker
+        // further down this file). Runs async so a freshly-added row
+        // isn't blocked on the fetch to appear.
+        loadInsuranceTypesList(function (types) {
+            var sel = div.querySelector('.patient-insurance');
+            if (!sel) return;
+            var current = sel.getAttribute('data-current') || '0';
+            var oh = '<option value="0">— Insurance…</option>';
+            for (var ti = 0; ti < types.length; ti++) {
+                var it = types[ti];
+                var selAttr = (String(it.id) === String(current)) ? ' selected' : '';
+                oh += '<option value="' + it.id + '"' + selAttr + '>' + escHtml(it.ins_value) + '</option>';
+            }
+            sel.innerHTML = oh;
+        });
+        loadFacilitiesList(function (facs) {
+            var sel = div.querySelector('.patient-facility');
+            if (!sel) return;
+            var current = sel.getAttribute('data-current') || '0';
+            var oh = '<option value="0">— Facility…</option>';
+            for (var fi = 0; fi < facs.length; fi++) {
+                var f = facs[fi];
+                var lbl = f.name || ('Facility #' + f.id);
+                var selAttr = (String(f.id) === String(current)) ? ' selected' : '';
+                oh += '<option value="' + f.id + '"' + selAttr + '>' + escHtml(lbl) + '</option>';
+            }
+            sel.innerHTML = oh;
+        });
+
         updatePatientCountBadge();
 
         // Focus the name field on freshly added rows
@@ -3718,12 +3846,23 @@
         var dobValue = (window.DobHelper)
             ? (window.DobHelper.readIso(dobEl) || dobEl.value.trim())
             : dobEl.value.trim();
+        // GH TicketsCAD#68 (2026-08-18) — insurance_id / facility_id /
+        // facility_contact. The selects may still be showing their
+        // placeholder-only option if this save fires before the async
+        // populate callbacks resolve (fast typist on a slow connection);
+        // that reads as "0 / unset", which is the correct fallback either
+        // way, not silent data loss.
+        var insSel = rowEl.querySelector('.patient-insurance');
+        var facSel = rowEl.querySelector('.patient-facility');
         var payload = {
-            csrf_token:  getCsrfToken(),
-            name:        rowEl.querySelector('.patient-name').value.trim(),
-            dob:         dobValue,
-            gender:      parseInt(rowEl.querySelector('.patient-gender').value, 10) || 0,
-            description: rowEl.querySelector('.patient-desc').value.trim()
+            csrf_token:       getCsrfToken(),
+            name:             rowEl.querySelector('.patient-name').value.trim(),
+            dob:              dobValue,
+            gender:           parseInt(rowEl.querySelector('.patient-gender').value, 10) || 0,
+            insurance_id:     insSel ? (parseInt(insSel.value, 10) || 0) : 0,
+            facility_id:      facSel ? (parseInt(facSel.value, 10) || 0) : 0,
+            facility_contact: rowEl.querySelector('.patient-fac-contact').value.trim(),
+            description:      rowEl.querySelector('.patient-desc').value.trim()
         };
 
         if (id === 'new' || !id) {
@@ -3807,6 +3946,223 @@
         badge.className = 'badge ms-auto ' + (rows.length > 0 ? 'bg-danger' : 'bg-secondary');
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    //  MANUAL CROSS-ORG SHARING (Phase 142, GH#70 Phase 2)
+    //
+    //  #btnShareIncident (toggled in renderHeader() above from
+    //  data.can_manage_sharing) opens #shareIncidentModal, which fetches
+    //  GET api/incident-share.php?ticket_id=N on open to populate the
+    //  current-shares table and (when can_create is true) the add-a-share
+    //  form. Target-org picker reuses api/organizations.php?action=list
+    //  verbatim (the same endpoint org-routing-admin.js's own
+    //  populateTargetOrgSelect() already uses), filtered client-side to
+    //  active organizations excluding the ticket's own owning org.
+    //  Every write is re-checked server-side by api/incident-share.php
+    //  (RBAC + org_ticket_is_owned_by_caller()) — this is display/UX only.
+    // ═══════════════════════════════════════════════════════════════
+    function initShareModal(ticketId) {
+        var btn = document.getElementById('btnShareIncident');
+        var modalEl = document.getElementById('shareIncidentModal');
+        if (!btn || !modalEl) return;
+
+        var orgList = [];
+        var owningOrgId = null;
+        var canCreate = false;
+        var canRevoke = false;
+
+        btn.addEventListener('click', function () {
+            if (window.bootstrap) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            loadShareData();
+        });
+
+        var submitBtn = document.getElementById('btnShareModalSubmit');
+        if (submitBtn) submitBtn.addEventListener('click', submitCreateShare);
+
+        // Delegated — the revoke buttons are re-rendered on every load.
+        var rowsBody = document.getElementById('shareModalRows');
+        if (rowsBody) {
+            rowsBody.addEventListener('click', function (e) {
+                var revokeBtn = e.target.closest('[data-revoke-share-id]');
+                if (!revokeBtn) return;
+                var shareId = parseInt(revokeBtn.getAttribute('data-revoke-share-id'), 10);
+                if (!shareId) return;
+                revokeShare(shareId, revokeBtn);
+            });
+        }
+
+        // Live refresh of the modal's OWN contents while it's open — the
+        // top-level SSE wiring (_phase104h_wire_sse() below) already
+        // re-fetches the incident (updating #btnShareIncident/#sharedFromBadge
+        // via renderHeader()), but that fetch doesn't touch this modal's
+        // share-list table. Only reload when the modal is actually visible —
+        // no point fetching a list nobody is looking at.
+        function wireLiveRefresh() {
+            if (typeof EventBus === 'undefined' || !EventBus.on) {
+                setTimeout(function () { if (typeof EventBus !== 'undefined' && EventBus.on) wireLiveRefresh(); }, 500);
+                return;
+            }
+            ['incident:shared', 'incident:unshared'].forEach(function (evtName) {
+                EventBus.on(evtName, function (payload) {
+                    if (payload && payload.ticket_id !== undefined
+                        && parseInt(payload.ticket_id, 10) !== parseInt(ticketId, 10)) return;
+                    if (modalEl.classList.contains('show')) loadShareData();
+                });
+            });
+        }
+        wireLiveRefresh();
+
+        function hideShareModalError() {
+            var el = document.getElementById('shareModalError');
+            if (el) el.classList.add('d-none');
+        }
+
+        function showShareModalError(message) {
+            var el = document.getElementById('shareModalError');
+            if (!el) return;
+            el.textContent = message; // .textContent per this codebase's hard rule for server-authored/error text
+            el.classList.remove('d-none');
+        }
+
+        function loadShareData() {
+            hideShareModalError();
+            var rowsEl = document.getElementById('shareModalRows');
+            if (rowsEl) rowsEl.innerHTML = '<tr><td colspan="6" class="text-center text-body-secondary py-3">Loading&hellip;</td></tr>';
+
+            fetch('api/incident-share.php?ticket_id=' + encodeURIComponent(ticketId), { credentials: 'same-origin' })
+                .then(function (r) { return r.json(); })
+                .then(function (resp) {
+                    if (resp.error) {
+                        if (rowsEl) rowsEl.innerHTML = '';
+                        showShareModalError(resp.error);
+                        return;
+                    }
+                    canCreate = !!resp.can_create;
+                    canRevoke = !!resp.can_revoke;
+                    owningOrgId = resp.owning_org_id || null;
+                    renderShareRows(resp.shares || []);
+                    var formEl = document.getElementById('shareModalAddForm');
+                    if (formEl) formEl.classList.toggle('d-none', !canCreate);
+                    if (canCreate) loadOrgList();
+                })
+                .catch(function (err) {
+                    showShareModalError('Failed to load shares: ' + err.message);
+                });
+        }
+
+        function renderShareRows(shares) {
+            var rowsEl = document.getElementById('shareModalRows');
+            if (!rowsEl) return;
+            if (!shares.length) {
+                rowsEl.innerHTML = '<tr><td colspan="6" class="text-center text-body-secondary py-3">Not currently shared with any organization.</td></tr>';
+                return;
+            }
+            var html = '';
+            shares.forEach(function (s) {
+                var tierBadge = s.access_tier === 'assist'
+                    ? '<span class="badge bg-warning text-dark">Assist</span>'
+                    : '<span class="badge bg-info text-dark">View</span>';
+                var sourceLabel = s.source === 'rule'
+                    ? 'via rule #' + escHtml(s.routing_rule_id)
+                    : escHtml(s.created_by_name || 'Manual');
+                html += '<tr>';
+                html += '<td>' + escHtml(s.shared_with_org_name) + '</td>';
+                html += '<td>' + tierBadge + '</td>';
+                html += '<td class="small text-body-secondary">' + sourceLabel + '</td>';
+                html += '<td class="small">' + (s.share_reason ? escHtml(s.share_reason) : '—') + '</td>';
+                html += '<td class="small text-body-secondary">' + (s.created_at ? escHtml(formatDateTime(s.created_at)) : '—') + '</td>';
+                html += '<td class="text-end">';
+                if (canRevoke) {
+                    html += '<button type="button" class="btn btn-sm btn-outline-danger" data-revoke-share-id="' + s.id + '" title="Revoke"><i class="bi bi-x-circle"></i></button>';
+                }
+                html += '</td>';
+                html += '</tr>';
+            });
+            rowsEl.innerHTML = html;
+        }
+
+        function loadOrgList() {
+            fetch('api/organizations.php?action=list', { credentials: 'same-origin' })
+                .then(function (r) { return r.json(); })
+                .then(function (resp) {
+                    orgList = resp.organizations || [];
+                    populateTargetOrgSelect();
+                })
+                .catch(function () { /* select stays empty; submit will fail server-side with a clear error */ });
+        }
+
+        function populateTargetOrgSelect() {
+            var sel = document.getElementById('shareModalTargetOrg');
+            if (!sel) return;
+            sel.innerHTML = '<option value="">Select an organization&hellip;</option>';
+            orgList.forEach(function (o) {
+                // Active orgs only, excluding the ticket's own owning org —
+                // same filtering shape as org-routing-admin.js's own
+                // populateTargetOrgSelect(), per plan.md's target-org-picker
+                // section (an operational, in-the-moment sharing decision
+                // has no reason to offer a retired organization).
+                if (parseInt(o.active, 10) !== 1) return;
+                if (owningOrgId && parseInt(o.id, 10) === parseInt(owningOrgId, 10)) return;
+                var opt = document.createElement('option');
+                opt.value = String(o.id);
+                opt.textContent = o.name;
+                sel.appendChild(opt);
+            });
+        }
+
+        function submitCreateShare() {
+            hideShareModalError();
+            var targetSel = document.getElementById('shareModalTargetOrg');
+            var reasonEl = document.getElementById('shareModalReason');
+            var tierAssist = document.getElementById('shareModalTierAssist');
+
+            var targetOrgId = targetSel ? parseInt(targetSel.value, 10) : 0;
+            var reason = reasonEl ? reasonEl.value.trim() : '';
+            var tier = (tierAssist && tierAssist.checked) ? 'assist' : 'view';
+
+            if (!targetOrgId) { showShareModalError('Select an organization to share with.'); return; }
+            if (!reason) { showShareModalError('A reason is required.'); return; }
+
+            fetch('api/incident-share.php', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'create',
+                    ticket_id: ticketId,
+                    shared_with_org_id: targetOrgId,
+                    access_tier: tier,
+                    reason: reason,
+                    csrf_token: getCsrfToken()
+                })
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (resp) {
+                    if (resp.error) { showShareModalError(resp.error); return; }
+                    if (reasonEl) reasonEl.value = '';
+                    if (targetSel) targetSel.value = '';
+                    document.getElementById('shareModalTierView').checked = true;
+                    loadShareData(); // re-fetch the current-shares table, no full page reload
+                })
+                .catch(function (err) { showShareModalError('Failed to create share: ' + err.message); });
+        }
+
+        function revokeShare(shareId, btnEl) {
+            if (btnEl) btnEl.disabled = true;
+            fetch('api/incident-share.php', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'revoke', share_id: shareId, csrf_token: getCsrfToken() })
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (resp) {
+                    if (resp.error) { showShareModalError(resp.error); if (btnEl) btnEl.disabled = false; return; }
+                    loadShareData(); // re-fetch the current-shares table, no full page reload
+                })
+                .catch(function (err) { showShareModalError('Failed to revoke share: ' + err.message); if (btnEl) btnEl.disabled = false; });
+        }
+    }
+
     // Attribute-safe HTML escape (handles double quotes in value="…").
     function escHtmlAttr(str) {
         if (str === null || str === undefined) return '';
@@ -3853,7 +4209,15 @@
         // refreshed an open CAD incident window.
         var events = [
             'incident:update', 'incident:close', 'incident:note', 'action:added',
-            'responder:status', 'assign:update', 'assign:new', 'patient:add', 'patient:update'
+            'responder:status', 'assign:update', 'assign:new', 'patient:add', 'patient:update',
+            // Phase 142 (GH#70 Phase 2) — a share grant/revoke on THIS
+            // incident. forThisIncident()'s existing payload.ticket_id
+            // filter and _phase104h_schedule_refresh()'s re-fetch already
+            // do the right thing: the refreshed response naturally
+            // re-renders shared_from_org_id/can_manage_sharing and the
+            // shares-modal's own contents (if open) from fresh data — no
+            // new client logic needed beyond these two array entries.
+            'incident:shared', 'incident:unshared'
         ];
         events.forEach(function (e) {
             EventBus.on(e, function (payload) {

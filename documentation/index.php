@@ -317,6 +317,7 @@ function _build_sidebar(string $base, string $current): string
             ['MESH-BRIDGE-GUIDE',           'Meshtastic / MeshCore'],
             ['APRS-LISTENER-SETUP',         'APRS-IS listener'],
             ['OWNTRACKS-CONFIG-PUSH',       'OwnTracks config push'],
+            ['LOCATION-PROVIDERS-GUIDE',    'Location providers overview'],
             ['map-configuration',           'Map configuration'],
         ],
         'For users' => [

@@ -147,6 +147,14 @@ if ($method === 'POST') {
             json_error('Title is required');
         }
 
+        // GH#80 — bounds validation on the coordinates this fix makes easier to
+        // populate. 0/0 is explicitly allowed through: it's the existing "no
+        // location set" sentinel, and address-only reports with no single point
+        // (e.g. "Highway 10 closed, mile markers 4-7") are a legitimate save.
+        if (($lat !== 0.0 && ($lat < -90 || $lat > 90)) || ($lng !== 0.0 && ($lng < -180 || $lng > 180))) {
+            json_error('Latitude must be between -90 and 90, and longitude between -180 and 180.');
+        }
+
         try {
             if ($id) {
                 db_query(

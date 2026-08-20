@@ -207,6 +207,47 @@ function fixLegacyDefaults() {
     }
 }
 
+/**
+ * GH#76 Phase 144 (2026-08-18) — enrich member rows with team_ids[]/
+ * team_names[] from the team_members junction, the sole source of truth
+ * for team assignment as of this release. Originally only the roster LIST
+ * endpoint below did this merge; search and the ICS-qualified list were
+ * legacy-JOIN-only with NO junction merge at all, meaning both silently
+ * showed ZERO team for every junction-only member. That's a real,
+ * previously-silent bug this phase fixes here, not cosmetic completeness
+ * (see CLAUDE.md's GH#76 pitfall entry + tests/test_search_ics_list_team_names.php).
+ *
+ * Mutates $rows in place. Also back-fills the legacy team_id/team_name
+ * columns from the first team when the legacy column is empty -- the same
+ * "first team as primary" convenience the LIST endpoint already used.
+ */
+function enrichMemberRowsWithTeams(array &$rows): void {
+    if (empty($rows)) return;
+    $teamMemberships = safe_fetch_all_m(
+        "SELECT tm.member_id, tm.team_id, t.`team` AS team_name
+         FROM " . db_table('team_members') . " tm
+         JOIN " . db_table('teams') . " t ON tm.team_id = t.id
+         ORDER BY t.`team`"
+    );
+    $memberTeams = [];
+    foreach ($teamMemberships as $tm) {
+        $mid = (int) $tm['member_id'];
+        if (!isset($memberTeams[$mid])) $memberTeams[$mid] = [];
+        $memberTeams[$mid][] = ['id' => (int) $tm['team_id'], 'name' => $tm['team_name']];
+    }
+    foreach ($rows as &$m) {
+        $mid = (int) $m['id'];
+        $m['team_ids']   = isset($memberTeams[$mid]) ? array_column($memberTeams[$mid], 'id') : [];
+        $m['team_names'] = isset($memberTeams[$mid]) ? array_column($memberTeams[$mid], 'name') : [];
+        // Use first team as primary if the legacy team_id column is empty.
+        if (empty($m['team_id']) && !empty($m['team_ids'])) {
+            $m['team_id']   = $m['team_ids'][0];
+            $m['team_name'] = $m['team_names'][0];
+        }
+    }
+    unset($m);
+}
+
 if ($method === 'GET') {
     handleGet();
 } elseif ($method === 'POST') {
@@ -419,6 +460,7 @@ function handleGet() {
              LIMIT 100",
             array_merge([$term, $term, $term, $term, $term], $memOrgVars)
         );
+        enrichMemberRowsWithTeams($rows);
         json_response(['members' => $rows]);
     }
 
@@ -448,6 +490,7 @@ function handleGet() {
              ORDER BY m.last_name, m.first_name",
             array_merge([$posId], $memOrgVars)
         );
+        enrichMemberRowsWithTeams($rows);
 
         // Get the position info for display
         $pos = safe_fetch_all_m(
@@ -512,32 +555,9 @@ function handleGet() {
         $memOrgVars
     );
 
-    // Enrich members with team memberships from junction table
-    $teamMemberships = safe_fetch_all_m(
-        "SELECT tm.member_id, tm.team_id, t.`team` AS team_name
-         FROM " . db_table('team_members') . " tm
-         JOIN " . db_table('teams') . " t ON tm.team_id = t.id
-         ORDER BY t.`team`"
-    );
-    // Build lookup: member_id => [team_id, team_id, ...]
-    $memberTeams = [];
-    foreach ($teamMemberships as $tm) {
-        $mid = (int) $tm['member_id'];
-        if (!isset($memberTeams[$mid])) $memberTeams[$mid] = [];
-        $memberTeams[$mid][] = ['id' => (int) $tm['team_id'], 'name' => $tm['team_name']];
-    }
-    // Add team_ids array to each member
-    foreach ($rows as &$m) {
-        $mid = (int) $m['id'];
-        $m['team_ids'] = isset($memberTeams[$mid]) ? array_column($memberTeams[$mid], 'id') : [];
-        $m['team_names'] = isset($memberTeams[$mid]) ? array_column($memberTeams[$mid], 'name') : [];
-        // Use first team as primary if team_id is null
-        if (empty($m['team_id']) && !empty($m['team_ids'])) {
-            $m['team_id'] = $m['team_ids'][0];
-            $m['team_name'] = $m['team_names'][0];
-        }
-    }
-    unset($m);
+    // Enrich members with team memberships from junction table (GH#76
+    // Phase 144 — shared helper also used by search + ICS-qualified list).
+    enrichMemberRowsWithTeams($rows);
 
     // Also return lookup data for forms
     $types = safe_fetch_all_m("SELECT * FROM " . db_table('member_types') . " ORDER BY name");
@@ -1046,9 +1066,13 @@ function handlePost() {
         //
         // Filter input down to the keys the helper's whitelist accepts.
         // first_name + last_name are validated above and ALWAYS included.
+        // GH#76 Phase 144 (2026-08-18): 'team_id' deliberately removed --
+        // team assignment moved to team_members exclusively (roster.js's
+        // Team Memberships card + the Teams tab, both via api/teams.php).
+        // See inc/member-write.php and tests/test_legacy_team_id_write_audit.php.
         static $passthrough = [
             'first_name', 'last_name', 'middle_name',
-            'member_type_id', 'member_status_id', 'team_id',
+            'member_type_id', 'member_status_id',
             'callsign', 'title', 'email',
             'phone_home', 'phone_work', 'phone_cell',
             'street', 'city', 'county', 'state', 'zip',

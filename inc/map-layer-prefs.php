@@ -77,6 +77,15 @@ function map_layer_catalog(): array {
         // ── Operational data ──
         'incidents'       => ['label' => 'Incidents',        'group' => 'Operational', 'default' => true],
         'units'           => ['label' => 'Units',            'group' => 'Operational', 'default' => true],
+        // GH #74 / GH #73 (2026-08-17) — the live-GPS tracking overlay
+        // (assets/js/unit-tracking.js) is a SEPARATE layer from the
+        // status-coloured 'units' roster layer above; see situation.php's
+        // tracker.getLayerGroup() registration for why the two are distinct.
+        // Cataloguing it here (matching SHIPPED_DEFAULTS in
+        // assets/js/map-layer-prefs.js) is what makes a toggle of it survive
+        // a reload — an id map_layer_prefs_set() doesn't recognise is
+        // silently dropped by its `if (isset($catalog[$id]))` guard.
+        'units_live'      => ['label' => 'Units — live GPS', 'group' => 'Operational', 'default' => true],
         'facilities'      => ['label' => 'Facilities',       'group' => 'Operational', 'default' => true],
         'event_zones'     => ['label' => 'Event Zones',      'group' => 'Operational', 'default' => true],
         'markups'         => ['label' => 'Map Markups',      'group' => 'Operational', 'default' => false],

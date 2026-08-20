@@ -190,7 +190,7 @@ foreach ($onDisk as $name => $m) {
             <i class="bi bi-database-gear text-primary me-2"></i>Database Migrations
         </h5>
         <div class="d-flex gap-2">
-            <a href="docs/INSTALL.md" target="_blank" class="btn btn-sm btn-outline-info">
+            <a href="documentation/?doc=INSTALL" target="_blank" class="btn btn-sm btn-outline-info">
                 <i class="bi bi-book me-1"></i>Install Guide
             </a>
         </div>
@@ -250,7 +250,7 @@ foreach ($onDisk as $name => $m) {
                 <code class="ms-1 px-1 bg-body-secondary">sudo -u www-data php sql/run_migrations.php</code>
                 <br>
                 The full install + upgrade procedure is in
-                <a href="docs/INSTALL.md" target="_blank">docs/INSTALL.md</a>.
+                <a href="documentation/?doc=INSTALL" target="_blank">docs/INSTALL.md</a>.
             </div>
         </div>
     </div>

@@ -46,9 +46,11 @@ function pt_assert(string $label, bool $expected, bool $actual): void {
 
 function pt_create_user(string $username): int {
     global $prefix, $created;
+    // GH#91 Phase 147 dropped user.open_at (dead legacy "page to show
+    // after login" column, never read) — no longer part of this INSERT.
     db_query(
-        "INSERT INTO `{$prefix}user` (`user`, `passwd`, `level`, `status`, `open_at`, `org`)
-         VALUES (?, '', 0, 'approved', 'd', 0)",
+        "INSERT INTO `{$prefix}user` (`user`, `passwd`, `level`, `status`, `org`)
+         VALUES (?, '', 0, 'approved', 0)",
         [$username]
     );
     $id = (int) db_insert_id();

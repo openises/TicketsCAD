@@ -167,13 +167,32 @@ function install_perm_targets(): array
                 'create' => false];
     }
 
+    // 'create' => true (2026-08-19). It used to be false, on the reasoning
+    // that "every one of these is created on demand" (see the comment on
+    // $relDirs above, which is true for uploads/cache/weather). It is NOT
+    // true for these two: tile_cache_dir()/geocode_cache_dir() are called
+    // from whatever process happens to reach them FIRST — a real web request
+    // (fine) or a CLI/SSH diagnostic run as the operator (not fine) — and
+    // that process's own @mkdir() creates the directory owned by ITSELF,
+    // with no way for PHP to force the group to match the web server's
+    // afterwards (chgrp requires either owning the target group or root).
+    // On your-server.example.com an operator CLI command won this race:
+    // GEOCODE_CACHE_DIR came up ejosterberg:ejosterberg mode 0700, www-data
+    // could not write a single byte into it, and every geocode lookup
+    // silently bypassed the cache for weeks — geocode_cache_write() is
+    // documented "best effort: a cache we cannot write is not an error", so
+    // nothing logged it. 'create' => true here means tools/fix-permissions.php
+    // — already run on every tools/deploy.sh deploy, and the documented
+    // shortcut for a self-hosted admin — creates BOTH directories owned by
+    // the web server up front, before either kind of process can race to
+    // create them the wrong way. See tests/test_deploy_permissions.php.
     if (defined('TILE_CACHE_DIR')) {
         $t[] = ['path' => TILE_CACHE_DIR, 'label' => 'TILE_CACHE_DIR', 'role' => INSTALL_PERM_WEB,
-                'purpose' => 'map tile cache (inc/tile-proxy.php)', 'create' => false];
+                'purpose' => 'map tile cache (inc/tile-proxy.php)', 'create' => true];
     }
     if (defined('GEOCODE_CACHE_DIR')) {
         $t[] = ['path' => GEOCODE_CACHE_DIR, 'label' => 'GEOCODE_CACHE_DIR', 'role' => INSTALL_PERM_WEB,
-                'purpose' => 'geocoding results cache (inc/geocode.php)', 'create' => false];
+                'purpose' => 'geocoding results cache (inc/geocode.php)', 'create' => true];
     }
 
     return $t;

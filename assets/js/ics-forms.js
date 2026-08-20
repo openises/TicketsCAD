@@ -14,6 +14,7 @@
     var currentForm     = null;   // Row of the loaded saved form (for can_delete)
     var csrfToken       = '';     // CSRF token from page
     var incidentData    = null;   // Linked incident data (if any)
+    var currentCustomTypeId = 0;  // Phase 140: which ics_form_types row, when form_type === 'custom'
 
     // ── Init ──
     document.addEventListener('DOMContentLoaded', function () {
@@ -22,6 +23,7 @@
         initTheme();
         loadFormsList();
         bindHubEvents();
+        loadCustomTypeCards();
     });
 
     // ═══════════════════════════════════════════════════════════
@@ -47,14 +49,22 @@
     // Hub — list saved forms and show new-form cards
     // ═══════════════════════════════════════════════════════════
     function bindHubEvents() {
-        // "New" buttons on form type cards
-        var newBtns = document.querySelectorAll('[data-new-form]');
-        newBtns.forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                var type = this.getAttribute('data-new-form');
-                openFormEditor(type, 0);
+        // "New" buttons on form type cards -- a DELEGATED listener on
+        // #hubSection (Phase 140), not per-button bindings, so the custom-
+        // type cards loadCustomTypeCards() appends AFTER this runs work with
+        // no separate re-binding step. A custom-type card additionally
+        // carries data-custom-type-id, threaded through to the template
+        // fetch and (via currentCustomTypeId) into saveForm()'s payload.
+        var hub = document.getElementById('hubSection');
+        if (hub) {
+            hub.addEventListener('click', function (ev) {
+                var btn = ev.target.closest('[data-new-form]');
+                if (!btn || !hub.contains(btn)) return;
+                var type = btn.getAttribute('data-new-form');
+                var customTypeId = btn.getAttribute('data-custom-type-id');
+                openFormEditor(type, 0, null, null, '', 'draft', customTypeId ? parseInt(customTypeId, 10) : 0);
             });
-        });
+        }
 
         // Back button from editor to hub
         var backBtn = document.getElementById('btnBackToHub');
@@ -242,6 +252,62 @@
         }
     }
 
+    /**
+     * Phase 140 — append one "New" card per active, in-scope custom ICS
+     * form type after the 9 static built-in cards. Fails silently to an
+     * empty row (not an error banner) on an unmigrated/feature-off install,
+     * since api/ics-form-types.php answers 503 there -- this call is best-
+     * effort décor, not something a dispatcher's day depends on.
+     */
+    function loadCustomTypeCards() {
+        var row = document.getElementById('formTypeCardsRow');
+        if (!row) return;
+
+        fetch('api/ics-form-types.php?list=1')
+            .then(function (r) { return r.json(); })
+            .then(function (resp) {
+                var types = resp.types || [];
+                var html = '';
+                types.forEach(function (t) {
+                    html += renderCustomTypeCard(t);
+                });
+                if (html) row.insertAdjacentHTML('beforeend', html);
+            })
+            .catch(function () {
+                // Feature unavailable or request failed -- the 9 built-in
+                // cards are still fully usable, so this is a quiet no-op.
+            });
+    }
+
+    /**
+     * One hub card for a custom type, matching the 9 built-in cards'
+     * markup (col-md-6 col-lg-4 col-xl-3 > card.ics-type-card). Every
+     * field here is agency-authored -- form_number/form_title/description
+     * all go through escHtml(), and badge_color is checked against the
+     * same 7-value whitelist getFormTypeBadge() uses, never trusted as a
+     * bare class-attribute fragment.
+     */
+    function renderCustomTypeCard(t) {
+        var allowedColors = ['primary', 'secondary', 'success', 'danger', 'warning', 'info', 'dark'];
+        var color = allowedColors.indexOf(t.badge_color) !== -1 ? t.badge_color : 'secondary';
+        var icon = /^bi-[a-z0-9-]+$/.test(t.icon || '') ? t.icon : 'bi-file-earmark-text';
+        var numberOrTitle = escHtml(t.form_number || t.form_title || 'Custom');
+
+        var h = '<div class="col-md-6 col-lg-4 col-xl-3">';
+        h += '<div class="card ics-type-card h-100">';
+        h += '<div class="card-body">';
+        h += '<div class="d-flex align-items-center justify-content-between mb-2">';
+        h += '<span class="form-number text-' + color + '"><i class="bi ' + icon + ' me-1"></i>' + numberOrTitle + '</span>';
+        h += '<span class="badge bg-' + color + '">Custom</span>';
+        h += '</div>';
+        h += '<h6 class="card-title mb-1">' + escHtml(t.form_title || 'Untitled Type') + '</h6>';
+        h += '<p class="form-desc text-body-secondary mb-2">' + escHtml(t.description || '') + '</p>';
+        h += '<button class="btn btn-sm btn-' + color + '" data-new-form="custom" data-custom-type-id="' + escAttr(t.id) + '">';
+        h += '<i class="bi bi-plus-lg me-1"></i>New</button>';
+        h += '</div></div></div>';
+        return h;
+    }
+
     function loadFormsList() {
         var filterSel = document.getElementById('hubFilterType');
         var typeParam = filterSel ? filterSel.value : '';
@@ -270,7 +336,7 @@
 
         var html = '';
         forms.forEach(function (f) {
-            var typeBadge = getFormTypeBadge(f.form_type);
+            var typeBadge = getFormTypeBadge(f);
             var statusBadge = getStatusBadge(f.status);
             var incLink = f.incident_id
                 ? '<a href="incident-detail.php?id=' + f.incident_id + '">#' + f.incident_id + '</a>'
@@ -322,8 +388,23 @@
         });
     }
 
-    /** "ICS-214 "Bridge collapse"" — what the confirm dialog names. */
+    /**
+     * "ICS-214 "Bridge collapse"" — what the confirm dialog names.
+     * Phase 140: a custom-type form has no fixed "ICS-nnn" number, so its
+     * type label reads from _meta -- checked in priority order across the
+     * three shapes `f` can arrive in here: a full saved-form row (loadSavedForm,
+     * carries form_data._meta), a hub list row (custom_form_number/title from
+     * the JSON_EXTRACT columns), or the minimal object saveForm() builds
+     * right after a save (same two convenience fields, sourced from the
+     * just-used template).
+     */
     function describeForm(f) {
+        if (f && f.form_type === 'custom') {
+            var meta = (f.form_data && f.form_data._meta) || {};
+            var typeLabel = meta.form_number || f.custom_form_number
+                || meta.form_title || f.custom_form_title || 'Custom Form';
+            return typeLabel + ' "' + (f.title || '(untitled)') + '"';
+        }
         return 'ICS-' + String(f.form_type || '').toUpperCase()
             + ' "' + (f.title || '(untitled)') + '"';
     }
@@ -376,7 +457,10 @@
                 // Keep the row so the toolbar can read can_delete. Cleared in
                 // openFormEditor for a brand-new form.
                 currentForm = form;
-                openFormEditor(form.form_type, form.id, form.form_data, form.incident_id, form.title, form.status);
+                // Phase 140: custom_type_id travels on the saved row itself
+                // (SELECT * on ics_forms includes it) -- thread it through so
+                // re-saving this form keeps pointing at the same type.
+                openFormEditor(form.form_type, form.id, form.form_data, form.incident_id, form.title, form.status, form.custom_type_id);
             })
             .catch(function (err) {
                 showAlert('danger', 'Failed to load form: ' + err.message);
@@ -386,68 +470,117 @@
     // ═══════════════════════════════════════════════════════════
     // Form Editor
     // ═══════════════════════════════════════════════════════════
-    function openFormEditor(formType, formId, savedData, incidentId, savedTitle, savedStatus) {
+    function openFormEditor(formType, formId, savedData, incidentId, savedTitle, savedStatus, customTypeId) {
         currentFormId = formId || 0;
+        currentCustomTypeId = customTypeId || 0;
         // A new form (id 0) carries no saved row — drop any previous one so a
         // stale can_delete cannot leak a Delete button onto an unsaved form.
         if (!currentFormId) currentForm = null;
 
-        // Fetch template
-        fetch('api/ics-forms.php?template=' + encodeURIComponent(formType))
+        // Phase 140 fix (GH#69 follow-up, 2026-08-16): re-opening an
+        // ALREADY-SAVED custom-type instance must keep rendering the exact
+        // field list it was first saved with, forever -- the same guarantee
+        // ics_form_custom_print_html() already gives on print (it renders
+        // solely from form_data._meta, never a fresh type lookup -- see
+        // inc/ics-form-types.php's docblock). Before this fix, reopening a
+        // saved instance for EDITING still fetched the type's CURRENT
+        // (possibly since-edited) field list via api/ics-forms.php's
+        // template endpoint, using savedData only to fill in values by key
+        // -- so an administrator editing the type after the fact silently
+        // changed how every earlier submission rendered in the editor, even
+        // though print already froze correctly. A brand-new instance (no
+        // savedData._meta yet, because nothing has been saved) still needs
+        // the live type definition and falls through to the fetch below.
+        if (formType === 'custom' && savedData && savedData._meta && Array.isArray(savedData._meta.fields)) {
+            var meta = savedData._meta;
+            var frozenTpl = {
+                form_type: 'custom',
+                custom_type_id: meta.type_id || currentCustomTypeId,
+                slug: meta.type_slug || '',
+                form_number: meta.form_number || '',
+                form_title: meta.form_title || '',
+                badge_color: meta.badge_color || 'secondary',
+                icon: meta.icon || 'bi-file-earmark-text',
+                fields: meta.fields
+            };
+            if (frozenTpl.custom_type_id) currentCustomTypeId = frozenTpl.custom_type_id;
+            _finishOpenFormEditor(frozenTpl, formType, savedData, incidentId, savedTitle, savedStatus);
+            return;
+        }
+
+        // Fetch template. Phase 140: a custom type's blank/loaded template
+        // needs to know WHICH type -- travels as a second query param.
+        var templateUrl = 'api/ics-forms.php?template=' + encodeURIComponent(formType);
+        if (formType === 'custom' && currentCustomTypeId) {
+            templateUrl += '&custom_type_id=' + currentCustomTypeId;
+        }
+        fetch(templateUrl)
             .then(function (r) { return r.json(); })
             .then(function (tpl) {
                 if (tpl.error) {
                     showAlert('danger', tpl.error);
                     return;
                 }
-                currentTemplate = tpl;
-                renderFormEditor(tpl, savedData || {}, savedTitle || '', savedStatus || 'draft');
-                showEditor();
-
-                // Show/hide XML export button (only for ICS-213)
-                var xmlBtn = document.getElementById('btnExportXml');
-                if (xmlBtn) {
-                    xmlBtn.style.display = (formType === '213') ? '' : 'none';
-                }
-
-                // Show/hide Delete. Only for a form that already exists AND
-                // that the server said this user may delete. A brand-new
-                // unsaved form has nothing to delete.
-                var delBtn = document.getElementById('btnDeleteForm');
-                if (delBtn) {
-                    var canDelete = currentFormId > 0 && currentForm && currentForm.can_delete;
-                    delBtn.style.display = canDelete ? '' : 'none';
-                }
-
-                // Set incident link if provided
-                var linkHidden = document.getElementById('linkIncidentId');
-                var linkSearch = document.getElementById('linkIncidentSearch');
-                var linkClear = document.getElementById('btnClearIncidentLink');
-                if (linkHidden && incidentId) {
-                    linkHidden.value = incidentId;
-                    // Show the incident info in the search input
-                    if (linkSearch) linkSearch.value = 'Loading #' + incidentId + '...';
-                    if (linkClear) linkClear.style.display = '';
-                    loadIncidentData(incidentId);
-                    // Update search input after data loads
-                    setTimeout(function () {
-                        if (incidentData && linkSearch) {
-                            // Phase 99p — prefer the case number.
-                            var label = incidentData.incident_number || ('#' + incidentId);
-                            if (incidentData.type_name) label += ' ' + incidentData.type_name;
-                            if (incidentData.street) label += ' — ' + incidentData.street;
-                            linkSearch.value = label;
-                        }
-                    }, 1000);
-                } else {
-                    if (linkHidden) linkHidden.value = '';
-                    if (linkSearch) linkSearch.value = '';
-                    if (linkClear) linkClear.style.display = 'none';
-                }
+                // ics_form_custom_template()'s return shape carries its own
+                // custom_type_id -- keep module state in sync from the
+                // authoritative source, not just the caller's argument.
+                if (tpl.custom_type_id) currentCustomTypeId = tpl.custom_type_id;
+                _finishOpenFormEditor(tpl, formType, savedData, incidentId, savedTitle, savedStatus);
             })
             .catch(function (err) {
                 showAlert('danger', 'Failed to load form template: ' + err.message);
             });
+    }
+
+    /** Shared tail of openFormEditor() -- render the field list, show the
+     * editor, and set up the toolbar/incident-link state. Reached either
+     * from a frozen _meta snapshot (saved custom instance) or from the
+     * live-template fetch (built-in types, and a brand-new custom form). */
+    function _finishOpenFormEditor(tpl, formType, savedData, incidentId, savedTitle, savedStatus) {
+        currentTemplate = tpl;
+        renderFormEditor(tpl, savedData || {}, savedTitle || '', savedStatus || 'draft');
+        showEditor();
+
+        // Show/hide XML export button (only for ICS-213)
+        var xmlBtn = document.getElementById('btnExportXml');
+        if (xmlBtn) {
+            xmlBtn.style.display = (formType === '213') ? '' : 'none';
+        }
+
+        // Show/hide Delete. Only for a form that already exists AND
+        // that the server said this user may delete. A brand-new
+        // unsaved form has nothing to delete.
+        var delBtn = document.getElementById('btnDeleteForm');
+        if (delBtn) {
+            var canDelete = currentFormId > 0 && currentForm && currentForm.can_delete;
+            delBtn.style.display = canDelete ? '' : 'none';
+        }
+
+        // Set incident link if provided
+        var linkHidden = document.getElementById('linkIncidentId');
+        var linkSearch = document.getElementById('linkIncidentSearch');
+        var linkClear = document.getElementById('btnClearIncidentLink');
+        if (linkHidden && incidentId) {
+            linkHidden.value = incidentId;
+            // Show the incident info in the search input
+            if (linkSearch) linkSearch.value = 'Loading #' + incidentId + '...';
+            if (linkClear) linkClear.style.display = '';
+            loadIncidentData(incidentId);
+            // Update search input after data loads
+            setTimeout(function () {
+                if (incidentData && linkSearch) {
+                    // Phase 99p — prefer the case number.
+                    var label = incidentData.incident_number || ('#' + incidentId);
+                    if (incidentData.type_name) label += ' ' + incidentData.type_name;
+                    if (incidentData.street) label += ' — ' + incidentData.street;
+                    linkSearch.value = label;
+                }
+            }, 1000);
+        } else {
+            if (linkHidden) linkHidden.value = '';
+            if (linkSearch) linkSearch.value = '';
+            if (linkClear) linkClear.style.display = 'none';
+        }
     }
 
     function renderFormEditor(tpl, data, title, status) {
@@ -470,6 +603,9 @@
         tpl.fields.forEach(function (field) {
             if (field.type === 'table') {
                 html += renderTableField(field, data[field.key] || []);
+            } else if (field.type === 'section_header') {
+                // No input, no tabIndex, no data key -- a divider only.
+                html += renderSimpleField(field, '', 0);
             } else {
                 html += renderSimpleField(field, data[field.key] || '', tabIdx);
                 tabIdx++;
@@ -492,6 +628,28 @@
     function renderSimpleField(field, value, tabIdx) {
         var id = 'ics_' + field.key;
         var req = field.required ? ' <span class="text-danger">*</span>' : '';
+
+        // Phase 140 — section_header: a divider only, no input, excluded
+        // from collectFormData() and from the tabIndex sequence.
+        if (field.type === 'section_header') {
+            return '<div class="col-12 mt-2 mb-1"><h6 class="border-bottom pb-1 text-body-secondary">'
+                + escHtml(field.label) + '</h6></div>';
+        }
+
+        // Phase 140 — checkbox: Bootstrap's form-check markup puts the
+        // input BEFORE its label, unlike every other field type here, so
+        // it gets its own branch rather than slotting into the common
+        // label-then-input div below.
+        if (field.type === 'checkbox') {
+            var checked = value ? ' checked' : '';
+            var ch = '<div class="mb-2 form-check">';
+            ch += '<input type="checkbox" class="form-check-input" id="' + id + '" name="' + field.key
+                + '" tabindex="' + tabIdx + '"' + checked + '>';
+            ch += '<label class="form-check-label" for="' + id + '">' + escHtml(field.label) + req + '</label>';
+            ch += '</div>';
+            return ch;
+        }
+
         var h = '<div class="mb-2">';
         h += '<label class="form-label" for="' + id + '">' + escHtml(field.label) + req + '</label>';
 
@@ -500,6 +658,17 @@
             h += '<textarea class="form-control form-control-sm" id="' + id + '" name="' + field.key
                 + '" rows="' + rows + '" tabindex="' + tabIdx + '">'
                 + escHtml(value) + '</textarea>';
+        } else if (field.type === 'number') {
+            // Phase 140 — optional min/max/step, matching the field-type
+            // palette's server-side caps (inc/ics-form-types.php).
+            var minAttr = (field.min !== undefined && field.min !== null && field.min !== '') ? ' min="' + escAttr(field.min) + '"' : '';
+            var maxAttr = (field.max !== undefined && field.max !== null && field.max !== '') ? ' max="' + escAttr(field.max) + '"' : '';
+            var stepAttr = (field.step !== undefined && field.step !== null && field.step !== '') ? ' step="' + escAttr(field.step) + '"' : '';
+            h += '<input type="number" class="form-control form-control-sm" id="' + id
+                + '" name="' + field.key + '" value="' + escAttr(value)
+                + '"' + minAttr + maxAttr + stepAttr + ' tabindex="' + tabIdx + '">';
+        } else if (field.type === 'select') {
+            h += renderSelectField(id, field.key, field.options, value, tabIdx);
         } else if (field.type === 'date') {
             h += '<input type="date" class="form-control form-control-sm" id="' + id
                 + '" name="' + field.key + '" value="' + escAttr(value)
@@ -522,6 +691,30 @@
         return h;
     }
 
+    /**
+     * Phase 140 — shared <select> builder for both simple select fields and
+     * table select-columns. `options` is either an array of plain strings
+     * or an array of {label, value} objects (mirroring
+     * ics_form_type_validate_options()'s accepted shapes server-side).
+     * Every option's label/value is escaped -- these come from
+     * agency-authored type definitions, never trusted as safe HTML.
+     */
+    function renderSelectField(id, name, options, value, tabIdx) {
+        var tIdx = tabIdx ? ' tabindex="' + tabIdx + '"' : '';
+        var idAttr = id ? ' id="' + id + '"' : '';
+        var h = '<select class="form-select form-select-sm"' + idAttr + ' name="' + name + '"' + tIdx + '>';
+        h += '<option value=""></option>';
+        (options || []).forEach(function (opt) {
+            var isObj = opt && typeof opt === 'object';
+            var optVal = isObj ? (opt.value !== undefined ? opt.value : opt.label) : opt;
+            var optLabel = isObj ? (opt.label !== undefined ? opt.label : opt.value) : opt;
+            var sel = (String(optVal) === String(value)) ? ' selected' : '';
+            h += '<option value="' + escAttr(optVal) + '"' + sel + '>' + escHtml(optLabel) + '</option>';
+        });
+        h += '</select>';
+        return h;
+    }
+
     function renderTableField(field, rows) {
         var h = '<div class="mb-3" id="tbl_wrap_' + field.key + '">';
         h += '<label class="form-label fw-bold">' + escHtml(field.label) + '</label>';
@@ -540,8 +733,17 @@
                 h += buildTableRow(field, rowData, idx);
             });
         } else {
-            // Start with 3 empty rows
-            for (var i = 0; i < 3; i++) {
+            // Phase 140 fix (2026-08-16): honor the type's own configured
+            // "Default rows" (the field-builder input at
+            // data-field-prop="default_rows", server-capped 1-5 by
+            // inc/ics-form-types.php ics_form_type_validate_fields())
+            // instead of a hardcoded row count that ignored it entirely --
+            // an author could set Default rows to any value and a brand-new
+            // instance always started with exactly 3 empty rows regardless.
+            var startRows = parseInt(field.default_rows, 10);
+            if (!startRows || startRows < 1) startRows = 1;
+            if (startRows > 5) startRows = 5;
+            for (var i = 0; i < startRows; i++) {
                 h += buildTableRow(field, {}, i);
             }
         }
@@ -554,18 +756,34 @@
         return h;
     }
 
+    /** Phase 140 — table-column input, widened from time/text to the full
+     * palette (text/number/date/time/select) the plan's field-type table
+     * defines for table columns. */
+    function buildTableCell(field, col, idx, val) {
+        var name = field.key + '[' + idx + '][' + col.key + ']';
+        if (col.type === 'time') {
+            return '<td><input type="time" class="form-control form-control-sm" name="'
+                + name + '" value="' + escAttr(val) + '"></td>';
+        }
+        if (col.type === 'date') {
+            return '<td><input type="date" class="form-control form-control-sm" name="'
+                + name + '" value="' + escAttr(val) + '"></td>';
+        }
+        if (col.type === 'number') {
+            return '<td><input type="number" class="form-control form-control-sm" name="'
+                + name + '" value="' + escAttr(val) + '"></td>';
+        }
+        if (col.type === 'select') {
+            return '<td>' + renderSelectField('', name, col.options, val, 0) + '</td>';
+        }
+        return '<td><input type="text" class="form-control form-control-sm" name="'
+            + name + '" value="' + escAttr(val) + '"></td>';
+    }
+
     function buildTableRow(field, rowData, idx) {
         var h = '<tr>';
         field.columns.forEach(function (col) {
-            var val = rowData[col.key] || '';
-            var name = field.key + '[' + idx + '][' + col.key + ']';
-            if (col.type === 'time') {
-                h += '<td><input type="time" class="form-control form-control-sm" name="'
-                    + name + '" value="' + escAttr(val) + '"></td>';
-            } else {
-                h += '<td><input type="text" class="form-control form-control-sm" name="'
-                    + name + '" value="' + escAttr(val) + '"></td>';
-            }
+            h += buildTableCell(field, col, idx, rowData[col.key] || '');
         });
         h += '<td><button type="button" class="btn btn-sm btn-outline-danger btn-remove-row" title="Remove row">'
             + '<i class="bi bi-trash"></i></button></td>';
@@ -585,28 +803,20 @@
         var tbody = document.querySelector('#tbl_' + fieldKey + ' tbody');
         if (!tbody) return;
 
+        // Reuses buildTableRow() (rather than duplicating its per-column-type
+        // markup here) so a new blank row and a loaded-data row are always
+        // built by the exact same code -- a table select-column only needed
+        // wiring in one place, not two.
         var idx = tbody.querySelectorAll('tr').length;
-        var tr = document.createElement('tr');
-        tr.innerHTML = '';
-        field.columns.forEach(function (col) {
-            var name = field.key + '[' + idx + '][' + col.key + ']';
-            var td = '<td>';
-            if (col.type === 'time') {
-                td += '<input type="time" class="form-control form-control-sm" name="' + name + '" value="">';
-            } else {
-                td += '<input type="text" class="form-control form-control-sm" name="' + name + '" value="">';
-            }
-            td += '</td>';
-            tr.innerHTML += td;
-        });
-        tr.innerHTML += '<td><button type="button" class="btn btn-sm btn-outline-danger btn-remove-row" title="Remove row">'
-            + '<i class="bi bi-trash"></i></button></td>';
+        var temp = document.createElement('tbody');
+        temp.innerHTML = buildTableRow(field, {}, idx);
+        var tr = temp.firstElementChild;
         tbody.appendChild(tr);
 
         bindRemoveButtons(tbody);
 
-        // Focus first input in new row
-        var firstInput = tr.querySelector('input');
+        // Focus first input/select in new row
+        var firstInput = tr.querySelector('input, select');
         if (firstInput) firstInput.focus();
     }
 
@@ -628,8 +838,14 @@
         var data = {};
 
         currentTemplate.fields.forEach(function (field) {
+            if (field.type === 'section_header') {
+                return; // divider only -- no input, nothing to collect
+            }
             if (field.type === 'table') {
                 data[field.key] = collectTableData(field);
+            } else if (field.type === 'checkbox') {
+                var cbEl = document.getElementById('ics_' + field.key);
+                data[field.key] = cbEl ? cbEl.checked : false;
             } else {
                 var el = document.getElementById('ics_' + field.key);
                 data[field.key] = el ? el.value : '';
@@ -693,6 +909,13 @@
             payload.id = currentFormId;
         }
 
+        // Phase 140: which ics_form_types row this instance belongs to --
+        // the server re-resolves and re-validates it (ics_form_custom_template()),
+        // this is a hint, not a trust boundary.
+        if (currentTemplate.form_type === 'custom' && currentCustomTypeId) {
+            payload.custom_type_id = currentCustomTypeId;
+        }
+
         fetch('api/ics-forms.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -718,7 +941,15 @@
                 form_type: currentTemplate ? currentTemplate.form_type : '',
                 title: titleInput ? titleInput.value : '',
                 status: status,
-                can_delete: !!resp.can_delete
+                can_delete: !!resp.can_delete,
+                // Phase 140: so describeForm() (used by the Delete
+                // confirmation right after this save) can show the custom
+                // type's own label without a second round-trip -- sourced
+                // from the template just used to render this editor, which
+                // for a form saved THIS moment is exactly what the server
+                // just froze into _meta.
+                custom_form_number: currentTemplate ? currentTemplate.form_number : '',
+                custom_form_title: currentTemplate ? currentTemplate.form_title : ''
             };
             var delBtn = document.getElementById('btnDeleteForm');
             if (delBtn) delBtn.style.display = resp.can_delete ? '' : 'none';
@@ -936,7 +1167,26 @@
         }
     }
 
-    function getFormTypeBadge(type) {
+    /**
+     * Phase 140: takes the WHOLE saved-form row (was: just the type
+     * string) so a custom-type row can read its badge from its own frozen
+     * _meta rather than a fixed lookup table (matches describeForm()'s
+     * first-branch pattern). `badge_color` is agency-authored, so it is
+     * checked against the SAME 7-value Bootstrap enum
+     * ics_form_type_validate_metadata() enforces server-side, defense in
+     * depth against a stale/unvalidated value ever reaching a raw class
+     * attribute -- never trusted as a bare string concatenation.
+     */
+    function getFormTypeBadge(f) {
+        if (f && f.form_type === 'custom') {
+            var allowedColors = ['primary', 'secondary', 'success', 'danger', 'warning', 'info', 'dark'];
+            var cLabel = escHtml(f.custom_form_number || f.custom_form_title || 'Custom');
+            var cColor = f.custom_badge_color;
+            if (allowedColors.indexOf(cColor) === -1) cColor = 'secondary';
+            return '<span class="badge bg-' + cColor + '">' + cLabel + '</span>';
+        }
+
+        var type = f && f.form_type;
         var labels = {
             '213':   'ICS-213',
             '214':   'ICS-214',

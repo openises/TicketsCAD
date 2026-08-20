@@ -16,6 +16,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/access.php';
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/ics-forms-write.php';
+require_once __DIR__ . '/../inc/ics-form-types.php';
 if (file_exists(__DIR__ . '/../inc/security-labels.php')) {
     require_once __DIR__ . '/../inc/security-labels.php';
 }
@@ -95,7 +96,10 @@ if ($method === 'GET') {
     // Get blank template
     if (isset($_GET['template'])) {
         $type = $_GET['template'];
-        $tpl = getFormTemplate($type);
+        // Phase 140: a custom type's blank template needs to know WHICH
+        // type -- the id travels as a second query param.
+        $customTypeId = isset($_GET['custom_type_id']) ? (int) $_GET['custom_type_id'] : null;
+        $tpl = getFormTemplate($type, $customTypeId);
         if (!$tpl) json_error('Unknown form type: ' . $type);
         json_response($tpl);
     }
@@ -138,9 +142,18 @@ if ($method === 'GET') {
     $limit  = min(100, max(1, (int) ($_GET['limit'] ?? 50)));
     $offset = max(0, (int) ($_GET['offset'] ?? 0));
 
+    // Phase 140: the hub list badge/label for a custom-type row needs its
+    // frozen _meta.{form_number,form_title,badge_color,icon} -- pulled via
+    // JSON_EXTRACT so the (possibly large, e.g. many table rows) rest of
+    // form_data_json never has to travel to the client just to paint a
+    // badge. A no-op (all four columns NULL) for every built-in row.
     $rows = db_fetch_all(
         "SELECT `id`, `form_type`, `incident_id`, `title`, `status`,
-                `created_by`, `created_by_name`, `created_at`, `updated_at`
+                `created_by`, `created_by_name`, `created_at`, `updated_at`,
+                JSON_UNQUOTE(JSON_EXTRACT(`form_data_json`, '$._meta.form_number')) AS custom_form_number,
+                JSON_UNQUOTE(JSON_EXTRACT(`form_data_json`, '$._meta.form_title')) AS custom_form_title,
+                JSON_UNQUOTE(JSON_EXTRACT(`form_data_json`, '$._meta.badge_color')) AS custom_badge_color,
+                JSON_UNQUOTE(JSON_EXTRACT(`form_data_json`, '$._meta.icon')) AS custom_icon
          FROM `{$prefix}ics_forms`
          WHERE {$where}
          ORDER BY `updated_at` DESC
@@ -238,14 +251,48 @@ if ($method === 'POST') {
             : null;
         $formId   = isset($input['id']) ? (int) $input['id'] : 0;
 
+        $hasCustomCols = ics_forms_has_custom_type_columns();
+
         // Validate
         $validTypes = ['213', '214', '202', '205', '205a', '213rr', '206', '214a', '221'];
+        if ($hasCustomCols) $validTypes[] = 'custom';
         if (!in_array($formType, $validTypes)) {
             json_error('Invalid form_type. Must be one of: ' . implode(', ', $validTypes));
         }
         $validStatuses = ['draft', 'final', 'sent'];
         if (!in_array($status, $validStatuses)) {
             $status = 'draft';
+        }
+
+        // Phase 140: custom-type resolution + select-value validation +
+        // the _meta snapshot (build fresh on create, carry forward
+        // unchanged on update -- see ics_form_custom_build_meta()'s
+        // docblock for why editing the type definition later must never
+        // change how an existing submission renders).
+        $customTypeId = null;
+        if ($formType === 'custom') {
+            $requestedCustomTypeId = (int) ($input['custom_type_id'] ?? 0);
+            $typeTemplate = ics_form_custom_template($requestedCustomTypeId);
+            if (!$typeTemplate) json_error('Form type not found', 404);
+
+            $dataCheck = ics_form_custom_validate_data($typeTemplate['fields'], $formData);
+            if (!$dataCheck['valid']) json_error(implode(' ', $dataCheck['errors']));
+
+            $existingMeta = null;
+            if ($formId > 0) {
+                $existingRow = db_fetch_one(
+                    "SELECT `form_data_json` FROM `{$prefix}ics_forms` WHERE `id` = ?{$icsNotDeleted}",
+                    [$formId]
+                );
+                if ($existingRow) {
+                    $existingDecoded = json_decode((string) $existingRow['form_data_json'], true);
+                    if (is_array($existingDecoded) && isset($existingDecoded['_meta']) && is_array($existingDecoded['_meta'])) {
+                        $existingMeta = $existingDecoded['_meta'];
+                    }
+                }
+            }
+            $formData['_meta'] = ics_form_custom_build_meta($typeTemplate, $existingMeta);
+            $customTypeId = $typeTemplate['custom_type_id'];
         }
 
         $json = json_encode($formData, JSON_UNESCAPED_UNICODE);
@@ -269,22 +316,42 @@ if ($method === 'POST') {
             if (!$existing) json_error('Form not found', 404);
             if (!ics_form_accessible($existing, $icsShareStandalone)) json_error('Form not found', 404);
             // Update existing
-            db_query(
-                "UPDATE `{$prefix}ics_forms`
-                 SET `form_type` = ?, `incident_id` = ?, `title` = ?,
-                     `form_data_json` = ?, `status` = ?, `updated_at` = NOW()
-                 WHERE `id` = ?",
-                [$formType, $incidentId, $title, $json, $status, $formId]
-            );
+            if ($hasCustomCols) {
+                db_query(
+                    "UPDATE `{$prefix}ics_forms`
+                     SET `form_type` = ?, `incident_id` = ?, `title` = ?,
+                         `form_data_json` = ?, `status` = ?, `custom_type_id` = ?, `updated_at` = NOW()
+                     WHERE `id` = ?",
+                    [$formType, $incidentId, $title, $json, $status, $customTypeId, $formId]
+                );
+            } else {
+                db_query(
+                    "UPDATE `{$prefix}ics_forms`
+                     SET `form_type` = ?, `incident_id` = ?, `title` = ?,
+                         `form_data_json` = ?, `status` = ?, `updated_at` = NOW()
+                     WHERE `id` = ?",
+                    [$formType, $incidentId, $title, $json, $status, $formId]
+                );
+            }
         } else {
             // Insert new
-            db_query(
-                "INSERT INTO `{$prefix}ics_forms`
-                 (`form_type`, `incident_id`, `title`, `form_data_json`,
-                  `created_by`, `created_by_name`, `status`)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [$formType, $incidentId, $title, $json, $current_user_id, $userName, $status]
-            );
+            if ($hasCustomCols) {
+                db_query(
+                    "INSERT INTO `{$prefix}ics_forms`
+                     (`form_type`, `incident_id`, `title`, `form_data_json`,
+                      `created_by`, `created_by_name`, `status`, `custom_type_id`)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    [$formType, $incidentId, $title, $json, $current_user_id, $userName, $status, $customTypeId]
+                );
+            } else {
+                db_query(
+                    "INSERT INTO `{$prefix}ics_forms`
+                     (`form_type`, `incident_id`, `title`, `form_data_json`,
+                      `created_by`, `created_by_name`, `status`)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [$formType, $incidentId, $title, $json, $current_user_id, $userName, $status]
+                );
+            }
             $formId = (int) db_insert_id();
         }
 
@@ -411,8 +478,19 @@ json_error('Method not allowed', 405);
 
 /**
  * Return a blank template definition for a given form type.
+ *
+ * Phase 140: $customTypeId is only meaningful when $type === 'custom' --
+ * delegates straight to ics_form_custom_template() (inc/ics-form-types.php),
+ * the SAME org-scope + restrict_to_permission choke point the save handler
+ * and api/ics-form-types.php's GET ?id=X use. Deliberately ahead of the
+ * existing 9-entry $templates array below, which this diff does not touch
+ * (tests/test_ics_forms_builtin_regression.php proves that byte-for-byte).
  */
-function getFormTemplate($type) {
+function getFormTemplate($type, $customTypeId = null) {
+    if ($type === 'custom') {
+        return ics_form_custom_template($customTypeId);
+    }
+
     $templates = [
         '213' => [
             'form_type'   => '213',
@@ -736,19 +814,30 @@ function xs($str) {
  * Generate print-optimized HTML for any ICS form type.
  */
 function generatePrintHtml($formType, $data, $row) {
-    $title = strtoupper('ICS-' . $formType);
-    $names = [
-        '213'   => 'GENERAL MESSAGE',
-        '214'   => 'ACTIVITY LOG',
-        '202'   => 'INCIDENT OBJECTIVES',
-        '205'   => 'RADIO COMMUNICATIONS PLAN',
-        '205a'  => 'COMMUNICATIONS LIST',
-        '213rr' => 'RESOURCE REQUEST MESSAGE',
-        '206'   => 'MEDICAL PLAN',
-        '214a'  => 'INDIVIDUAL ACTIVITY LOG',
-        '221'   => 'DEMOBILIZATION CHECK-OUT',
-    ];
-    $formName = $names[$formType] ?? $formType;
+    if ($formType === 'custom') {
+        // Phase 140: title/name come from the instance's own frozen _meta
+        // (never a fresh ics_form_types lookup -- see ics_form_custom_print_html()'s
+        // docblock). Unlike the 9 built-ins' $names entries below (fixed
+        // internal strings, safe unescaped), form_number/form_title are
+        // agency-authored free text and MUST be escaped here.
+        $meta = is_array($data) && isset($data['_meta']) && is_array($data['_meta']) ? $data['_meta'] : [];
+        $title = htmlspecialchars(strtoupper((string) ($meta['form_number'] ?? 'CUSTOM')), ENT_QUOTES, 'UTF-8');
+        $formName = htmlspecialchars((string) ($meta['form_title'] ?? 'Custom Form'), ENT_QUOTES, 'UTF-8');
+    } else {
+        $title = strtoupper('ICS-' . $formType);
+        $names = [
+            '213'   => 'GENERAL MESSAGE',
+            '214'   => 'ACTIVITY LOG',
+            '202'   => 'INCIDENT OBJECTIVES',
+            '205'   => 'RADIO COMMUNICATIONS PLAN',
+            '205a'  => 'COMMUNICATIONS LIST',
+            '213rr' => 'RESOURCE REQUEST MESSAGE',
+            '206'   => 'MEDICAL PLAN',
+            '214a'  => 'INDIVIDUAL ACTIVITY LOG',
+            '221'   => 'DEMOBILIZATION CHECK-OUT',
+        ];
+        $formName = $names[$formType] ?? $formType;
+    }
 
     $html = '<!DOCTYPE html><html><head>';
     $html .= '<meta charset="UTF-8">';
@@ -769,6 +858,9 @@ function generatePrintHtml($formType, $data, $row) {
     $html .= '<h2>' . $formName . '</h2>';
 
     switch ($formType) {
+        case 'custom':
+            $html .= ics_form_custom_print_html($data, $row);
+            break;
         case '213':
             $html .= printICS213($data);
             break;

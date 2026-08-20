@@ -17,6 +17,11 @@
     // GH #55 follow-on (Billy/K9OH) — bulk roster removal state.
     var canBulkDeleteMembers = false;   // set at init from #canBulkDeleteMembers hidden input
     var bulkSelected      = {};      // { memberId: true } — survives re-renders
+    // GH#76 Phase 144 (2026-08-18) — gates the Team Memberships card's
+    // Add/Remove controls. Set at init from #canManageTeams hidden input.
+    // UX politeness only — api/teams.php enforces action.manage_teams
+    // server-side regardless of what this flag does client-side.
+    var canManageTeams = false;
     var _rawData       = {};
     var sortField      = 'name';
     var sortDir        = 'asc';
@@ -235,12 +240,10 @@
         }
         document.getElementById('editStatus').innerHTML = html;
 
-        // Team
-        html = '<option value="">-- None --</option>';
-        for (i = 0; i < lookupTeams.length; i++) {
-            html += '<option value="' + lookupTeams[i].id + '">' + esc(lookupTeams[i].name) + '</option>';
-        }
-        document.getElementById('editTeam').innerHTML = html;
+        // GH#76 Phase 144 (2026-08-18): the Team dropdown that used to be
+        // populated here is retired — team assignment now happens only via
+        // the Team Memberships card's Add/Remove controls (renderTeamMemberships)
+        // or the Teams tab, both writing to team_members.
     }
 
     // ── Filter & Sort ────────────────────────────────────────────
@@ -513,8 +516,16 @@
                          ';color:' + esc(member.status_text_color || '#ffffff') + ';">' +
                          esc(member.status_name) + '</span>';
         }
-        if (member.team_name) {
-            badgeHtml += '<span class="badge bg-secondary">' + esc(member.team_name) + '</span>';
+        // GH#76 Phase 144 (2026-08-18): source from team_memberships (the
+        // junction — the same data the Team Memberships card below renders),
+        // NOT member.team_name (the legacy single-value JOIN). Before this
+        // fix a member with 2+ teams via team_members could show a DIFFERENT
+        // team in this badge than in the card underneath it — the exact
+        // same-page contradiction the roster page was reported for. One
+        // badge per team; empty team_memberships shows no team badge at all,
+        // same as today's empty-legacy-value case.
+        for (var tmb = 0; tmb < (teamMemberships || []).length; tmb++) {
+            badgeHtml += '<span class="badge bg-secondary">' + esc(teamMemberships[tmb].team_name || 'Unknown') + '</span>';
         }
         badgeHtml += '<span class="badge ' + (member.available === 'Yes' ? 'bg-success' : 'bg-danger') + '">' +
                      (member.available === 'Yes' ? 'Available' : 'Unavailable') + '</span>';
@@ -598,7 +609,7 @@
         renderIcsQualifications(icsQuals || [], allIcsPositions || [], member.id);
 
         // Team Memberships
-        renderTeamMemberships(teamMemberships || []);
+        renderTeamMemberships(teamMemberships || [], member.id);
 
         // Organization Memberships
         renderOrgMemberships(orgMemberships || [], allOrgs || [], member.id, _rawData.all_member_types || []);
@@ -1132,31 +1143,131 @@
     }
 
     // ── Render Team Memberships ─────────────────────────────────
-    function renderTeamMemberships(memberships) {
+    // GH#76 Phase 144 (2026-08-18): upgraded from read-only to read+write,
+    // scoped deliberately narrow — add/remove only. Inline role/ICS-position
+    // editing stays on the Teams tab, one click away via the team-name link.
+    // Both actions call api/teams.php's EXISTING add_member/remove_member
+    // actions (unchanged endpoint, unchanged action.manage_teams gate) — no
+    // new write path is introduced. See CLAUDE.md's GH#76 pitfall entry.
+    function renderTeamMemberships(memberships, memberId) {
         var container = document.getElementById('detailTeamMemberships');
         var countEl = document.getElementById('teamMembershipCount');
         if (!container) return;
         if (countEl) countEl.textContent = memberships.length;
 
+        var html = '';
+        var roleColors = { Leader: 'primary', Deputy: 'warning', Member: 'secondary', Observer: 'info' };
+
         if (memberships.length === 0) {
-            container.innerHTML = '<div class="text-body-secondary">Not assigned to any teams. ' +
-                '<a href="teams.php">Manage teams</a></div>';
-            return;
+            html += '<div class="text-body-secondary mb-2">Not assigned to any teams.</div>';
+        } else {
+            html += '<table class="table table-sm table-borderless mb-2"><tbody>';
+            for (var i = 0; i < memberships.length; i++) {
+                var tm = memberships[i];
+                html += '<tr>' +
+                    '<td><a href="teams.php" class="text-decoration-none">' + esc(tm.team_name || 'Unknown') + '</a></td>' +
+                    '<td><span class="badge bg-' + (roleColors[tm.role] || 'secondary') + ' bg-opacity-75">' +
+                        esc(tm.role || 'Member') + '</span></td>' +
+                    '<td class="text-body-secondary">' + (tm.position_code || '—') + '</td>';
+                if (canManageTeams) {
+                    html += '<td class="text-end">' +
+                        '<button type="button" class="btn btn-xs btn-outline-danger remove-team-btn" ' +
+                            'data-assignment-id="' + tm.id + '" data-team-name="' + esc(tm.team_name || 'this team') + '" ' +
+                            'title="Remove from team"><i class="bi bi-x-lg"></i></button></td>';
+                }
+                html += '</tr>';
+            }
+            html += '</tbody></table>';
         }
 
-        var roleColors = { Leader: 'primary', Deputy: 'warning', Member: 'secondary', Observer: 'info' };
-        var html = '<table class="table table-sm table-borderless mb-0"><tbody>';
-        for (var i = 0; i < memberships.length; i++) {
-            var tm = memberships[i];
-            html += '<tr>' +
-                '<td><a href="teams.php" class="text-decoration-none">' + esc(tm.team_name || 'Unknown') + '</a></td>' +
-                '<td><span class="badge bg-' + (roleColors[tm.role] || 'secondary') + ' bg-opacity-75">' +
-                    esc(tm.role || 'Member') + '</span></td>' +
-                '<td class="text-body-secondary">' + (tm.position_code || '—') + '</td>' +
-                '</tr>';
+        // Add-to-team control — hidden entirely (not just disabled) for a
+        // viewer without action.manage_teams; the card falls back to its
+        // read-only rendering above for that viewer. The real boundary is
+        // the server-side gate on api/teams.php.
+        if (canManageTeams) {
+            var existingIds = {};
+            for (var e = 0; e < memberships.length; e++) { existingIds[memberships[e].team_id] = true; }
+            var available = [];
+            for (var a = 0; a < lookupTeams.length; a++) {
+                if (!existingIds[lookupTeams[a].id]) available.push(lookupTeams[a]);
+            }
+            if (available.length > 0) {
+                html += '<div class="border-top pt-2">' +
+                    '<div class="row g-1 align-items-end">' +
+                    '<div class="col-6">' +
+                    '<label class="form-label form-label-sm mb-0">Add to Team</label>' +
+                    '<select class="form-select form-select-sm" id="addTeamSelect">';
+                for (var t = 0; t < available.length; t++) {
+                    // Single-team installs (e.g. your deployment's real-world
+                    // shape: 2 teams total) pre-select the only option so
+                    // Add stays a two-click action, matching the old
+                    // dropdown's speed.
+                    var sel = (available.length === 1) ? ' selected' : '';
+                    html += '<option value="' + available[t].id + '"' + sel + '>' + esc(available[t].name) + '</option>';
+                }
+                html += '</select></div>' +
+                    '<div class="col-3">' +
+                    '<label class="form-label form-label-sm mb-0">Role</label>' +
+                    '<select class="form-select form-select-sm" id="addTeamRole">' +
+                    '<option value="Member" selected>Member</option>' +
+                    '<option value="Leader">Leader</option>' +
+                    '<option value="Deputy">Deputy</option>' +
+                    '<option value="Observer">Observer</option>' +
+                    '</select></div>' +
+                    '<div class="col-3">' +
+                    '<button type="button" class="btn btn-sm btn-primary w-100" id="btnAddTeam">' +
+                    '<i class="bi bi-plus-lg me-1"></i>Add</button></div>' +
+                    '</div></div>';
+            } else if (memberships.length === 0) {
+                // Every team is a no-op here only when there are zero teams
+                // defined at all — otherwise "available" would be non-empty.
+                html += '<div class="text-body-secondary small"><a href="teams.php">Create a team</a> to assign members.</div>';
+            }
+        } else if (memberships.length === 0) {
+            html += '<a href="teams.php">Manage teams</a>';
         }
-        html += '</tbody></table>';
+
         container.innerHTML = html;
+
+        var addBtn = document.getElementById('btnAddTeam');
+        if (addBtn) {
+            addBtn.addEventListener('click', function () {
+                var sel = document.getElementById('addTeamSelect');
+                var roleSel = document.getElementById('addTeamRole');
+                var teamId = sel ? sel.value : '';
+                if (!teamId) { showAlert('Please select a team.'); return; }
+                apiPostUrl('api/teams.php', {
+                    action: 'add_member',
+                    team_id: parseInt(teamId, 10),
+                    member_id: memberId,
+                    role: roleSel ? roleSel.value : 'Member'
+                }, function (err) {
+                    if (err) { showAlert('Failed to add to team: ' + err); return; }
+                    var teamName = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : 'the team';
+                    showAlert('Added to ' + teamName + '.', 'success');
+                    selectMember(memberId);
+                });
+            });
+        }
+
+        var removeBtns = container.querySelectorAll('.remove-team-btn');
+        for (var r = 0; r < removeBtns.length; r++) {
+            (function (btn) {
+                btn.addEventListener('click', function () {
+                    var assignmentId = parseInt(btn.getAttribute('data-assignment-id'), 10);
+                    var teamName = btn.getAttribute('data-team-name') || 'this team';
+                    if (!confirm('Remove this member from ' + teamName + '?')) return;
+                    apiPostUrl('api/teams.php', {
+                        action: 'remove_member',
+                        assignment_id: assignmentId
+                    }, function (err) {
+                        if (err) { showAlert('Failed to remove from team: ' + err); return; }
+                        showAlert('Removed from ' + teamName + '.', 'success');
+                        selectMember(memberId);
+                    });
+                });
+            })(removeBtns[r]);
+        }
     }
 
     // ── Render Callsigns (Google Contacts style) ──────────────
@@ -1372,7 +1483,7 @@
             html += '<div class="alert alert-warning small mb-2" role="status">' +
                 '<i class="bi bi-exclamation-triangle-fill me-1"></i>' +
                 'This member is not assigned to any organization. Any user account linked to this member will see data across ALL organizations (no org filter applied). If this member should be scoped to one agency, use the form below to add them to it. ' +
-                '<a href="docs/ACCESS-CHAIN.md" target="_blank">Learn more</a>' +
+                '<a href="documentation/?doc=ACCESS-CHAIN" target="_blank">Learn more</a>' +
                 '</div>';
         }
 
@@ -2602,7 +2713,9 @@
         if (cnt) cnt.value = member ? (member.county || '') : '';
         document.getElementById('editType').value = member ? (member.member_type_id || '') : '';
         document.getElementById('editStatus').value = member ? (member.member_status_id || '') : '';
-        document.getElementById('editTeam').value = member ? (member.team_id || '') : '';
+        // GH#76 Phase 144 (2026-08-18): editTeam is retired — team
+        // assignment happens via the Team Memberships card (detail view),
+        // not this edit form.
         document.getElementById('editAvailable').value = member ? (member.available || 'Yes') : 'Yes';
         document.getElementById('editJoinDate').value = member ? (member.join_date || '') : '';
         document.getElementById('editMembershipDue').value = member ? (member.membership_due || '') : '';
@@ -2669,7 +2782,10 @@
             zip:                document.getElementById('editZip').value.trim(),
             member_type_id:     document.getElementById('editType').value || null,
             member_status_id:   document.getElementById('editStatus').value || null,
-            team_id:            document.getElementById('editTeam').value || null,
+            // GH#76 Phase 144 (2026-08-18): team_id deliberately NOT sent —
+            // api/members.php no longer accepts it (inc/member-write.php's
+            // whitelist dropped it). Team assignment is via the Team
+            // Memberships card / Teams tab (team_members), not this form.
             available:          document.getElementById('editAvailable').value,
             join_date:          document.getElementById('editJoinDate').value,
             membership_due:     document.getElementById('editMembershipDue').value,
@@ -4100,6 +4216,11 @@
 
     // ── Init ─────────────────────────────────────────────────────
     function init() {
+        // GH#76 Phase 144 (2026-08-18) — read once at init, before any
+        // render can run, so renderTeamMemberships sees the real value.
+        var teamsFlag = document.getElementById('canManageTeams');
+        canManageTeams = !!(teamsFlag && teamsFlag.value === '1');
+
         // Parse URL params for ICS position filter (ES5 compatible)
         var icsMatch = window.location.search.match(/[?&]ics_position_id=(\d+)/);
         if (icsMatch && parseInt(icsMatch[1]) > 0) {

@@ -65,12 +65,55 @@ try {
     exit(0);
 }
 
+/**
+ * backup_dump_sql() itself streams the WHOLE database to disk with fwrite()
+ * (see inc/backup.php's own docblock: "streams rows without exhausting
+ * memory") and is untouched by this fix -- this dev install's real backup
+ * dump is genuinely large (two FCC callsign reference tables alone are
+ * ~380MB of imported license data, nothing to do with this test's own
+ * scratch tables), and this test only ever needs the couple-hundred-byte
+ * sections belonging to its OWN two throwaway tables. Reading the entire
+ * multi-hundred-MB file into one PHP string via file_get_contents() (as
+ * this test originally did) just to preg_match two small sections out of
+ * it duplicates that same "buffer everything" mistake GH#53 itself was
+ * about, one layer up -- fixed by scanning the file line-by-line instead,
+ * capturing only the lines between this table's own "-- Table: `x`" marker
+ * and the next one (or EOF). Bounded memory regardless of overall dump
+ * size, and doesn't touch backup_dump_sql() or its output format at all.
+ */
+function gh53_extract_table_section(string $path, string $table): ?string
+{
+    $fh = @fopen($path, 'r');
+    if (!$fh) return null;
+    $marker = '-- Table: `' . $table . '`';
+    $capturing = false;
+    $section = '';
+    try {
+        while (($line = fgets($fh)) !== false) {
+            if (!$capturing) {
+                if (rtrim($line, "\r\n") === $marker) {
+                    $capturing = true;
+                    $section .= $line;
+                }
+                continue;
+            }
+            if (strncmp($line, '-- Table: `', 11) === 0) {
+                break; // next table's section starts here
+            }
+            $section .= $line;
+        }
+    } finally {
+        fclose($fh);
+    }
+    return $capturing ? $section : null;
+}
+
 $outFile = sys_get_temp_dir() . '/gh53_backup_test_' . getmypid() . '.sql';
 try {
     $ok = backup_dump_sql($outFile);
     if (!$ok) { bad('backup_dump_sql() returned false'); }
-    $sql = file_exists($outFile) ? file_get_contents($outFile) : '';
-    if ($sql === '') {
+    $dumpSize = file_exists($outFile) ? filesize($outFile) : 0;
+    if ($dumpSize === 0) {
         bad('backup_dump_sql() produced no output');
     } else {
         ok('backup_dump_sql() ran and produced a file');
@@ -81,12 +124,13 @@ try {
         ['table' => $tVisible,   'generated' => 'full_name', 'label' => 'VIRTUAL GENERATED'],
     ] as $case) {
         $t = $case['table'];
-        // Isolate this table's dumped section.
-        if (!preg_match('/-- Table: `' . preg_quote($t, '/') . '`.*?(?=-- Table: `|\z)/s', $sql, $m)) {
+        // Isolate this table's dumped section without loading the whole
+        // (potentially huge) dump file into memory -- see the docblock above.
+        $section = gh53_extract_table_section($outFile, $t);
+        if ($section === null) {
             bad("{$case['label']}: table section not found in dump");
             continue;
         }
-        $section = $m[0];
 
         if (strpos($section, "`{$case['generated']}`") !== false
             && preg_match('/INSERT INTO.*\(([^)]*)\)\s*VALUES/s', $section, $insMatch)

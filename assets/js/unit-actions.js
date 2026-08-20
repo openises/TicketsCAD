@@ -306,20 +306,33 @@
             });
         }
     }
-    function _postDispatch(id, label, ticketId, caseNum) {
+    function _postDispatch(id, label, ticketId, caseNum, force) {
+        // GH#82/GH#83 (2026-08-18) — same needs_confirmation contract as
+        // app.js's _submitDispatchAssignment and incident-detail.js's
+        // assignResponder: the server may ask for a WARN-level confirm
+        // instead of erroring outright.
+        var body = {
+            action: 'assign',
+            ticket_id: ticketId,
+            responder_id: id,
+            csrf_token: _csrf()
+        };
+        if (force) body.force = true;
+
         fetch('api/incident-assign.php', {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'assign',
-                ticket_id: ticketId,
-                responder_id: id,
-                csrf_token: _csrf()
-            })
+            body: JSON.stringify(body)
         })
         .then(function (r) { return r.json(); })
         .then(function (data) {
+            if (data.needs_confirmation) {
+                if (confirm(data.message)) {
+                    _postDispatch(id, label, ticketId, caseNum, true);
+                }
+                return;
+            }
             if (data.error) {
                 alert('Failed to dispatch ' + label + ' to ' + caseNum + ': ' + data.error);
                 return;

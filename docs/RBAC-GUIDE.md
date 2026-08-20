@@ -16,7 +16,7 @@ That's it. Everything else is implementation detail.
 | Role | Default permissions | Use it for |
 |------|--------------------|-----|
 | **Super Admin** | Everything (`is_super=1` short-circuit) | Site owner. Bypasses all checks. |
-| **Org Admin** | Everything except `action.manage_config` and `action.manage_roles` | Per-organization administrator. Can manage members, incidents, schedule, but not the system itself. |
+| **Org Admin** | Everything except a growing list of admin-only actions — `action.manage_config`, `action.manage_roles`, and the narrowly-held permissions in the table below | Per-organization administrator. Can manage members, incidents, schedule, but not the system itself. |
 | **Dispatcher** | Full operational access (no `delete_incident`, no role mgmt, no system config, no bulk import) | The person on the radio answering calls. |
 | **Operator** | Screens / widgets / fields + key actions (add notes, change unit status, self-signup, send chat, dispatch) | Generic privileged user — most volunteers. |
 | **Read-Only** | Screens (no settings/new-incident/import-export) + widgets + 3 field permissions | Auditors, oversight, training observers. **Default for new users.** |
@@ -33,6 +33,33 @@ granted by default.
 | Permission code | Name | Default grant | What it gates |
 |-----------------|------|---------------|---------------|
 | `action.bulk_delete_members` | Bulk Delete Members | **Super Admin only** | The roster's multi-select bulk-removal flow. Single-member delete is unaffected (it stays on `action.manage_members`). |
+| `action.manage_public_board` | Manage Public Incident Board (install-wide) | **Super Admin only** | Install-wide public-board settings — master enable switch, per-type publish rules, address-precision ceiling (Phase 138). Org Admin gets only `action.manage_public_board_org` (its own org's URL/self-service). Off by default on every install. |
+| `action.manage_ics_form_types` | Manage Custom ICS Form Types (install-wide) | **Super Admin only** | Author/edit/deactivate custom ICS form types naming any owning org (Phase 140, GH#69). Org Admin gets only `action.manage_ics_form_types_org` (its own org's custom types). |
+| `action.manage_org_routing` | Manage Cross-Org Ticket Routing Rules (install-wide) | **Super Admin only** | Author/edit/deactivate cross-org ticket auto-routing rules naming any owning org (Phase 141, GH#70). See [`CROSS-ORG-TICKET-SHARING.md`](CROSS-ORG-TICKET-SHARING.md). |
+| `action.manage_org_routing_org` | Manage Own Org's Cross-Org Ticket Routing Rules | **Super Admin only** (deliberately **not** granted to Org Admin by default — a routing rule exposes the creating org's own data to a different org, with no two-party consent mechanism in Phase 1) | Author/edit/deactivate cross-org ticket routing rules where the caller's own org is the owning org. Exists so a Super Admin can hand-grant it per-install without a schema change. |
+| `action.manage_org_relationships` | Manage Cross-Org Standing Relationships (install-wide) | **Super Admin only** | Full CRUD over any standing cross-org relationship naming any orgs; approve/reject any pending membership row on behalf of any org; edit ceiling settings (Phase 143, GH#70). See [`CROSS-ORG-TICKET-SHARING.md`](CROSS-ORG-TICKET-SHARING.md). |
+
+### Feature-specific permissions with a broader default grant
+
+Not every feature-specific permission is narrowly held — some are scoped to
+a single ticket/action rather than an install-wide setting, so they ship
+broadly granted from day one:
+
+| Permission code | Name | Default grant | What it gates |
+|-----------------|------|---------------|---------------|
+| `action.share_incident` | Share Incident With Another Organization | Dispatcher, Org Admin | Manually share one incident the caller's org owns with another organization, at a chosen tier, with a reason (Phase 142, GH#70). See [`CROSS-ORG-TICKET-SHARING.md`](CROSS-ORG-TICKET-SHARING.md). |
+| `action.revoke_incident_share` | Revoke a Cross-Org Incident Share | Dispatcher, Org Admin | Revoke an active manual or rule-sourced share on an incident the caller's org owns. |
+| `action.manage_org_relationships_org` | Manage Own Org's Cross-Org Standing Relationships | Dispatcher, Org Admin | Propose/administer standing cross-org relationships naming the caller's own org as one of the initial members (Phase 143, GH#70). A deliberate departure from `action.manage_org_routing_org`'s narrower posture — proposing grants zero visibility by itself; the security boundary is the counterpart org's own per-row consent. |
+| `action.activate_org_relationship` | Activate/Deactivate a Cross-Org Standing Relationship | Dispatcher, Org Admin | Activate or deactivate a `requires_activation` relationship the caller's own org is an approved member of (Phase 143, GH#70). |
+
+These are broader than `action.manage_org_routing`/`action.manage_org_routing_org`
+above on purpose: a manual share is a one-off decision bounded to a single
+ticket, made by whoever is actively working that call — closer in kind to
+`action.assign_unit` than to authoring a standing rule with unbounded future
+scope. The real protection for this feature isn't RBAC — it's
+`org_ticket_is_owned_by_caller()`, re-checked on every request, which no
+share at any tier can ever satisfy (so a shared-in org can never re-share or
+revoke a ticket it doesn't own, no matter what role it holds).
 
 **To turn on bulk roster removal for another role** (e.g. Org Admin or a
 custom "Roster Manager" role):
@@ -157,6 +184,7 @@ The old permission codes (`action.edit_incident`) still work — they're aliased
 
 - **A user can't see something they should** — check their grants list. Did they get a `scope='self'` grant where they need `scope='global'`? Has an old grant expired?
 - **A user can see something they shouldn't** — check whether they hold the canonical permission, the deprecated alias, or both. Audit log shows when each grant landed.
+- **An Org Admin or Dispatcher can do something that table says they shouldn't be able to** (an admin-only action from the tables above succeeds for them) — this is a real class of bug this project fixed 2026-08-16: the default Org Admin/Dispatcher grant is seeded as "everything except a literal list of excluded codes," and that list can leak two ways — a role holding an excluded code's canonical alias (created later by the RBAC v2 migration, which a list written earlier can't have named), or a role that was granted the code directly before it was ever added to the exclusion list. Both are now self-healing on every re-seed (`php sql/run_00_rbac.php` or a fresh `sql/rbac.sql` import repairs both leak paths automatically), but if you're on an install that hasn't re-run the seed since 2026-08-16, re-run it. `tests/test_rbac_canonical_alias_leak.php` is the regression coverage.
 - **An action returns 403** — read the response body. The API tells you which permission failed. Find a role that holds that permission, grant it (with the right scope), and retry.
 
 ## See also

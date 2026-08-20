@@ -32,6 +32,12 @@ broker_register('telegram', [
     // Read by broker_receive() (Phase 134 Step 4) to compute the dedupe
     // table's external_id for a message returned from receive().
     'dedupe_key' => 'update_id',
+    // GH #84 (2026-08-19): _telegram_send() below ignores $message['to'] —
+    // the destination is always the configured `telegram_chat_id`. Read by
+    // inc/notification-engine.php so a notification rule fires this
+    // channel exactly once per rule match instead of once per recipient
+    // (which would re-post the same message N times to the same chat).
+    'shared_destination' => true,
 ]);
 
 /**

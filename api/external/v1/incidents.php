@@ -84,10 +84,49 @@ if ($method === 'GET') {
         // must be able to see this ticket via org scope. Same 404 as
         // a real not-found so the API can't be used to probe ids
         // across tenants.
+        //
+        // Phase 141 (2026-08-17) — org_can_see_ticket() was extended in
+        // place to also allow an active cross-org share; no code change
+        // needed here to inherit that. What DOES need code: t.* returns
+        // every raw ticket column (contact/phone/description/etc included)
+        // — this is exactly the read path a view-tier share must be
+        // redacted on, same as the internal incident-detail.php endpoint.
         require_once __DIR__ . '/../../../inc/org-scope.php';
+        require_once __DIR__ . '/../../../inc/org-sharing.php';
         if (!org_can_see_ticket($id)) ext_api_error('not_found', 404);
         audit_log('external_api', 'read', 'ticket', $id, "External API GET incident #{$id}",
             ['token_id' => $GLOBALS['__ext_api_token_id'] ?? null]);
+
+        $shareCtx = org_share_context_for_ticket($id);
+        if ($shareCtx !== null) {
+            $tier = $shareCtx['access_tier'];
+            // Phase 143 (2026-08-17) -- redaction reads the REDACTION tier;
+            // see inc/org-sharing.php's org_share_context_for_ticket()
+            // docblock for why this can differ from access_tier.
+            $redactionTier = $shareCtx['redaction_tier'] ?? $tier;
+            $row = org_share_redact_ticket_fields($row, $redactionTier);
+            $owningOrgId = (int) ($row['org_id'] ?? 0);
+            $owningOrgName = null;
+            if ($owningOrgId > 0) {
+                try {
+                    $owningOrgName = db_fetch_value(
+                        "SELECT `name` FROM `{$prefix}organizations` WHERE `id` = ? LIMIT 1",
+                        [$owningOrgId]
+                    );
+                } catch (Throwable $e) { /* organizations table missing */ }
+            }
+            $row['shared_from_org_id']   = $owningOrgId ?: null;
+            $row['shared_from_org_name'] = $owningOrgName;
+
+            $sharedWithOrgId = (int) $shareCtx['shared_with_org_id'];
+            audit_log(
+                'incident', 'view_shared', 'ticket', $id,
+                "Incident #{$id} opened via cross-org share (org #{$sharedWithOrgId}, {$tier} access / {$redactionTier} redaction tier)",
+                ['shared_with_org_id' => $sharedWithOrgId, 'access_tier' => $tier, 'redaction_tier' => $redactionTier],
+                defined('AUDIT_INFO') ? AUDIT_INFO : 1
+            );
+        }
+
         ext_api_response($row);
     }
 
@@ -110,8 +149,12 @@ if ($method === 'GET') {
     if ($since)           { $where[] = 't.updated >= ?'; $params[] = $since; }
 
     // Phase 99j-8 — token's owning user determines visibility.
+    // Phase 141 (2026-08-17) — org_ticket_query_filter() is the
+    // ticket-specific sibling: widens visibility to cross-org-shared
+    // tickets, no-op on a database with no routing rules.
     require_once __DIR__ . '/../../../inc/org-scope.php';
-    [$orgFrag, $orgVars] = org_query_filter('t.org_id');
+    require_once __DIR__ . '/../../../inc/org-sharing.php';
+    [$orgFrag, $orgVars] = org_ticket_query_filter(null, 't');
     if ($orgFrag !== '') {
         $where[] = '(' . preg_replace('/^\s*AND\s+/', '', $orgFrag) . ')';
         $params = array_merge($params, $orgVars);
@@ -121,7 +164,7 @@ if ($method === 'GET') {
 
     try {
         $rows = db_fetch_all(
-            "SELECT t.id, t.in_types_id, t.scope, t.severity, t.status, t.contact, t.phone,
+            "SELECT t.id, t.org_id, t.in_types_id, t.scope, t.severity, t.status, t.contact, t.phone,
                     t.street, t.city, t.state, t.lat, t.lng, t.date, t.updated,
                     t.incident_number, it.type AS in_type_name
              FROM `{$prefix}ticket` t
@@ -134,6 +177,11 @@ if ($method === 'GET') {
     } catch (Exception $e) {
         ext_api_db_error('db_query', $e);
     }
+
+    // Redact/annotate any share-derived row (contact/phone stripped for
+    // view tier per plan.md's allowlist; no-op otherwise).
+    $rows = org_sharing_apply_list_redaction($rows);
+
     audit_log('external_api', 'list', 'ticket', null,
         "External API list incidents (count=" . count($rows) . ")",
         ['token_id' => $GLOBALS['__ext_api_token_id'] ?? null, 'limit' => $limit, 'offset' => $offset]);
@@ -243,8 +291,16 @@ if ($method === 'PATCH') {
     if (!$exists) ext_api_error('not_found', 404);
 
     // Phase 99j-8 — token must be allowed to see/touch this ticket.
+    // Phase 141 (2026-08-17) — org_can_mutate_ticket() is the tier-aware
+    // WRITE gate: same-org unchanged, a cross-org share only permits this
+    // PATCH at 'assist' tier. 'forbidden' (403), not 'not_found' (404),
+    // when the caller already has confirmed read visibility — same
+    // reasoning as the internal incident-update.php endpoint.
     require_once __DIR__ . '/../../../inc/org-scope.php';
-    if (!org_can_see_ticket($ticketId)) ext_api_error('not_found', 404);
+    if (!org_can_mutate_ticket($ticketId)) {
+        if (org_can_see_ticket($ticketId)) ext_api_error('forbidden', 403);
+        ext_api_error('not_found', 404);
+    }
 
     require_once __DIR__ . '/../../../inc/incident-write.php';
     $userId = (int) ($_SESSION['user_id'] ?? 0);
@@ -308,8 +364,17 @@ if ($method === 'DELETE') {
     if (!$exists) ext_api_error('not_found', 404);
 
     // Phase 99j-8 — token must be allowed to see/touch this ticket.
+    //
+    // Phase 141 (2026-08-17) — DELIBERATELY uses org_ticket_is_owned_by_
+    // caller(), NOT org_can_mutate_ticket(). Soft-deleting a ticket removes
+    // it from the OWNING org's own visibility — spec.md reserves that for a
+    // 'full' tier that does not exist in Phase 1, so NO share, at ANY tier,
+    // may satisfy this gate. This is the one call site in the whole
+    // cross-org-sharing sweep where the more-permissive helper is the
+    // wrong answer — see plan.md's open-question-2 and
+    // org_ticket_is_owned_by_caller()'s own docblock in inc/org-scope.php.
     require_once __DIR__ . '/../../../inc/org-scope.php';
-    if (!org_can_see_ticket($ticketId)) ext_api_error('not_found', 404);
+    if (!org_ticket_is_owned_by_caller($ticketId)) ext_api_error('not_found', 404);
 
     require_once __DIR__ . '/../../../inc/incident-write.php';
     $userId = (int) ($_SESSION['user_id'] ?? 0);

@@ -87,13 +87,6 @@ t("situation refresh intervals are configurable (get_setting), not hard-coded",
     strpos($s, 'refreshInterval: <?php echo (int) ($sitUnitRefreshSecs') !== false &&
     strpos($s, '}, <?php echo (int) ($sitBoardRefreshSecs') !== false);
 
-// GH #71 — GPS ingest can advance while the unit status remains unchanged.
-// The EOC Updated cell must include the resolved last_track timestamp and
-// compare it with status/unit timestamps instead of using a stale first value.
-t("GH#71: EOC unit Updated cell uses the newest GPS/status/unit timestamp",
-    strpos($s, 'function sitLatestAgo()') !== false &&
-    strpos($s, 'sitLatestAgo(u.last_track, u.status_updated, u.updated)') !== false);
-
 // ── #60/#46 — situation control gets the shared per-category markup overlays ──
 t("#60: situation.php attaches MapPrefs.addMarkupOverlays (dashboard-parity layer toggles)",
     (bool) preg_match('/MapPrefs\.addMarkupOverlays\(map, sitLayersControl\)/', $s) &&
@@ -175,6 +168,16 @@ t("GH#47 round 2: loadUnits()'s fetch chain no longer swallows errors silently (
     (bool) preg_match('/function loadUnits\(\)[\s\S]{0,600}?\.catch\(function\s*\(err\)\s*\{\s*console\.error\(/', $s));
 t("GH#47 round 2: loadFacilities()'s fetch chain no longer swallows errors silently",
     (bool) preg_match('/function loadFacilities\(\)[\s\S]{0,600}?\.catch\(function\s*\(err\)\s*\{\s*console\.error\(/', $s));
+
+// ── GH#71 (cbyrdmo, 2026-08-17; fix by ethanhawkes-gif, PR #72) — the EOC
+// Units "Updated" cell must reflect fresh GPS tracking activity, not just the
+// last STATUS change. api/responders.php already resolves and sends
+// `last_track`; the cell just never looked at it.
+t("GH#71: sitLatestAgo() picks the newest of several timestamps rather than the first truthy one",
+    strpos($s, 'function sitLatestAgo()') !== false);
+t("GH#71: the EOC Units Updated cell uses sitLatestAgo(last_track, status_updated, updated), not the old status-only sitAgo() call",
+    strpos($s, 'sitLatestAgo(u.last_track, u.status_updated, u.updated)') !== false &&
+    strpos($s, 'sitAgo(u.status_updated || u.updated)') === false);
 
 echo "\n=== $passed passed, $failed failed ===\n";
 exit($failed === 0 ? 0 : 1);

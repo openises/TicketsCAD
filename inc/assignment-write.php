@@ -34,10 +34,20 @@
  *   • Phase 25 explicit-mapping (un_status.incident_action) and the
  *     Phase 33A hotfix that stops the picked-status path from running
  *     the "reset to Available" block.
+ *   • GH#82/GH#83 (2026-08-18) — assign_create_internal() now applies
+ *     the SAME "no other active assignment" gate to the *promote-to-
+ *     Dispatched* step that clear/unassign already applied to the
+ *     *revert-to-Available* step (previously asymmetric — see
+ *     _assign_dispatch_gate()), and refuses/asks-to-confirm a new
+ *     assignment per the responder's current-status Dispatch level and
+ *     Multi-Assign flag before creating the row at all.
  *
  * History:
  *   2026-06-28 — extracted from api/incident-assign.php; canonical
  *                shape mirrors inc/incident-write.php's helpers.
+ *   2026-08-18 — GH#82 (double-booking silently reset status + hid the
+ *                first call) + GH#83 (Dispatch level displayed but never
+ *                enforced) fixed together; see _assign_dispatch_gate().
  */
 
 declare(strict_types=1);
@@ -143,6 +153,87 @@ function _assign_has_other_active(int $responderId, int $excludeAssignId): bool 
     }
 }
 
+/**
+ * GH#82 / GH#83 (2026-08-18) — the assignment gate.
+ *
+ * Combines the two controls an operator has for "should this unit be
+ * assigned a call right now", which were previously both dead:
+ *
+ *   - `un_status.dispatch` (0=allow, 1=warn/inform, 2=block) on the
+ *     responder's CURRENT status. This is GH#83: Settings -> Unit Statuses
+ *     has promised this for every assignment while a unit is in that
+ *     status, but nothing read the column.
+ *   - `responder.multi` ("Multi-Assign") together with whether the
+ *     responder already holds another active (uncleared) assignment. This
+ *     is GH#82's own named control — "what an operator would reach for to
+ *     prevent this" — previously consulted by nothing at all. A responder
+ *     who already has a live call and is NOT marked Multi-Assign is
+ *     treated as at least a warn, even on a fresh install where no admin
+ *     has touched Dispatch level, because that is precisely the silent
+ *     double-booking GH#82 reported. Multi-Assign=1 is the explicit,
+ *     per-unit override that skips this implied warn.
+ *
+ * The two signals combine by taking the HIGHER (more restrictive) level:
+ * an admin-configured hard block on the unit's current status is never
+ * softened by Multi-Assign, and Multi-Assign never invents a block — it
+ * only ever waives the *implied* warn from double-booking.
+ *
+ * Returns ['level' => 0|1|2, 'message' => string, 'status_name' => string].
+ * Best-effort: any lookup failure (older schema, missing status row) reads
+ * as level 0 — never blocks an assignment as a side effect of a schema gap.
+ */
+function _assign_dispatch_gate(int $responderId): array {
+    $default = ['level' => 0, 'message' => '', 'status_name' => ''];
+    $prefix = $GLOBALS['db_prefix'] ?? '';
+    try {
+        $row = db_fetch_one(
+            "SELECT `r`.`multi`, `r`.`name`, `r`.`handle`,
+                    `us`.`dispatch` AS `status_dispatch`, `us`.`status_val` AS `status_name`
+             FROM `{$prefix}responder` `r`
+             LEFT JOIN `{$prefix}un_status` `us` ON `r`.`un_status_id` = `us`.`id`
+             WHERE `r`.`id` = ?",
+            [$responderId]
+        );
+    } catch (Exception $e) {
+        return $default;
+    }
+    if (!$row) return $default;
+
+    $statusLevel = (int) ($row['status_dispatch'] ?? 0);
+    $statusName  = (string) ($row['status_name'] ?? '');
+    $multi       = (int) ($row['multi'] ?? 0);
+    $respName    = $row['handle'] ?: $row['name'] ?: ('unit #' . $responderId);
+
+    // 0 never matches a real assigns.id (AUTO_INCREMENT starts at 1), so
+    // this counts ANY currently-active assignment for this responder.
+    $hasOtherActive = _assign_has_other_active($responderId, 0);
+    $impliedLevel   = ($hasOtherActive && $multi !== 1) ? 1 : 0;
+
+    // Named $dispatchLevel, not the bare $level tools/legacy_level_audit.php
+    // flags (it reads any bare $level/$lvl comparison as a candidate legacy
+    // user.level authorisation gate — see that file's docblock). This is
+    // un_status.dispatch, a per-INCIDENT-STATUS dispatch-restriction level,
+    // never a user permission level; same non-issue as its own documented
+    // $severity_level / $zoom_level examples.
+    $dispatchLevel = max($statusLevel, $impliedLevel);
+    if ($dispatchLevel <= 0) return $default;
+
+    if ($statusLevel >= $impliedLevel) {
+        $message = trim($respName) . ' is currently ' . ($statusName !== '' ? $statusName : 'in a restricted status')
+            . '. Assign anyway?';
+    } else {
+        $message = trim($respName) . ' already has another active assignment and is not configured '
+            . 'for Multi-Assign. Assign to this incident too?';
+    }
+    if ($dispatchLevel >= 2) {
+        $message = trim($respName) . ' is currently ' . ($statusName !== '' ? $statusName : 'marked Unavailable')
+            . ' (Dispatch level: Unavailable) and cannot be assigned. Change the unit\'s status, '
+            . 'or adjust the Dispatch level for this status in Settings, to proceed.';
+    }
+
+    return ['level' => $dispatchLevel, 'message' => $message, 'status_name' => $statusName];
+}
+
 /** Append an entry to the incident's action log (best-effort). */
 function _assign_log_action(int $ticketId, string $description, int $actionType, int $userId): void {
     $prefix = $GLOBALS['db_prefix'] ?? '';
@@ -217,9 +308,17 @@ function assign_set_rec_facility(int $assignId, int $facilityId, int $userId): v
  *                            but the legacy `assigns` schema has no role column.
  *                            Captured in the action-log description for visibility.
  * @param int    $userId      Owning user id (for `assigns.user_id`)
- * @return array ['id' => <assignId>, 'errors' => []] or ['errors' => [...]]
+ * @param bool   $force       GH#82/GH#83 — bypass the dispatch-level /
+ *                             Multi-Assign WARN gate (an operator has
+ *                             already confirmed "assign anyway?"). Never
+ *                             bypasses a hard BLOCK (dispatch level 2).
+ * @return array ['id' => <assignId>, 'errors' => []]
+ *             or ['errors' => [...]]  (hard block, or a genuine failure)
+ *             or ['errors' => [], 'needs_confirmation' => true, 'message' => ...]
+ *               (WARN level reached and $force was false — caller should
+ *               prompt and retry with $force = true; no row was created)
  */
-function assign_create_internal(int $ticketId, int $responderId, string $role, int $userId): array {
+function assign_create_internal(int $ticketId, int $responderId, string $role, int $userId, bool $force = false): array {
     if ($ticketId <= 0)    return ['errors' => ['Invalid ticket ID']];
     if ($responderId <= 0) return ['errors' => ['Invalid responder ID']];
 
@@ -270,6 +369,18 @@ function assign_create_internal(int $ticketId, int $responderId, string $role, i
         return ['errors' => ['Responder is already assigned to this incident']];
     }
 
+    // GH#82 / GH#83 — dispatch-level + Multi-Assign gate. Runs AFTER the
+    // same-ticket duplicate check above (that's an unconditional reject,
+    // unrelated to dispatch level) and BEFORE the INSERT, so a blocked or
+    // not-yet-confirmed assignment never creates a row at all.
+    $gate = _assign_dispatch_gate($responderId);
+    if ($gate['level'] >= 2) {
+        return ['errors' => [$gate['message']], 'blocked' => true];
+    }
+    if ($gate['level'] === 1 && !$force) {
+        return ['errors' => [], 'needs_confirmation' => true, 'message' => $gate['message']];
+    }
+
     // INSERT — the assignment is created WITHOUT a receiving facility on purpose.
     // The destination hospital (`assigns.rec_facility_id`) is a per-unit value set
     // LATER, when the unit is put into a transport/delivery status that carries a
@@ -289,16 +400,27 @@ function assign_create_internal(int $ticketId, int $responderId, string $role, i
         return ['errors' => ['Failed to create assignment: ' . $e->getMessage()]];
     }
 
-    // Promote responder to Dispatched
-    $dispatchedStatus = _assign_dispatched_status_id();
-    try {
-        db_query(
-            "UPDATE `{$prefix}responder`
-                SET `un_status_id` = ?, `status_updated` = ?
-              WHERE `id` = ?",
-            [$dispatchedStatus, $now, $responderId]
-        );
-    } catch (Exception $e) { /* non-fatal */ }
+    // Promote responder to Dispatched — but ONLY if this is the
+    // responder's sole active assignment. GH#82: previously unconditional,
+    // so assigning a unit a SECOND concurrent call silently reset it from
+    // whatever it was actually doing (On Scene, Responding, ...) back to
+    // Dispatched, and api/mobile-data.php's newest-assignment-only query
+    // then dropped the first incident off the crew's screen entirely.
+    // Mirrors the exact "no other active" gate assign_update_status_internal's
+    // clear branch and assign_unassign_internal already use below — this
+    // was the one asymmetric spot: releasing a unit correctly checked for
+    // other live work before touching status, assigning it did not.
+    if (!_assign_has_other_active($responderId, $assignId)) {
+        $dispatchedStatus = _assign_dispatched_status_id();
+        try {
+            db_query(
+                "UPDATE `{$prefix}responder`
+                    SET `un_status_id` = ?, `status_updated` = ?
+                  WHERE `id` = ?",
+                [$dispatchedStatus, $now, $responderId]
+            );
+        } catch (Exception $e) { /* non-fatal */ }
+    }
 
     // Action log
     $respName = $resp['handle'] ?: $resp['name'];

@@ -109,9 +109,17 @@ if (strpos($js, 'api/compliance.php?action=snooze') !== false
 // org_query_filter(); api/incident-list.php consumes it. The
 // org_strict_isolation setting is honoured inside the helper now
 // (restored 2026-07-07 — the refactor had briefly orphaned the setting).
+//
+// Phase 141 (2026-08-17) — incident-list.php now calls
+// org_ticket_query_filter() (org_query_filter()'s ticket-specific
+// sibling), not the bare org_query_filter('t.org_id') directly. That
+// sibling calls org_query_filter() as its own base (proven byte-identical
+// to pre-Phase-141 HEAD by tests/test_org_sharing_noop.php), so F-014's
+// strict-isolation behavior is unchanged — only the source string this
+// test greps for changed shape.
 $src   = file_get_contents($base . '/api/incident-list.php');
 $scope = file_get_contents($base . '/inc/org-scope.php');
-if (strpos($src, "org_query_filter('t.org_id')") !== false
+if (strpos($src, 'org_ticket_query_filter(') !== false
     && strpos($scope, 'function org_strict_isolation_enabled') !== false
     && strpos($scope, "get_variable('org_strict_isolation')") !== false) {
     ok('F-014 incident-list.php supports strict org isolation via setting');

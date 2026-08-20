@@ -25,6 +25,19 @@ var EventBus = (function () {
     // SSE event types the server can send
     var SSE_TYPES = [
         'incident:new', 'incident:update', 'incident:close', 'incident:note',
+        // Phase 142 (GH#70 Phase 2) — cross-org share grant/revoke. An event
+        // type absent from this array is invisible to EVERY consumer no
+        // matter how correctly the backend publishes it — see
+        // inc/sse.php / api/stream.php's own 'org' scope.
+        'incident:shared', 'incident:unshared',
+        // Phase 143 (GH#70 Phase 3) — a standing relationship's activation/
+        // deactivation is a coarse, board-level visibility change (can add
+        // or remove an entire org's worth of tickets at once), not a
+        // per-ticket event. An event type absent from this array is
+        // invisible to EVERY consumer no matter how correctly the backend
+        // publishes it — see inc/org-relationships.php's
+        // _org_relationship_notify_lifecycle() / api/stream.php's own 'org' scope.
+        'org_relationship:activated', 'org_relationship:deactivated',
         'responder:status', 'responder:assign',
         'facility:update',
         'chat:message',

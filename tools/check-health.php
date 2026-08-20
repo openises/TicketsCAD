@@ -286,6 +286,42 @@ if (empty($ky['checked'])) {
     }
 }
 
+// ── Cache directories: can they actually be written to? ──────────────
+// GEOCODE_CACHE_DIR and TILE_CACHE_DIR are created lazily by whichever
+// process reaches them first (a real web request, or a CLI/SSH diagnostic
+// run as the operator) — see inc/geocode.php's geocode_cache_dir() docblock.
+// On your-server.example.com the CLI won that race and every geocode lookup
+// silently bypassed the cache for weeks; both caches are "best effort" by
+// design, so nothing logged the failure. This is a real write test (write a
+// probe file, read it back, delete it) whenever it is asked as the account
+// that would actually be writing, not merely a permission-bit prediction.
+foreach ([
+    ['label' => 'Geocode lookup cache', 'data' => $all['geocode_cache_writable'] ?? []],
+    ['label' => 'Map tile cache',       'data' => $all['tile_cache_writable'] ?? []],
+] as $cacheCheck) {
+    $cc = $cacheCheck['data'];
+    echo "\n-- " . $cacheCheck['label'] . " — can it be written to? --\n";
+    if (empty($cc['checked'])) {
+        echo "[INFO] " . ($cc['note'] ?? 'not configured on this install') . "\n";
+        continue;
+    }
+    $sev = (string) ($cc['severity'] ?? 'ok');
+    $tag = $sev === 'critical' ? '[CRIT]' : ($sev === 'warn' ? '[WARN]' : ($sev === 'unknown' ? '[UNKN]' : '[OK]  '));
+    $state = !($cc['exists'] ?? false) ? 'missing' : (($cc['writable'] ?? null) === true ? 'writable'
+        : (($cc['writable'] ?? null) === false ? 'NOT WRITABLE' : 'writability unknown'));
+    $ownerTxt = ($cc['owner'] ?? null) !== null ? " owner={$cc['owner']}" : '';
+    if (($cc['mode'] ?? null) !== null) {
+        $ownerTxt .= " mode={$cc['mode']}";
+    }
+    echo "$tag {$cc['dir']} — $state$ownerTxt\n";
+    if (($cc['note'] ?? '') !== '') {
+        echo '       ' . wordwrap((string) $cc['note'], 68, "\n       ") . "\n";
+    }
+    if ($sev === 'critical') {
+        $suggestions[] = 'sudo php tools/fix-permissions.php   # creates/repairs both cache directories';
+    }
+}
+
 // ── Can BOTH writers actually write there? ───────────────────────────
 // Deliberately only on the command line. The backup directories have two
 // writers — you, and the web server — and from a browser there is no way to

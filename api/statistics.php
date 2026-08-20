@@ -85,8 +85,17 @@ if ($is_admin || $rbacStatsView) {
 // responder-scoped query along with its params. Super Admin gets
 // ('', []) so the SQL is unchanged.
 require_once __DIR__ . '/../inc/org-scope.php';
+require_once __DIR__ . '/../inc/org-sharing.php';
 ensure_org_id_column('responder');
-[$ticketOrgFrag, $ticketOrgVars] = org_query_filter('t.org_id');
+// Phase 141 (2026-08-17) — ticket-count aggregates only widen to include
+// cross-org-shared tickets (org_ticket_query_filter()); no field-level PII
+// crosses this endpoint either way, so no redaction wiring is needed here
+// (see plan.md's tier matrix). The responder-scoped filter directly below
+// is DELIBERATELY LEFT UNTOUCHED — widening it would leak responder/roster
+// visibility across orgs, which this phase's own roster-isolation boundary
+// forbids. Do not "fix" this to org_ticket_query_filter() in a future
+// cleanup pass; it is ticket-shaped, not responder-shaped.
+[$ticketOrgFrag, $ticketOrgVars] = org_ticket_query_filter(null, 't');
 [$respOrgFrag,   $respOrgVars]   = org_query_filter('r.org_id');
 
 // ── Core dashboard stats (always returned) ────────────────────────────────────

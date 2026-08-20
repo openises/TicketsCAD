@@ -35,6 +35,13 @@ $level = current_role_name();
 $theme    = $_SESSION['day_night'] ?? 'Day';
 $bs_theme = ($theme === 'Night') ? 'dark' : 'light';
 $csrf     = csrf_token();
+// GH #79 — the "New" button next to the Major Incident select creates a
+// major incident inline (assets/js/new-incident.js), which requires the
+// same permission api/major-incidents.php enforces server-side. Hide the
+// button for a role that can't use it rather than let it 403 (mirrors the
+// $canManage gate in major-incidents.php and incident-detail.php's
+// majorLinkCard).
+$canLinkMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : false;
 ?>
 <!DOCTYPE html>
 <html lang="<?php echo e(i18n_lang()); ?>" data-bs-theme="<?php echo $bs_theme; ?>">
@@ -149,9 +156,27 @@ $csrf     = csrf_token();
                                         <select class="form-select" id="major_incident" name="major_incident" tabindex="-1">
                                             <option value=""><?php echo e(t('newinc.option_none', '— None —')); ?></option>
                                         </select>
+<?php if ($canLinkMajor): ?>
+                                        <!-- GH #79: creates a major incident inline via
+                                             api/major-incidents.php action=create and selects it
+                                             above — see assets/js/new-incident.js btnNewMajor
+                                             handler. Previously opened new-incident.php?major=1 in
+                                             a new tab, a flag nothing ever read. -->
                                         <button class="btn btn-outline-primary" type="button" id="btnNewMajor" title="<?php echo e(t('newinc.label.major_incident', 'Major Incident')); ?>" tabindex="-1">
                                             <i class="bi bi-plus-lg"></i> <?php echo e(t('newinc.btn.new_major', 'New')); ?>
                                         </button>
+<?php endif; ?>
+                                        <!-- GH #79: the New Incident page had no path to the
+                                             Major Incidents list itself (only from inside an
+                                             existing call or the dashboard's Incidents widget —
+                                             deliberately, per Eric 2026-07-07 #67 icon-overload:
+                                             see inc/navbar.php and widget-manager.js). Give this
+                                             page the same contextual link those already have,
+                                             without reversing that decision by adding a top-nav
+                                             icon. -->
+                                        <a href="major-incidents.php" class="btn btn-outline-secondary" tabindex="-1" title="<?php echo e(t('major.btn.back_to_list', 'All Majors')); ?>">
+                                            <i class="bi bi-diagram-3"></i>
+                                        </a>
                                     </div>
                                 </div>
                                 <div class="col-md-6">

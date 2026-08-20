@@ -167,9 +167,9 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
 
         /* GH #74 -- live-GPS layer-control legend dot. A CSS class rather
            than an inline style="" so the colour can be overridden by a
-           stylesheet (the project's UI-consistency audit flags inline hex
-           colours specifically because no stylesheet can win against them
-           without !important; a class does not have that problem). */
+           stylesheet (the UI-consistency audit flags inline hex colours
+           specifically because no stylesheet can win against them without
+           !important; a class does not have that problem). */
         .sit-legend-live-gps { color: #fd7e14; }
 
         /* Collapse toggle icon */
@@ -1216,10 +1216,16 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
         return Math.floor(s / 86400) + 'd ago';
     }
 
-    // A GPS fix is a unit update too. Keep the EOC Units table aligned with
-    // the map by showing the newest of the tracking, status, and unit-row
-    // timestamps instead of reporting an old status change while fresh
-    // Traccar/OwnTracks positions continue to arrive.
+    // GH #71 (cbyrdmo, 2026-08-17; fix by ethanhawkes-gif, PR #72) — a GPS fix
+    // is a unit update too. The Updated cell only ever considered
+    // (status_updated || updated), so a unit receiving fresh Traccar/OwnTracks
+    // positions still reported the age of its last STATUS change -- one
+    // install showed "10d ago" in the EOC Units table while the map's own
+    // "Last fix" tooltip for the same unit said 2s. api/responders.php already
+    // resolves and sends `last_track` from the tracking provider; this cell
+    // just never looked at it. Pick the NEWEST of the tracking/status/unit-row
+    // timestamps rather than the first truthy one, so tracking-only activity
+    // (no status change) still moves the displayed age.
     function sitLatestAgo() {
         var latest = '';
         var latestMs = -Infinity;
@@ -2078,17 +2084,23 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
             });
             tracker.start();
 
-            // GH #71 follow-up (cbyrdmo, 2026-08-17) — the live-GPS tracking
-            // overlay was added straight to the map (UnitTracking.init does
-            // L.layerGroup().addTo(map)) and never registered in the layer
-            // control. The "Units (EOC)" checkbox only governs the status-
-            // coloured EOC roster layer (unitMarkers), so switching units off
-            // left the live-GPS markers on screen — drawn in each unit's
-            // configured tracking colour (e.g. orange) rather than the green
-            // status colour — and operators read that as "units won't turn
-            // off." Register the tracking group as its own toggleable overlay
-            // (default on, unchanged) so it can be hidden, and persist that
-            // choice per-user like the other overlays.
+            // GH #74 / GH #73 (cbyrdmo, 2026-08-17; fix by ethanhawkes-gif,
+            // PR #75) — situation.php draws units through TWO independent
+            // layers: unitMarkers (the status-coloured EOC roster layer,
+            // registered above as the "Units (EOC)" overlay) and this
+            // UnitTracking group (the real-time GPS overlay, coloured by each
+            // unit's tracking colour and carrying a "Last fix:" tooltip).
+            // UnitTracking.init() does `L.layerGroup().addTo(map)` directly
+            // and was never registered in the layer control, so unchecking
+            // "Units (EOC)" removed only the roster markers -- the live-GPS
+            // markers (reported as orange dots in GH #73) stayed on the map
+            // with no control to hide them. Register the tracking group as
+            // its own toggleable overlay (default ON, so nothing changes for
+            // an install that leaves it alone) and persist the choice per
+            // user like every other overlay on this page. 'units_live' is
+            // registered in inc/map-layer-prefs.php's catalog (and the JS
+            // SHIPPED_DEFAULTS fallback) specifically so this persists across
+            // reloads rather than only within the current page load.
             if (sitLayersControl && typeof tracker.getLayerGroup === 'function') {
                 var liveGpsLayer = tracker.getLayerGroup();
                 if (liveGpsLayer) {

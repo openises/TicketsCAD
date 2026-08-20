@@ -136,6 +136,7 @@ $canCfg   = (!function_exists('rbac_can') || rbac_can('action.manage_config'));
         <?php _cfg_tab('incident-types',        t('sidebar.tab.incident_types',       'Incident Types'), 'call types nature protocol incident'); ?>
         <?php _cfg_tab('par-checks',            t('sidebar.tab.par_checks',           'PAR Checks'), 'par accountability roll call personnel'); ?>
         <?php _cfg_tab('net-checkins',          t('sidebar.tab.net_checkins',         'Net Check-Ins'), 'net control checkin check-in skywarn ncs roll call radio net'); ?>
+        <?php _cfg_tab('patient-insurance',     t('sidebar.tab.patient_insurance',    'Patient Insurance Types'), 'insurance patient payer carrier billing medical'); ?>
         <?php _cfg_tab('pending-messages',      t('sidebar.tab.pending_messages',     'Pending Messages'), 'queue pending messages outbox'); ?>
         <?php _cfg_tab('severity-levels',       t('sidebar.tab.severity_levels',      'Severity Levels'), 'priority severity levels'); ?>
         <?php _cfg_tab('signal-codes',          t('sidebar.tab.signal_codes',         'Signal Codes'), 'signal codes ten-codes 10-codes q-codes'); ?>
@@ -189,6 +190,26 @@ $canCfg   = (!function_exists('rbac_can') || rbac_can('action.manage_config'));
         <?php _cfg_tab('organizations',            t('sidebar.tab.organizations',   'Organizations'), 'org organizations agencies groups departments'); ?>
         <?php _cfg_tab('teams',                    t('sidebar.tab.teams',           'Teams'), 'teams crews groups strike-teams'); ?>
         <?php _cfg_tab('team-types',                t('sidebar.tab.team_types',      'Team Types'), 'team types categories roles'); ?>
+        <?php _cfg_sub(t('sidebar.sub.org_sharing', 'Cross-Org Sharing')); ?>
+        <?php // Phase 141 (GH#70) — cross-org ticket auto-routing rules
+              // (standalone page). Gated on EITHER permission, same reasoning
+              // as the ICS Form Types / Public Board links above: an Org
+              // Admin hand-granted only action.manage_org_routing_org still
+              // needs to reach the page to author their own org's rules. The
+              // page itself hides install-wide controls (and every other
+              // org's rules) from anyone without action.manage_org_routing.
+              if (!function_exists('rbac_can') || rbac_can('action.manage_org_routing') || rbac_can('action.manage_org_routing_org')) {
+                  _cfg_link('org-routing-admin', 'org-routing-admin.php', t('sidebar.tab.org_routing', 'Cross-Org Ticket Routing'), 'org routing sharing cross-org multi-agency mutual aid'); } ?>
+        <?php // Phase 143 (GH#70 Phase 3) — standing cross-org relationships +
+              // time-boxed activation windows (standalone page). Gated on ANY
+              // of the three permission codes, same reasoning as the routing
+              // link just above: an Org Admin or Dispatcher hand-granted only
+              // the org-scoped or activate-only code still needs to reach the
+              // page. The page itself hides install-wide controls (and every
+              // other org's relationships) from anyone without
+              // action.manage_org_relationships.
+              if (!function_exists('rbac_can') || rbac_can('action.manage_org_relationships') || rbac_can('action.manage_org_relationships_org') || rbac_can('action.activate_org_relationship')) {
+                  _cfg_link('org-relationships-admin', 'org-relationships-admin.php', t('sidebar.tab.org_relationships', 'Cross-Org Standing Relationships'), 'org relationships standing mutual aid activation consent'); } ?>
         <?php _cfg_sub(t('sidebar.sub.roles_quals', 'Roles & Qualifications')); ?>
         <?php _cfg_tab('certifications',           t('sidebar.tab.certifications',  'Certifications'), 'certs certifications qualifications credentials'); ?>
         <?php _cfg_tab('ics-positions',            t('sidebar.tab.ics_positions',   'ICS Positions'), 'ics positions nims incident command'); ?>
@@ -232,6 +253,17 @@ $canCfg   = (!function_exists('rbac_can') || rbac_can('action.manage_config'));
         <?php // Phase 111 Slice B — dispatcher message tray (standalone page).
               if (!function_exists('rbac_can') || rbac_can('screen.message_tray')) {
                   _cfg_link('message-tray', 'message-tray.php', t('sidebar.tab.message_tray', 'Message Tray'), 'message tray dispatcher ics-214 log'); } ?>
+
+        <?php _cfg_sub(t('sidebar.sub.ics_forms', 'ICS Forms')); ?>
+        <?php // Phase 140 (GH#69) — custom (data-driven) ICS form types
+              // (standalone page). Gated on EITHER permission, same reasoning
+              // as the Public Board link below: an Org Admin holding only
+              // action.manage_ics_form_types_org still needs to reach the
+              // page to author their own org's types. The page itself hides
+              // install-wide-only controls from anyone without
+              // action.manage_ics_form_types.
+              if (!function_exists('rbac_can') || rbac_can('action.manage_ics_form_types') || rbac_can('action.manage_ics_form_types_org')) {
+                  _cfg_link('ics-form-type-admin', 'ics-form-type-admin.php', t('sidebar.tab.ics_form_types', 'Custom ICS Form Types'), 'ics form types custom data-driven builder'); } ?>
 
         <?php _cfg_sub(t('sidebar.sub.public_board', 'Public Board')); ?>
         <?php // Phase 138 — public incident board (standalone page). Gated on

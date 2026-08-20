@@ -112,15 +112,29 @@ function _pb_street_name_only(string $street): string
 }
 
 /**
- * Severity code -> display text. Mirrors api/feed.php's own
- * $severity_labels mapping (0=Low, 1=Medium, 2=High) so the public board
- * and the authenticated feed never disagree on what a severity number
- * means.
+ * Severity code -> display text.
+ *
+ * GH#87/GH#88 (2026-08-19) — this used to carry its OWN hardcoded
+ * (0=Low, 1=Medium, 2=High) map, a fifth independent spelling of the
+ * same 3 integers across the codebase (see GH#88's investigation
+ * table: new-incident.php said Normal/Elevated/Critical,
+ * incident-detail.js said Low/Medium/High with different capitalization
+ * of "Med", callboard said Normal/Medium/High...). Delegates to
+ * inc/severity.php's severity_label() — the single configured scale
+ * every other screen now reads — so the public board and the
+ * authenticated feed never disagree with each other OR with the rest
+ * of the app on what a severity number means.
+ *
+ * Note this is the one function in this file that is no longer a pure
+ * DB-free transform (severity_label() reads the severity_levels table,
+ * cached per-request) — it degrades gracefully to the historical
+ * hardcoded 3-level scale if the table/DB is unavailable, so this
+ * remains safe to call from every context the pure functions above are.
  */
 function _pb_severity_text(int $severity): string
 {
-    $labels = [0 => 'Low', 1 => 'Medium', 2 => 'High'];
-    return $labels[$severity] ?? 'Unknown';
+    require_once __DIR__ . '/severity.php';
+    return severity_label($severity);
 }
 
 /**

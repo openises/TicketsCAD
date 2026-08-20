@@ -40,6 +40,12 @@ CREATE TABLE IF NOT EXISTS `member_ics_qualifications` (
 
 -- ── Team Members Junction ──
 -- Many-to-many: members can belong to multiple teams with specific roles.
+-- GH#76 Phase 144 (2026-08-18): `source` records provenance -- NULL = a
+-- human coordinator's direct action (Teams tab or the roster page's
+-- Add/Remove card -- also the value for every pre-existing row, since the
+-- column is nullable), 'legacy_migration' = the one-time member.team_id
+-- reconciliation backfill, 'external_api' = the external-API compat shim.
+-- See sql/run_phase144_team_membership_unification.php.
 CREATE TABLE IF NOT EXISTS `team_members` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `team_id` int(11) NOT NULL,
@@ -48,6 +54,7 @@ CREATE TABLE IF NOT EXISTS `team_members` (
   `position_code` varchar(16) DEFAULT NULL COMMENT 'ICS position code for this team role',
   `assigned_date` date DEFAULT NULL,
   `notes` varchar(255) DEFAULT NULL,
+  `source` varchar(20) DEFAULT NULL COMMENT 'GH#76 Phase 144: NULL=human/UI, legacy_migration, external_api',
   PRIMARY KEY (`id`),
   UNIQUE KEY `team_member` (`team_id`, `member_id`),
   KEY `team_id` (`team_id`),
@@ -101,7 +108,20 @@ ON DUPLICATE KEY UPDATE `title` = VALUES(`title`);
 
 -- ── Migrate existing team_id data to team_members ──
 -- Members with team_id set get a row in team_members for backward compatibility.
-INSERT IGNORE INTO `team_members` (`team_id`, `member_id`, `role`, `assigned_date`)
-SELECT `team_id`, `id`, 'Member', CURDATE()
-FROM `member`
-WHERE `team_id` IS NOT NULL AND `team_id` > 0;
+-- GH#76 Phase 144: the EXISTS guard is required -- team_soft_delete_internal()
+-- (inc/team-write.php) cascades a HARD DELETE of team_members AND the teams
+-- row itself when a team is removed (teams has no deleted_at column -- see
+-- that file's own docblock: "there is no deleted_at on teams"), but nothing
+-- clears member.team_id when that happens, so an unguarded backfill on an
+-- upgraded install (this file also runs standalone via tools/install_fresh.php)
+-- could create a team_members row pointing at a team that no longer exists at
+-- all. A plain EXISTS is therefore both correct and sufficient here -- there
+-- is no soft-delete flag to also filter on. The ongoing, idempotent,
+-- re-runnable version of this same backfill is
+-- sql/run_phase144_team_membership_unification.php -- that is what actually
+-- keeps member.team_id and team_members reconciled after initial install.
+INSERT IGNORE INTO `team_members` (`team_id`, `member_id`, `role`, `assigned_date`, `source`)
+SELECT m.`team_id`, m.`id`, 'Member', CURDATE(), 'legacy_migration'
+FROM `member` m
+WHERE m.`team_id` IS NOT NULL AND m.`team_id` > 0
+  AND EXISTS (SELECT 1 FROM `teams` t WHERE t.`id` = m.`team_id`);

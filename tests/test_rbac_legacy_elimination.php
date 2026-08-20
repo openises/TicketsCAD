@@ -223,12 +223,24 @@ if (!$dbReady) {
         rbac_can('action.view_audit')
             ? rle_ok('level 4 + Org Admin CAN view the audit log (role wins)')
             : rle_bad('level 4 + Org Admin refused the audit log');
-        rbac_can('action.manage_config')
-            ? rle_ok('level 4 + Org Admin CAN open Settings (role wins)')
-            : rle_bad('level 4 + Org Admin refused Settings');
-        is_admin()
-            ? rle_ok('is_admin() is true for level 4 + Org Admin')
-            : rle_bad('is_admin() false for an Org Admin because of the legacy level');
+        // action.manage_config is Super-Admin-only by design (sql/rbac.sql's
+        // Org Admin exclusion list, present since before this phase) --
+        // "role wins" for THIS permission means the role's genuine denial
+        // holds, not that level=4 grants it. This assertion originally
+        // expected true; it was quietly passing only because of the RBAC
+        // canonical-alias privilege leak (2026-08-16 fix, see sql/rbac.sql
+        // and tests/test_rbac_canonical_alias_leak.php) that had granted
+        // Org Admin action.manage_config's canonical alias -- i.e. this
+        // test was unknowingly asserting the bug as correct behaviour.
+        // is_admin()'s own documented contract (inc/rbac.php) is
+        // `is_super OR rbac_can('action.manage_config')`, so it must be
+        // false here too: a pure Org Admin is neither.
+        !rbac_can('action.manage_config')
+            ? rle_ok('level 4 + Org Admin is correctly REFUSED Settings (role wins, and the role withholds it)')
+            : rle_bad('level 4 + Org Admin was granted action.manage_config -- Super-Admin-only permission leaked to Org Admin');
+        !is_admin()
+            ? rle_ok('is_admin() is false for level 4 + Org Admin (neither is_super nor action.manage_config)')
+            : rle_bad('is_admin() true for an Org Admin holding neither is_super nor action.manage_config');
 
         // ── 4b. The inverse, and the one that actually matters. ──────────
         // Level 0 was "Super" — the most privileged value the old system

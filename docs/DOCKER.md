@@ -313,6 +313,7 @@ Notes:
 | Login page loads but assets are 404       | `.htaccess` disabled — the image enables `AllowOverride All`; if you customized Apache, restore it. |
 | Forgot the generated admin password       | `docker compose exec app php tools/create_admin.php --username=admin --email=you@example.com` prints a fresh temp password (first login forces a change). |
 | Want a clean slate                        | `docker compose down -v && docker compose up -d --build` (deletes ALL data).       |
+| `docker compose pull` fails with `pull access denied for ticketscad-newui` (or `repository does not exist`) | Don't run `docker compose pull` for this project — the app image (`ticketscad-newui:local`) is built **locally**, on your own machine, from this repo's Dockerfile; it is never published to Docker Hub or any registry, so there's nothing there to pull. This is expected, not a sign anything is broken. To get the latest version, use `git pull` then `docker compose up -d --build` (see §5) — that's the whole update, no separate pull step. If a plain `docker compose up -d` (no `--build`, no prior `pull`) won't bring your containers back up either, see §5 and the troubleshooting rows above for the real error from `docker compose logs`. |
 
 ### Database won't start on a small host (Raspberry Pi, low-RAM VMs)
 

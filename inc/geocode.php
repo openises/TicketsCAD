@@ -937,12 +937,35 @@ if (!defined('GEOCODE_CACHE_DIR')) {
     define('GEOCODE_CACHE_DIR', served_dir_above_root(NEWUI_ROOT, 'geocode-cache'));
 }
 
-/** Root of the geocode cache — above the web root, platform-aware. See the note above. */
+/**
+ * Root of the geocode cache — above the web root, platform-aware. See the
+ * note above.
+ *
+ * The @mkdir() here is a FALLBACK, not the primary defense, and it cannot be
+ * made to fully close the ownership race by itself: whichever process calls
+ * this function FIRST becomes the directory's owner, and PHP has no way to
+ * chgrp() the result to the web server's group unless the calling process
+ * already belongs to that group (or is root) — see inc/install-permissions.php
+ * for the full account of the your-server.example.com incident this guards
+ * against. The real fix is provisioning: `tools/fix-permissions.php` (run on
+ * every `tools/deploy.sh` deploy, and the documented shortcut for a
+ * self-hosted admin) creates this directory owned by the web server BEFORE
+ * either a real request or a CLI/SSH process can race to create it the wrong
+ * way — see install_perm_targets()'s GEOCODE_CACHE_DIR entry.
+ *
+ * Mode 0775 (not 0700) matches INSTALL_PERM_MODE_WEB, the mode
+ * tools/fix-permissions.php converges this directory to regardless of who
+ * created it — an install that never runs that tool is no less private than
+ * one that does, and the two paths agreeing means a later repair pass is a
+ * no-op instead of unexpected churn. This directory holds no user identity
+ * (see the header note above), and it is fenced against HTTP by
+ * served_dir_harden() below in either case.
+ */
 function geocode_cache_dir(): string
 {
     $dir = GEOCODE_CACHE_DIR;
     if (!is_dir($dir)) {
-        @mkdir($dir, 0700, true);
+        @mkdir($dir, 0775, true);
     }
     served_dir_harden($dir, 'Geocode lookup cache', true);
     return $dir;
@@ -1022,8 +1045,13 @@ function geocode_cache_write(string $key, array $results, int $maxEntries, ?int 
     if ($path === '') {
         return false;
     }
+    // Mode matches geocode_cache_dir()'s parent directory (0775, not 0700) —
+    // see that function's docblock. A 0700 subdirectory under a 0775 parent
+    // would deny the group access the parent just granted, which is exactly
+    // the kind of inconsistency that reintroduces this bug one directory
+    // level down.
     $dir = dirname($path);
-    if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+    if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
         return false;
     }
     $ok = @file_put_contents(
@@ -1083,11 +1111,22 @@ function geocode_cache_prune(int $maxEntries): int
     return $removed;
 }
 
-/** Current cache size, for Settings and the health check. */
+/**
+ * Current cache size, for Settings and the health check.
+ *
+ * Deliberately does NOT call geocode_cache_dir() — that function creates the
+ * directory on first call, and this one is read-only by contract. A status
+ * page merely being viewed (Settings, or `php tools/check-health.php`, which
+ * calls health_check_all() -> health_check_geocoding() -> this function) must
+ * never itself be the "first caller" that wins the ownership race
+ * geocode_cache_dir()'s own docblock describes — least of all the diagnostic
+ * tool that exists to CATCH that exact problem. A directory that does not
+ * exist yet simply has zero entries; report that, do not create anything.
+ */
 function geocode_cache_usage(): array
 {
-    $dir = geocode_cache_dir();
-    $files = @is_dir($dir) ? (array) @glob($dir . '/*/*.json') : [];
+    $dir = defined('GEOCODE_CACHE_DIR') ? GEOCODE_CACHE_DIR : '';
+    $files = ($dir !== '' && @is_dir($dir)) ? (array) @glob($dir . '/*/*.json') : [];
     $bytes = 0;
     foreach ($files as $f) {
         $bytes += (int) @filesize($f);
@@ -1117,10 +1156,23 @@ function geocode_cache_clear(): int
 // behaviour able to alter address lookup. The shapes rhyme on purpose; the
 // state does not overlap.
 
-/** Where throttle + breaker state live. Beside the cache, above the web root. */
+/**
+ * Where throttle + breaker state live. Beside the cache, above the web root.
+ *
+ * Deliberately references GEOCODE_CACHE_DIR directly rather than calling
+ * geocode_cache_dir() — that function creates the directory as a side
+ * effect of being called at all, and this path is computed from READ
+ * contexts too (geocode_breaker_read(), reached from health_check_geocoding()
+ * -> health_check_all() -> `php tools/check-health.php`), which must never
+ * itself win the ownership race by being the first process to touch the
+ * cache tree. The WRITE side (geocode_throttle_claim(), geocode_breaker_write())
+ * already does its own `@mkdir(..., true)` with recursive=true, which creates
+ * GEOCODE_CACHE_DIR and .state together in one call when needed — so nothing
+ * is lost on the path that is actually supposed to create it.
+ */
 function geocode_state_dir(): string
 {
-    return geocode_cache_dir() . '/.state';
+    return (defined('GEOCODE_CACHE_DIR') ? GEOCODE_CACHE_DIR : '') . '/.state';
 }
 
 /**
@@ -1150,7 +1202,10 @@ function geocode_throttle_claim(string $provider, int $intervalMs, ?int $nowMs =
     }
     $nowMs = $nowMs ?? (int) round(microtime(true) * 1000);
     $dir = geocode_state_dir();
-    if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+    // Mode matches geocode_cache_dir()'s parent (0775, not 0700) — see that
+    // function's docblock. A 0700 subdirectory under a 0775 parent denies the
+    // group access the parent just granted.
+    if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
         return 0;   // cannot track it — better to proceed than to block forever
     }
     $path = $dir . '/' . preg_replace('/[^a-z0-9_]/', '', $provider) . '.throttle';
@@ -1250,7 +1305,9 @@ function geocode_breaker_read(string $provider): array
 function geocode_breaker_write(string $provider, array $state): bool
 {
     $dir = geocode_state_dir();
-    if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) return false;
+    // Mode matches geocode_cache_dir()'s parent (0775, not 0700) — see the
+    // note in geocode_throttle_claim() above.
+    if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) return false;
     return @file_put_contents(geocode_breaker_path($provider), json_encode($state), LOCK_EX) !== false;
 }
 

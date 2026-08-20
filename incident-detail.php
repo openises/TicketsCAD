@@ -151,6 +151,18 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
             <a href="#" class="btn btn-sm btn-outline-info d-none" id="btnWinlinkExport" title="Export as Winlink ICS-213 XML" aria-label="Export Winlink form">
                 <i class="bi bi-broadcast me-1"></i>ICS-213
             </a>
+            <!-- Phase 142 (GH#70 Phase 2) — manual cross-org sharing.
+                 Hidden by default; incident-detail.js's renderHeader()
+                 toggles d-none from data.can_manage_sharing on every
+                 load/refresh (api/incident-detail.php computes it from
+                 RBAC + org_ticket_is_owned_by_caller() -- unconditionally
+                 true only for the ticket's own owning org, never a
+                 shared-in viewer). Display-only gate; every write is
+                 re-checked server-side by api/incident-share.php. -->
+            <button type="button" class="btn btn-sm btn-outline-primary d-none" id="btnShareIncident"
+                    title="Share this incident with another organization">
+                <i class="bi bi-share me-1"></i>Share&hellip;
+            </button>
             <a href="index.php" class="btn btn-sm btn-outline-secondary">
                 <i class="bi bi-arrow-left me-1"></i>Dashboard
             </a>
@@ -211,6 +223,15 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
                         <span class="badge" id="severityBadge">—</span>
                         <span class="badge" id="statusBadge">—</span>
                         <span class="badge bg-secondary" id="typeBadge">—</span>
+                        <!-- Phase 141 (GH#70) — cross-org sharing indicator.
+                             Hidden by default; renderHeader() (incident-detail.js)
+                             shows it via .textContent (never innerHTML) when
+                             the incident response carries shared_from_org_name
+                             -- i.e. this session's org sees the incident via an
+                             active incident_shares grant, not same-org access. -->
+                        <span class="badge bg-info text-dark d-none" id="sharedFromBadge" title="This incident is shared from another organization">
+                            <i class="bi bi-share"></i> <span id="sharedFromBadgeText"></span>
+                        </span>
                         <!-- Phase 27B (2026-06-11) — PAR-active header badge.
                              Hidden by default; populated by refreshPAR() when
                              this incident has PAR enabled. Click to scroll to
@@ -901,6 +922,80 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
             </div>
         </div>
 
+    </div>
+</div>
+
+<!-- Phase 142 (GH#70 Phase 2) — manual cross-org sharing modal. Opened by
+     #btnShareIncident; incident-detail.js populates it on open via
+     GET api/incident-share.php?ticket_id=N. All server-authored text
+     (org names, share_reason, error messages) set via .textContent, never
+     .innerHTML -- same hard rule as #secLabelBadge/#sharedFromBadge. -->
+<div class="modal fade" id="shareIncidentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title"><i class="bi bi-share me-2"></i>Share this incident</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body small">
+                <div class="alert alert-danger d-none" id="shareModalError"></div>
+
+                <h6 class="text-body-secondary mb-2">Currently shared with</h6>
+                <div class="table-responsive mb-3">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Organization</th>
+                                <th>Tier</th>
+                                <th>Source</th>
+                                <th>Reason</th>
+                                <th>Shared</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="shareModalRows">
+                            <tr><td colspan="6" class="text-center text-body-secondary py-3">Loading&hellip;</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="shareModalAddForm" class="d-none border-top pt-3">
+                    <h6 class="text-body-secondary mb-2">Share with another organization</h6>
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label mb-0" for="shareModalTargetOrg">Organization</label>
+                            <select class="form-select form-select-sm" id="shareModalTargetOrg">
+                                <option value="">Select an organization&hellip;</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label mb-0 d-block">Access tier</label>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="shareModalTier" id="shareModalTierView" value="view" checked>
+                                <label class="form-check-label" for="shareModalTierView">View</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="shareModalTier" id="shareModalTierAssist" value="assist">
+                                <label class="form-check-label" for="shareModalTierAssist">Assist</label>
+                            </div>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label mb-0" for="shareModalReason">Reason</label>
+                            <textarea class="form-control form-control-sm" id="shareModalReason" maxlength="255" rows="1"
+                                      placeholder="e.g. mutual aid requested by IC"></textarea>
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-sm btn-primary" id="btnShareModalSubmit">
+                            <i class="bi bi-share me-1"></i>Share
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
     </div>
 </div>
 

@@ -15,6 +15,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/audit.php';
+require_once __DIR__ . '/../inc/mobile-assignments.php';
 
 ini_set('display_errors', '0');
 
@@ -33,6 +34,77 @@ function safe_mobile_fetch($sql, $params = []) {
                 . " - SQL: " . preg_replace('/\s+/', ' ', substr($sql, 0, 240)));
             return [];
     }
+}
+
+// GH #77 — the units (responder ids) this user actively crews via
+// unit_personnel_assignments. This is the Phase 116c / GH #85 query the
+// GET dashboard header/assignment lookup below already runs to build
+// $crewUnitIds — factored out so every mobile action that needs "which
+// unit is this crew member operating from" calls the exact same query
+// instead of each re-deriving (and drifting from) its own copy. That
+// drift is exactly what GH #77 was: add_note and report_location each
+// had their own narrower resolver that never consulted crew assignments
+// at all, so a user who only crews a unit (no personal responder row)
+// passed the header/assignment lookup and was rejected by the note/
+// location paths in the same request.
+function mobile_crew_unit_ids($prefix, $userId) {
+    $ids = [];
+    try {
+        $crewRows = safe_mobile_fetch(
+            "SELECT DISTINCT upa.`responder_id`
+               FROM `{$prefix}unit_personnel_assignments` upa
+               JOIN `{$prefix}member` m ON m.`id` = upa.`member_id`
+              WHERE m.`user_id` = ?
+                AND upa.`status` IN ('active','standby')
+                AND (upa.`released_at` IS NULL OR DATE_FORMAT(upa.`released_at`,'%y') = '00')",
+            [$userId]
+        );
+        foreach ($crewRows as $cr) {
+            $rid = (int) $cr['responder_id'];
+            if ($rid > 0) $ids[] = $rid;
+        }
+    } catch (Exception $e) { /* older install without unit_personnel_assignments */ }
+    return $ids;
+}
+
+// GH #77 — the ONE canonical "which responder is this logged-in user"
+// resolver, shared by add_note and report_location (and mirroring the
+// GET handler's own resolution below, which stays inline there because
+// it also needs the full responder row plus the complete crew-id LIST
+// for multi-unit assignment visibility, not just a single id).
+//
+//   Path 1: responder.user_id = this user
+//   Path 2 (Phase 69): responder.personal_for_member_id = this user's member
+//   Path 3: name/handle match on username (legacy fallback)
+//   Path 4 (Phase 116c / GH #85): no personal responder, but the user
+//           actively crews a unit — fall back to the first one.
+//
+// Returns 0 if none of the four resolve.
+function mobile_resolve_responder_id($prefix, $userId, $memberId, $username) {
+    $row = safe_mobile_fetch(
+        "SELECT `id` FROM `{$prefix}responder`
+         WHERE `user_id` = ? AND (`deleted_at` IS NULL) LIMIT 1",
+        [$userId]
+    );
+    if (empty($row) && $memberId) {
+        $row = safe_mobile_fetch(
+            "SELECT `id` FROM `{$prefix}responder`
+             WHERE `personal_for_member_id` = ? AND (`deleted_at` IS NULL) LIMIT 1",
+            [$memberId]
+        );
+    }
+    if (empty($row)) {
+        $row = safe_mobile_fetch(
+            "SELECT `id` FROM `{$prefix}responder`
+             WHERE (`name` = ? OR `handle` = ?) AND (`deleted_at` IS NULL) LIMIT 1",
+            [$username, $username]
+        );
+    }
+    if (!empty($row)) {
+        return (int) $row[0]['id'];
+    }
+    $crewIds = mobile_crew_unit_ids($prefix, $userId);
+    return !empty($crewIds) ? $crewIds[0] : 0;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -141,22 +213,10 @@ if ($method === 'GET') {
     // own responder + those units as one set for the assignment/incident lookups.
     // Read-only visibility — the crew view the vehicle's call; the vehicle is what
     // gets dispatched, not the individuals. Guarded for installs without the table.
-    $crewUnitIds = [];
-    try {
-        $crewRows = safe_mobile_fetch(
-            "SELECT DISTINCT upa.`responder_id`
-               FROM `{$prefix}unit_personnel_assignments` upa
-               JOIN `{$prefix}member` m ON m.`id` = upa.`member_id`
-              WHERE m.`user_id` = ?
-                AND upa.`status` IN ('active','standby')
-                AND (upa.`released_at` IS NULL OR DATE_FORMAT(upa.`released_at`,'%y') = '00')",
-            [$current_user_id]
-        );
-        foreach ($crewRows as $cr) {
-            $rid = (int) $cr['responder_id'];
-            if ($rid > 0) $crewUnitIds[] = $rid;
-        }
-    } catch (Exception $e) { /* older install without unit_personnel_assignments */ }
+    // GH #77 — now shared via mobile_crew_unit_ids() (identical query) so
+    // add_note and report_location resolve the same crew set instead of
+    // maintaining their own copy that can silently drift from this one.
+    $crewUnitIds = mobile_crew_unit_ids($prefix, $current_user_id);
 
     // If the user has no responder of their own but crews a unit, surface that
     // unit as their mobile context so the header shows the vehicle.
@@ -191,40 +251,26 @@ if ($method === 'GET') {
         $currentStatus = !empty($stRow) ? $stRow[0] : null;
     }
 
-    // ── Get current assignment ─────────────────────────────────
+    // ── Get current assignment(s) ──────────────────────────────
     // Phase 69: ticket columns are `street`/`lng`, NOT `address`/`lon`.
     // The `apt` column doesn't exist either. `in_types.type` is the
     // text label; FK from ticket is `in_types_id`, not `type`. The old
     // query died silently leaving the mobile UI showing "No active
     // assignment" for everyone, dispatched or not.
-    $assignment = null;
+    //
+    // GH#82 (2026-08-18) — this used to be `ORDER BY a.id DESC LIMIT 1`:
+    // newest assignment only. If a unit was given a second concurrent
+    // call, the crew's ORIGINAL still-active incident disappeared from
+    // this screen entirely, not just deprioritized. mobile_active_
+    // assignments() (inc/mobile-assignments.php) now returns every active
+    // assignment, oldest first, so `assignment` (kept for backward
+    // compatibility with existing mobile.js) is the unit's original call,
+    // and `assignments` carries the full list for any additional ones.
+    $assignments = [];
     if (!empty($viewResponderIds)) {
-        $ph = implode(',', array_fill(0, count($viewResponderIds), '?'));
-        $aRows = safe_mobile_fetch(
-            "SELECT a.`id` AS assign_id, a.`ticket_id`,
-                    t.`street` AS `address`, t.`city`, t.`state`,
-                    t.`scope` AS `nature`, t.`description`,
-                    t.`lat`, t.`lng` AS `lon`,
-                    t.`status` AS ticket_status, t.`severity`,
-                    t.`contact`, t.`phone`,
-                    t.`incident_number`,
-                    it.`type` AS incident_type,
-                    it.`color` AS type_color,
-                    r.`name` AS assigned_unit_name, r.`handle` AS assigned_unit_handle
-             FROM `{$prefix}assigns` a
-             JOIN `{$prefix}ticket` t ON t.`id` = a.`ticket_id`
-             LEFT JOIN `{$prefix}in_types` it ON it.`id` = t.`in_types_id`
-             LEFT JOIN `{$prefix}responder` r ON r.`id` = a.`responder_id`
-             WHERE a.`responder_id` IN ($ph)
-               AND (a.`clear` IS NULL OR DATE_FORMAT(a.`clear`,'%y') = '00')
-               AND t.`status` = 2
-               AND (t.`deleted_at` IS NULL)
-             ORDER BY a.`id` DESC
-             LIMIT 1",
-            $viewResponderIds
-        );
-        $assignment = !empty($aRows) ? $aRows[0] : null;
+        $assignments = mobile_active_assignments($prefix, $viewResponderIds);
     }
+    $assignment = !empty($assignments) ? $assignments[0] : null;
 
     // ── Recent assignments (last 5 closed) ─────────────────────
     // Phase 69: same schema fixes as the current-assignment query.
@@ -271,6 +317,9 @@ if ($method === 'GET') {
         'responder_id'       => $responderId,
         'current_status'     => $currentStatus,
         'assignment'         => $assignment,
+        // GH#82 — every currently-active assignment (assignment == assignments[0]),
+        // so a unit on more than one live call isn't hidden from its own crew.
+        'assignments'        => $assignments,
         'recent_assignments' => $recentAssignments,
         'active_mileage'     => $activeMileage,
         'user'               => $current_user,
@@ -319,21 +368,19 @@ if ($method === 'POST') {
         // action_type FROM action: 55 rows already use 11).
         try {
             // Best-effort responder lookup so the note is attributed
-            // to the unit the responder is operating from. Same
-            // resolution path the GET handler uses above.
-            $noteResponderId = null;
-            try {
-                $resp = db_fetch_one(
-                    "SELECT id FROM `{$prefix}responder`
-                      WHERE (user_id = ?
-                             OR personal_for_member_id = ?)
-                        AND (deleted_at IS NULL)
-                      ORDER BY (user_id = ?) DESC
-                      LIMIT 1",
-                    [$current_user_id, (int) ($current_member_id ?? 0), $current_user_id]
-                );
-                if ($resp) $noteResponderId = (int) $resp['id'];
-            } catch (Exception $eR) { /* leave null */ }
+            // to the unit the responder is operating from. GH #77: this
+            // used to run its own narrower (user_id / personal_for_member_id
+            // only, no crew fallback) lookup that had drifted from the GET
+            // handler's — a crew-only member (no personal responder row)
+            // got their note written with responder=NULL, unattributed to
+            // the unit they're crewing, even though the mobile header
+            // correctly showed that unit for the same user in the same
+            // request. Now calls the shared resolver so this can't drift
+            // again.
+            $noteResponderId = mobile_resolve_responder_id(
+                $prefix, $current_user_id, $current_member_id, $current_user
+            );
+            if (!$noteResponderId) $noteResponderId = null;
 
             db_query(
                 "INSERT INTO `{$prefix}action`
@@ -431,29 +478,20 @@ if ($method === 'POST') {
         // Phase 73v — CRITICAL: previously trusted client-supplied
         // responder_id, so any logged-in user could move ANY unit on
         // the map by POSTing someone else's id. Fix: resolve the
-        // caller's own responder server-side, the same 3-path lookup
-        // the GET handler uses. The client-supplied responder_id is
-        // discarded.
-        $resolved = safe_mobile_fetch(
-            "SELECT `id` FROM `{$prefix}responder`
-             WHERE `user_id` = ? AND (`deleted_at` IS NULL) LIMIT 1",
-            [$current_user_id]
+        // caller's own responder server-side. The client-supplied
+        // responder_id is discarded.
+        //
+        // GH #77: the 3-path lookup this used to run in-line never
+        // consulted crew assignments (Phase 116c / GH #85), so a user who
+        // crews a unit but has no personal responder row of their own was
+        // rejected here with "No responder linked to this account — clock
+        // in first" even though the SAME request's dashboard header
+        // correctly resolved and displayed their crewed unit. Now shares
+        // the canonical resolver (still 100% server-side — no client input
+        // involved — so the Phase 73v security fix is unchanged).
+        $responderId = mobile_resolve_responder_id(
+            $prefix, $current_user_id, $current_member_id, $current_user
         );
-        if (empty($resolved) && $current_member_id) {
-            $resolved = safe_mobile_fetch(
-                "SELECT `id` FROM `{$prefix}responder`
-                 WHERE `personal_for_member_id` = ? AND (`deleted_at` IS NULL) LIMIT 1",
-                [$current_member_id]
-            );
-        }
-        if (empty($resolved)) {
-            $resolved = safe_mobile_fetch(
-                "SELECT `id` FROM `{$prefix}responder`
-                 WHERE (`name` = ? OR `handle` = ?) AND (`deleted_at` IS NULL) LIMIT 1",
-                [$current_user, $current_user]
-            );
-        }
-        $responderId = !empty($resolved) ? (int) $resolved[0]['id'] : 0;
 
         $lat = isset($input['lat']) ? (float) $input['lat'] : null;
         $lng = isset($input['lng']) ? (float) $input['lng'] : null;

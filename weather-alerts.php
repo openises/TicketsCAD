@@ -79,7 +79,7 @@ $active_page = 'settings';
     <div class="d-flex align-items-center mb-3">
         <h4 class="mb-0"><i class="bi bi-cloud-lightning-rain-fill text-danger me-2"></i>Weather Alerts</h4>
         <span class="badge bg-secondary ms-3" id="wxMasterBadge">loading…</span>
-        <a href="docs/WEATHER-ALERTS-GUIDE.md" target="_blank" class="ms-auto btn btn-sm btn-outline-secondary"><i class="bi bi-question-circle me-1"></i>Guide</a>
+        <a href="documentation/?doc=WEATHER-ALERTS-GUIDE" target="_blank" class="ms-auto btn btn-sm btn-outline-secondary"><i class="bi bi-question-circle me-1"></i>Guide</a>
     </div>
 
     <div id="wxWarning" class="alert alert-warning d-none" role="alert"></div>

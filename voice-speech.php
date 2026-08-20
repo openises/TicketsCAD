@@ -69,7 +69,7 @@ $active_page = 'settings';
 <main class="container-fluid py-3" style="max-width: 1100px;">
     <div class="d-flex align-items-center mb-3">
         <h4 class="mb-0"><i class="bi bi-soundwave text-primary me-2"></i>Voice &amp; Speech</h4>
-        <a href="docs/TTS-DEPLOYMENT.md" target="_blank" class="ms-auto btn btn-sm btn-outline-secondary"><i class="bi bi-question-circle me-1"></i>Guide</a>
+        <a href="documentation/?doc=TTS-DEPLOYMENT" target="_blank" class="ms-auto btn btn-sm btn-outline-secondary"><i class="bi bi-question-circle me-1"></i>Guide</a>
     </div>
 
     <p class="text-body-secondary small">

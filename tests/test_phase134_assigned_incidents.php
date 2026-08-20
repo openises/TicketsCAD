@@ -141,7 +141,11 @@ try {
     $memA = _p134_make_member();
     track($cleanup, 'member', $memA);
 
-    db_query("INSERT INTO `{$prefix}responder` (`name`, `handle`, `description`) VALUES (?, ?, '')",
+    // GH#82/GH#83 (2026-08-18) — this fixture deliberately assigns unit A
+    // to TWO open tickets; Multi-Assign declares that as intentional so
+    // assign_create_internal()'s dispatch gate doesn't ask for confirmation
+    // on the second one (see the identical note on fixture F below).
+    db_query("INSERT INTO `{$prefix}responder` (`name`, `handle`, `description`, `multi`) VALUES (?, ?, '', 1)",
         ['Phase134 Unit A', 'p134unitA-' . $marker]);
     $respA = (int) db_insert_id();
     track($cleanup, 'responder', $respA);
@@ -312,7 +316,14 @@ try {
         [$memF, $telegramModeId, json_encode(['username' => $handleF])]);
     track($cleanup, 'member_comm_identifiers', db_insert_id());
 
-    db_query("INSERT INTO `{$prefix}responder` (`name`, `handle`, `description`) VALUES (?, ?, '')",
+    // GH#82/GH#83 (2026-08-18) — this fixture's whole point is a unit
+    // legitimately holding TWO simultaneous open assignments, which is
+    // exactly what the Multi-Assign flag exists to declare. Without it,
+    // assign_create_internal()'s new dispatch gate treats the second
+    // assign as an unconfirmed double-booking (needs_confirmation, no row
+    // created) — correct behavior for an UNDECLARED double-assign, but
+    // not what this fixture is testing.
+    db_query("INSERT INTO `{$prefix}responder` (`name`, `handle`, `description`, `multi`) VALUES (?, ?, '', 1)",
         ['Phase134 Unit F', 'p134unitF-' . $marker]);
     $respF = (int) db_insert_id();
     track($cleanup, 'responder', $respF);

@@ -52,7 +52,14 @@ function member_create_internal(array $input, int $userId): array {
         'middle_name'        => trim((string) ($input['middle_name'] ?? '')),
         'member_type_id'     => !empty($input['member_type_id']) ? (int) $input['member_type_id'] : null,
         'member_status_id'   => !empty($input['member_status_id']) ? (int) $input['member_status_id'] : null,
-        'team_id'            => !empty($input['team_id']) ? (int) $input['team_id'] : null,
+        // GH#76 Phase 144 (2026-08-18): team_id is NO LONGER written here.
+        // member.team_id is retained as a permanent, read-only-from-internal-
+        // code compat column (same treatment as the eliminated user.level --
+        // see CLAUDE.md's "two-permission-systems" pitfall). Team assignment
+        // is exclusively through team_members via api/teams.php's
+        // add_member/remove_member actions (or the external API's team_id
+        // compat shim -- api/external/v1/members.php -- the ONE path that
+        // still writes it, and it writes team_members, not this column).
         'callsign'           => trim((string) ($input['callsign'] ?? '')),
         'title'              => trim((string) ($input['title'] ?? '')),
         'email'              => trim((string) ($input['email'] ?? '')),
@@ -251,9 +258,16 @@ function member_update_internal(int $memberId, array $fields, int $userId): arra
     // mandatory first_name/last_name validation — on update they're
     // optional). 2026-06-28 added membership_due + photo_file_id so the
     // internal endpoint's partial-save flow can drop its inline UPDATE.
+    // GH#76 Phase 144 (2026-08-18): 'team_id' deliberately removed from both
+    // whitelists below. A request body containing team_id is now silently
+    // ignored here -- team assignment happens exclusively through
+    // api/teams.php's add_member/remove_member/update_member_role actions
+    // (unchanged endpoint, unchanged action.manage_teams gate). See
+    // tests/test_legacy_team_id_write_audit.php, which fails the suite if
+    // 'team_id' is ever reintroduced into either array.
     static $allowed = [
         'first_name', 'last_name', 'middle_name',
-        'member_type_id', 'member_status_id', 'team_id',
+        'member_type_id', 'member_status_id',
         'callsign', 'title', 'email',
         'phone_home', 'phone_work', 'phone_cell',
         'street', 'city', 'county', 'state', 'zip', // QA #9 — county was missing
@@ -262,7 +276,7 @@ function member_update_internal(int $memberId, array $fields, int $userId): arra
         'medical_info', 'notes', 'photo_file_id',
     ];
     static $intCols = [
-        'member_type_id', 'member_status_id', 'team_id', 'photo_file_id',
+        'member_type_id', 'member_status_id', 'photo_file_id',
     ];
     // Date-shaped columns: keep the caller's string as-is when truthy,
     // store NULL when empty/blank (mirrors the internal endpoint's

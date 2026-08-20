@@ -20,6 +20,7 @@
  */
 
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/../inc/severity.php';
 
 $prevDisplay = ini_get('display_errors');
 ini_set('display_errors', '0');
@@ -39,12 +40,9 @@ $order     = strtolower(trim($_GET['order'] ?? 'desc'));
 $limit     = max(1, min(200, (int) ($_GET['limit'] ?? 50)));
 $offset    = max(0, (int) ($_GET['offset'] ?? 0));
 
-// Severity color map
-$sev_colors = [
-    0 => get_variable('sev_0_color') ?: '#00ff00',
-    1 => get_variable('sev_1_color') ?: '#ffff00',
-    2 => get_variable('sev_2_color') ?: '#ff0000',
-];
+// GH#87/GH#88 (2026-08-19) — sourced from the configurable severity_levels
+// table (inc/severity.php) instead of a hardcoded 3-entry map.
+$sev_colors = severity_color_map();
 $status_labels = [1 => 'Closed', 2 => 'Open', 3 => 'Scheduled'];
 
 // Build WHERE clauses
@@ -59,8 +57,11 @@ $params = [];
 // Phase 99j-4 — org-scope filter via the standard helper (see
 // specs/phase-99j-org-scoping/spec.md). Super Admin sees all; Org
 // Admin sees own + descendants; ordinary users see their home org.
+// Phase 141 (2026-08-17) — ticket-specific sibling of org_query_filter();
+// widens visibility to include cross-org-shared tickets, no-op otherwise.
 require_once __DIR__ . '/../inc/org-scope.php';
-[$orgFrag, $orgVars] = org_query_filter('t.org_id');
+require_once __DIR__ . '/../inc/org-sharing.php';
+[$orgFrag, $orgVars] = org_ticket_query_filter(null, 't');
 if ($orgFrag !== '') {
     $where[] = '(' . preg_replace('/^\s*AND\s+/', '', $orgFrag) . ')';
     foreach ($orgVars as $v) $params[] = $v;
@@ -136,6 +137,7 @@ try {
     $rows = db_fetch_all(
         "SELECT
             `t`.`id`,
+            `t`.`org_id`,
             `t`.`scope`,
             `t`.`description`,
             `t`.`street`,
@@ -171,6 +173,7 @@ foreach ($rows as $row) {
     $st = (int) $row['status'];
     $results[] = [
         'id'                => (int) $row['id'],
+        'org_id'            => isset($row['org_id']) ? (int) $row['org_id'] : null,
         'scope'             => $row['scope'] ?? '',
         'description'       => $row['description'] ?? '',
         'street'            => $row['street'] ?? '',
@@ -178,6 +181,7 @@ foreach ($rows as $row) {
         'state'             => $row['state'] ?? '',
         'severity'          => $sev,
         'severity_color'    => $sev_colors[$sev] ?? '#ffffff',
+        'severity_label'    => severity_label($sev),
         'status'            => $st,
         'status_text'       => $status_labels[$st] ?? 'Unknown',
         'date'              => $row['date'],
@@ -189,6 +193,12 @@ foreach ($rows as $row) {
         'active_responders' => (int) $row['active_responders'],
     ];
 }
+
+// Phase 141 (2026-08-17) — see api/incident-list.php's identical call for
+// the full rationale. Strips description/contact/phone (excluded per
+// plan.md's redaction allowlist) for any row whose visibility is
+// share-derived; unchanged for same-org rows and on a no-rule database.
+$results = org_sharing_apply_list_redaction($results);
 
 ini_set('display_errors', $prevDisplay);
 

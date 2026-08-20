@@ -110,7 +110,7 @@ $csrf        = csrf_token();
         <span class="badge bg-secondary ms-3" id="pbMasterBadge">loading…</span>
         <a href="public-board.php" target="_blank" class="ms-auto btn btn-sm btn-outline-secondary">
             <i class="bi bi-box-arrow-up-right me-1"></i>View shared board</a>
-        <a href="docs/PUBLIC-INCIDENT-BOARD.md" target="_blank" class="btn btn-sm btn-outline-secondary">
+        <a href="documentation/?doc=PUBLIC-INCIDENT-BOARD" target="_blank" class="btn btn-sm btn-outline-secondary">
             <i class="bi bi-question-circle me-1"></i>Guide</a>
         <a href="settings.php" class="btn btn-sm btn-outline-secondary">
             <i class="bi bi-arrow-left me-1"></i>Settings</a>

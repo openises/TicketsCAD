@@ -3,6 +3,192 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.23] — 2026-08-19
+
+### Security
+
+- **RBAC canonical-alias and pre-exclusion-grant privilege leak — Org Admin
+  and Dispatcher could reach Super-Admin-only permissions.** `sql/rbac.sql`/
+  `sql/run_00_rbac.php` grant those two roles "everything except" a literal
+  exclusion list of admin-only permission codes, but two independent,
+  purely-additive mechanisms could each hand an excluded code back anyway:
+  the RBAC v2 migration links every old code to a canonical `<resource>.
+  <verb>` alias a literal exclusion list can never name in advance, and a
+  role could hold an excluded code directly from before it was ever added
+  to the list — neither of which a purely-additive seed import ever
+  retroactively revokes. Confirmed live and complete on both of our
+  hosted beta deployments — a full defeat of the
+  Org-Admin/Super-Admin boundary on both hosts — and closed twice: once for
+  the alias path, once broadened to cover direct pre-exclusion grants. Both
+  seed files now carry self-healing repair statements that re-run on every
+  import, so the leak cannot silently recur. Both hosts' audit logs were
+  reviewed for every Org Admin against every leaked permission back to when
+  the boundary first regressed — no evidence it was exploited.
+- **IDOR: `facility-capacity.php`'s summary endpoint bypassed facility-access
+  scoping.** The single-facility `?facility_id=X` path has always checked
+  facility access before returning data; the `?summary=1` path a few lines
+  above it ran an unfiltered join across every facility with no access
+  check at all, so any authenticated non-admin user could see bed/capacity
+  data for facilities that refuse them individually through the sibling
+  path. Fixed by routing both paths through the same access filter.
+
+### Added
+
+- **Cross-org ticket sharing (GH#70), all three phases.** A multi-agency
+  install with a parent dispatch org and child agencies (Sheriff, Fire,
+  EMS) can now share visibility into a ticket across org boundaries,
+  closing a gap where a parent-created incident was invisible to the
+  agency actually meant to respond:
+  - **Auto-routing** — admin-configured rules (owning org + incident type
+    → target org, at `view` or `assist` tier) automatically share a
+    matching ticket the moment it's created.
+  - **Manual sharing + live push** — a Dispatcher or Org Admin can share
+    (or revoke) any individual ticket ad hoc from the incident detail
+    page, with the change appearing instantly for the receiving org
+    instead of on next poll.
+  - **Standing relationships + activation windows** — named, multi-org
+    relationships with genuine two-party consent (every named org must
+    individually approve before it can see anything) and an optional
+    time-boxed activation window whose expiry is enforced fresh on every
+    access check, never by a background job that could lag.
+  - An org whose only access to a ticket is itself share-derived — even at
+    the `assist` tier, which grants full write access — can never
+    re-share or route that ticket onward to a third org. Full guide:
+    `docs/CROSS-ORG-TICKET-SHARING.md`.
+- **Custom ICS form types (GH#69).** Agencies can now define their own ICS
+  form types under Settings, alongside the nine built-in forms (213, 214,
+  202, 205, 205a, 213rr, 206, 214a, 221) — the built-in types' own code
+  paths are untouched. Once a custom form instance is saved, its field
+  layout is frozen to that instance, so a later edit to the type's
+  definition never changes how an already-submitted form displays or
+  prints.
+- **Interval reporting (GH#64).** A new Intervals tab on the Reports page
+  computes turnout, travel, response, scene, and transport time from the
+  six assignment milestones (dispatched / responding / on scene / en
+  route to facility / arrived at facility / clear), with period-wide
+  averages and breakdowns by incident type and unit.
+- **Facility-scoped portal accounts (GH#90).** A new Facility role gives a
+  hospital or shelter contact a genuinely confined, no-navbar view of only
+  the incidents inbound to their own facility, plus a self-service
+  capacity/status update path — replacing v3's facility login level, which
+  redirected to a facility-specific page but enforced no real access
+  restriction.
+- **Chat Bridge is now real (GH#89).** The four Chat Settings checkboxes
+  (Telegram/Slack/Email/Mesh) have saved since June with no effect; each
+  now creates or toggles a real Message Routing rule forwarding local chat
+  to that channel. A direct/private local chat message can never be
+  forwarded externally, regardless of a route's configured filters.
+- **Configurable severity levels (GH#88).** Severity levels — previously
+  fixed at Normal/Elevated/Critical — are now admin-editable under
+  Settings: add, rename, recolor, and reorder. Every part of the app that
+  previously hardcoded its own copy of the three-level scale now reads
+  from one shared definition.
+- **Dead-control audit tool (GH#91), and a sweep of its findings.** A new
+  permanent audit (in the same family as the schema/API-contract/RBAC
+  audits) flags a settings control or database column with a write path
+  and no reader. The initial sweep found and disabled 31 dead settings
+  controls beyond the ones already reported, and resolved 18 `user` table
+  columns (10 dropped as confirmed dead, 7 marked as intentionally
+  reserved, 1 stale comment corrected in place).
+
+### Fixed
+
+- **GH#92 — the CJIS login-notice default could be silently truncated
+  during install.** `settings.value` was widened from varchar(512) to TEXT
+  as a step that ran after the seed migrations rather than before, so the
+  812-character CJIS notice seeded during that window landed truncated at
+  exactly 512 characters (or aborted the seeder outright under strict SQL
+  mode). Fixed by widening the column immediately after the base schema
+  import, with a repair migration for installs that already seeded the
+  truncated value.
+- **GH#87 — auto-set severity showed one level on screen and saved a
+  different one.** The client and two server-side readers each had their
+  own hardcoded interpretation of the incident type's severity column,
+  disagreeing on 33 of 37 real incident types on the reporting install,
+  always under-reporting urgency. Fixed by both sides reading the same
+  severity-levels table (see GH#88 above), which closes this by
+  construction.
+- **GH#82/GH#83 — assigning an already-busy unit silently reset its
+  status, and the per-status Dispatch level was never enforced.**
+  Assigning a unit a second active call unconditionally promoted it to
+  Dispatched, overwriting whatever it was actually doing (On Scene,
+  Transporting, etc.), and dropped its original call off its own mobile
+  screen. The admin-configured Dispatch level (warn/block) is now
+  actually read and enforced at assignment time, combined with an implied
+  warn whenever Multi-Assign is off and the unit already has other active
+  work.
+- **GH#84 — notification rules could only ever target three of the eleven
+  registered broker channels.** The channel column was restricted to
+  email/SMS/local chat/all; widened to accept any registered channel
+  (Slack, Telegram, push, APRS, DMR, Meshtastic, MeshCore, SMTP included).
+  Also fixed: a numeric (user-id) notification recipient never resolved on
+  any install, because the lookup read a `user` column that has never
+  existed.
+- **GH#81 — every in-app documentation link 404'd on IIS.** Links pointed
+  directly at `docs/*.md`, which IIS has no MIME mapping for by default;
+  Apache serves `.md` as plain text, which is why this went unnoticed in
+  this project's own dev environment for months. All 15 links now route
+  through the app's own documentation viewer.
+- **GH#80 — Road Conditions had no way to look up coordinates from an
+  address.** Added the same address-lookup control the Places panel
+  already uses.
+- **GH#79 — Major Incident creation was effectively unreachable from New
+  Incident.** The "New" button next to the Major Incident picker opened a
+  second blank incident form instead of creating a major incident; it now
+  creates one inline and selects it.
+- **GH#78 — the dashboard's Live Tracking toggle never worked.** The
+  checkbox was spliced into the layer control's options after the control
+  had already been built, and even then would have controlled an empty
+  placeholder layer instead of the real unit-tracking layer.
+- **GH#77 — mobile notes and location reports ignored crew-only unit
+  assignments.** A user with no personal responder row of their own,
+  assigned to a unit only via crew assignment, passed the mobile page's
+  own unit-identification check but was rejected when reporting location
+  or had their notes attributed to no responder. Both paths now share the
+  same resolver the page header already used.
+- **GH#76 — the roster's Team dropdown and the Team Memberships card could
+  disagree on a member's team.** The dropdown wrote the legacy
+  single-value `member.team_id` column while every other team surface
+  read/wrote the many-to-many `team_members` table. `team_members` is now
+  the sole internal source of team assignment; the dropdown is retired.
+- **GH#71/GH#73/GH#74 — the EOC map showed stale "Updated" ages and stray
+  live-GPS markers with no way to hide them.** Ported and hardened from
+  two community pull requests (credited to ethanhawkes-gif): the Units
+  table now considers the actual tracking timestamp, not just
+  status-change time, and the live-GPS overlay is now its own toggleable
+  layer instead of always-on.
+- **GH#68 — patient insurance, receiving facility, and facility-contact
+  fields were unreachable in NewUI.** These columns existed in the schema
+  (carried over from v3) with no read or write path since the patient
+  feature first shipped; restored, including a new admin-manageable
+  Insurance Types list.
+- **A directory-ownership race could silently disable the server-side
+  geocode and tile caches.** Whichever process (a CLI script or the web
+  server) first created the cache directories left them owned by that
+  account; if a CLI process won the race, the web server could never
+  write to its own cache, and the failure was invisible by design (a
+  cache it cannot write to is not treated as an error). Both directories
+  are now provisioned ahead of time by the permissions-repair tool, and
+  their writability is now surfaced on the System Health page.
+- **The map tile cache's Duration ceiling (365 days) blocked genuinely
+  offline-capable installs from caching indefinitely.** Raised to 9999
+  days; this was a UI-only limit — the underlying cache logic already
+  supported any positive value.
+- **The Map Overlay Category editor's four chained `prompt()`/`confirm()`
+  dialogs (including asking for a color as raw hex text) replaced with a
+  real modal**, matching the existing Places-panel editor's pattern — a
+  color picker, a live icon preview, and a real checkbox for default
+  visibility.
+- **Windows fresh-install SQL import could fail on a migration file
+  containing an inline comment that itself ends in a semicolon**
+  (several exist in the RBAC seed file's exclusion lists), producing a
+  syntax error from a statement split mid-list. Fixed the Windows-only
+  import path's statement splitter to be comment- and string-literal-aware.
+- **Documented that `docker compose pull` doesn't work for the
+  locally-built app image** — it's never published to a registry, so the
+  correct update path is `git pull` + `docker compose up -d --build`.
+
+
 ## [4.2.22] — 2026-08-16
 
 ### Fixed
