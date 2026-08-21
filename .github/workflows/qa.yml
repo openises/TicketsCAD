@@ -123,6 +123,22 @@ jobs:
       - name: Dead-control audit (settings key / column ↔ anything that reads it)
         run: php tests/test_dead_control_audit.php
 
+      # Eighth gate in the family, and the first that targets a PRIVILEGE
+      # ESCALATION rather than a dead reference. sql/rbac.sql and
+      # sql/run_00_rbac.php grant Org Admin/Dispatcher "everything except" a
+      # literal NOT-IN list of admin-only codes — that shape has leaked an
+      # excluded permission down to a lower role four separate times (direct
+      # grant predating its exclusion, a canonical-alias re-grant, and a
+      # standalone migration re-granting it outright), each found by a human
+      # noticing on a different date. This audit derives the exclusion lists
+      # directly from the two seed files instead of a hand-maintained code
+      # list, so a NEW exclusion is checked automatically with no companion
+      # test edit required, plus a cross-file drift check between the two
+      # files and a scan for a new migration literally granting an excluded
+      # code.
+      - name: RBAC exclusion-list privilege-leak audit (admin-only exclusion ↔ real role grants)
+        run: php tests/test_rbac_exclusion_leak_audit.php
+
       # Anti-rot gate for the published SBOM. An SBOM that is accurate once and
       # stale afterwards is worse than none, because it asserts a currency it
       # does not have. If a dependency, a vendored library version, or the

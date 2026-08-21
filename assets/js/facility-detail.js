@@ -172,9 +172,15 @@
             if (mode === 'auto') {
                 badge.textContent = 'Auto on delivery';
                 badge.className = 'badge bg-info ms-2 small';
+                // GH#102 — automatic mode only ever decrements; nothing
+                // releases a bed on its own. Say that plainly right on the
+                // badge a dispatcher is already looking at, not just in
+                // help.php a click away.
+                badge.title = 'Decrements automatically on delivery. Never releases on its own -- a bed is only freed by the facility\'s own portal (Release Bed) or a dispatcher editing this facility directly.';
             } else {
                 badge.textContent = 'Manual';
                 badge.className = 'badge bg-secondary ms-2 small';
+                badge.title = 'Bed count update mode';
             }
             badge.classList.remove('d-none');
         }

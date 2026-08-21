@@ -193,4 +193,30 @@ if (!function_exists('dmr_token_mint')) {
         if ($channelId <= 0 || $token === '') return;
         dmr_token_store($channelId, $token);
     }
+
+    /**
+     * Resolve which dmr_channels row a caller means: an explicit id if
+     * given and valid, else the first enabled channel (matching the
+     * default-channel logic already duplicated inline in
+     * api/dmr-tx-audio.php and api/dmr-tx-stream.php). Added for Phase 148
+     * (api/dmr-station-id.php) rather than refactoring those two existing,
+     * working endpoints to call it -- keeps this change additive.
+     *
+     * @param string $cols column list for the SELECT (caller picks only
+     *                     what it needs, matching the rest of this file's
+     *                     convention of narrow selects).
+     */
+    function dmr_resolve_channel(?int $channelId, string $cols = '*'): ?array
+    {
+        $prefix = $GLOBALS['db_prefix'] ?? '';
+        if ($channelId !== null && $channelId > 0) {
+            return db_fetch_one(
+                "SELECT {$cols} FROM `{$prefix}dmr_channels` WHERE `id` = ? LIMIT 1",
+                [$channelId]
+            ) ?: null;
+        }
+        return db_fetch_one(
+            "SELECT {$cols} FROM `{$prefix}dmr_channels` WHERE `enabled` = 1 ORDER BY `id` LIMIT 1"
+        ) ?: null;
+    }
 }

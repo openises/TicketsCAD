@@ -1,6 +1,7 @@
 <?php
 /**
- * Dead-control audit (GH #91, 2026-08-19).
+ * Dead-control audit (GH #91, 2026-08-19; extended 2026-08-20 with checks
+ * (c) and (d) — the two other directions of the same pattern).
  *
  * THE DISEASE: a control that saves, or a column that exists, with
  * nothing on the other end. Four instances in one day of testing — the
@@ -25,7 +26,17 @@
  * family that isn't about two things DISAGREEING; it's about one thing
  * existing and the other being simply ABSENT.
  *
- * TWO INDEPENDENT CHECKS:
+ * Eric's own framing (2026-08-20), after the first two checks shipped:
+ * the general pattern here is "something with a producer and no
+ * consumer, or a consumer and no producer" — a systematic, ongoing
+ * discovery practice, not a one-off. Checks (a) and (b) below only ever
+ * covered the PRODUCER-with-no-CONSUMER half of that pattern (a settings
+ * write nothing reads, a column write nothing reads). Checks (c) and (d)
+ * close the other half — a CONSUMER with no PRODUCER — at the two
+ * boundaries this tool already understands (the database, and the
+ * API-to-browser JSON boundary).
+ *
+ * FOUR INDEPENDENT CHECKS:
  *
  * (a) DEAD SETTINGS KEY — a `data-key="foo"` control in a page template.
  *     Every such control is picked up generically by
@@ -130,19 +141,231 @@
  *     legacy column is not evidence the running application uses it,
  *     and this tool's job is the running application, not history.
  *
+ * (c) PHANTOM DATABASE COLUMN — the mirror of (b): a column whose value
+ *     IS consulted somewhere (a WHERE/JOIN/ORDER/HAVING reference
+ *     resolvable to a real table via the SAME alias-resolution pass
+ *     check (b) uses, a bare column selected in a SELECT list, or a bare
+ *     PHP/JS `$row['col']`/`->col` read anywhere in the app) but has NO
+ *     confirmed write path anywhere — no INSERT column list, no
+ *     UPDATE ... SET target, no ON DUPLICATE KEY UPDATE target (the SAME
+ *     $writeCols detection check (b) already builds; this check does not
+ *     re-derive write detection, it shares check (b)'s own single parse
+ *     pass over the SAME SQL files, so the two checks can never quietly
+ *     disagree about what counts as "written").
+ *
+ *     This is historically the most dangerous shape in THIS codebase —
+ *     not a hypothetical. Bed automation read `assigns.rec_facility_id`
+ *     for weeks while nothing on any real dispatch path wrote it (Phase
+ *     95/116, see this file's own CLAUDE.md pitfall entry); the general
+ *     "unused column inherited into a rewritten/migrated system" smell
+ *     is a standing root-cause-troubleshooting hard-stop for this
+ *     project. A phantom read doesn't error — it silently resolves to
+ *     NULL/empty forever, which reads as "no data yet" rather than
+ *     "broken", so it can hide for months. A dead WRITE (check (b)) at
+ *     least does nothing loudly (the column visibly never changes); a
+ *     phantom READ does something quietly wrong (the feature reading it
+ *     looks like it works, on an empty/null value, forever).
+ *
+ *     Detection, sharing check (b)'s single parse pass over the same SQL
+ *     files (never re-parsed separately):
+ *       - READ evidence (STRONG, table-attributed): `table.col` present
+ *         in the SAME `$readColsSql` map check (b) already builds —
+ *         alias-qualified references anywhere in a statement, and bare
+ *         SELECT-list columns credited to every table the statement's
+ *         FROM/JOIN touches. This is exactly as reliable as check (b)'s
+ *         own $writeCols set, since it comes from the identical parser.
+ *       - READ evidence (WEAKER, scope-limited): a bare PHP/JS
+ *         `$row['col']`/`->col` read anywhere in the app (the SAME
+ *         `$bareRead` set check (b) already builds, there used only to
+ *         SUPPRESS its own false "dead" claims) — but here credited to
+ *         a `table.col` pair ONLY when that TABLE is one the app's own
+ *         SQL touches somewhere (`$sqlTouchedTables`, built from every
+ *         FROM/JOIN/UPDATE/INSERT/DELETE target seen during the shared
+ *         parse pass). Without this scoping, a column name as common as
+ *         `id` or `name` would credential every one of this schema's
+ *         ~260 tables at once purely from unrelated bareRead evidence —
+ *         scoping to tables the running application actually queries
+ *         keeps the candidate space bounded to real, in-use tables
+ *         instead of the full schema.
+ *       - WRITE evidence: `table.col` present in `$writeCols` (check
+ *         (b)'s own confirmed-write set — unchanged, not widened here).
+ *       - FINDING = read evidence present (either kind), write evidence
+ *         absent.
+ *
+ *     Known limitations (the same honesty check (b) already applies to
+ *     its own ambiguity, extended here):
+ *       - A column populated ONLY by a one-time migration/import
+ *         backfill (sql/, tools/upgrade/, or any path
+ *         `dca_is_migration_tooling()` already excludes) reads as
+ *         phantom here on purpose — this check's job is the RUNNING
+ *         application, not history, same stance check (b) already
+ *         takes. A column genuinely meant to be set once (by an
+ *         installer/migration) and read forever after by the running
+ *         app is a legitimate baseline entry, not a bug — check the
+ *         write side didn't simply move to excluded tooling before
+ *         accepting that explanation.
+ *       - A column read via a JOIN against a table this codebase
+ *         doesn't itself own/write (an external integration's own
+ *         table, a legacy v3 table kept only for read compatibility)
+ *         may show as phantom when the real write happens outside this
+ *         codebase entirely — also a legitimate, documented baseline
+ *         entry rather than a bug to fix.
+ *       - LIMITATION #4 (found during the 2026-08-20 sweep): a table
+ *         name built from an OBJECT PROPERTY (`` `{$this->prefix}foo` ``
+ *         inside a standalone class, e.g. proxy/ZelloProxyApp.php's
+ *         Ratchet daemon) is invisible the same way limitation #1's
+ *         plain `$table` variable is — sql_extract_normalize() only
+ *         strips `{$prefix}`-shaped and bare-`$var`-before-backtick
+ *         interpolation, not `{$this->prop}`. Same fix direction as
+ *         limitation #1 (teach sql_extract_normalize() the shape, or
+ *         document with a baseline entry citing the real writer) — not
+ *         yet taught to the tool as of this writing; every known
+ *         instance is baselined.
+ *       - LIMITATION #5 (found by CI's genuinely fresh install, not by
+ *         any local dev-DB run — the dev box's long-lived database
+ *         happened to mask it): a COLUMN NAME discovered entirely at
+ *         RUNTIME via `information_schema.COLUMNS.GENERATION_EXPRESSION`
+ *         — api/members.php's `getGeneratedColumnMap()` /
+ *         `remapGeneratedColumns()` queries the live schema for which
+ *         legacy `field<N>` column backs a given GENERATED column (e.g.
+ *         `callsign`), then redirects a write to whichever `field<N>`
+ *         name that query returns. The literal string naming that
+ *         column never appears ANYWHERE in the PHP source — it exists
+ *         only as a VALUE inside a PHP array populated from a live SQL
+ *         result at request time. No static tool can see this without
+ *         actually running the query itself, which is out of scope for
+ *         a source-text audit. Every affected `field<N>` column needs
+ *         an individual baseline entry when CI (or a fresh install)
+ *         surfaces it — there is no way to enumerate the full set
+ *         ahead of time without knowing which GENERATED columns a given
+ *         install has defined.
+ *       - The bareRead half of the read-evidence union is table-blind
+ *         by construction (see check (b)'s own docblock above) —
+ *         scoping it to `$sqlTouchedTables` reduces but does not
+ *         eliminate the risk of crediting table A's read evidence to
+ *         table B's same-named column when both tables are queried
+ *         somewhere in the app. A genuine false positive here gets
+ *         resolved the same way every other ambiguous finding in this
+ *         tool is: read the sites, confirm by grep/git history/git log,
+ *         then either fix it (the write path really is missing) or
+ *         document it in the baseline with a reason.
+ *       - This check does NOT conclude "drop the column" on its own —
+ *         a column with a real reader and no writer almost always means
+ *         the WRITE side is the bug (restore/fix it), not the read side.
+ *         The rarer case — the reader itself is unreachable/dead code —
+ *         is a DIFFERENT finding (both sides missing, i.e. check (b)'s
+ *         `--include-orphaned` territory) and needs the same care as
+ *         any dead-code removal, not a mechanical fix here.
+ *
+ * (d) DEAD API RESPONSE KEY — a key emitted to the browser (a literal
+ *     `'key' => ...` inside the balanced-parenthesis argument of a
+ *     `json_response([...])` call, or an `echo json_encode([...])` /
+ *     `print json_encode([...])` call, anywhere PHP sends JSON to a
+ *     browser — api/, inc/, services/, proxy/, and the page-template
+ *     roots; deliberately NOT tools/, whose json_response()/json_encode()
+ *     call sites are all CLI-only diagnostics that never reach a browser)
+ *     that no file under assets/js/ ever references by that literal
+ *     name. The confirmed, real-world first instance: api/reports.php's
+ *     'incident_summary' case computes `severity_breakdown` and
+ *     `disposition_breakdown` as top-level response keys; neither name
+ *     appeared anywhere in assets/js/reports.js until the same change
+ *     that landed this check wired them in.
+ *
+ *     Detection:
+ *       1. EMITTED = every literal `'key' => ...` pair found inside the
+ *          balanced-parenthesis argument of a `json_response(...)` call,
+ *          or the argument of an `echo json_encode(...)` /
+ *          `print json_encode(...)` call, anywhere in the scanned PHP
+ *          tree. Deliberately NARROWER than tools/api_contract_audit.php's
+ *          own EMITTABLE set (which unions every array-literal key
+ *          anywhere in PHP, on purpose, to catch a JS read with NO
+ *          server-side source at all) — this check's job is the OPPOSITE
+ *          direction (a key that genuinely reaches the browser but
+ *          nothing reads it), so only counting keys inside an actual
+ *          emission call keeps the EMITTED set honest about what really
+ *          goes out over the wire — the same discipline check (b)/(c)
+ *          apply by only counting a column as WRITTEN when a real
+ *          INSERT/UPDATE targets it, not any array key anywhere that
+ *          happens to share the name.
+ *       2. READ = a global, name-based sweep of every `assets/js/*.js`
+ *          file (recursively — includes assets/js/widgets/) for the
+ *          literal key as a whole identifier token (matches
+ *          `reportData.severity_breakdown`, `data['severity_breakdown']`,
+ *          a JSDoc mention, or a comment equally — this check does not
+ *          attempt to distinguish a real data read from a coincidental
+ *          mention, the SAME tradeoff tools/api_contract_audit.php's own
+ *          docblock already accepts for its own JS-side scan:
+ *          "attribution is per-file, not per-variable"). This is a
+ *          GLOBAL union across every JS file, not scoped to the one
+ *          endpoint that emits the key, for the same reason
+ *          api_contract_audit.php's own EMITTABLE set is global:
+ *          precise endpoint-to-caller call-graph tracing is a much
+ *          larger undertaking this tool deliberately does not attempt.
+ *       3. FINDING = an EMITTED key with zero READ matches anywhere.
+ *
+ *     Known limitations (honest, matching every sibling check's own
+ *     caveat section):
+ *       - FALSE NEGATIVE risk (the safe, under-report direction): a
+ *         short or common key name (`id`, `total`, `status`, `type`)
+ *         will coincidentally appear SOMEWHERE across 60+ JS files even
+ *         when the SPECIFIC endpoint's key is never actually consumed —
+ *         this check stays silent on those, exactly like check (b)'s own
+ *         "a genuinely dead column with a common name will slip through"
+ *         admission. Short/generic key names are under-covered by
+ *         design, not a bug to fix.
+ *       - FALSE POSITIVE risk (the dangerous, cry-wolf direction,
+ *         mitigated by the baseline mechanism, not eliminated): a value
+ *         consumed only through a DYNAMIC property access
+ *         (`data[someVariable]`, where `someVariable` is computed rather
+ *         than a literal `'key'` in the JS source) leaves no literal
+ *         string in assets/js/ for this check to find, and would be
+ *         misreported as dead. None found in this codebase's real
+ *         findings as of this writing, but a future one would need
+ *         either a documented baseline entry or, if it becomes common
+ *         enough to matter, the same "dynamic call site" broadening
+ *         technique check (a) already applies to `get_variable($var)`.
+ *       - Inline `<script>` blocks on a *.php page (rather than
+ *         assets/js/*.js) ARE scanned as a READ source, the same widening
+ *         tools/api_contract_audit.php's own JS-read scan already applies.
+ *         Confirmed necessary during this check's own development, not
+ *         theoretical: `severity_counts` (api/incidents.php) is read ONLY
+ *         by an inline `<script>` block in situation.php
+ *         (`data.severity_counts`) — with only assets/js/ scanned this
+ *         misreported as dead; widening the scan to inline `<script>`
+ *         blocks fixed it without a baseline entry.
+ *       - tools/ is excluded from the EMITTED scan entirely (see above)
+ *         — a future tools/ script that genuinely serves a browser
+ *         (unlikely given the CLI-only guard convention, but not
+ *         impossible) would need to be added to the scan directories.
+ *       - An endpoint that builds its response as a BARE VARIABLE
+ *         (`json_response($out)`, where `$out['key'] = ...;` was
+ *         assigned incrementally across the file, never as one literal
+ *         `[...]` array in the call itself) is entirely invisible to
+ *         the EMITTED extraction — the tokenizer finds a single
+ *         T_VARIABLE argument, not a literal array, so it yields zero
+ *         keys for that call. Another false-negative (under-report)
+ *         case, same safe direction as the rest of this list; not
+ *         solved here (would need assignment tracking across the whole
+ *         file, the same "much larger undertaking" scope this docblock
+ *         already declines for JS-side call-graph tracing).
+ *
  * Baseline / exit code: identical contract to the sibling audits. Exit
  * 0 = clean or every finding already in the baseline; exit 1 = a NEW
- * finding. Baselines: tools/dead_control_settings_baseline.txt (one
- * `setting:<key>` per line) and tools/dead_control_column_baseline.txt
- * (one `column:<table>.<col>` per line) — both require a comment
+ * finding. Four baseline files, one per check, each requiring a comment
  * explaining WHY a finding is accepted rather than fixed, per this
- * project's standing convention for every baseline file.
+ * project's standing convention for every baseline file:
+ *   tools/dead_control_settings_baseline.txt   (a) `setting:<key>`
+ *   tools/dead_control_column_baseline.txt     (b) `column:<table>.<col>`
+ *   tools/dead_control_phantom_baseline.txt    (c) `phantom:<table>.<col>`
+ *   tools/dead_control_api_baseline.txt        (d) `apikey:<key>`
  *
  * Usage:
- *   php tools/dead_control_audit.php                # both checks
- *   php tools/dead_control_audit.php --settings-only
- *   php tools/dead_control_audit.php --columns-only
- *   php tools/dead_control_audit.php --table=user    # columns, one table
+ *   php tools/dead_control_audit.php                # all four checks
+ *   php tools/dead_control_audit.php --settings-only # (a) only
+ *   php tools/dead_control_audit.php --columns-only  # (b) only
+ *   php tools/dead_control_audit.php --phantom-only  # (c) only
+ *   php tools/dead_control_audit.php --api-only      # (d) only
+ *   php tools/dead_control_audit.php --table=user    # (b)/(c), one table
  *   php tools/dead_control_audit.php --all           # include baselined
  *   php tools/dead_control_audit.php --path=DIR      # scan DIR instead of
  *                                                     # the real app tree
@@ -155,6 +378,10 @@
  *                                                     # what's SCANNED can be a
  *                                                     # fixture, what's VALIDATED
  *                                                     # AGAINST is always real).
+ *   php tools/dead_control_audit.php --include-orphaned  # (b)-adjacent:
+ *                                                     # columns with NEITHER
+ *                                                     # a write NOR a read —
+ *                                                     # opt-in, see (b)'s docs.
  */
 
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
@@ -167,6 +394,8 @@ $argvList       = $argv ?? [];
 $showAll        = in_array('--all', $argvList, true);
 $settingsOnly   = in_array('--settings-only', $argvList, true);
 $columnsOnly    = in_array('--columns-only', $argvList, true);
+$phantomOnly    = in_array('--phantom-only', $argvList, true);
+$apiOnly        = in_array('--api-only', $argvList, true);
 $onlyTable      = null;
 $scanRoot       = $appRoot;
 foreach ($argvList as $a) {
@@ -177,6 +406,17 @@ foreach ($argvList as $a) {
     }
 }
 chdir($scanRoot);
+
+// Which of the four checks run this invocation. No "only" flag given ->
+// all four run (the historical default for (a)/(b), extended here).
+// Any "only" flag given -> ONLY the checks whose flag was passed run, so
+// --settings-only / --columns-only keep their EXACT prior meaning ("just
+// this one check", not "this check plus whatever else got added later").
+$anyOnlyFlag  = $settingsOnly || $columnsOnly || $phantomOnly || $apiOnly;
+$runSettingsA = !$anyOnlyFlag || $settingsOnly;
+$runColumnsB  = !$anyOnlyFlag || $columnsOnly;
+$runPhantomC  = !$anyOnlyFlag || $phantomOnly;
+$runApiD      = !$anyOnlyFlag || $apiOnly;
 
 /** Every file with a given extension under a directory, forward-slashed. */
 function dca_files(string $dir, string $ext = 'php'): array {
@@ -192,8 +432,16 @@ function dca_files(string $dir, string $ext = 'php'): array {
 }
 
 // Directories that hold RUNNING application code (as opposed to one-time
-// migration/import tooling, tests, or docs). Shared by both checks.
+// migration/import tooling, tests, or docs). Shared by checks (a)/(b)/(c).
 $appPhpDirs = ['api', 'inc', 'tools', 'services', 'proxy'];
+// Check (d)'s own EMITTED-scan directories: same idea, minus tools/ — every
+// tools/ call site that touches json_response()/json_encode() is a CLI-only
+// diagnostic (release-divergence-check.php, test_compat.php, the upgrade
+// pre/postcheck scripts) that never reaches a browser; including it would
+// manufacture "dead API key" findings for output nothing ever meant to ship
+// to JS in the first place.
+$apiEmitDirs = ['api', 'inc', 'services', 'proxy'];
+
 // Within tools/, one-time migration/upgrade helpers legitimately touch
 // columns the running app no longer does — exclude by path substring,
 // same technique and same "keep it short and reviewable" discipline as
@@ -215,15 +463,17 @@ function dca_is_migration_tooling(string $path): bool {
 $pageTemplates = glob('*.php') ?: [];
 
 echo "=== Dead-control audit (GH #91) ===\n";
-echo "Two checks: (a) settings-table keys a UI writes but nothing reads;\n";
-echo "            (b) database columns written but never read back.\n\n";
+echo "Four checks: (a) settings-table keys a UI writes but nothing reads;\n";
+echo "             (b) database columns written but never read back;\n";
+echo "             (c) database columns read but never written (phantom);\n";
+echo "             (d) API response keys emitted to the browser, read by no JS.\n\n";
 
 $findings = [];   // key => [ 'kind'=>..., 'sites'=>[[file,line,msg],...] ]
 
 // ═══════════════════════════════════════════════════════════════════════
 // (a) Dead settings keys
 // ═══════════════════════════════════════════════════════════════════════
-if (!$columnsOnly) {
+if ($runSettingsA) {
     echo "--- (a) settings-table keys ---\n";
 
     // 1. WRITTEN: data-key="..." in page templates only.
@@ -312,16 +562,15 @@ if (!$columnsOnly) {
     }
     echo count($findings) . " dead settings key finding(s) so far\n\n";
 }
-$findingsAfterSettings = count($findings);
 
 // ═══════════════════════════════════════════════════════════════════════
-// (b) Dead database columns
+// (b)/(c) Database columns — one shared parse pass, two classifications.
 // ═══════════════════════════════════════════════════════════════════════
-if (!$settingsOnly) {
-    echo "--- (b) database columns ---\n";
+if ($runColumnsB || $runPhantomC) {
+    echo "--- (b)/(c) database columns ---\n";
 
     if (!is_file($appRoot . '/config.php')) {
-        echo "config.php not found — column check needs a reachable database, skipping\n";
+        echo "config.php not found — column checks need a reachable database, skipping\n";
     } else {
         require_once $appRoot . '/config.php';
         require_once $appRoot . '/inc/db.php';
@@ -329,13 +578,40 @@ if (!$settingsOnly) {
 
         $prefix = $GLOBALS['db_prefix'] ?? '';
         $schema = [];   // table => [col => true]
+        // Check (c)'s own exclusion set: columns the DATABASE ITSELF writes
+        // at insert/update time, never the application's own SQL — an
+        // AUTO_INCREMENT primary key (never in an app INSERT's column list
+        // by construction; MySQL/MariaDB assigns it) and a
+        // DEFAULT CURRENT_TIMESTAMP / ON UPDATE CURRENT_TIMESTAMP column
+        // (created_at/updated_at-shaped columns the app is never expected
+        // to set explicitly). Without this, EVERY table's `id` column in
+        // this ~260-table schema would misreport as phantom the moment its
+        // value is read anywhere (i.e. always) — confirmed during this
+        // check's own development: turning this off produced 676 raw
+        // findings dominated by `<table>.id`; turning it on cut that by
+        // more than half. This is schema-level ground truth (queried live,
+        // not inferred from SQL text), so it cannot itself be fooled by
+        // any concatenation/interpolation shape the way regex-based write
+        // detection can.
+        $dbManagedCols = [];   // "table.col" => true
         foreach (db_fetch_all(
-            "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS
+            "SELECT TABLE_NAME, COLUMN_NAME, EXTRA, COLUMN_DEFAULT FROM information_schema.COLUMNS
               WHERE TABLE_SCHEMA = DATABASE()"
         ) as $r) {
-            $schema[strtolower($r['TABLE_NAME'])][strtolower($r['COLUMN_NAME'])] = true;
+            $tbl = strtolower($r['TABLE_NAME']);
+            $col = strtolower($r['COLUMN_NAME']);
+            $schema[$tbl][$col] = true;
+            $extra = strtolower((string) ($r['EXTRA'] ?? ''));
+            $default = strtolower((string) ($r['COLUMN_DEFAULT'] ?? ''));
+            if (strpos($extra, 'auto_increment') !== false
+                || strpos($extra, 'on update current_timestamp') !== false
+                || strpos($default, 'current_timestamp') !== false) {
+                $dbManagedCols["$tbl.$col"] = true;
+            }
         }
         echo count($schema) . " tables loaded from live schema\n";
+        echo count($dbManagedCols) . " column(s) are database-managed (AUTO_INCREMENT / CURRENT_TIMESTAMP"
+            . " default) — excluded from check (c) candidacy\n";
 
         // Files to scan for SQL: running app code + page templates.
         $sqlFiles = $pageTemplates;
@@ -344,15 +620,30 @@ if (!$settingsOnly) {
             return !dca_is_migration_tooling($f);
         }));
 
-        $writeCols = [];   // "table.col" => [[file,line],...]
-        $readColsSql = []; // "table.col" => true   (alias-qualified, non-write-target)
+        $writeCols        = [];   // "table.col" => [[file,line],...]
+        $readColsSql      = [];   // "table.col" => true   (alias-qualified, non-write-target)
+        $sqlTouchedTables = [];   // "table" => true  (appears in FROM/JOIN/UPDATE/INSERT/DELETE anywhere)
+        // Check (c)'s own broadening, mirroring check (a)'s "dynamic call
+        // site" technique: "UPDATE table SET " . implode(', ', $setParts) .
+        // " WHERE ..." (and the INSERT equivalent, column list built via
+        // implode(',', array_keys($fields))) is a WIDESPREAD pattern in
+        // this codebase (33 files as of 2026-08-20: api/constituents.php,
+        // api/events.php, api/vehicles.php, inc/incident-write.php, ...) —
+        // the literal SQL string carries no column names at all (they live
+        // in a separate PHP array a few lines away), so $writeCols can
+        // never see them and check (c) would otherwise misreport every one
+        // of those tables' real, actively-written columns as phantom. See
+        // the docblock's discussion of this exact false-positive shape.
+        $dynamicWriteSites = [];   // file => [table => true, ...]
 
         /**
          * Parse one SQL string. Mirrors schema_audit.php's alias
          * resolution (kept in sync deliberately — both tools read the
          * same FROM/JOIN/UPDATE/INSERT shapes).
          */
-        $parseSql = function (string $sql, string $file, int $line) use (&$writeCols, &$readColsSql, &$schema) {
+        $parseSql = function (string $sql, string $file, int $line) use (
+            &$writeCols, &$readColsSql, &$schema, &$sqlTouchedTables, &$dynamicWriteSites
+        ) {
             // sql_extract_normalize() strips leftover {$prefix}-style
             // interpolation remnants (db_table() calls are already resolved
             // to bare table names by sql_extract_strings() itself); the
@@ -393,28 +684,58 @@ if (!$settingsOnly) {
             if (preg_match('/INSERT\s+(?:IGNORE\s+)?INTO\s+`?([a-z0-9_]+)`?\s*\(/i', $norm, $mi)) {
                 $insertTable = strtolower($mi[1]);
             }
+            $deleteTable = null;
+            if (preg_match('/DELETE\s+FROM\s+`?([a-z0-9_]+)`?/i', $norm, $md0)) {
+                $deleteTable = strtolower($md0[1]);
+            }
+
+            // Check (c)'s own bookkeeping: every table this statement
+            // touches in ANY capacity, for scoping the bareRead-driven
+            // phantom-column candidate search below to tables the app's
+            // SQL actually queries.
+            foreach ($aliases as $tbl) { $sqlTouchedTables[$tbl] = true; }
+            if ($updateTable !== null) { $sqlTouchedTables[$updateTable] = true; }
+            if ($insertTable !== null) { $sqlTouchedTables[$insertTable] = true; }
+            if ($deleteTable !== null) { $sqlTouchedTables[$deleteTable] = true; }
 
             // Write-target spans: the SET clause's bare `col = ` list, and
             // the INSERT column-list parens. Bare (no alias) — collected
             // separately from the alias.col regex below.
             if ($updateTable !== null
                 && preg_match('/\bSET\s+(.*?)(?:\bWHERE\b|$)/is', $norm, $ms)) {
+                $foundAny = false;
                 if (preg_match_all('/(?:^|,)\s*`?([a-z0-9_]+)`?\s*=/i', $ms[1], $mc)) {
                     foreach ($mc[1] as $col) {
                         $col = strtolower($col);
                         if (isset($schema[$updateTable][$col])) {
                             $writeCols["$updateTable.$col"][] = [$file, $line];
+                            $foundAny = true;
                         }
                     }
                 }
+                // Nothing resolvable after SET at all -> the column list was
+                // built dynamically (concatenation flushed it out of this
+                // literal). Record for the broadening pass below.
+                if (!$foundAny && trim($ms[1]) === '') {
+                    $dynamicWriteSites[$file][$updateTable] = true;
+                }
             }
-            if ($insertTable !== null
-                && preg_match('/INSERT\s+(?:IGNORE\s+)?INTO\s+`?[a-z0-9_]+`?\s*\(([^)]+)\)/i', $norm, $mi2)) {
-                foreach (explode(',', $mi2[1]) as $col) {
-                    $col = strtolower(trim(trim($col), '` '));
-                    if ($col !== '' && isset($schema[$insertTable][$col])) {
-                        $writeCols["$insertTable.$col"][] = [$file, $line];
+            if ($insertTable !== null) {
+                if (preg_match('/INSERT\s+(?:IGNORE\s+)?INTO\s+`?[a-z0-9_]+`?\s*\(([^)]+)\)/i', $norm, $mi2)) {
+                    foreach (explode(',', $mi2[1]) as $col) {
+                        $col = strtolower(trim(trim($col), '` '));
+                        if ($col !== '' && isset($schema[$insertTable][$col])) {
+                            $writeCols["$insertTable.$col"][] = [$file, $line];
+                        }
                     }
+                } else {
+                    // $insertTable resolved (INSERT INTO table ( matched)
+                    // but the column-list-with-closing-paren regex didn't —
+                    // the list was built dynamically past this point
+                    // (e.g. implode(',', array_keys($fields)) — cut off the
+                    // same way the concatenation chain cuts off a dynamic
+                    // SET clause above).
+                    $dynamicWriteSites[$file][$insertTable] = true;
                 }
             }
             // ON DUPLICATE KEY UPDATE `col` = VALUES(`col`) is also a write.
@@ -463,6 +784,26 @@ if (!$settingsOnly) {
             // "read", which is the safe direction for this tool.
             if (preg_match('/^\s*SELECT\s+(?:DISTINCT\s+)?(.*?)\s+FROM\s+/is', $norm, $msel)) {
                 $collistBare = preg_replace('/\b[a-z0-9_]+\s*\.\s*`?[a-z0-9_]+`?/i', '', $msel[1]);
+                // Strip the ALIAS TARGET of every `AS name` too (both the
+                // keyword and the identifier it introduces) — an alias is an
+                // OUTPUT name, never a column reference, and leaving it in
+                // let a real column on some OTHER table in the join coincide
+                // with the alias text and get miscredited as "read". Caught
+                // live during this check's own development: training's
+                // teams.deputy_id is a genuine live column (schema drift —
+                // not on this dev box, not on a fresh CI install) that
+                // exists only because `t.leader_dpty AS deputy_id` (this
+                // exact file's own SELECT, api/teams.php) left "deputy_id"
+                // behind for the bare-word extractor below to find, which
+                // then matched training's real (but genuinely unwritten,
+                // orphaned/legacy) teams.deputy_id column purely by name
+                // coincidence with the ALIAS text — the source column that
+                // is actually read is `leader_dpty`, already credited by
+                // the alias.column stripping immediately above. This does
+                // NOT weaken the "phone_m AS cell" case this mechanism
+                // exists for: only the text AFTER "AS" is removed, so the
+                // real source column before it (`phone_m`) is untouched.
+                $collistBare = preg_replace('/\bAS\s+`?[a-z0-9_]+`?/i', '', $collistBare);
                 if (preg_match_all('/\b([a-z][a-z0-9_]*)\b/i', $collistBare, $mb)) {
                     static $selectStop = null;
                     if ($selectStop === null) {
@@ -504,7 +845,53 @@ if (!$settingsOnly) {
             }
         }
         echo count($sqlFiles) . " PHP files scanned for SQL\n";
-        echo count($writeCols) . " column(s) with a confirmed write path\n";
+        echo count($writeCols) . " column(s) with a confirmed write path (before dynamic-write broadening)\n";
+
+        // Dynamic-write broadening (check (c)'s own -- see $dynamicWriteSites'
+        // declaration above): for every file where a table's SET clause or
+        // INSERT column list resolved to nothing (built from a PHP array a
+        // few lines away, not a literal in the SQL string itself), credit a
+        // write for every literal array-KEY in that SAME FILE that is also
+        // a real column of the flagged table -- TWO shapes, both real
+        // conventions this codebase uses interchangeably for the exact
+        // same "build a $fields array, then INSERT/UPDATE from it" idiom:
+        //   1. array-literal:      'col' => $value            (the original
+        //      shape this broadening pass shipped with)
+        //   2. bracket-assignment: $fields['col'] = $value;    (found missing
+        //      live during this check's OWN development: the org_id fix
+        //      this same change makes to api/equipment.php/api/vehicles.php
+        //      uses exactly this shape -- `$fields['org_id'] = $orgId;` --
+        //      and was invisible to shape 1's regex, misreporting a column
+        //      this very audit run had just been taught to write correctly)
+        // Scoped per-file (not global) to keep the false-credit risk low,
+        // the same discipline check (a)'s dynamic-call broadening uses.
+        $broadenedWrites = 0;
+        foreach ($dynamicWriteSites as $dwFile => $dwTables) {
+            $dwSrc = @file_get_contents($dwFile);
+            if ($dwSrc === false) continue;
+            $dwKeys = [];
+            if (preg_match_all('/[\'"]([a-zA-Z_][a-zA-Z0-9_]*)[\'"]\s*=>/', $dwSrc, $dwm)) {
+                $dwKeys = array_merge($dwKeys, $dwm[1]);
+            }
+            if (preg_match_all('/\[\s*[\'"]([a-zA-Z_][a-zA-Z0-9_]*)[\'"]\s*\]\s*=(?!=)/', $dwSrc, $dwm2)) {
+                $dwKeys = array_merge($dwKeys, $dwm2[1]);
+            }
+            if (!$dwKeys) continue;
+            foreach ($dwKeys as $dwKey) {
+                $dwKey = strtolower($dwKey);
+                foreach (array_keys($dwTables) as $dwTbl) {
+                    $dwTc = "$dwTbl.$dwKey";
+                    if (isset($schema[$dwTbl][$dwKey]) && !isset($writeCols[$dwTc])) {
+                        $writeCols[$dwTc][] = [$dwFile, 0];
+                        $broadenedWrites++;
+                    }
+                }
+            }
+        }
+        echo count($dynamicWriteSites) . " file(s) had a dynamically-built SET/column list"
+            . " -> $broadenedWrites column(s) credited by broadening\n";
+        echo count($writeCols) . " column(s) with a confirmed write path (after broadening)\n";
+        echo count($readColsSql) . " column(s) with a confirmed SQL read path (table-attributed)\n";
 
         // GLOBAL bare-key/property read evidence, whole application tree
         // (PHP + JS). Deliberately table-blind — see the docblock.
@@ -522,59 +909,288 @@ if (!$settingsOnly) {
             if (preg_match_all('/->([a-zA-Z_][a-zA-Z0-9_]*)\b/', $src, $m)) {
                 foreach ($m[1] as $k) $bareRead[strtolower($k)] = true;
             }
+            // JS dot-property reads (`mk.line_opacity`) — the PHP `->` arrow
+            // pattern above never matches JS source at all (JS has no `->`),
+            // so without this a column read ONLY via JS dot notation (the
+            // dominant JS property-access style in this codebase — far more
+            // common than bracket notation) had no read-evidence path at
+            // all. Confirmed live during this check's own development:
+            // mmarkup.line_opacity is written (via check (c)'s dynamic-write
+            // broadening, see above) and read in both assets/js/app.js and
+            // assets/js/map-prefs.js as `mk.line_opacity` — dot notation
+            // only — and misreported as a NEW dead-write finding for check
+            // (b) until this pattern was added. Same "under-report rather
+            // than cry wolf" direction as every other bareRead pattern here:
+            // this can only SUPPRESS candidate findings, never manufacture
+            // one, so widening it is safe.
+            if (preg_match_all('/\.([a-zA-Z_][a-zA-Z0-9_]*)\b/', $src, $m)) {
+                foreach ($m[1] as $k) $bareRead[strtolower($k)] = true;
+            }
         }
         echo count($bareRead) . " distinct bare array-key/property name(s) read anywhere in the app\n";
 
-        foreach ($writeCols as $tc => $sites) {
-            [$tbl, $col] = explode('.', $tc, 2);
-            if ($onlyTable !== null && $tbl !== $onlyTable) continue;
-            if (isset($readColsSql[$tc])) continue;      // aliased SQL read
-            if (isset($bareRead[$col])) continue;         // bare PHP/JS read anywhere
-            $findings["column:$tc"] = ['kind' => 'column', 'sites' => $sites];
-        }
-        echo (count($findings) - (isset($findingsAfterSettings) ? $findingsAfterSettings : 0))
-            . " dead-column finding(s) (columns with a write path but no read anywhere)\n\n";
-
-        // ── Orphaned columns: OPT-IN, not part of the default/CI-gated run ──
-        // A column this tool never saw written by the RUNNING app (no INSERT
-        // list, no UPDATE SET target, outside migration/import tooling) is a
-        // DIFFERENT, weaker signal than "written but never read" — its only
-        // value ever comes from the CREATE TABLE default, so there is no live
-        // data an operator could mistake for something working. It is still
-        // squarely the GH #91 shape (the reporter's own examples — a stale
-        // comment reading 'For level = facility' — describe exactly this),
-        // and it is how 11 of the 12 `user` columns named in GH #91 actually
-        // look: zero writers anywhere, not "written, never read".
-        //
-        // Deliberately NOT wired into the pre-commit hook or CI: run across
-        // all ~260 tables in this schema it would surface a very large,
-        // mostly-untriaged pile on day one (rarely-populated optional
-        // columns, admin-configured feature flags with no default row yet,
-        // etc.) — exactly the "cries wolf, gets baselined into uselessness"
-        // failure this project's other audits are built to avoid. Use
-        // `--include-orphaned` for a deliberate, manual sweep (optionally
-        // scoped with `--table=`), the way the GH #91 investigation itself
-        // used it against `user` specifically before deciding what to do
-        // with each column.
-        if (in_array('--include-orphaned', $argvList, true)) {
-            $orphanCount = 0;
-            foreach ($schema as $tbl => $cols) {
+        // ── (b) dead columns: written, never read ──────────────────────
+        if ($runColumnsB) {
+            $findingsBeforeB = count($findings);
+            foreach ($writeCols as $tc => $sites) {
+                [$tbl, $col] = explode('.', $tc, 2);
                 if ($onlyTable !== null && $tbl !== $onlyTable) continue;
-                foreach (array_keys($cols) as $col) {
+                if (isset($readColsSql[$tc])) continue;      // aliased SQL read
+                if (isset($bareRead[$col])) continue;         // bare PHP/JS read anywhere
+                $findings["column:$tc"] = ['kind' => 'column', 'sites' => $sites];
+            }
+            echo (count($findings) - $findingsBeforeB)
+                . " dead-column finding(s) (columns with a write path but no read anywhere)\n\n";
+
+            // ── Orphaned columns: OPT-IN, not part of the default/CI-gated run ──
+            // A column this tool never saw written by the RUNNING app (no INSERT
+            // list, no UPDATE SET target, outside migration/import tooling) is a
+            // DIFFERENT, weaker signal than "written but never read" — its only
+            // value ever comes from the CREATE TABLE default, so there is no live
+            // data an operator could mistake for something working. It is still
+            // squarely the GH #91 shape (the reporter's own examples — a stale
+            // comment reading 'For level = facility' — describe exactly this),
+            // and it is how 11 of the 12 `user` columns named in GH #91 actually
+            // look: zero writers anywhere, not "written, never read".
+            //
+            // Deliberately NOT wired into the pre-commit hook or CI: run across
+            // all ~260 tables in this schema it would surface a very large,
+            // mostly-untriaged pile on day one (rarely-populated optional
+            // columns, admin-configured feature flags with no default row yet,
+            // etc.) — exactly the "cries wolf, gets baselined into uselessness"
+            // failure this project's other audits are built to avoid. Use
+            // `--include-orphaned` for a deliberate, manual sweep (optionally
+            // scoped with `--table=`), the way the GH #91 investigation itself
+            // used it against `user` specifically before deciding what to do
+            // with each column.
+            if (in_array('--include-orphaned', $argvList, true)) {
+                $orphanCount = 0;
+                foreach ($schema as $tbl => $cols) {
+                    if ($onlyTable !== null && $tbl !== $onlyTable) continue;
+                    foreach (array_keys($cols) as $col) {
+                        $tc = "$tbl.$col";
+                        if (isset($writeCols[$tc])) continue;      // has a real write path
+                        if (isset($readColsSql[$tc])) continue;    // aliased SQL read
+                        if (isset($bareRead[$col])) continue;      // bare PHP/JS read anywhere
+                        $findings["column:$tc"] = [
+                            'kind' => 'column',
+                            'sites' => [["(schema: $tbl.$col)", 0]],
+                        ];
+                        $orphanCount++;
+                    }
+                }
+                echo "$orphanCount orphaned-column finding(s) (--include-orphaned: no write path AND no read found)\n\n";
+            }
+        }
+
+        // ── (c) phantom columns: read, never written ────────────────────
+        if ($runPhantomC) {
+            $phantomCount = 0;
+
+            // Primary candidates: table-attributed SQL read evidence —
+            // exactly as reliable as check (b)'s own $writeCols set, since
+            // it comes from the identical parser pass.
+            foreach ($readColsSql as $tc => $_) {
+                [$tbl, $col] = explode('.', $tc, 2);
+                if ($onlyTable !== null && $tbl !== $onlyTable) continue;
+                if (isset($dbManagedCols[$tc])) continue;   // AUTO_INCREMENT / CURRENT_TIMESTAMP
+                if (isset($writeCols[$tc])) continue;   // has a real write path
+                $findings["phantom:$tc"] = [
+                    'kind' => 'phantom',
+                    'sites' => [["(SQL read evidence: $tbl.$col)", 0]],
+                ];
+                $phantomCount++;
+            }
+
+            // Secondary candidates: bare PHP/JS reads, scoped to tables the
+            // app's SQL actually touches somewhere (never the full schema —
+            // see the docblock's false-positive discussion).
+            foreach (array_keys($sqlTouchedTables) as $tbl) {
+                if ($onlyTable !== null && $tbl !== $onlyTable) continue;
+                if (!isset($schema[$tbl])) continue;
+                foreach (array_keys($schema[$tbl]) as $col) {
                     $tc = "$tbl.$col";
-                    if (isset($writeCols[$tc])) continue;      // has a real write path
-                    if (isset($readColsSql[$tc])) continue;    // aliased SQL read
-                    if (isset($bareRead[$col])) continue;      // bare PHP/JS read anywhere
-                    $findings["column:$tc"] = [
-                        'kind' => 'column',
-                        'sites' => [["(schema: $tbl.$col)", 0]],
+                    if (isset($findings["phantom:$tc"])) continue;  // already found above
+                    if (isset($dbManagedCols[$tc])) continue;        // AUTO_INCREMENT / CURRENT_TIMESTAMP
+                    if (isset($writeCols[$tc])) continue;            // has a real write path
+                    if (isset($readColsSql[$tc])) continue;          // would have been caught above
+                    if (!isset($bareRead[$col])) continue;           // no bare PHP/JS read evidence
+                    $findings["phantom:$tc"] = [
+                        'kind' => 'phantom',
+                        'sites' => [["(bare PHP/JS read of `$col`; table `$tbl` is queried elsewhere in SQL)", 0]],
                     ];
-                    $orphanCount++;
+                    $phantomCount++;
                 }
             }
-            echo "$orphanCount orphaned-column finding(s) (--include-orphaned: no write path AND no read found)\n\n";
+            echo "$phantomCount phantom-column finding(s) (columns with a read path but no write anywhere)\n\n";
         }
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// (d) Dead API response keys
+// ═══════════════════════════════════════════════════════════════════════
+if ($runApiD) {
+    echo "--- (d) API response keys ---\n";
+
+    /**
+     * Token-based (not regex-over-raw-source) extraction of literal
+     * `'key' => ...` pairs inside the balanced-parenthesis argument of
+     * every call to $funcNameLower(...) in $src — optionally requiring
+     * an immediately-preceding `echo`/`print` keyword (for the
+     * json_encode() shape, which is only "emitted to the browser" when
+     * it's the direct argument of an output statement, not e.g. a value
+     * assigned to a variable or written to a log file).
+     *
+     * Token-based, like tools/sql_extract.php, specifically so PHP
+     * comments (T_COMMENT/T_DOC_COMMENT) can never desynchronize a
+     * naive string-literal-tracking character scanner — an apostrophe
+     * inside an ordinary English comment ("callers that don't know
+     * about this key...") is exactly the kind of thing a hand-rolled
+     * quote-tracking walker over raw source mistakes for the start of a
+     * string literal, corrupting everything parsed after it. Caught
+     * live during this check's own development: an earlier char-scanning
+     * version of this function silently swallowed BOTH of
+     * api/reports.php's `severity_breakdown`/`disposition_breakdown`
+     * keys, because the doc-comment immediately above them contains
+     * "callers that don't know" — a single stray apostrophe threw off
+     * string-state tracking for the rest of the call. Tokenizing sees a
+     * T_COMMENT and skips over it as a single atomic unit, so the
+     * apostrophe inside it never touches string-tracking state.
+     *
+     * @return array<int, array{0:string,1:int}>  list of [key, line]
+     */
+    $extractEmittedKeys = function (string $src, string $funcNameLower, bool $requireEchoOrPrint) {
+        $out = [];
+        $tokens = @token_get_all($src);
+        if (!$tokens) return $out;
+        $n = count($tokens);
+        for ($i = 0; $i < $n; $i++) {
+            $tk = $tokens[$i];
+            if (!is_array($tk) || $tk[0] !== T_STRING || strtolower($tk[1]) !== $funcNameLower) continue;
+
+            if ($requireEchoOrPrint) {
+                $b = $i - 1;
+                while ($b >= 0 && is_array($tokens[$b])
+                    && in_array($tokens[$b][0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) { $b--; }
+                if ($b < 0 || !is_array($tokens[$b]) || !in_array($tokens[$b][0], [T_ECHO, T_PRINT], true)) {
+                    continue;
+                }
+            }
+
+            $j = $i + 1;
+            while ($j < $n && is_array($tokens[$j])
+                && in_array($tokens[$j][0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) { $j++; }
+            if ($j >= $n || $tokens[$j] !== '(') continue;
+
+            // Walk the token stream from just after '(' tracking paren
+            // depth (both '(' and '[' — short-array-literal syntax
+            // nests brackets, not just parens, inside a call argument).
+            $depth = 1;
+            $k = $j + 1;
+            $argTokens = [];
+            while ($k < $n && $depth > 0) {
+                $t = $tokens[$k];
+                if ($t === '(' || $t === '[') { $depth++; $argTokens[] = $t; $k++; continue; }
+                if ($t === ')' || $t === ']') {
+                    $depth--;
+                    if ($depth === 0) { $k++; break; }
+                    $argTokens[] = $t; $k++; continue;
+                }
+                $argTokens[] = $t;
+                $k++;
+            }
+            if ($depth !== 0) continue;   // unbalanced within the file — skip
+
+            for ($m = 0; $m < count($argTokens); $m++) {
+                $at = $argTokens[$m];
+                if (!is_array($at) || $at[0] !== T_CONSTANT_ENCAPSED_STRING) continue;
+                $p = $m + 1;
+                while ($p < count($argTokens) && is_array($argTokens[$p])
+                    && in_array($argTokens[$p][0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) { $p++; }
+                if ($p >= count($argTokens) || !is_array($argTokens[$p]) || $argTokens[$p][0] !== T_DOUBLE_ARROW) {
+                    continue;
+                }
+                $key = trim(stripcslashes(substr($at[1], 1, -1)));
+                if (preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $key)) {
+                    $out[] = [strtolower($key), (int) $at[2]];
+                }
+            }
+        }
+        return $out;
+    };
+
+    // 1. EMITTED: literal 'key' => pairs inside json_response(...) and
+    //    echo/print json_encode(...) call arguments.
+    $emitFiles = $pageTemplates;
+    foreach ($apiEmitDirs as $d) { $emitFiles = array_merge($emitFiles, dca_files($d)); }
+    $emitFiles = array_values(array_filter($emitFiles, function ($f) {
+        return !dca_is_migration_tooling($f);
+    }));
+
+    $emitted = [];   // key => [[file,line],...]
+    foreach ($emitFiles as $file) {
+        $src = @file_get_contents($file);
+        if ($src === false) continue;
+
+        $hits = array_merge(
+            $extractEmittedKeys($src, 'json_response', false),
+            $extractEmittedKeys($src, 'json_encode', true)
+        );
+        foreach ($hits as [$key, $line]) {
+            $emitted[$key][] = [$file, $line];
+        }
+    }
+    echo count($emitFiles) . " PHP files scanned for JSON emission\n";
+    echo count($emitted) . " distinct key(s) emitted via json_response()/echo json_encode()\n";
+
+    // 2. READ: every whole-word identifier token appearing anywhere under
+    //    assets/js/ (recursive — includes assets/js/widgets/). A single
+    //    pass building a lookup set, not one regex search per key — see
+    //    the docblock for why this is a deliberately blunt "does the
+    //    literal name appear anywhere" sweep, matching
+    //    tools/api_contract_audit.php's own stated tradeoff.
+    $jsWords = [];
+    $jsFiles = dca_files('assets/js', 'js');
+    $jsFileCount = 0;
+    foreach ($jsFiles as $f) {
+        $src = @file_get_contents($f);
+        if ($src === false) continue;
+        $jsFileCount++;
+        if (preg_match_all('/[A-Za-z_][A-Za-z0-9_]*/', $src, $m)) {
+            foreach ($m[0] as $w) { $jsWords[strtolower($w)] = true; }
+        }
+    }
+    // Inline <script> blocks in page templates also count as a READ source
+    // — the same widening tools/api_contract_audit.php's own JS-read scan
+    // already applies (its docblock: "assets/js/*.js plus inline <script>
+    // blocks in the page roots"). Confirmed necessary, not merely
+    // theoretical, during this check's own development:
+    // `severity_counts` (api/incidents.php) is read ONLY by an inline
+    // `<script>` block in situation.php (`data.severity_counts`) — with
+    // only assets/js/ scanned, this misreported as dead.
+    $inlineScriptFiles = 0;
+    foreach ($pageTemplates as $f) {
+        $src = @file_get_contents($f);
+        if ($src === false) continue;
+        if (preg_match_all('/<script(?![^>]*\bsrc=)[^>]*>(.*?)<\/script>/is', $src, $m)) {
+            $inlineScriptFiles++;
+            $joined = implode("\n", $m[1]);
+            if (preg_match_all('/[A-Za-z_][A-Za-z0-9_]*/', $joined, $m2)) {
+                foreach ($m2[0] as $w) { $jsWords[strtolower($w)] = true; }
+            }
+        }
+    }
+    echo $jsFileCount . " JS files + $inlineScriptFiles page(s) with inline <script> scanned; "
+        . count($jsWords) . " distinct identifier token(s) found\n";
+
+    // 3. Findings.
+    $apiFindingsBefore = count($findings);
+    foreach ($emitted as $key => $sites) {
+        if (isset($jsWords[$key])) continue;
+        $findings["apikey:$key"] = ['kind' => 'apikey', 'sites' => $sites];
+    }
+    echo (count($findings) - $apiFindingsBefore) . " dead API-response-key finding(s)\n\n";
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -586,8 +1202,10 @@ if (!$settingsOnly) {
 // tests are deliberately fake), but this keeps the CONTRACT explicit.
 $settingsBaselineFile = $appRoot . '/tools/dead_control_settings_baseline.txt';
 $columnBaselineFile   = $appRoot . '/tools/dead_control_column_baseline.txt';
+$phantomBaselineFile  = $appRoot . '/tools/dead_control_phantom_baseline.txt';
+$apiBaselineFile      = $appRoot . '/tools/dead_control_api_baseline.txt';
 $baseline = [];
-foreach ([$settingsBaselineFile, $columnBaselineFile] as $bf) {
+foreach ([$settingsBaselineFile, $columnBaselineFile, $phantomBaselineFile, $apiBaselineFile] as $bf) {
     if (!is_file($bf)) continue;
     foreach (file($bf, FILE_IGNORE_NEW_LINES) as $line) {
         $line = trim($line);
@@ -602,9 +1220,23 @@ foreach ($findings as $key => $f) {
     $inBaseline = isset($baseline[$key]);
     if ($inBaseline && !$showAll) continue;
     if (!$inBaseline) $newCount++;
-    $label = $f['kind'] === 'setting'
-        ? "settings key `" . substr($key, 8) . "` written by a UI control, read by nothing"
-        : "column `" . substr($key, 7) . "` has a write path, its value is read nowhere";
+    [, $name] = array_pad(explode(':', $key, 2), 2, '');
+    switch ($f['kind']) {
+        case 'setting':
+            $label = "settings key `$name` written by a UI control, read by nothing";
+            break;
+        case 'column':
+            $label = "column `$name` has a write path, its value is read nowhere";
+            break;
+        case 'phantom':
+            $label = "column `$name` is read somewhere, but has NO write path anywhere";
+            break;
+        case 'apikey':
+            $label = "API response key `$name` is emitted to the browser, read by no JS file";
+            break;
+        default:
+            $label = $name;
+    }
     echo ($inBaseline ? '[baseline] ' : '[NEW]      ') . $key . " — $label\n";
     foreach (array_slice($f['sites'], 0, 5) as [$sf, $sl]) {
         echo "             $sf:$sl\n";

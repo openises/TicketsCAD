@@ -1049,8 +1049,20 @@
                     showAlert('warning', 'Could not load incident #' + ticketId + ': ' + resp.error);
                     return;
                 }
-                incidentData = resp;
-                autoPopulateFromIncident(resp);
+                // GH#101 — api/incident-detail.php returns an envelope
+                // ({incident, assignments, actions}), not a flat incident
+                // object. Every field autoPopulateFromIncident() (and the
+                // preview label built in _finishOpenFormEditor() above,
+                // which reads incidentData.incident_number/.type_name/
+                // .street) expects — inc.id, inc.scope, inc.street,
+                // inc.type_name, etc. — lives under resp.incident. Reading
+                // resp directly made every field undefined (hence
+                // "Incident #undefined"). Fall back to resp itself so this
+                // degrades instead of breaking again if the endpoint is
+                // ever flattened later.
+                var inc = (resp && resp.incident) ? resp.incident : resp;
+                incidentData = inc;
+                autoPopulateFromIncident(inc);
                 showAlert('info', 'Linked to incident #' + ticketId + ' — fields auto-populated.');
             })
             .catch(function () {
@@ -1080,20 +1092,25 @@
         setFieldIfEmpty('time', now.toTimeString().substring(0, 5));
 
         // ICS-213 specific
+        // GH#101 — api/incident-detail.php's actual output key is
+        // type_name (it.`type` AS `type_name`), not incident_type_name.
         if (type === '213') {
-            var subject = (inc.incident_type_name || 'Incident') + ' - ' + (inc.scope || '');
+            var subject = (inc.type_name || 'Incident') + ' - ' + (inc.scope || '');
             setFieldIfEmpty('subject', subject);
 
             var body = '';
-            if (inc.incident_type_name) body += 'Type: ' + inc.incident_type_name + '\n';
+            if (inc.type_name) body += 'Type: ' + inc.type_name + '\n';
             if (inc.street) body += 'Location: ' + inc.street + (inc.city ? ', ' + inc.city : '') + '\n';
             if (inc.description) body += 'Description: ' + inc.description + '\n';
             setFieldIfEmpty('message', body);
         }
 
-        // Op period from incident times
-        if (inc.date) {
-            var dtVal = inc.date.replace(' ', 'T').substring(0, 16);
+        // Op period from incident times.
+        // GH#101 — the endpoint never returns a bare `date` key; the
+        // real incident-time field is `problemstart` (created/updated
+        // are also available but problemstart is the operational start).
+        if (inc.problemstart) {
+            var dtVal = inc.problemstart.replace(' ', 'T').substring(0, 16);
             setFieldIfEmpty('op_period_from', dtVal);
         }
     }

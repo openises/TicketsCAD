@@ -28,10 +28,76 @@
  * audit can neither rot into a no-op nor cry wolf into being baselined.
  *
  * Usage: php tests/test_legacy_level_audit.php
+ *
+ * GH #91 follow-up (2026-08-20/21, reported by rjonesbsink): every audit
+ * invocation in this file used to shell out via exec(), which is a fatal
+ * "Call to undefined function exec()" on any host whose disable_functions
+ * blocks it (common on shared or hardened hosting) — quietly turning this
+ * whole gate into a no-op instead of actually running the audit. All six
+ * call sites now go through lla_run_audit(), which spawns the audit via
+ * argv-array proc_open() (gh91_proc_run() below — mirrors
+ * run_via_proc_open() in tools/check-schema.php and runStreamingImport() in
+ * tools/update-lookup-data.php), and the file degrades to an explicit
+ * SKIP — never a silent/false pass — when proc_open() itself is also
+ * unavailable. See tests/test_gh91_audit_wrapper_subprocess_fallback.php
+ * for the regression proof (spawns real PHP subprocesses with
+ * disable_functions set both ways).
  */
 $base = realpath(__DIR__ . '/..');
 $php  = PHP_BINARY;
 $tool = $base . '/tools/legacy_level_audit.php';
+
+/**
+ * Run a subprocess via argv-array proc_open() — no shell involved, so this
+ * keeps working when exec()/shell_exec()/popen() are removed via
+ * disable_functions (proc_open is a separate function and is not usually
+ * included in the same hardening presets — confirmed for this exact
+ * disable_functions shape by tests/test_gh93_streaming_import_popen_followup.php's
+ * Test B). stdout and stderr share ONE temp-file sink, matching the
+ * interleaving `2>&1` gave the old exec() call. The exit code comes from
+ * proc_close()'s own return value, which is reliable here because
+ * proc_get_status() is never called first — unlike runStreamingImport()'s
+ * polling loop, there is no earlier read to "spend" the real exit code.
+ *
+ * @param array $argv [$binary, $arg1, $arg2, ...]
+ * @return array{0:int,1:string} [exitCode, combinedOutput]
+ */
+function gh91_proc_run(array $argv): array {
+    $sink = tmpfile();
+    if ($sink === false) {
+        return [127, '(could not open a temporary file to capture output)'];
+    }
+    $descriptors = [0 => ['pipe', 'r'], 1 => $sink, 2 => $sink];
+    $pipes = [];
+    $proc = @proc_open($argv, $descriptors, $pipes);
+    if (!is_resource($proc)) {
+        fclose($sink);
+        return [127, '(failed to start the subprocess)'];
+    }
+    fclose($pipes[0]);
+    $exit = proc_close($proc);
+    rewind($sink);
+    $out = rtrim((string) stream_get_contents($sink), "\r\n");
+    fclose($sink);
+    return [$exit, $out];
+}
+
+/** Run tools/legacy_level_audit.php; return [exitCode, linesArray] (matches
+ *  the old exec($cmd, $out, $code)'s $out-as-array shape every call site
+ *  below expects). */
+function lla_run_audit(string $tool): array {
+    [$code, $outText] = gh91_proc_run([PHP_BINARY, $tool]);
+    $lines = ($outText === '') ? [] : preg_split('/\r\n|\r|\n/', $outText);
+    return [$code, $lines];
+}
+
+if (!function_exists('proc_open')) {
+    echo "=== Page/API authorisation-split gate ===\n\n";
+    echo "SKIP: this PHP cannot start a subprocess (proc_open() is disabled via " .
+         "disable_functions) — the legacy-level audit could not be run\n";
+    echo "\n=== 0 passed, 0 failed ===\n";
+    exit(0);
+}
 
 // Bootstrap the DB BEFORE any output — config.php sets session ini values
 // and warns loudly if headers/output already went out.
@@ -71,8 +137,7 @@ if (is_file($base . '/tools/legacy_level_baseline.txt')) {
 }
 
 // ── 1. No new findings in the tree as it stands ──────────────────────────
-$out = [];
-exec(escapeshellarg($php) . ' ' . escapeshellarg($tool) . ' 2>&1', $out, $code);
+[$code, $out] = lla_run_audit($tool);
 if ($code === 0) {
     lla_ok('no api/ endpoint gates on user.level alone');
 } else {
@@ -92,8 +157,7 @@ $probeSrc = "<?php\n"
 if (@file_put_contents($probe, $probeSrc) === false) {
     lla_bad('could not write probe file', $probe);
 } else {
-    $pOut = [];
-    exec(escapeshellarg($php) . ' ' . escapeshellarg($tool) . ' 2>&1', $pOut, $pCode);
+    [$pCode, $pOut] = lla_run_audit($tool);
     @unlink($probe);
     $text = implode("\n", $pOut);
     if ($pCode !== 0 && strpos($text, '__legacy_level_probe.php') !== false) {
@@ -125,8 +189,7 @@ $probe2Src = "<?php\n"
 if (@file_put_contents($probe2, $probe2Src) === false) {
     lla_bad('could not write fallback probe file', $probe2);
 } else {
-    $qOut = [];
-    exec(escapeshellarg($php) . ' ' . escapeshellarg($tool) . ' 2>&1', $qOut, $qCode);
+    [$qCode, $qOut] = lla_run_audit($tool);
     @unlink($probe2);
     if ($qCode !== 0 && strpos(implode("\n", $qOut), '__legacy_level_ok_probe.php') !== false) {
         lla_ok('an RBAC check with a legacy OR-fallback is REJECTED (Phase 128)');
@@ -154,8 +217,7 @@ foreach ($surfaces as $label => $probePath) {
         lla_bad("could not write $label probe", $probePath);
         continue;
     }
-    $sOut = [];
-    exec(escapeshellarg($php) . ' ' . escapeshellarg($tool) . ' 2>&1', $sOut, $sCode);
+    [$sCode, $sOut] = lla_run_audit($tool);
     @unlink($probePath);
     ($sCode !== 0 && strpos(implode("\n", $sOut), basename($probePath)) !== false)
         ? lla_ok("a legacy level gate in a $label fails the build")
@@ -174,8 +236,7 @@ $jsSrc = "(function () {\n"
 if (@file_put_contents($jsProbe, $jsSrc) === false) {
     lla_bad('could not write JS probe', $jsProbe);
 } else {
-    $jOut = [];
-    exec(escapeshellarg($php) . ' ' . escapeshellarg($tool) . ' 2>&1', $jOut, $jCode);
+    [$jCode, $jOut] = lla_run_audit($tool);
     @unlink($jsProbe);
     ($jCode !== 0 && strpos(implode("\n", $jOut), '__legacy_level_probe.js') !== false)
         ? lla_ok('a client-side level gate in assets/js fails the build')
@@ -191,8 +252,7 @@ $fpSrc = "(function () {\n"
     . "    if (zoomLevel > 10 && severityLevel >= 2) { return true; }\n"
     . "})();\n";
 if (@file_put_contents($fpProbe, $fpSrc) !== false) {
-    $fOut = [];
-    exec(escapeshellarg($php) . ' ' . escapeshellarg($tool) . ' 2>&1', $fOut, $fCode);
+    [$fCode, $fOut] = lla_run_audit($tool);
     @unlink($fpProbe);
     ($fCode === 0)
         ? lla_ok('zoomLevel / severityLevel comparisons are not mistaken for access control')

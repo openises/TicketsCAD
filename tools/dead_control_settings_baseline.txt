@@ -62,7 +62,12 @@ setting:refresh_seconds
 setting:abbreviation_mode
 setting:default_theme
 setting:compact_tables
-setting:login_banner
+# login_banner REMOVED (2026-08-21, SPEC-STATUS.md B17 follow-up): wired
+# for real in login.php ($loginBannerText) instead of left marked — it
+# sat right next to the CJIS notice pair in the Login Settings panel,
+# which DOES work, so an admin filling in the wrong box had no way to
+# tell which one was broken. See login.php's B17 comment block and
+# settings.php's two Login Banner Text fields for the fix.
 
 # --- System Settings panel (Date & Time Format group) — every date/time
 #     display in the app uses a fixed format; Recent Close, Stale

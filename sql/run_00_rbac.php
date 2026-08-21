@@ -137,6 +137,9 @@ $perms = [
     ['screen.incident_detail', 'Incident Detail',      'screen'],
     ['screen.search',          'Search',               'screen'],
     ['screen.new_incident',    'New Incident',         'screen'],
+    // SPEC-STATUS.md B12 (2026-08-21) — see sql/rbac.sql's matching entry
+    // + sql/run_units_screen_perm.php for the companion migration.
+    ['screen.units',           'Units List',           'screen'],
     ['screen.unit_detail',     'Unit Detail',          'screen'],
     ['screen.unit_edit',       'Unit Edit',            'screen'],
     ['screen.settings',        'Settings / Config',    'screen'],

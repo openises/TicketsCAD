@@ -51,6 +51,17 @@ if (!defined('OT_CONFIG_LIBRARY_ONLY')) {
     require_once __DIR__ . '/auth.php';
 }
 require_once __DIR__ . '/../inc/rbac.php';
+// SPEC-STATUS.md B15 follow-on fix (found during live verification of the
+// set_setting()/get_setting() fix, 2026-08-20): action=save_defaults and
+// action=save_member_overrides both call audit_log() further down, but
+// this file — unlike the other 89 api/*.php endpoints that call it — never
+// required inc/audit.php at the top level, only inline (guarded by
+// function_exists()) inside the later unit_owntracks action blocks. Every
+// real save_defaults/save_member_overrides request fataled with "Call to
+// undefined function audit_log()" regardless of the set_setting() fix —
+// caught only by driving the real live HTTP endpoint end to end, not by
+// the library-mode function tests, which never reach this require chain.
+require_once __DIR__ . '/../inc/audit.php';
 
 $prefix = $GLOBALS['db_prefix'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
@@ -179,7 +190,7 @@ function _ot_build_layered_config(int $memberId, string $username, string $secre
     // the OwnTracks config keys.
     $tunable = _ot_tunable_keys();
     foreach ($tunable as $cfgKey => $meta) {
-        $val = get_setting('owntracks_default_' . $meta['settings_key'], null);
+        $val = _ot_get_default($meta['settings_key']);
         if ($val !== null && $val !== '') {
             $cfg[$cfgKey] = $meta['cast']($val);
         }
@@ -328,6 +339,73 @@ function _ot_tunable_keys(): array {
             'cast'         => $int,
         ],
     ];
+}
+
+/**
+ * Read one admin global-default OwnTracks knob back out of the
+ * `settings` table (name/value) via get_variable() — the SAME store
+ * every other admin-configurable feature setting in this app uses
+ * (see CLAUDE.md's "TWO settings stores — don't cross the wires"
+ * pitfall). get_variable() returns FALSE, not NULL, when a key is
+ * absent; normalize to NULL here so every caller can keep using the
+ * long-standing "null = inherit hardcoded fallback" contract without
+ * having to know that quirk.
+ *
+ * SPEC-STATUS.md B15 fix (2026-08-20): this used to be
+ * get_setting('owntracks_default_'.$key, null), which reads from the
+ * separate, tiny `config` table (key/value) — a store nothing in this
+ * file's save path ever wrote to, so a saved default could never be
+ * read back.
+ */
+function _ot_get_default(string $settingsKey) {
+    $val = get_variable('owntracks_default_' . $settingsKey);
+    return $val === false ? null : $val;
+}
+
+/**
+ * Persist admin global-default OwnTracks knobs to the `settings` table
+ * — the established store (matches api/config-admin.php's own
+ * INSERT ... ON DUPLICATE KEY UPDATE idiom, safe because settings.name
+ * carries a UNIQUE key as of Phase 24). Empty string / null clears the
+ * override (revert to hardcoded fallback); everything else is upserted.
+ *
+ * Extracted into its own top-level function — rather than left inline
+ * in the HTTP action dispatch below — so it is directly testable via
+ * require_once under OT_CONFIG_LIBRARY_ONLY, per this file's own
+ * docblock rule that reusable/testable logic must not be buried after
+ * the dispatch guard (see the Phase 117 unit-OwnTracks lesson in
+ * CLAUDE.md).
+ *
+ * SPEC-STATUS.md B15 fix (2026-08-20): this used to call set_setting(),
+ * a function that does not exist anywhere in this codebase — every
+ * save of a non-empty default raised a fatal "Call to undefined
+ * function" before audit_log() or the device push ever ran.
+ *
+ * @param array $incoming settings_key => raw form value
+ * @return int number of recognized keys written or cleared
+ */
+function _ot_save_defaults(array $incoming): int {
+    $tunable = _ot_tunable_keys();
+    $allowedKeys = [];
+    foreach ($tunable as $meta) { $allowedKeys[$meta['settings_key']] = true; }
+    $touched = 0;
+    foreach ($incoming as $k => $v) {
+        if (!isset($allowedKeys[$k])) continue;
+        $name = 'owntracks_default_' . $k;
+        // Empty string / null = clear it; otherwise store as string
+        // (the tunable cast fn in _ot_tunable_keys() coerces on read).
+        if ($v === '' || $v === null) {
+            db_query("DELETE FROM " . db_table('settings') . " WHERE name = ?", [$name]);
+        } else {
+            db_query(
+                "INSERT INTO " . db_table('settings') . " (`name`, `value`) VALUES (?, ?)
+                 ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)",
+                [$name, (string) $v]
+            );
+        }
+        $touched++;
+    }
+    return $touched;
 }
 
 /**
@@ -540,7 +618,7 @@ if ($action === 'get_defaults' && $method === 'GET') {
     $tunable = _ot_tunable_keys();
     $out = [];
     foreach ($tunable as $cfgKey => $meta) {
-        $stored = get_setting('owntracks_default_' . $meta['settings_key'], null);
+        $stored = _ot_get_default($meta['settings_key']);
         $out[] = [
             'config_key'   => $cfgKey,
             'settings_key' => $meta['settings_key'],
@@ -565,20 +643,7 @@ if ($action === 'save_defaults' && $method === 'POST') {
     }
     $incoming = $input['settings'] ?? [];
     if (!is_array($incoming)) json_error('settings object required');
-    $tunable = _ot_tunable_keys();
-    $allowedKeys = [];
-    foreach ($tunable as $meta) { $allowedKeys[$meta['settings_key']] = true; }
-    foreach ($incoming as $k => $v) {
-        if (!isset($allowedKeys[$k])) continue;
-        $name = 'owntracks_default_' . $k;
-        // Empty string / null = clear it; otherwise store as string
-        // (get_setting handles type coercion via the tunable cast fn).
-        if ($v === '' || $v === null) {
-            db_query("DELETE FROM " . db_table('settings') . " WHERE name = ?", [$name]);
-        } else {
-            set_setting($name, (string) $v);
-        }
-    }
+    _ot_save_defaults($incoming);
     audit_log('config', 'update', 'owntracks_defaults', 0, 'Updated OwnTracks global defaults');
     $pushed = _ot_push_to_all_active((int) ($_SESSION['user_id'] ?? 0) ?: null);
     json_response(['saved' => true, 'pushed_to' => $pushed]);
@@ -799,7 +864,7 @@ if ($action === 'get_member_diagnostics' && $method === 'GET') {
     ];
 
     foreach ($tunable as $cfgKey => $meta) {
-        $adminVal      = get_setting('owntracks_default_' . $meta['settings_key'], null);
+        $adminVal      = _ot_get_default($meta['settings_key']);
         $perMemberVal  = $perMember[$meta['settings_key']] ?? null;
         $incidentVal   = $incidentActive && isset($incidentOverrides[$cfgKey])
             ? $incidentOverrides[$cfgKey] : null;
@@ -1029,8 +1094,14 @@ if ($action === 'link' && $method === 'GET') {
                 [$mid]
             );
             if (!$m || empty($m['email'])) json_error('Member has no email on file', 400);
-            $tpl = get_setting('owntracks_email_link_template',
-                "Hi {name},\n\nTap below on your phone:\n\n{owntracks_url}");
+            // B15 follow-on fix (same root cause, same file): this key is
+            // seeded into the `settings` table by
+            // sql/run_phase41_owntracks_tokens.php, so it must be read via
+            // get_variable() — get_setting() reads the separate `config`
+            // table and would never see it.
+            $tplStored = get_variable('owntracks_email_link_template');
+            $tpl = $tplStored !== false ? $tplStored
+                : "Hi {name},\n\nTap below on your phone:\n\n{owntracks_url}";
             $body = strtr($tpl, [
                 '{name}' => $m['name'] ?: ($m['username'] ?? ''),
                 '{org}'  => get_setting('site_name', 'TicketsCAD'),
@@ -1227,7 +1298,11 @@ if ($action === 'rotate' && $method === 'POST') {
     }
     $mid = (int) ($input['member_id'] ?? 0);
     if ($mid <= 0) json_error('member_id required');
-    $window = (int) get_setting('owntracks_token_dual_window_days', 7);
+    // B15 follow-on fix (same root cause, same file): seeded into
+    // `settings` by sql/run_phase41_owntracks_tokens.php — read via
+    // get_variable(), not get_setting() (which reads the `config` table).
+    $windowStored = get_variable('owntracks_token_dual_window_days');
+    $window = (int) ($windowStored !== false ? $windowStored : 7);
     try {
         $token = _mint_token($mid, $input['label'] ?? ('rotation-' . date('Y-m-d')),
                               (int) ($_SESSION['user_id'] ?? 0) ?: null, $window);

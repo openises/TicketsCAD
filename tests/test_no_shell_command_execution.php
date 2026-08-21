@@ -89,14 +89,32 @@ $allowedStringForm = [
 //     of construction. Reviewed and accepted; do not copy the pattern.
 $allowedShellInvocation = ['tools/install_fresh.php'];
 
-// ── The six files PR #10 converts (rule D) ───────────────────────────
+// ── The files PR #10 (and later follow-ups) convert (rule D) ─────────
+// Value is the list of shellFunctions names that file is DELIBERATELY still
+// permitted to reference — always because that specific call site is (a)
+// reached only behind a function_exists() guard that explains the real
+// cause instead of crashing, and (b) independently regression-tested
+// elsewhere. An empty list means the file must never reference ANY of
+// $shellFunctions (or the backtick operator) again, full stop.
 $convertedFiles = [
-    'api/health.php',
-    'inc/tts/engine.php',
-    'proxy/ZelloProxyApp.php',
-    'sql/run_migrations.php',
-    'tools/check-schema.php',
-    'tools/install_fresh.php',
+    'api/health.php'               => [],
+    'inc/tts/engine.php'           => [],
+    'proxy/ZelloProxyApp.php'      => [],
+    'sql/run_migrations.php'       => [],
+    'tools/check-schema.php'       => [],
+    'tools/install_fresh.php'      => [],
+    // openises/TicketsCAD #93 follow-up (2026-08-20): the three popen() call
+    // sites that streamed live import progress (amateur/GMRS/zip-code) are
+    // converted to runStreamingImport()'s argv-array proc_open(), the same
+    // exec()->proc_open() move PR #10 made elsewhere — so a future
+    // regression (someone reintroducing popen()) is caught the same way.
+    // extractZip()'s pre-existing, SEPARATE exec() fallback (for hosts with
+    // no PHP zip extension) is untouched by this follow-up and stays exempt
+    // here: it is reached only behind a function_exists('exec') guard, and
+    // is proven reachable-and-safe by tests/test_gh93_lookup_data_extraction.php's
+    // Test C. popen/shell_exec/system/passthru and the backtick operator
+    // remain fully forbidden in this file.
+    'tools/update-lookup-data.php' => ['exec'],
 ];
 
 /** Functions whose first argument is an argv array, for rules B and C. */
@@ -366,10 +384,10 @@ sh($shellViolations === [],
     . ($shellViolations ? "\n        " . implode("\n        ", array_unique($shellViolations)) : ''));
 
 // ── Rule D: the converted files never regain a shell-executing call ──
-foreach ($convertedFiles as $relPath) {
+foreach ($convertedFiles as $relPath => $exempt) {
     $abs = $root . '/' . $relPath;
     if (!is_file($abs)) {
-        sh(false, "{$relPath} exists (expected — it is one of the files PR #10 converts)");
+        sh(false, "{$relPath} exists (expected — it is one of the files PR #10 (or a follow-up) converts)");
         continue;
     }
     $toks  = sig_tokens((string) file_get_contents($abs));
@@ -378,12 +396,14 @@ foreach ($convertedFiles as $relPath) {
 
     for ($i = 0; $i < $n; $i++) {
         if ($toks[$i]['id'] === null && $toks[$i]['text'] === '`') {
+            if (in_array('`', $exempt, true)) continue;
             $found[] = 'backtick operator';
             continue;
         }
         if ($toks[$i]['id'] !== T_STRING) continue;
         $name = strtolower($toks[$i]['text']);
         if (!in_array($name, $shellFunctions, true)) continue;
+        if (in_array($name, $exempt, true)) continue;
         if (($toks[$i + 1]['text'] ?? '') !== '(') continue;
         $prev = $toks[$i - 1] ?? null;
         if ($prev && in_array($prev['id'], [T_OBJECT_OPERATOR, T_DOUBLE_COLON, T_FUNCTION, T_NEW], true)) continue;
@@ -405,8 +425,9 @@ $helperChecks = [
     // when the Windows uptime probe gained its PowerShell fallback. The check
     // below self-skips when a file does not declare the function, so leaving
     // the stale path here would have quietly stopped checking anything.
-    'inc/host-uptime.php'    => 'runShellCapture',
-    'tools/check-schema.php' => 'run_via_proc_open',
+    'inc/host-uptime.php'          => 'runShellCapture',
+    'tools/check-schema.php'       => 'run_via_proc_open',
+    'tools/update-lookup-data.php' => 'runStreamingImport',
 ];
 foreach ($helperChecks as $relPath => $fn) {
     $abs = $root . '/' . $relPath;

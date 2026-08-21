@@ -21,6 +21,15 @@ if (empty($_SESSION['user_id'])) {
     header('Location: login.php');
     exit;
 }
+// SPEC-STATUS.md B12 (2026-08-21) — units.php had no rbac_require_screen()
+// gate, the other missing case alongside index.php above. screen.units did
+// not exist before this change (it was referenced only inside OR-chains in
+// inc/access.php and api/stream.php via a loop variable, which is why
+// tools/rbac_permission_audit.php's literal-string scan never flagged it as
+// dead) -- seeded by sql/run_units_screen_perm.php (+ the fresh-install
+// catalogs in sql/rbac.sql and sql/run_00_rbac.php) in the same change, and
+// verified live before this gate shipped.
+rbac_require_screen('screen.units');
 require_once __DIR__ . '/inc/force-pw-change.php';
 force_pw_change_redirect();
 

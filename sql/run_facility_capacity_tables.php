@@ -11,10 +11,11 @@
  * front. DDL and seed mirror api/facility-capacity.php exactly; the
  * lazy copy there remains as a self-heal for pre-migration installs.
  *
- * NOTE: sql/facility_beds.sql ships an OLDER, divergent design
+ * NOTE: sql/facility_beds.sql used to ship an OLDER, divergent design
  * (`newui_facility_capacity` with a category VARCHAR) that nothing in
- * the API layer reads — the API's category_id/uk_fac_cat schema below
- * is the live one.
+ * the API layer read — the API's category_id/uk_fac_cat schema below is
+ * the live one. That older table was retired 2026-08-21 (SPEC-STATUS.md
+ * B19) — see sql/run_facility_capacity_legacy_table_drop.php.
  *
  * Idempotent — CREATE TABLE IF NOT EXISTS + count-guarded seed.
  */

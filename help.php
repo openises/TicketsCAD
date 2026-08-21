@@ -610,12 +610,15 @@ geocoder. If that matters for your deployment, host geocoding internally.</p>
                 'body'  => '
 <p>The <strong>Console</strong> page (navbar &gt; Console) shows every configured communications channel as a vertical <strong>channel strip</strong> &mdash; Zello channels, DMR talkgroups, Meshtastic, local chat, weather alerts, and more. Each strip has a status light (green connected / amber degraded / red down / grey unknown), the last caller and how long ago they were heard, and the controls that channel supports.</p>
 <ul>
-    <li><strong>Voice channels</strong> (Zello, DMR) &mdash; a button opens the matching radio widget for listening and push-to-talk.</li>
-    <li><strong>Text channels</strong> &mdash; a Messages drawer shows recent traffic and lets you send directly onto the channel.</li>
-    <li><strong>Feeds</strong> (weather alerts, event bus) &mdash; read-only activity drawers.</li>
+    <li><strong>Voice channels</strong> (Zello, DMR) &mdash; a button opens the matching radio widget for listening and push-to-talk, plus a <strong>Sel</strong> button, <strong>Mon</strong>/<strong>Mute</strong> toggles, and a <strong>Volume</strong> slider.</li>
+    <li><strong>Text channels</strong> &mdash; a Messages drawer shows recent traffic and lets you send directly onto the channel, plus a <strong>Sel</strong> button.</li>
+    <li><strong>Feeds</strong> (weather alerts, event bus) &mdash; read-only activity drawers, plus a <strong>Sel</strong> button.</li>
 </ul>
-<p><strong>Views:</strong> administrators can author named layouts in the <strong>Console Designer</strong> (Design Views button) &mdash; pick which channels appear, their order, colors, labels, and controls. Published views appear as tabs across the top of the console for every dispatcher; the built-in <em>All Channels</em> tab always shows everything enabled. Your last-used tab is remembered per browser.</p>
-<p>Access requires the <code>screen.console</code> permission; transmitting requires <code>action.console_tx</code>; authoring shared views requires <code>console.design</code>.</p>
+<p><strong>Select / Monitor / Mute / Volume:</strong> click <strong>Sel</strong> on a channel to mark it as the one you&rsquo;re actively working &mdash; every other voice channel then drops to a quieter background level, exactly like a commercial dispatch console. Until you select anything, nothing is de-prioritized. On voice channels, <strong>Mon</strong> (default ON) controls whether an unselected channel still plays quietly in the background at all; <strong>Mute</strong> silences it outright; <strong>Volume</strong> is a per-channel ceiling. Text channels use Select/Mute for visual prominence (highlight + auto-open feed / suppress the new-message flash) instead of a literal volume &mdash; a missed message is never silenced by another channel being selected. Check the <strong>Sim</strong> box on a TX-capable strip to add it to the simulselect paging set, then hold the <strong>Simulselect PTT</strong> button (appears above the strip bank) to transmit on every selected channel at once.</p>
+<p><strong>Views:</strong> administrators can author named <em>shared</em> layouts everyone sees, in the <strong>Console Designer</strong> (Design Views button) &mdash; pick which channels appear, their order, colors, labels, and controls. Published shared views appear as tabs for every dispatcher; the built-in <em>All Channels</em> tab always shows everything enabled. Your last-used tab is remembered per browser.</p>
+<p><strong>Personal views:</strong> any dispatcher can build their own layout too &mdash; click <strong>My Views</strong> (shown instead of Design Views if you don&rsquo;t hold the admin permission) to open the same designer scoped to your own views. Build from scratch or clone an existing shared/personal view. Mark a personal view <strong>Shared</strong> to let other operators clone it for themselves &mdash; it never becomes a tab on their console automatically.</p>
+<p>Access requires the <code>screen.console</code> permission; transmitting requires <code>action.console_tx</code>; authoring <em>shared</em> views requires <code>console.design</code>. Your own personal views need no extra permission.</p>
+<p>An <strong>AMATEUR</strong> badge on a channel strip means FCC station-ID rules apply &mdash; see the <a href="documentation/?doc=FCC-STATION-ID-COMPLIANCE" target="_blank">FCC station-ID compliance guide</a> for the radio widget&rsquo;s countdown, Monitoring ID, and End conversation controls.</p>
 '
             ],
             [
@@ -1106,22 +1109,33 @@ the old behaviour, set this to <em>Leave off the roll call</em>.</p>
                 'slug'  => 'bed-counts',
                 'title' => 'How Facility Bed Counts Update',
                 'body'  => '
-<p>Each facility has two simple counters on its detail page: <strong>Beds Available</strong> and <strong>Beds Occupied</strong>. These come from the <code>facilities.beds_a</code> and <code>facilities.beds_o</code> columns. How they change depends on the facility\'s <strong>Bed Count Updates</strong> setting on the Edit Facility page.</p>
+<p>Each facility has two simple counters on its detail page: <strong>Beds Available</strong> and <strong>Beds Occupied</strong>. These come from the <code>facilities.beds_a</code> and <code>facilities.beds_o</code> columns, and this is the number automatic mode (below) reads and writes, and the number the dispatch-facing Bed Capacity card shows. How they change depends on the facility\'s <strong>Bed Count Updates</strong> setting on the Edit Facility page.</p>
+
+<p><strong>This is a separate system from the categorized capacity board</strong> (ICU / ER / Pediatric / General, etc.) that a facility\'s own self-service portal account manages under Bed / Capacity by Category. The two do not read or write each other. For a facility using automatic mode, <code>beds_a</code>/<code>beds_o</code> above is the number that matters for dispatch routing; the categorized board is a separate, always-manual figure the facility maintains on its own for its internal use.</p>
 
 <h6>Manual mode <em>(default)</em></h6>
 <ul>
-    <li>The counters only change when a facility admin edits them on <strong>Edit Facility &gt; Capacity &amp; Status</strong>.</li>
+    <li>The counters only change when a dispatch-side admin edits them on <strong>Fac\'s &gt; Edit Facility &gt; Capacity &amp; Status</strong>.</li>
     <li>Nothing about the dispatch workflow adjusts the numbers &mdash; unit statuses, patient assignments, and incident closings all leave the counters alone.</li>
-    <li>Best for agencies where the receiving facility publishes its own bed availability out-of-band (phone call, email, dedicated hospital diversion system) and the dispatcher just mirrors it here.</li>
+    <li>Best for agencies where the receiving facility publishes its own bed availability out-of-band (phone call, email, dedicated hospital diversion system) and the dispatcher just mirrors it here, or where the facility has its own portal account and reports out-of-band by phone until it self-corrects (see below).</li>
 </ul>
 
 <h6>Automatic on unit delivery</h6>
 <ul>
     <li>When a unit assigned to this facility as its <strong>Receiving Facility</strong> transitions into a delivery status &mdash; <code>At Facility</code>, <code>At Hospital</code>, <code>Delivered</code>, <code>Patient Delivered</code>, <code>Arrived</code>, or <code>Transfer of Care</code> &mdash; the system drops <code>beds_a</code> by 1 and raises <code>beds_o</code> by 1.</li>
     <li>Fires <strong>once per assignment</strong>. Toggling the unit&apos;s status back and forth doesn&apos;t re-fire; a fresh assignment on a new incident does.</li>
-    <li>Automatic mode <strong>does not release beds</strong> on incident close. When the patient is discharged / transferred out, the facility admin adjusts <code>beds_o</code> back down manually. Dispatch doesn&apos;t know when the hospital finishes its work with the patient.</li>
-    <li>Fixed delta of 1 bed per delivery. Multi-patient runs still work &mdash; bump <code>beds_o</code> once for each additional patient after the automatic decrement fires. A future release will read patient count from the incident.</li>
-    <li>Fails soft: any automation error is logged and the status change still commits. The counters staying stuck is always fixable by editing the facility.</li>
+    <li>Fixed delta of 1 bed per delivery. Multi-patient runs still work &mdash; release (or manually bump <code>beds_o</code> back down) once for each additional patient beyond the one the automatic decrement counted.</li>
+    <li>Fails soft: any automation error is logged and the status change still commits. The counters staying stuck is always fixable by editing the facility, or by the facility releasing a bed itself (below).</li>
+    <li><strong>Automatic mode never releases a bed on its own</strong> &mdash; not on incident close, not on any timer. Dispatch has no way to know when a hospital finishes with a patient, so nothing decrements <code>beds_o</code> back down automatically. Left alone, the number is a <strong>floor, not a live figure</strong>: it only ever counts down, and an install that never corrects it will eventually show 0 available regardless of true capacity. Something has to actively release the bed &mdash; either the facility itself (if it has a portal account, next section) or a dispatch-side admin editing the facility record.</li>
+</ul>
+
+<h6>Releasing a bed (facility portal accounts)</h6>
+<ul>
+    <li>A facility with its own portal login (<strong>facility-portal.php</strong>) can release beds itself, from the <strong>Bed Count</strong> card &mdash; the same <code>beds_a</code>/<code>beds_o</code> counters described above, shown right there so the facility can see the exact number dispatch is routing against.</li>
+    <li><strong>Release Bed(s)</strong> moves N beds from Occupied back to Available &mdash; the mirror image of what the automatic decrement does on delivery. It is deliberately coarse (release however many just opened up, e.g. after a batch of discharges) rather than tied to a specific past delivery &mdash; a facility rarely knows or needs to know which historical transport a given bed corresponds to.</li>
+    <li>The release can never push <strong>Occupied</strong> below zero, and because a release only ever swaps a bed from Occupied to Available (never invents one), the facility can never inflate its own capacity beyond what was already accounted for &mdash; releasing more than are currently occupied simply releases everything that is occupied and stops there.</li>
+    <li>A facility portal account can only ever affect <strong>its own</strong> facility\'s counters &mdash; the same confinement that applies to every other action that account can take.</li>
+    <li>If a facility does <strong>not</strong> have a portal account, releasing a bed is still only a <strong>dispatch-side</strong> admin\'s job (Fac\'s &gt; Edit), done on the facility\'s behalf from a phone call or other out-of-band report &mdash; there is no self-service path for that install until a portal account exists.</li>
 </ul>
 
 <h6>Configuring a facility</h6>
@@ -1134,7 +1148,8 @@ the old behaviour, set this to <em>Leave off the roll call</em>.</p>
 
 <h6>Trail</h6>
 <ul>
-    <li>Every automatic adjustment writes an entry to the <code>facility_bed_auto_log</code> table (linked to the assignment id, responder id, and status) and to the standard audit log. You can trace exactly why the counter moved.</li>
+    <li>Every automatic adjustment writes an entry to the <code>facility_bed_auto_log</code> table (linked to the assignment id, responder id, and status) and to the standard audit log. Every facility self-release writes to the companion <code>facility_bed_release_log</code> table (who released how many, and any note) and to the standard audit log. You can trace exactly why the counter moved.</li>
+    <li>The <strong>Reports &gt; Bed Adjustments</strong> report merges both tables into one chronological timeline per facility &mdash; automatic decrements and facility self-releases, distinctly labeled, with totals for the period. A dispatch-side manual correction (editing the facility directly) does not appear as its own row in that report; it shows up as a gap between two rows, since it is a plain facility edit rather than a bed-specific event.</li>
 </ul>
 '
             ],

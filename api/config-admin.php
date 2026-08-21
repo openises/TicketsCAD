@@ -1101,6 +1101,26 @@ if ($section === 'settings') {
         // Enforcing it HERE makes the invariant hold for all ~40 handlers.
         require_once __DIR__ . '/../inc/settings-secrets.php';
 
+        // SPEC-STATUS.md B2 / CLAUDE.md standing audit-trail requirement —
+        // radio_ai_enabled is a kill switch for an FCC-regulated automated
+        // transmission feature (Claude drafts replies broadcast under the
+        // licensee's callsign). The generic "Updated N system setting(s)"
+        // audit row below already records that this key was among the ones
+        // touched, but captures neither direction (on->off vs off->on) nor
+        // the prior value, and is easy to miss in a busy audit log next to
+        // routine display/timezone saves. Capture the OLD value before the
+        // upsert loop below overwrites it, so the dedicated entry after the
+        // loop can log the actual transition, not just "it changed."
+        // db_fetch_value() is a thin wrapper over PDO's fetchColumn(), which
+        // returns `false` (not null) when the row doesn't exist yet — that's
+        // the sentinel to check for, not null.
+        $radioAiEnabledBefore = false;
+        if (array_key_exists('radio_ai_enabled', $pairs)) {
+            $radioAiEnabledBefore = db_fetch_value(
+                "SELECT `value` FROM `{$prefix}settings` WHERE `name` = 'radio_ai_enabled'"
+            );
+        }
+
         $saved = 0;
         $keptSecrets = [];
         foreach ($pairs as $key => $value) {
@@ -1136,6 +1156,29 @@ if ($section === 'settings') {
                 $value = (string) $iv;
             }
 
+            // GH#94 (2026-08-20) — backup_min_free_mb is multiplied by 1024*1024
+            // at read time (inc/backup_schedule.php's backup_min_free_bytes());
+            // the client-side <input max="1048576"> on this field
+            // (settings.php) was purely decorative, so nothing ever stopped a
+            // value far outside it from being saved. The real-world case was a
+            // BYTE figure (1073741824 = 1024^3, "1 GB expressed in bytes")
+            // pasted into this MB field, producing a ~1 petabyte reserve
+            // requirement no real disk could ever satisfy — every automatic
+            // backup was silently and permanently refused from that point on.
+            // Clamp here (rather than reject) so the rest of a multi-key
+            // settings save still goes through; backup_min_free_bytes() clamps
+            // the SAME way at read time so an install that already has a bad
+            // value self-heals with no migration needed — both guards must
+            // exist, see that function's docblock for why one alone is not
+            // enough. BACKUP_MAX_MIN_FREE_MB is the single shared ceiling.
+            if ($key === 'backup_min_free_mb') {
+                require_once __DIR__ . '/../inc/backup_schedule.php';
+                $iv = (int) $value;
+                if ($iv < 0) $iv = BACKUP_DEFAULT_MIN_FREE_MB;
+                if ($iv > BACKUP_MAX_MIN_FREE_MB) $iv = BACKUP_MAX_MIN_FREE_MB;
+                $value = (string) $iv;
+            }
+
             try {
                 // Upsert via ON DUPLICATE KEY UPDATE (requires unique index on name)
                 db_query(
@@ -1156,6 +1199,31 @@ if ($section === 'settings') {
                 // log instead of by guesswork.
                 'kept_secrets' => $keptSecrets,
             ]);
+        }
+
+        // SPEC-STATUS.md B2 — dedicated, high-severity audit row for the
+        // Radio AI kill switch specifically, only fired when the value
+        // actually flipped (not on a re-save of the same state). Uses
+        // AUDIT_HIGH — same tier this file already uses for role/permission
+        // changes — because arming this feature authorizes Claude-drafted
+        // content to reach an operator-approval queue for a licensed
+        // amateur-radio transmission; a wrong flip either direction (an
+        // accidental ON, or an emergency OFF someone needs to be able to
+        // find later) deserves to stand out from routine settings saves.
+        if ($radioAiEnabledBefore !== false && array_key_exists('radio_ai_enabled', $pairs)) {
+            $radioAiEnabledAfter = (string) $pairs['radio_ai_enabled'];
+            if ((string) $radioAiEnabledBefore !== $radioAiEnabledAfter) {
+                $turnedOn = ($radioAiEnabledAfter === '1');
+                audit_log(
+                    'config',
+                    'update',
+                    'radio_ai_enabled',
+                    null,
+                    'Radio AI listener ' . ($turnedOn ? 'ENABLED' : 'DISABLED (kill switch)'),
+                    ['before' => (string) $radioAiEnabledBefore, 'after' => $radioAiEnabledAfter],
+                    AUDIT_HIGH
+                );
+            }
         }
 
         // GH#89 — the four Chat Bridge checkboxes (chat_bridge_telegram/

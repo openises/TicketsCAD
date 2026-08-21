@@ -2,10 +2,10 @@
     "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
     "bomFormat": "CycloneDX",
     "specVersion": "1.6",
-    "serialNumber": "urn:uuid:622abc04-abb2-5f03-9436-d1010bc259b6",
-    "version": 38,
+    "serialNumber": "urn:uuid:006b3401-836e-5c9d-ae2a-af2ffd208a65",
+    "version": 40,
     "metadata": {
-        "timestamp": "2026-08-20T04:20:17Z",
+        "timestamp": "2026-08-21T17:22:15Z",
         "lifecycles": [
             {
                 "phase": "pre-build"
@@ -29,9 +29,9 @@
         ],
         "component": {
             "type": "application",
-            "bom-ref": "pkg:generic/ticketscad-newui@4.2.23",
+            "bom-ref": "pkg:generic/ticketscad-newui@4.2.24",
             "name": "TicketsCAD NewUI",
-            "version": "4.2.23",
+            "version": "4.2.24",
             "publisher": "OpenISES TicketsCAD Project",
             "description": "Computer-aided dispatch for volunteer emergency services, amateur-radio emergency communications groups, CERT teams and small public-safety agencies.",
             "licenses": [
@@ -41,7 +41,7 @@
                     }
                 }
             ],
-            "purl": "pkg:generic/ticketscad-newui@4.2.23",
+            "purl": "pkg:generic/ticketscad-newui@4.2.24",
             "externalReferences": [
                 {
                     "type": "vcs",
@@ -52,7 +52,7 @@
         "properties": [
             {
                 "name": "ticketscad:content-digest",
-                "value": "c22bb1f833128f3ec0f4c1ab8e9b7b8dec81486283dd8ef719a1b04c6dc3b791"
+                "value": "67b7df2381e0d38a28bca9925f6255e726f20603e864f5a300932c49aedb435b"
             },
             {
                 "name": "ticketscad:standard",
@@ -2535,7 +2535,7 @@
             "type": "library",
             "bom-ref": "pkg:pypi/aprslib#python-services",
             "name": "aprslib",
-            "description": "Used by: services/aprs-is/listener.py, services/aprs/aprs_listener.py, services/aprs/install.sh",
+            "description": "Used by: services/aprs/aprs_listener.py, services/aprs/install.sh",
             "scope": "required",
             "licenses": [
                 {
@@ -3010,7 +3010,7 @@
             "type": "library",
             "bom-ref": "pkg:pypi/requests#python-services",
             "name": "requests",
-            "description": "Used by: assets/js/mesh-console.js, services/aprs-is/listener.py, services/meshtastic/bridge.py, services/meshtastic/bridge_v2.py, services/meshtastic/requirements.txt",
+            "description": "Used by: assets/js/mesh-console.js, services/meshtastic/bridge.py, services/meshtastic/bridge_v2.py, services/meshtastic/requirements.txt",
             "scope": "required",
             "licenses": [
                 {
@@ -3731,7 +3731,7 @@
     ],
     "dependencies": [
         {
-            "ref": "pkg:generic/ticketscad-newui@4.2.23",
+            "ref": "pkg:generic/ticketscad-newui@4.2.24",
             "dependsOn": [
                 "pkg:github/actions/checkout@v7#build-tooling",
                 "pkg:npm/ajv-cli@5#build-tooling",

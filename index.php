@@ -29,6 +29,19 @@ if (empty($_SESSION['user_id'])) {
 require_once __DIR__ . '/inc/db-health-gate.php';
 db_health_gate();
 
+// SPEC-STATUS.md B12 (2026-08-21) — the dashboard was the one of 19
+// authenticated pages with no rbac_require_screen() gate. Auth was always
+// enforced (the redirect above) and every widget is individually
+// dash_can()-gated, so this was never an open door -- but it was
+// inconsistent with every other screen, and a role deliberately withheld
+// from screen.dashboard (e.g. a bespoke Facility-portal-style account)
+// could still load this page's chrome instead of getting the same denied.php
+// every other screen shows. screen.dashboard is already seeded to every
+// default role except Facility (sql/rbac.sql, sql/run_00_rbac.php) --
+// verified live before adding this gate, not assumed.
+require_once __DIR__ . '/inc/rbac.php';
+rbac_require_screen('screen.dashboard');
+
 require_once __DIR__ . '/inc/force-pw-change.php';
 force_pw_change_redirect();
 

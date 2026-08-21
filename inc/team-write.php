@@ -58,6 +58,23 @@ function team_upsert_internal(array $input, int $userId, ?int $existingId = null
     $nimsTypingLevel   = !empty($input['nims_typing_level']) ? (int) $input['nims_typing_level'] : 0;
     $rtltCode          = trim((string) ($input['rtlt_code'] ?? ''));
 
+    // dead_control_audit.php check (c), 2026-08-20: teams.org_id is
+    // filtered on every read (api/teams.php's own org_query_filter()
+    // call) but NEVER attempted on write — no caller ever set it, unlike
+    // facilities/responder where a default was at least computed and
+    // then dropped. Same fix shape as facility_upsert_internal()'s and
+    // responder_upsert_internal()'s org_id restoration in the same
+    // change: honor a caller-supplied org_id if present and positive,
+    // otherwise default the CREATING user's home org. Self-contained
+    // here so every caller (api/teams.php today, any future one)
+    // benefits without having to remember to pre-populate it.
+    require_once __DIR__ . '/org-scope.php';
+    ensure_org_id_column('teams');
+    $orgId = (isset($input['org_id']) && (int) $input['org_id'] > 0) ? (int) $input['org_id'] : null;
+    if ($isNew && $orgId === null) {
+        try { $orgId = org_user_home_id($userId); } catch (Exception $e) { $orgId = null; }
+    }
+
     if (!$isNew) {
         $existing = db_fetch_one(
             "SELECT `id` FROM " . db_table('teams') . " WHERE `id` = ?",
@@ -98,15 +115,15 @@ function team_upsert_internal(array $input, int $userId, ?int $existingId = null
                 "INSERT INTO " . db_table('teams') . "
                  (`team`, `sub-group`, `mission`, `ttypes_id`, `leader`, `leader_dpty`,
                   `nims_resource_type`, `nims_typing_level`, `rtlt_code`,
-                  `formed`, `by`, `from`, `on`, `created_at`)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), ?, '', NOW(), NOW())",
+                  `formed`, `by`, `from`, `on`, `created_at`, `org_id`)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), ?, '', NOW(), NOW(), ?)",
                 [
                     $name,
                     '',  // sub-group
                     $description,
                     $teamTypeId, $leaderId, $deputyId,
                     $nimsResourceType, $nimsTypingLevel, $rtltCode,
-                    $userId,
+                    $userId, $orgId,
                 ]
             );
         } catch (Exception $e) {

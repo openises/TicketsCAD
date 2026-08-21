@@ -1,10 +1,22 @@
 <?php
 /**
- * NewUI v4.0 — Console Designer (Phase 114b, slice b2)
+ * NewUI v4.0 — Console Designer (Phase 114b, slices b2 + b3)
  *
- * Admin surface for authoring the shared console views shown as tabs on
- * console.php. Three panes (console-designer.md §2):
- *   left   — view list (create / rename / delete)
+ * Authors BOTH layers of console.php's views (inc/console-views.php's
+ * docblock has the full model):
+ *   SHARED views   — admin-authored, console.design required. Unchanged
+ *                    b2 surface: the "Shared Views" panel.
+ *   PERSONAL views — Phase 114b3. Any screen.console holder gets their
+ *                    OWN "My Personal Views" panel — no console.design
+ *                    needed (Eric, 2026-08-20: personal is scoped to its
+ *                    owner and shouldn't need elevated permission).
+ *                    Optionally mark one is_shared to make it a browsable
+ *                    clone source for other operators ("Adopt a layout").
+ *
+ * Three panes (console-designer.md §2), now serving whichever view (of
+ * either layer) the caller is editing:
+ *   left   — view lists (create / rename / delete / share) — one or two
+ *            panels depending on console.design
  *   middle — canvas: the selected view's strip bank; drag to reorder,
  *            click a strip to select it
  *   right  — channel list (click to add a strip) + strip inspector
@@ -29,16 +41,22 @@ if (empty($_SESSION['user_id'])) {
 require_once __DIR__ . '/inc/force-pw-change.php';
 force_pw_change_redirect();
 
-if (!rbac_can('console.design')) {
+// Phase 114b3 — screen.console is enough to reach this page now (for the
+// caller's OWN personal views); console.design is only checked in the UI
+// for whether the SHARED-views panel appears, and enforced server-side
+// (api/console-views.php -> inc/console-views.php's console_view_can_write())
+// on every write regardless of what the client shows.
+if (!rbac_can('screen.console')) {
     http_response_code(403);
-    echo 'Forbidden — missing console.design permission';
+    echo 'Forbidden — missing screen.console permission';
     exit;
 }
 
-$user     = e($_SESSION['user']);
-$theme    = $_SESSION['day_night'] ?? 'Day';
-$bs_theme = ($theme === 'Night') ? 'dark' : 'light';
-$csrf     = csrf_token();
+$user       = e($_SESSION['user']);
+$theme      = $_SESSION['day_night'] ?? 'Day';
+$bs_theme   = ($theme === 'Night') ? 'dark' : 'light';
+$csrf       = csrf_token();
+$can_design = rbac_can('console.design');
 $active_page = 'console';
 ?>
 <!DOCTYPE html>
@@ -59,7 +77,7 @@ $active_page = 'console';
     <link rel="stylesheet" href="assets/css/console-designer.css?v=<?php echo asset_v('assets/css/console-designer.css'); ?>">
     <link rel="stylesheet" href="assets/css/mobile.css">
 </head>
-<body>
+<body data-can-design="<?php echo $can_design ? '1' : '0'; ?>">
 
 <?php include_once NEWUI_ROOT . '/inc/navbar.php'; ?>
 
@@ -80,16 +98,38 @@ $active_page = 'console';
     </div>
 
     <div class="row g-3">
-        <!-- Left: views -->
+        <!-- Left: views (b3 — shared panel admin-only, personal panel for everyone) -->
         <div class="col-lg-2">
-            <div class="card">
+            <?php if ($can_design): ?>
+            <div class="card mb-3">
                 <div class="card-header py-2 d-flex justify-content-between align-items-center">
-                    <span class="fw-semibold small">Views</span>
-                    <button class="btn btn-sm btn-outline-primary py-0 px-1" id="cdNewViewBtn" title="New view">
+                    <span class="fw-semibold small">Shared Views</span>
+                    <button class="btn btn-sm btn-outline-primary py-0 px-1" id="cdNewViewBtn" title="New shared view (console.design)">
                         <i class="bi bi-plus-lg"></i>
                     </button>
                 </div>
                 <div class="list-group list-group-flush" id="cdViewList"></div>
+            </div>
+            <?php endif; ?>
+
+            <div class="card mb-3">
+                <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                    <span class="fw-semibold small">My Personal Views</span>
+                    <button class="btn btn-sm btn-outline-primary py-0 px-1" id="cdNewPersonalViewBtn" title="New personal view — no admin permission needed">
+                        <i class="bi bi-plus-lg"></i>
+                    </button>
+                </div>
+                <div class="list-group list-group-flush" id="cdMyViewList"></div>
+                <div class="card-body py-2 border-top">
+                    <button class="btn btn-sm btn-outline-secondary w-100" id="cdCloneBtn" type="button">
+                        <i class="bi bi-copy me-1"></i>Clone an existing view&hellip;
+                    </button>
+                </div>
+            </div>
+
+            <div class="card d-none" id="cdCloneSourcesCard">
+                <div class="card-header py-2 fw-semibold small">Clone from&hellip;</div>
+                <div class="list-group list-group-flush" id="cdCloneSourceList"></div>
             </div>
         </div>
 

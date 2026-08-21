@@ -1,11 +1,22 @@
 <?php
 /**
- * Phase 114b-b2 — console views (designer) tests
+ * Phase 114b-b2 (+ b3 wiring guards) — console views (designer) tests
  *
  * Schema + DB-level behavior + wiring guards. The full HTTP flow
  * (create/publish/delete + RBAC 403s) is exercised by the authenticated
  * smoke script run at build time; these tests pin what CI can check
  * without a webserver.
+ *
+ * Phase 114b3 (2026-08-20) moved the validation/business logic these
+ * guards check out of api/console-views.php into inc/console-views.php
+ * (so it can be driven directly, without HTTP — see tests/test_console_
+ * personal_layouts.php and tests/test_console_personal_layouts_rbac.php,
+ * which are the REAL functional coverage for personal/shareable layouts
+ * and the RBAC boundary). The wiring-guard assertions below were updated
+ * to check the combined api+inc source rather than api/ alone, and to
+ * reflect that monitor/mute/volume are real controls now (only 'say'
+ * stays an honest future placeholder) — see console-designer.md's status
+ * line for the full b3 summary.
  *
  * Usage: php tests/test_console_views.php
  */
@@ -74,41 +85,76 @@ db_query("DELETE FROM `{$prefix}console_view_strips` WHERE view_id = ?", [$vid])
 db_query("DELETE FROM `{$prefix}console_views` WHERE id = ?", [$vid]);
 
 // ── API wiring guards ────────────────────────────────────────────────────
+// Phase 114b3: the validation/business logic that used to live inline in
+// api/console-views.php was extracted into inc/console-views.php so it can
+// be driven directly by tests without HTTP (see tests/test_console_
+// personal_layouts.php, which does exactly that) — the established
+// pattern this codebase uses for every admin-CRUD-UI endpoint (org-
+// routing, public-board, ics-form-types, ...). api/console-views.php is
+// now a thin HTTP dispatcher. These guards check the COMBINED content of
+// both files, since the property being proven ("this validation exists
+// somewhere in the console-views feature") doesn't care which file it
+// lives in — only test_console_personal_layouts.php's own wiring-guard
+// section cares about the SPECIFIC split (console_view_can_write() being
+// called from api/, not re-derived inline).
 $api = (string) @file_get_contents('api/console-views.php');
-t('console-views API: auth + RBAC gates (read=console, write=design) + CSRF',
+$incSrc = (string) @file_get_contents('inc/console-views.php');
+$combined = $api . "\n" . $incSrc;
+t('console-views API: auth + RBAC gates (read=console, write=design-for-shared) + CSRF',
     strpos($api, "require_once __DIR__ . '/auth.php'") !== false
     && strpos($api, "rbac_can('screen.console')") !== false
     && strpos($api, "rbac_can('console.design')") !== false
     && strpos($api, 'csrf_verify(') !== false
     && strpos($api, "ini_set('display_errors', '0')") !== false);
 t('console-views API: components validated against channel capabilities',
-    strpos($api, 'console_component_clean(') !== false
-    && strpos($api, 'console_component_allowed(') !== false
-    && strpos($api, "capabilities']") !== false);
-t('console-views API: component catalog covers Eric\'s sketch set incl. future entries',
-    strpos($api, "'label'") !== false && strpos($api, "'led'") !== false
-    && strpos($api, "'ptt'") !== false && strpos($api, "'monitor'") !== false
-    && strpos($api, "'mute'") !== false && strpos($api, "'volume'") !== false
-    && substr_count($api, "'future' => true") >= 4);
+    strpos($combined, 'console_component_clean(') !== false
+    && strpos($combined, 'console_component_allowed(') !== false
+    && strpos($combined, "capabilities']") !== false);
+t('console-views API: component catalog covers Eric\'s sketch set '
+    . '(monitor/mute/volume are REAL now, Phase 114b3 — only \'say\' stays future)',
+    strpos($incSrc, "'label'") !== false && strpos($incSrc, "'led'") !== false
+    && strpos($incSrc, "'ptt'") !== false && strpos($incSrc, "'monitor'") !== false
+    && strpos($incSrc, "'mute'") !== false && strpos($incSrc, "'volume'") !== false
+    && substr_count($incSrc, "'future' => false") >= 8
+    && substr_count($incSrc, "'future' => true") === 1);
 t('console-views API: geometry clamped (inner 12-col, outer 12-col) + colours/mode validated',
-    strpos($api, "preg_match('/^#[0-9a-fA-F]{3,8}\$/'") !== false
-    && strpos($api, "['momentary', 'latch']") !== false
-    && strpos($api, "if (\$out['x'] + \$out['w'] > 12)") !== false
-    && strpos($api, "if (\$layout['x'] + \$layout['w'] > 12)") !== false);
+    strpos($combined, "preg_match('/^#[0-9a-fA-F]{3,8}\$/'") !== false
+    && strpos($combined, "['momentary', 'latch']") !== false
+    && strpos($combined, "if (\$out['x'] + \$out['w'] > 12)") !== false
+    && strpos($combined, "if (\$layout['x'] + \$layout['w'] > 12)") !== false);
 t('console-views API: legacy flat control lists converted at read time',
-    strpos($api, 'console_components_default(') !== false
-    && strpos($api, 'is_string($decoded[0]') !== false);
+    strpos($combined, 'console_components_default(') !== false
+    && strpos($combined, 'is_string($decoded[0]') !== false);
 t('console-views API: shared-view scoping (owner_user_id IS NULL) + audit',
-    substr_count($api, 'owner_user_id IS NULL') >= 4
+    substr_count($combined, 'owner_user_id IS NULL') >= 4
     && substr_count($api, 'audit_log(') >= 4);
+t('console-views API: Phase 114b3 personal-view scoping — the RBAC boundary is a pure '
+    . 'function (console_view_can_write, driven directly by tests/test_console_personal_'
+    . 'layouts.php) rather than re-derived inline in the API dispatcher',
+    strpos($incSrc, 'function console_view_can_write(') !== false
+    && strpos($api, 'console_view_can_write(') !== false
+    && strpos($incSrc, 'function console_view_visible_as_clone_source(') !== false
+    && strpos($incSrc, 'is_shared') !== false);
 
 // ── Designer page + runtime wiring ───────────────────────────────────────
 $page = (string) @file_get_contents('console-designer.php');
-t('console-designer.php gated on console.design + gridstack + cache-busted assets',
-    strpos($page, "rbac_can('console.design')") !== false
+// Phase 114b3: the PAGE gate loosened from console.design to screen.console
+// (any operator may reach the page to build their OWN personal views —
+// Eric, 2026-08-20). console.design is still checked, but only to decide
+// whether the admin-only "Shared Views" panel renders — assert that
+// distinction precisely rather than just "the string console.design
+// appears somewhere", which would trivially still pass and hide the gate
+// having moved.
+t('console-designer.php: PAGE gate is screen.console (not console.design — '
+    . 'any operator may build a PERSONAL view), gridstack + cache-busted assets present',
+    strpos($page, "rbac_can('screen.console')") !== false
     && strpos($page, 'gridstack-all.js') !== false
     && strpos($page, "asset_v('assets/js/console-designer.js')") !== false
     && strpos($page, 'cdPalette') !== false);
+t('console-designer.php: console.design still gates whether the SHARED views panel renders',
+    strpos($page, '$can_design = rbac_can(\'console.design\')') !== false
+    && strpos($page, 'if ($can_design)') !== false
+    && strpos($page, 'cdMyViewList') !== false); // the ALWAYS-present personal panel
 $djs = (string) @file_get_contents('assets/js/console-designer.js');
 t('console-designer.js: ES5 style (no arrows/template literals/let/const)',
     !preg_match('/=>|`|\blet\s|\bconst\s/', $djs));
@@ -135,10 +181,24 @@ t('console.js: positioned renderer (abs strips + components, matching grid math)
     && strpos($cjs, 'OUTER_CELL = 20') !== false
     && strpos($cjs, 'INNER_CELL = 14') !== false
     && strpos($cjs, 'console-bank-abs') !== false);
-t('console.js: future components render disabled with tooltip, disabled channels fail soft',
+t("console.js: the ONE remaining future component ('say' — no TTS backend yet) still "
+    . 'renders disabled with an honest tooltip; disabled channels fail soft',
     strpos($cjs, 'ccp-future-rt') !== false
-    && strpos($cjs, 'Available when the audio matrix lands') !== false
+    && strpos($cjs, 'no backend yet') !== false
     && strpos($cjs, "'Channel disabled'") !== false);
+t('console.js: Phase 114b3 — monitor/mute/volume are REAL interactive controls now '
+    . '(wired to window.ConsoleAudio), not the old disabled future placeholder',
+    strpos($cjs, "comp.type === 'monitor'") !== false
+    && strpos($cjs, "comp.type === 'mute'") !== false
+    && strpos($cjs, "comp.type === 'volume'") !== false
+    && strpos($cjs, 'window.ConsoleAudio.setMon(') !== false
+    && strpos($cjs, 'window.ConsoleAudio.setMuted(') !== false
+    && strpos($cjs, 'window.ConsoleAudio.setVolume(') !== false);
+t('console.js: Select + Simulselect are universal strip chrome, present on every strip '
+    . 'in both the auto and positioned (designer) renderers',
+    strpos($cjs, 'function buildSelectChrome(') !== false
+    && strpos($cjs, 'buildSelectChrome(ch)') !== false
+    && substr_count($cjs, 'buildSelectChrome(') >= 3); // definition + renderStrip + renderPositionedStrip
 $cpage = (string) @file_get_contents('console.php');
 t('console.php: tab bar + Design Views link for console.design holders',
     strpos($cpage, 'consoleTabs') !== false

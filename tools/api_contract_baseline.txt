@@ -4,3 +4,14 @@ mqtt_topic
 radioid
 radar
 step
+# 2026-08-20 -- pre-existing (Phase 114b-b2.5, console designer MVP,
+# commit e72b6a7), unrelated to Phase 148. Only surfaced as [NEW] now
+# because api/dmr-station-id.php's new fetch() call in the SAME file
+# (assets/js/console.js) widened that file's "fetches:" endpoint list --
+# the tool attributes an unmatched property read to every endpoint the
+# whole FILE fetches from, not the nearest fetch() call, so any new fetch
+# added to a file can surface an older file's already-latent gap. The
+# real gap: assets/js/console.js:92 reads `ov.ptt_color` (a per-strip
+# override) but no PHP endpoint emits that key literally -- not
+# investigated further here, out of this phase's scope.
+ptt_color

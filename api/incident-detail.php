@@ -280,6 +280,28 @@ try {
             'u2fenr'          => $row['u2fenr'],
             'u2farr'          => $row['u2farr'],
             'comments'        => $row['comments'] ?? '',
+            // dead_control_audit.php check (c), 2026-08-20: `assigns`.
+            // start_miles/on_scene_miles/end_miles/miles are SELECTed
+            // above (line ~218-221) alongside `comments` but silently
+            // dropped here — the frontend has NOTHING to render because
+            // this endpoint never sends them. Legacy tickets/board.php
+            // (dispatch form) and tickets/rm/ajax/update_mileage.php
+            // (mobile responder screen) both wrote real per-unit
+            // odometer readings into these exact columns; no NewUI writer
+            // exists for any of them (confirmed: inc/assignment-write.php's
+            // assign_create_internal() only sets as_of/status_id/ticket_id/
+            // responder_id/user_id/dispatched). `comments`, by contrast,
+            // DOES have real frontend rendering already
+            // (assets/js/incident-detail.js ~line 698 shows it as an
+            // italic quoted line) with no writer either — the UI half of
+            // a feature exists, the write half doesn't. This is a genuine
+            // capability gap inherited from the rewrite (per-unit dispatch
+            // comment + start/on-scene/end mileage tracking), not a tool
+            // false positive — see tools/dead_control_phantom_baseline.txt's
+            // entry for the full writeup and mileage_log's own note on why
+            // it doesn't already cover this (mileage_log is a single
+            // manually-typed total, not per-leg odometer capture).
+            // Flagged for Eric to prioritize/spec; not built here.
             // Phase 95-plus (2026-06-28) — distance + freshness for the
             // sort + "stale" UI badge. distance_km null = no location
             // data for either responder or ticket. responder_updated

@@ -138,8 +138,22 @@ you until you add the equivalent. Take two minutes over
 **[WEB-SERVER-HARDENING.md](WEB-SERVER-HARDENING.md)** now that TLS is working;
 it has a copy-paste snippet for each server and a three-command test.
 
+## Want TicketsCAD to actively tell you when it ISN'T verified as HTTPS?
+
+Everything on this page gets HTTPS running. A separate setting, **Require
+HTTPS** (Settings → Login Settings), shows an admin-only banner whenever a
+connection can't be *verified* as encrypted — useful once you're behind a
+reverse proxy/CDN and want to catch a configuration drift instead of
+assuming it's still working. It never blocks anyone, on any host, at any
+verification state. See **[HTTPS-VERIFICATION.md](HTTPS-VERIFICATION.md)**
+for how that verification works and how to configure Trusted Reverse
+Proxies so it actually recognizes your setup.
+
 ## Related docs
 
+- [HTTPS-VERIFICATION.md](HTTPS-VERIFICATION.md) — how TicketsCAD tells a
+  real HTTPS connection apart from a spoofed header, and the `Require
+  HTTPS` / `Trusted Reverse Proxies` settings built on that distinction
 - [WEB-SERVER-HARDENING.md](WEB-SERVER-HARDENING.md) — stopping the server publishing directories it should not
 - [DOCKER.md](DOCKER.md) — the Docker deployment (the `:8081` port referenced above)
 - [INSTALL.md](INSTALL.md) — base install

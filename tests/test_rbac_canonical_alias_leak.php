@@ -80,6 +80,16 @@ $excludedByRole = [
           'action.manage_public_board', 'action.manage_public_board_org',
           'action.manage_ics_form_types', 'action.manage_ics_form_types_org',
           'action.manage_org_routing', 'action.manage_org_routing_org',
+          // Phase 114c (2026-08-20) — found LIVE on the dev database while
+          // building matrix-admin.php: action.manage_matrix was never added
+          // to sql/rbac.sql's Dispatcher NOT-IN exclusion list, so Dispatcher
+          // had been silently swept up by a prior re-import. Fixed in
+          // sql/rbac.sql (exclusion list + both repair DELETEs); added here
+          // so a regression is caught the same way every prior leak is.
+          // Placed BEFORE action.manage_org_relationships, not after --
+          // tests/test_org_relationships_rbac.php's own structural check
+          // expects that code to be the LAST entry in this array.
+          'action.manage_matrix',
           'action.manage_org_relationships'],
 ];
 
@@ -334,6 +344,79 @@ t('sql/run_00_rbac.php carries a direct-grant repair DELETE for Org Admin',
 t('sql/run_00_rbac.php carries the Org Admin canonical-alias repair DELETE',
     strpos($run00, "DELETE rp FROM `{\$prefix}role_permissions` rp") !== false
     && strpos($run00, 'rp.role_id = 2') !== false);
+
+// ═══════════════════════════════════════════════════════════════════════
+// Part 4 — a THIRD leak mechanism found 2026-08-20 while building GH#96:
+// sql/run_phase12_org_admin_manage_config.php was a `run_*.php` migration
+// that UNCONDITIONALLY GRANTED action.manage_config to Org Admin directly
+// -- the exact opposite of every later exclusion-list decision above.
+// sql/run_migrations.php discovers and runs `run_*.php` files in
+// lexicographic filename order (ksort()); "run_phase12_..." sorts BEFORE
+// sql/rbac.sql's own repair even gets a chance to run during a fresh
+// install's foundational-SQL-import phase, and nothing re-runs that
+// repair afterward on a straight fresh install -- so THIS script's grant
+// was never caught by either Part 1/2 mechanism's repair, on a
+// genuinely-fresh, never-re-imported install specifically. Confirmed live
+// via a real api/reports.php call: a plain, freshly-granted Org Admin
+// account (role 2 only, no other grants) resolved is_admin() === true.
+// The fix reverses this script's OWN behavior (grant -> revoke); because
+// sql/run_migrations.php tracks (script_name, script_hash), changing this
+// file's content makes it self-propagate to every existing install on the
+// next `php sql/run_migrations.php`, the same way any other content
+// change to a run_*.php migration does.
+echo "\n--- Part 4: run_phase12_org_admin_manage_config.php no longer grants (2026-08-20) ---\n\n";
+
+$phase12Src = file_get_contents(__DIR__ . '/../sql/run_phase12_org_admin_manage_config.php');
+t('run_phase12_org_admin_manage_config.php no longer INSERTs a grant for Org Admin',
+    stripos($phase12Src, 'INSERT') === false || stripos($phase12Src, 'INSERT IGNORE INTO') === false);
+t('run_phase12_org_admin_manage_config.php now issues a DELETE (revoke), not a grant',
+    stripos($phase12Src, 'DELETE') !== false);
+
+$permId12 = null;
+try {
+    $permId12 = (int) db_fetch_value("SELECT id FROM {$prefix}permissions WHERE code = 'action.manage_config'");
+    if ($permId12 > 0) {
+        // Simulate the historical bug directly: grant action.manage_config
+        // to Org Admin exactly as the OLD version of this script did.
+        db_query("INSERT IGNORE INTO {$prefix}role_permissions (role_id, permission_id) VALUES (2, ?)", [$permId12]);
+        $leakedBefore = db_fetch_one(
+            "SELECT 1 FROM {$prefix}role_permissions WHERE role_id = 2 AND permission_id = ?", [$permId12]
+        );
+        t('fixture: simulated the historical Phase-12 grant before running the fixed script', (bool) $leakedBefore);
+
+        // Run the ACTUAL, current script -- not a copy of its logic --
+        // exactly as sql/run_migrations.php would.
+        ob_start();
+        $exitOk = true;
+        try {
+            require __DIR__ . '/../sql/run_phase12_org_admin_manage_config.php';
+        } catch (Throwable $e) {
+            $exitOk = false;
+        }
+        ob_end_clean();
+        t('the real run_phase12_org_admin_manage_config.php runs without throwing', $exitOk);
+
+        $leakedAfter = db_fetch_one(
+            "SELECT 1 FROM {$prefix}role_permissions WHERE role_id = 2 AND permission_id = ?", [$permId12]
+        );
+        t('running the fixed script revokes the simulated historical grant', !$leakedAfter);
+
+        // Re-running it again must be a clean, harmless no-op.
+        ob_start();
+        try {
+            require __DIR__ . '/../sql/run_phase12_org_admin_manage_config.php';
+            $reRunOk = true;
+        } catch (Throwable $e) {
+            $reRunOk = false;
+        }
+        ob_end_clean();
+        t('the fixed script is idempotent (clean re-run, no error)', $reRunOk);
+    } else {
+        t('action.manage_config permission not present -- Part 4 skipped', true);
+    }
+} catch (Throwable $e) {
+    t('Part 4 fixture/exec without error: ' . $e->getMessage(), false);
+}
 
 echo "\n=== $pass passed, $fail failed ===\n";
 exit($fail > 0 ? 1 : 0);

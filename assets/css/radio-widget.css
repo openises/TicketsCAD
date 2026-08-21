@@ -30,6 +30,7 @@
 }
 .radio-minimized .radio-transport,
 .radio-minimized .radio-feed,
+.radio-minimized .radio-fcc-panel,
 .radio-minimized .radio-ptt-bar,
 .radio-minimized .radio-resize-handle { display: none; }
 
@@ -285,6 +286,99 @@
     color: var(--bs-secondary-color, #6c757d);
     text-align: center;
 }
+
+/* ─────────────────────────────────────────────────────────────────
+   Phase 148 — FCC 97.119 station-ID panel.
+   Slotted between the transport row and the PTT bar, same "hide when
+   irrelevant" pattern as the AI approval panel elsewhere in this file:
+   off entirely when the channel isn't amateur-enforced (id_enforce='off')
+   or no DMR channel is configured.
+   ───────────────────────────────────────────────────────────────── */
+.radio-fcc-hidden { display: none !important; }
+.radio-fcc-panel {
+    flex: 0 0 auto;
+    padding: 0.4rem 0.5rem;
+    border-top: 1px solid var(--bs-border-color, #dee2e6);
+    background: var(--bs-tertiary-bg, #f8f9fa);
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.75rem;
+}
+.radio-fcc-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.radio-fcc-row-top { justify-content: space-between; }
+.radio-fcc-callsign {
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+.radio-fcc-callsign.radio-fcc-callsign-missing {
+    color: var(--bs-danger, #dc3545);
+    font-weight: 600;
+}
+.radio-fcc-conv {
+    color: var(--bs-secondary-color, #6c757d);
+    font-size: 0.7rem;
+}
+.radio-fcc-bar {
+    flex: 1 1 auto;
+    height: 6px;
+    background: var(--bs-body-bg, #fff);
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 999px;
+    overflow: hidden;
+}
+.radio-fcc-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--bs-success, #198754);
+    transition: width 1s linear, background-color 0.3s;
+}
+.radio-fcc-bar-fill.radio-fcc-zone-yellow { background: var(--bs-warning, #ffc107); }
+.radio-fcc-bar-fill.radio-fcc-zone-red    { background: var(--bs-danger, #dc3545); }
+/* Fallback-free -- avoids a hardcoded hex the theme audit would flag as
+   "same colour in light and dark" (tools/ui_consistency_audit.php's
+   theme-color rule regex matches a hex ANYWHERE after a themed property,
+   including inside a var() fallback). --bs-secondary-color is guaranteed
+   defined by Bootstrap 5.3, same fallback-free convention already used in
+   assets/css/callboard.css / chat.css. */
+.radio-fcc-bar-fill.radio-fcc-zone-none   { background: var(--bs-secondary-color); width: 100%; }
+.radio-fcc-timer {
+    font-variant-numeric: tabular-nums;
+    color: var(--bs-secondary-color, #6c757d);
+    min-width: 3.2rem;
+    text-align: right;
+}
+.radio-fcc-row-actions { justify-content: flex-end; }
+.radio-fcc-btn { font-size: 0.72rem; padding: 0.15rem 0.5rem; }
+.radio-fcc-banner {
+    font-size: 0.75rem;
+    padding: 0.3rem 0.5rem;
+    border-radius: 0.3rem;
+    background: rgba(255, 193, 7, 0.18);
+    border: 1px solid rgba(255, 193, 7, 0.5);
+    /* Fallback-free for the same theme-audit reason as .radio-fcc-zone-none
+       above. */
+    color: var(--bs-body-color);
+}
+.radio-fcc-banner.radio-fcc-banner-red {
+    background: rgba(220, 53, 69, 0.15);
+    border-color: rgba(220, 53, 69, 0.5);
+}
+.radio-fcc-confirm {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+    padding: 0.3rem 0.5rem;
+    border-radius: 0.3rem;
+    background: var(--bs-body-bg, #fff);
+    border: 1px solid var(--bs-border-color, #dee2e6);
+}
+.radio-fcc-confirm span { flex: 1 1 auto; }
 
 .radio-resize-handle {
     position: absolute;

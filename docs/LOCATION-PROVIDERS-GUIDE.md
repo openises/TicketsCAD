@@ -155,28 +155,37 @@ row, and runs `geofence_check()` on each new position. It also purges reports ol
 **Limitations:** position is up to N minutes stale; aprs.fi free tier is rate-limited
 (~60 calls/min). Read-only — the aprs.fi API cannot transmit.
 
-#### Method 2 — APRS-IS Persistent TCP Listener (`services/aprs-is/listener.py`, systemd)
-A long-lived Python service that opens a TCP socket to an APRS-IS tier-2 server and
-parses every beacon within seconds of receiving it. **This is implemented**, not a
-future enhancement — see `docs/APRS-LISTENER-SETUP.md` for the full install.
+#### Method 2 — APRS-IS Persistent TCP Listener (`services/aprs/aprs_listener.py`, systemd)
+A long-lived Python service that opens a TCP socket to an APRS-IS server, logs in with
+the install's own licensed callsign + passcode, and parses every beacon within seconds
+of receiving it. **This is implemented**, not a future enhancement — see
+`docs/APRS-LISTENER-SETUP.md` for the full install.
 
 ```
-Ham Radios ──RF──> APRS-IS Network ──TCP socket──> Python Listener (systemd) ──HTTP──> TicketsCAD API
+Ham Radios ──RF──> APRS-IS Network ──TCP socket──> Python Listener (systemd) ──direct SQL──> location_reports
 ```
 
 **Setup (summary; full steps in `docs/APRS-LISTENER-SETUP.md`):**
-1. `pip install aprslib requests` in a venv.
-2. Create `listener.ini`: APRS-IS `server`/`port` (e.g. `noam.aprs2.net:14580`),
-   `callsign`, `passcode` (`-1` for receive-only), and a **server-side filter**
-   (e.g. `r/44.97/-93.27/50` for a 50 km radius, or `b/W0AM/KC0GHQ-9` for a buddy list —
-   see [javAPRSFilter](http://www.aprs-is.net/javAPRSFilter.aspx)).
-3. Install the systemd unit (`services/aprs-is/aprs-is.service.example`) and
-   `systemctl enable --now`.
+1. **Config → APRS Configuration → Station Radio** (`settings.php#panel-aprs-config`):
+   accept the FCC Part 97 license attestation, enter the station callsign, click
+   **Compute passcode**. Server/port default to `rotate.aprs2.net:14580`.
+2. Install: `sudo bash services/aprs/install.sh` — installs the Python deps
+   (`aprslib`, `mysql-connector-python`), generates the DB-credentials config file, and
+   starts the `ticketscad-aprs-listener.service` systemd unit. Idempotent; also run
+   automatically by `tools/deploy.sh`.
 
-**How it works:** auto-reconnects with exponential backoff, reports listener health to
-`/api/service-uptime.php` every 60 s, parses positions with `aprslib`, and POSTs each to
-`/api/location.php`. Filter width drives CPU — narrow filters (buddy lists) are cheaper
-than wide-area radius filters.
+**How it works:** auto-reconnects with exponential backoff, reads callsign/passcode/
+server/port/filter from the `settings` table on each connect, parses positions and
+addressed messages with `aprslib`, and writes directly to the database
+(`location_reports` for positions, `chat_messages` for addressed messages — no HTTP
+round-trip, so it has no session/RBAC to satisfy). Filter width drives CPU — narrow
+filters (buddy lists) are cheaper than wide-area radius filters.
+
+> An earlier listener at `services/aprs-is/listener.py` (2026-06-13) was retired
+> 2026-08-21 — it POSTed to `/api/location.php?action=report` with only a CSRF token,
+> and that endpoint requires an authenticated session and dispatcher/admin RBAC, so it
+> could never actually authenticate. It never ran anywhere; this Method 2 listener is
+> the one that has always worked.
 
 > **Known wiring gap (2026-06-26):** the listener POSTs `action=report`, which the API
 > currently gates behind a **CSRF token + dispatcher/admin RBAC** — a headless daemon

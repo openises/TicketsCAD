@@ -262,7 +262,7 @@ commits to re-checking:
 | TOTP secret encryption | AES-256-GCM | 256-bit | **Current** — approved through 2030 and beyond under SP 800-131A |
 | Field encryption | RSA-OAEP + AES-256-GCM | RSA-2048 / AES-256 | **Current** — RSA-2048 is acceptable through 2030 per SP 800-131A Table 2; AES-256 has no sunset date |
 | SBOM Author Signature | ECDSA P-256, SHA-256 | 256-bit (~128-bit security) | **Current** — approved under FIPS 186-5 |
-| TLS | operator-configured | operator-configured | **Not verified by this document** — TLS termination happens at the web server/proxy layer, outside TicketsCAD's control. See the CIS IIS Benchmark §6.7 gap below for the IIS-specific piece of this. |
+| TLS | operator-configured | operator-configured | **Not verified by this document** — TLS termination happens at the web server/proxy layer, outside TicketsCAD's control. See the CIS IIS Benchmark §6.7 gap below for the IIS-specific piece of this. As of 2026-08-2x TicketsCAD can *report*, per-request, whether the last hop it can see is verified as TLS (`inc/https.php`'s `is_https_verified()`, gated against an admin-configured Trusted Reverse Proxies allow-list) and surface that via an optional `Require HTTPS` admin banner — see `docs/HTTPS-VERIFICATION.md`. This is detection and disclosure only, never enforcement: it cannot terminate, redirect, or refuse a connection, and it cannot see past the last hop it directly talks to (e.g. a CDN's own SSL mode on its connection further upstream remains entirely outside TicketsCAD's visibility). |
 
 **Nothing here is due for mandatory rotation on cryptographic-currency grounds
 alone.** RSA-2048's NIST-approved window runs through 2030; when that changes,

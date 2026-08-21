@@ -11,6 +11,7 @@
 #   3d. tools/ui_consistency_audit.php           (new UI ↔ the product's conventions)
 #   3e. tools/rbac_permission_audit.php          (rbac_can() code ↔ real permissions row)
 #   3f. tools/dead_control_audit.php             (a control/column ↔ anything that reads it)
+#   3g. tools/rbac_exclusion_leak_audit.php      (admin-only exclusion list ↔ real role grants)
 #   4. tools/gen_schema_manifest.php --check     (manifest ↔ what the code writes)
 #   5. tools/generate-sbom.php --check/--verify  (SBOM ↔ dependencies + signature)
 #
@@ -152,6 +153,30 @@ if [ -f tools/dead_control_audit.php ]; then
         echo "⚠ dead-control audit's column check skipped (database unreachable) — CI will run it"
     elif [ $CODE -ne 0 ]; then
         echo "✗ dead-control audit found a NEW dead setting/column:"
+        echo "$OUT" | tail -20
+        FAILED=1
+    fi
+fi
+
+# ── 3g. RBAC exclusion-list privilege-leak audit (needs DB; warn-and-pass
+#      if unreachable) ────────────────────────────────────────────────────
+# sql/rbac.sql / sql/run_00_rbac.php grant a role "everything except" a
+# literal NOT-IN list of admin-only codes. That shape has leaked an
+# excluded permission down to Org Admin/Dispatcher four times (direct
+# grant predating the exclusion, a canonical-alias re-grant, and a
+# separate migration re-granting it outright) — each caught by a human
+# noticing, one at a time. This audit derives the exclusion lists
+# directly from the two seed files (generic over any role, not a hand-
+# maintained code list) and checks the live database, a cross-file drift
+# check between the two files, and a high-precision scan for a NEW
+# migration literally granting an excluded code.
+if [ -f tools/rbac_exclusion_leak_audit.php ]; then
+    OUT="$("$PHP" tools/rbac_exclusion_leak_audit.php 2>&1)"
+    CODE=$?
+    if echo "$OUT" | grep -qi "connection failed\|Access denied\|Unknown database"; then
+        echo "⚠ RBAC exclusion-leak audit skipped (database unreachable) — CI will run it"
+    elif [ $CODE -ne 0 ]; then
+        echo "✗ RBAC exclusion-leak audit found an admin-only permission reachable by a lower role:"
         echo "$OUT" | tail -20
         FAILED=1
     fi

@@ -102,6 +102,46 @@ function safe_fetch_value_rpt($sql, $params = []) {
     }
 }
 
+// GH#96 (2026-08-20) — Mileage Log report's Driver/Organization filter
+// option lists. A dedicated GET branch (not part of the $valid_reports
+// switch below) because these are FILTER METADATA, not a report itself --
+// same reason api/responders.php/api/members.php exist as their own
+// endpoints for the Vehicle/Member filters rather than being folded into
+// this file. Gated on $_canAggregate (the same permission the mileage
+// report itself needs for its unfiltered/aggregate view) since it exposes
+// driver names scoped to the caller's visible orgs, not for anonymous use.
+if (($_GET['list_filters'] ?? '') === 'mileage') {
+    if (!$_canAggregate) {
+        ini_set('display_errors', $prevDisplay);
+        json_error('Requires the "Run Aggregate Reports" permission', 403);
+    }
+    [$mlOrgFrag, $mlOrgVars] = org_mileage_query_filter();
+    $mlDrivers = safe_fetch_all_rpt(
+        "SELECT DISTINCT u.id,
+                COALESCE(NULLIF(TRIM(CONCAT(u.name_f, ' ', u.name_l)), ''), u.`user`) AS name
+         FROM `{$prefix}mileage_log` ml
+         JOIN `{$prefix}user` u ON ml.user_id = u.id
+         WHERE 1=1{$mlOrgFrag}
+         ORDER BY name",
+        $mlOrgVars
+    );
+    $mlOrgs = [];
+    $mlVisible = org_visible_ids();
+    if ($mlVisible === null) {
+        $mlOrgs = safe_fetch_all_rpt(
+            "SELECT id, name FROM `{$prefix}organizations` ORDER BY sort_order, name"
+        );
+    } elseif (!empty($mlVisible)) {
+        $mlPh = implode(',', array_fill(0, count($mlVisible), '?'));
+        $mlOrgs = safe_fetch_all_rpt(
+            "SELECT id, name FROM `{$prefix}organizations` WHERE id IN ({$mlPh}) ORDER BY sort_order, name",
+            array_values(array_map('intval', $mlVisible))
+        );
+    }
+    ini_set('display_errors', $prevDisplay);
+    json_response(['drivers' => $mlDrivers, 'organizations' => $mlOrgs]);
+}
+
 // ── Parse parameters ──────────────────────────────────────────────────────────
 
 $report       = $_GET['report'] ?? 'incident_report';
@@ -116,6 +156,16 @@ $responder_id = max(0, (int) ($_GET['responder_id'] ?? 0));
 // table.
 $member_id = max(0, (int) ($_GET['member_id'] ?? 0));
 
+// GH#96 — Mileage Log report filters: Driver (mileage_log.user_id -- a
+// LOGIN account, distinct from `member`/`responder`) and Organization
+// (mileage_log.org_id, a direct column -- see sql/run_gh96_mileage_log_org_id.php).
+$driver_id      = max(0, (int) ($_GET['driver_id'] ?? 0));
+$mileage_org_id = max(0, (int) ($_GET['org_id'] ?? 0));
+
+// GH#102 — Facility Bed Adjustments report's own Facility filter, distinct
+// from responder_id/incident_id above (those scope different tables).
+$bed_facility_id = max(0, (int) ($_GET['facility_id'] ?? 0));
+
 // GH#51 — accept the dispatcher's own case number, not the internal id.
 // incident_number is what the new UI sends; incident_id is kept for old
 // bookmarks/links and resolved the same way (a raw numeric id still
@@ -126,7 +176,21 @@ $incident_id    = $incident_input !== '' ? incnum_resolve_input($incident_input)
 
 $valid_reports = [
     'unit_log', 'dispatch_log', 'incident_summary', 'incident_report',
-    'facility_log', 'after_action', 'notes_log',
+    'facility_log',
+    // GH#96 — trip-log/utilization report over mileage_log (org, vehicle,
+    // driver, incident-link, odometer, miles, notes). Report-group sibling
+    // of Unit Activity Log/Facility Log, not Personnel -- mileage_log's
+    // keys (responder_id/vehicle, ticket_id/incident, user_id/driver)
+    // match this group's shape.
+    'mileage_report',
+    // GH#102 — merged timeline over facility_bed_auto_log (automatic
+    // decrements) + facility_bed_release_log (a facility's own
+    // self-release, GH#102's new inc/facility-bed-release.php) so an
+    // operator can tell "who moved this facility's bed count and why"
+    // without SSH access to tools/bed_auto_diagnose.php. Report-group
+    // sibling of Facility Log / Mileage Log.
+    'facility_bed_adjustments',
+    'after_action', 'notes_log',
     // GH#64 — response/scene/transport interval reporting over the assigns
     // milestones (dispatched/responding/on_scene/u2fenr/u2farr/clear).
     'interval_report',
@@ -163,6 +227,10 @@ if ($responder_id > 0 && !user_can_access_entity('responder', $responder_id)) {
 if ($member_id > 0 && !user_can_access_entity('member', $member_id)) {
     ini_set('display_errors', $prevDisplay);
     json_error('Member not found', 404);
+}
+if ($bed_facility_id > 0 && !user_can_access_entity('facility', $bed_facility_id)) {
+    ini_set('display_errors', $prevDisplay);
+    json_error('Facility not found', 404);
 }
 
 // A single extra WHERE fragment every Personnel report query appends right
@@ -278,6 +346,16 @@ $severity_breakdown = [];
 // established just above.
 $interval_by_type = [];
 $interval_by_unit = [];
+// GH#96 — same "own top-level key" treatment as interval_by_type/
+// interval_by_unit above, for the same reason. Only ever populated by the
+// 'mileage_report' case below, computed by PHP-accumulating over the SAME
+// already-fetched, already-filtered rows that build columns/rows -- not a
+// second SQL query -- so the breakdowns always reflect exactly the
+// filters currently applied, matching interval_report's precedent
+// exactly (not incident_summary's disposition_breakdown, which IS a
+// second query).
+$mileage_by_org  = [];
+$mileage_by_unit = [];
 // Eric, 2026-08-13 (GH#51 follow-up + drill-down requests) — every report
 // that lists incidents/units/facilities/members/teams should let a user
 // click through to that record's real page. rows[] is a plain positional
@@ -980,6 +1058,350 @@ switch ($report) {
         ];
         break;
 
+    // ── MILEAGE LOG (GH#96) ──────────────────────────────────────────────────
+    // A neutral trip-log/utilization report over mileage_log -- org,
+    // vehicle, driver, incident-link, odometer, miles, notes. Deliberately
+    // NOT billing-flavored (no rate tables, no invoice/payment status, no
+    // IRS-mileage-rate dollar conversion) -- see the GH#96 design synthesis
+    // (multi-persona review: fire chief / ARES volunteer / patient-transport
+    // coordinator / campus security / sysadmin) for why every persona who
+    // had an opinion on billing scaffolding rejected building it here,
+    // including the one persona who actually invoices (she owns separate
+    // accounting software and doesn't want this to become a second system
+    // of record). docs/NEWUI-USER-GUIDE.md documents the report for admins.
+    case 'mileage_report':
+        $report_title = 'Mileage Log';
+        $columns = ['Organization', 'Vehicle', 'Driver', 'Incident #',
+                    'Started', 'Ended', 'Start Odo', 'End Odo', 'Miles', 'Notes'];
+
+        // Matches on started_at only (same convention dispatch_log uses on
+        // a.dispatched) -- an OPEN trip (ended_at IS NULL) is included as
+        // long as it started in the period; miles/end_odo render blank for
+        // those, which is legitimate operational state, not an error.
+        $where_parts = ["`ml`.`started_at` BETWEEN ? AND ?"];
+        $params = [$date_start_sql, $date_end_sql];
+
+        if ($responder_id > 0) {
+            $where_parts[] = "`ml`.`responder_id` = ?";
+            $params[] = $responder_id;
+        }
+        if ($driver_id > 0) {
+            $where_parts[] = "`ml`.`user_id` = ?";
+            $params[] = $driver_id;
+        }
+        // Organization filter — only honored when the requested org is
+        // within the caller's own visibility (or the caller is Super
+        // Admin); an unauthorized org_id is silently ignored rather than
+        // erroring, matching this codebase's standing graceful-degradation
+        // convention for filters.
+        $mileageOrgAuthorized = false;
+        if ($mileage_org_id > 0) {
+            if (is_admin()) {
+                $mileageOrgAuthorized = true;
+            } else {
+                $mlVisibleForFilter = org_visible_ids();
+                if ($mlVisibleForFilter === null) {
+                    $mileageOrgAuthorized = true;
+                } elseif (in_array($mileage_org_id, array_map('intval', $mlVisibleForFilter), true)) {
+                    $mileageOrgAuthorized = true;
+                }
+            }
+        }
+        if ($mileageOrgAuthorized) {
+            $where_parts[] = "`ml`.`org_id` = ?";
+            $params[] = $mileage_org_id;
+        }
+
+        $where = implode(' AND ', $where_parts);
+        // GH#96 — deliberately org_mileage_query_filter(), NOT
+        // org_ticket_query_filter(): org_id is a direct attribute of the
+        // trip/vehicle itself, not a ticket-visibility question, so
+        // cross-org ticket-sharing/relationship semantics don't apply here.
+        [$mlScopeFrag, $mlScopeVars] = org_mileage_query_filter();
+        $where .= $mlScopeFrag;
+        $params = array_merge($params, $mlScopeVars);
+
+        // Before writing the driver-name JOIN, confirmed via SHOW COLUMNS
+        // that the `user` table's display-name columns are name_f/name_l
+        // (not first_name/last_name) — same COALESCE(NULLIF(CONCAT(...)))
+        // pattern this file already uses for `performed_by_name` (the
+        // after_action case's action-log author resolution). Driver is
+        // `user`, not `member` — never reuse the Personnel "Member"
+        // selector's value against mileage_log.user_id (member.id and
+        // user.id are not interchangeable in this schema; see the
+        // responder.member_id/member.responder_id reversed-FK pitfall).
+        $data = safe_fetch_all_rpt(
+            "SELECT
+                `ml`.`id`,
+                `ml`.`org_id`, COALESCE(`o`.`name`, 'Unattributed') AS `org_label`,
+                `ml`.`responder_id`, `r`.`name` AS `vehicle_name`, `r`.`handle`,
+                `ml`.`user_id`,
+                COALESCE(NULLIF(TRIM(CONCAT(`u`.`name_f`, ' ', `u`.`name_l`)), ''), `u`.`user`) AS `driver_name`,
+                `ml`.`ticket_id`, `t`.`incident_number`,
+                `ml`.`started_at`, `ml`.`ended_at`,
+                `ml`.`start_odo`, `ml`.`end_odo`, `ml`.`miles`, `ml`.`notes`
+             FROM `{$prefix}mileage_log` `ml`
+             LEFT JOIN `{$prefix}organizations` `o` ON `ml`.`org_id` = `o`.`id`
+             LEFT JOIN `{$prefix}responder` `r` ON `ml`.`responder_id` = `r`.`id`
+             LEFT JOIN `{$prefix}user` `u` ON `ml`.`user_id` = `u`.`id`
+             LEFT JOIN `{$prefix}ticket` `t` ON `ml`.`ticket_id` = `t`.`id`
+             WHERE {$where}
+             ORDER BY `org_label`, `vehicle_name`, `ml`.`started_at` ASC",
+            $params
+        );
+
+        $unit_link_cols[]     = 1;
+        $incident_link_cols[] = 3;
+
+        $mileageByOrgAcc  = [];
+        $mileageByUnitAcc = [];
+        $totalMiles         = 0.0;
+        $completedTripCount = 0;
+        $openTripCount       = 0;
+        $unattributedCount   = 0;
+
+        foreach ($data as $row) {
+            $vehicleLabel = trim((string) ($row['handle'] ?: $row['vehicle_name'])) ?: ('unit #' . (int) $row['responder_id']);
+            $incidentCell = '—';
+            if (!empty($row['ticket_id'])) {
+                $incidentCell = !empty($row['incident_number'])
+                    ? $row['incident_number']
+                    : ('#' . $row['ticket_id']);
+            }
+            $milesVal = $row['miles'] !== null ? (float) $row['miles'] : null;
+            // "Open" means no end reading yet -- keyed on end_odo, NOT
+            // ended_at. A status-extra-data mileage entry (the un_status
+            // extra_data_type='mileage' prompt, any target) is captured as
+            // ONE instant reading -- inc/responder-write.php's
+            // _phase95_record_mileage_log() sets start_odo=0/end_odo=$miles
+            // together but never touches ended_at at all, since there is no
+            // discrete "stop" event for that entry shape (unlike the mobile
+            // app's two-phase start_mileage/stop_mileage trip tracker,
+            // which DOES set ended_at on stop). Keying "open" on ended_at
+            // would misclassify every such entry as perpetually open even
+            // though it carries a complete odometer delta and a real miles
+            // value -- confirmed live (your-server.example.com) via a real
+            // status-change mileage entry rendering Miles=42 correctly
+            // while showing as "open" until this fix.
+            $isOpen   = $row['end_odo'] === null;
+
+            $rows[] = [
+                $row['org_label'] ?? 'Unattributed',
+                $vehicleLabel,
+                $row['driver_name'] ?? '',
+                $incidentCell,
+                $row['started_at'] ?? '',
+                $row['ended_at'] ?? '',
+                $row['start_odo'] !== null ? $row['start_odo'] : '',
+                $row['end_odo'] !== null ? $row['end_odo'] : '',
+                $milesVal !== null ? $milesVal : '',
+                $row['notes'] ?? '',
+            ];
+            $row_responder_ids[] = (int) ($row['responder_id'] ?? 0);
+            $row_ticket_ids[]    = (int) ($row['ticket_id'] ?? 0);
+
+            if ($isOpen) {
+                $openTripCount++;
+            } elseif ($row['start_odo'] !== null && $row['end_odo'] !== null) {
+                $completedTripCount++;
+            }
+            if (empty($row['org_id'])) { $unattributedCount++; }
+            if ($milesVal !== null) { $totalMiles += $milesVal; }
+
+            $orgKey = (int) ($row['org_id'] ?? 0);
+            if (!isset($mileageByOrgAcc[$orgKey])) {
+                $mileageByOrgAcc[$orgKey] = ['id' => $orgKey, 'label' => $row['org_label'] ?? 'Unattributed',
+                                              'trip_count' => 0, 'total_miles' => 0.0];
+            }
+            $mileageByOrgAcc[$orgKey]['trip_count']++;
+            if ($milesVal !== null) { $mileageByOrgAcc[$orgKey]['total_miles'] += $milesVal; }
+
+            $unitKey = (int) ($row['responder_id'] ?? 0);
+            if (!isset($mileageByUnitAcc[$unitKey])) {
+                $mileageByUnitAcc[$unitKey] = ['id' => $unitKey, 'label' => $vehicleLabel,
+                                                'trip_count' => 0, 'total_miles' => 0.0, 'last_logged' => null];
+            }
+            $mileageByUnitAcc[$unitKey]['trip_count']++;
+            if ($milesVal !== null) { $mileageByUnitAcc[$unitKey]['total_miles'] += $milesVal; }
+            $startedAt = (string) ($row['started_at'] ?? '');
+            if ($startedAt !== '' && ($mileageByUnitAcc[$unitKey]['last_logged'] === null
+                    || $startedAt > $mileageByUnitAcc[$unitKey]['last_logged'])) {
+                $mileageByUnitAcc[$unitKey]['last_logged'] = $startedAt;
+            }
+        }
+
+        foreach ($mileageByOrgAcc as $orgAgg) {
+            $orgAgg['total_miles'] = round($orgAgg['total_miles'], 2);
+            $mileage_by_org[] = $orgAgg;
+        }
+        usort($mileage_by_org, fn($a, $b) => $b['total_miles'] <=> $a['total_miles']);
+
+        foreach ($mileageByUnitAcc as $unitAgg) {
+            $unitAgg['total_miles'] = round($unitAgg['total_miles'], 2);
+            $mileage_by_unit[] = $unitAgg;
+        }
+        usort($mileage_by_unit, fn($a, $b) => $b['total_miles'] <=> $a['total_miles']);
+
+        $summary = [
+            'report_title'            => 'Mileage Log',
+            'period_label'            => $period_label,
+            'trip_count'              => count($data),
+            'total_miles'             => round($totalMiles, 2),
+            'completed_trip_count'    => $completedTripCount,
+            'open_trip_count'         => $openTripCount,
+            'unattributed_trip_count' => $unattributedCount,
+        ];
+        break;
+
+    // ── FACILITY BED ADJUSTMENTS (GH#102) ───────────────────────────────────
+    // A merged, chronological timeline over the two independent bed-count
+    // audit tables: facility_bed_auto_log (inc/bed_auto.php's automatic
+    // decrement on delivery) and facility_bed_release_log (a facility's
+    // own self-release via the facility portal, inc/facility-bed-release.php
+    // -- GH#102's fix for the reported one-way ratchet). Neither table is
+    // written by a dispatcher's manual "Fac's > Edit" correction -- that
+    // path only writes facility_notes + the standard audit log (see
+    // api/facility-action.php's `beds` action), so a manual correction
+    // shows up here as an unexplained gap between two rows rather than a
+    // third row type; that gap is itself the signal an operator needs to
+    // reconcile drift, per the reporter's own framing ("no report... would
+    // let anyone reconstruct it after the fact").
+    //
+    // Two separate queries (the tables have different shapes -- one keys
+    // off an assignment/status change, the other off a free-form facility
+    // action) merged and re-sorted in PHP rather than a SQL UNION, matching
+    // this file's own established pattern for cross-shape merges. Newest
+    // first -- this is an audit/QA report ("who moved this number and
+    // why"), not a chronological trip log like mileage_report.
+    case 'facility_bed_adjustments':
+        $report_title = 'Facility Bed Adjustments';
+        $columns = ['Facility', 'When', 'Source', 'Available Δ', 'Occupied Δ', 'Actor', 'Detail'];
+
+        $bedWhereAuto = ["`bal`.`applied_at` BETWEEN ? AND ?"];
+        $bedParamsAuto = [$date_start_sql, $date_end_sql];
+        $bedWhereRel = ["`brl`.`applied_at` BETWEEN ? AND ?"];
+        $bedParamsRel = [$date_start_sql, $date_end_sql];
+        if ($bed_facility_id > 0) {
+            $bedWhereAuto[] = "`bal`.`facility_id` = ?";
+            $bedParamsAuto[] = $bed_facility_id;
+            $bedWhereRel[] = "`brl`.`facility_id` = ?";
+            $bedParamsRel[] = $bed_facility_id;
+        }
+
+        $autoRows = safe_fetch_all_rpt(
+            "SELECT `bal`.`facility_id`, `f`.`name` AS `facility_name`,
+                    `bal`.`applied_at`, `bal`.`delta_a`, `bal`.`delta_o`,
+                    `bal`.`ticket_id`, `t`.`incident_number`,
+                    `bal`.`responder_id`, `r`.`name` AS `unit_name`,
+                    `bal`.`status_val`,
+                    COALESCE(NULLIF(TRIM(CONCAT(`u`.`name_f`, ' ', `u`.`name_l`)), ''), `u`.`user`) AS `actor_name`
+             FROM `{$prefix}facility_bed_auto_log` `bal`
+             LEFT JOIN `{$prefix}facilities` `f` ON `bal`.`facility_id` = `f`.`id`
+             LEFT JOIN `{$prefix}ticket` `t` ON `bal`.`ticket_id` = `t`.`id`
+             LEFT JOIN `{$prefix}responder` `r` ON `bal`.`responder_id` = `r`.`id`
+             LEFT JOIN `{$prefix}user` `u` ON `bal`.`applied_by` = `u`.`id`
+             WHERE " . implode(' AND ', $bedWhereAuto),
+            $bedParamsAuto
+        );
+
+        $releaseRows = safe_fetch_all_rpt(
+            "SELECT `brl`.`facility_id`, `f`.`name` AS `facility_name`,
+                    `brl`.`applied_at`, `brl`.`delta_a`, `brl`.`delta_o`,
+                    `brl`.`note`, `brl`.`released_by`, `brl`.`released_by_name`
+             FROM `{$prefix}facility_bed_release_log` `brl`
+             LEFT JOIN `{$prefix}facilities` `f` ON `brl`.`facility_id` = `f`.`id`
+             WHERE " . implode(' AND ', $bedWhereRel),
+            $bedParamsRel
+        );
+
+        $merged = [];
+        foreach ($autoRows as $row) {
+            $merged[] = [
+                'applied_at'   => $row['applied_at'] ?? '',
+                'facility_id'  => (int) ($row['facility_id'] ?? 0),
+                'facility'     => $row['facility_name'] ?? ('facility #' . ($row['facility_id'] ?? 0)),
+                'source'       => 'Automatic (delivery)',
+                'delta_a'      => (int) ($row['delta_a'] ?? 0),
+                'delta_o'      => (int) ($row['delta_o'] ?? 0),
+                'actor'        => trim((string) ($row['actor_name'] ?? '')) ?: 'system',
+                'detail'       => trim(
+                    ($row['unit_name'] ? ('Unit ' . $row['unit_name']) : 'Unit')
+                    . ($row['status_val'] ? (' → ' . $row['status_val']) : '')
+                ),
+                'ticket_id'    => (int) ($row['ticket_id'] ?? 0),
+                'incident_num' => $row['incident_number'] ?? null,
+                'responder_id' => (int) ($row['responder_id'] ?? 0),
+            ];
+        }
+        foreach ($releaseRows as $row) {
+            $merged[] = [
+                'applied_at'   => $row['applied_at'] ?? '',
+                'facility_id'  => (int) ($row['facility_id'] ?? 0),
+                'facility'     => $row['facility_name'] ?? ('facility #' . ($row['facility_id'] ?? 0)),
+                'source'       => 'Facility self-release',
+                'delta_a'      => (int) ($row['delta_a'] ?? 0),
+                'delta_o'      => (int) ($row['delta_o'] ?? 0),
+                // released_by_name is the denormalized display name at
+                // the moment of release; fall back to the real, permanent
+                // released_by user id if the name ever ends up blank
+                // (e.g. a legacy row from before this column existed) so
+                // the actor is never silently unattributed.
+                'actor'        => trim((string) ($row['released_by_name'] ?? ''))
+                    ?: (((int) ($row['released_by'] ?? 0) > 0) ? ('user #' . (int) $row['released_by']) : 'facility account'),
+                'detail'       => trim((string) ($row['note'] ?? '')),
+                'ticket_id'    => 0,
+                'incident_num' => null,
+                'responder_id' => 0,
+            ];
+        }
+
+        usort($merged, function ($a, $b) {
+            return strcmp((string) $b['applied_at'], (string) $a['applied_at']); // newest first
+        });
+
+        // Facility (col 0) drill-down only. The incident number, when
+        // present, is folded into the free-text Detail column below rather
+        // than given its own linked column -- it only applies to
+        // auto-decrement rows, and this report's job is "what moved this
+        // facility's counter", not a second incident-drilldown surface.
+        $facility_link_cols[] = 0;
+
+        $autoCount = 0;
+        $releaseCount = 0;
+        $bedsReleasedTotal = 0;
+        foreach ($merged as $m) {
+            $incidentCell = '—';
+            if ($m['ticket_id'] > 0) {
+                $incidentCell = !empty($m['incident_num']) ? $m['incident_num'] : ('#' . $m['ticket_id']);
+            }
+            $rows[] = [
+                $m['facility'],
+                $m['applied_at'],
+                $m['source'],
+                ($m['delta_a'] > 0 ? '+' : '') . $m['delta_a'],
+                ($m['delta_o'] > 0 ? '+' : '') . $m['delta_o'],
+                $m['actor'],
+                $m['detail'] . ($m['ticket_id'] > 0 ? (' (' . $incidentCell . ')') : ''),
+            ];
+            $row_facility_ids[] = $m['facility_id'];
+            if ($m['source'] === 'Automatic (delivery)') {
+                $autoCount++;
+            } else {
+                $releaseCount++;
+                $bedsReleasedTotal += max(0, $m['delta_a']);
+            }
+        }
+
+        $summary = [
+            'report_title'         => 'Facility Bed Adjustments',
+            'period_label'         => $period_label,
+            'adjustment_count'     => count($merged),
+            'auto_decrement_count' => $autoCount,
+            'self_release_count'   => $releaseCount,
+            'beds_released_total'  => $bedsReleasedTotal,
+        ];
+        break;
+
     // ── NOTES LOG (GH #81) ─────────────────────────────────────────────────
     // Every unit (responder_notes) + facility (facility_notes) note in the
     // period, newest first. Admin-only aggregate (gated above) unless filtered
@@ -1220,8 +1642,23 @@ switch ($report) {
         $member_link_cols[] = 1;
 
         // FCC amateur + GMRS via member_callsigns
+        // GH#95 (rjonesbsink/cbyrdmo, 2026-08-20) — the member table carries
+        // two generations of columns: legacy field1/field2/field4 and the
+        // named last_name/first_name/callsign. On installs where the named
+        // columns are plain (independently-writable, not GENERATED from the
+        // legacy ones), a member created/edited through the roster UI lands
+        // in the named columns and the legacy ones stay NULL — reading only
+        // field1/field2/field4 rendered these reports blank. COALESCE(
+        // NULLIF(named,''), legacy) prefers the named column and falls back
+        // to legacy, matching the pattern already used by
+        // api/equipment.php:316-317 and api/external/v1/teams.php:56-58. On
+        // generated-column installs this is a no-op — the named column
+        // already resolves to the legacy value.
         $fcc = safe_fetch_all_rpt(
-            "SELECT m.id AS member_id, m.field2 AS first_name, m.field1 AS last_name, m.field4 AS callsign,
+            "SELECT m.id AS member_id,
+                    COALESCE(NULLIF(m.first_name, ''), m.field2) AS first_name,
+                    COALESCE(NULLIF(m.last_name,  ''), m.field1) AS last_name,
+                    COALESCE(NULLIF(m.callsign,   ''), m.field4) AS callsign,
                     mc.callsign AS identifier, mc.license_type, mc.expiry_date
              FROM `{$prefix}member_callsigns` mc
              JOIN `{$prefix}member` m ON mc.member_id = m.id
@@ -1248,8 +1685,12 @@ switch ($report) {
         }
 
         // FEMA + custom certifications via member_certifications
+        // GH#95 — see the fcc query above for why this reads named-then-legacy.
         $certs = safe_fetch_all_rpt(
-            "SELECT m.id AS member_id, m.field2 AS first_name, m.field1 AS last_name, m.field4 AS callsign,
+            "SELECT m.id AS member_id,
+                    COALESCE(NULLIF(m.first_name, ''), m.field2) AS first_name,
+                    COALESCE(NULLIF(m.last_name,  ''), m.field1) AS last_name,
+                    COALESCE(NULLIF(m.callsign,   ''), m.field4) AS callsign,
                     c.name AS cert_name, c.fema_course_code, mc.expiry_date
              FROM `{$prefix}member_certifications` mc
              JOIN `{$prefix}member` m ON mc.member_id = m.id
@@ -1305,16 +1746,43 @@ switch ($report) {
             ['key' => 'phone_cell', 'label' => 'Phone'],
             ['key' => 'email',      'label' => 'Email'],
         ];
+        // GH#95 — see license_expirations above for why these read
+        // named-then-legacy. member_type_id is an id column (not a string),
+        // so its NULLIF fallback compares against 0, not ''.
+        //
+        // available/field8 does NOT use the same COALESCE(NULLIF(...))
+        // shape as every other field here, deliberately: unlike the other
+        // named columns (which DEFAULT NULL), `available` is a NOT-NULL-
+        // able ENUM with DEFAULT 'Yes' -- confirmed empirically that a
+        // plain INSERT that doesn't specify `available` takes that
+        // default, so "never touched" and "explicitly Yes" are the SAME
+        // stored value and NULLIF can't tell them apart. field8 carries
+        // the identical problem (its own NOT NULL DEFAULT 'Yes'). Since
+        // BOTH columns default to 'Yes', a 'No' on EITHER side can only
+        // exist because something deliberately wrote it -- so 'No' wins
+        // from whichever column has it, rather than preferring the named
+        // column unconditionally. This also fixes the case a first attempt
+        // at this query (COALESCE-only) missed: a member with a real,
+        // deliberately-set field8='No' and an `available` that was simply
+        // never written (so it silently carries its own 'Yes' default) --
+        // COALESCE-only would have shown 'Yes' as if it were the true,
+        // saved value that field8's honest 'No' should defer to, instead
+        // of recognizing it as an unwritten default with nothing to defer
+        // to.
         $members = safe_fetch_all_rpt(
-            "SELECT m.id, m.field2 AS first_name, m.field1 AS last_name,
-                    m.field4 AS callsign, m.field6 AS email, m.field7 AS phone_cell,
-                    m.field8 AS available,
+            "SELECT m.id,
+                    COALESCE(NULLIF(m.first_name, ''), m.field2) AS first_name,
+                    COALESCE(NULLIF(m.last_name,  ''), m.field1) AS last_name,
+                    COALESCE(NULLIF(m.callsign,   ''), m.field4) AS callsign,
+                    COALESCE(NULLIF(m.email,      ''), m.field6) AS email,
+                    COALESCE(NULLIF(m.phone_cell, ''), m.field7) AS phone_cell,
+                    CASE WHEN m.available = 'No' OR m.field8 = 'No' THEN 'No' ELSE 'Yes' END AS available,
                     mt.name AS type_name, ms.status_val AS status_name
              FROM `{$prefix}member` m
-             LEFT JOIN `{$prefix}member_types`  mt ON m.field3 = mt.id
+             LEFT JOIN `{$prefix}member_types`  mt ON mt.id = COALESCE(NULLIF(m.member_type_id, 0), m.field3)
              LEFT JOIN `{$prefix}member_status` ms ON m.member_status_id = ms.id
              WHERE m.deleted_at IS NULL {$rptMemberFrag}{$memberIdFrag}
-             ORDER BY m.field1, m.field2",
+             ORDER BY last_name, first_name",
             array_merge($rptMemberVars, $memberIdVars)
         );
         // Pull team memberships separately so multi-team is captured
@@ -1370,12 +1838,17 @@ switch ($report) {
         $member_link_cols[] = 0;
         $member_link_cols[] = 1;
         $rows = [];
+        // GH#95 — see license_expirations above for why these read
+        // named-then-legacy.
         $members = safe_fetch_all_rpt(
-            "SELECT m.id AS member_id, m.field2 AS first_name, m.field1 AS last_name,
-                    m.field4 AS callsign, m.notes
+            "SELECT m.id AS member_id,
+                    COALESCE(NULLIF(m.first_name, ''), m.field2) AS first_name,
+                    COALESCE(NULLIF(m.last_name,  ''), m.field1) AS last_name,
+                    COALESCE(NULLIF(m.callsign,   ''), m.field4) AS callsign,
+                    m.notes
              FROM `{$prefix}member` m
              WHERE m.deleted_at IS NULL {$rptMemberFrag}{$memberIdFrag} AND m.notes LIKE '%DMR ID%'
-             ORDER BY m.field1, m.field2",
+             ORDER BY last_name, first_name",
             array_merge($rptMemberVars, $memberIdVars)
         );
         foreach ($members as $m) {
@@ -1413,9 +1886,14 @@ switch ($report) {
         ];
         $member_link_cols[] = 0;
         $member_link_cols[] = 1;
+        // GH#95 — see license_expirations above for why these read
+        // named-then-legacy.
         $members = safe_fetch_all_rpt(
-            "SELECT m.id AS member_id, m.field2 AS first_name, m.field1 AS last_name,
-                    m.field4 AS callsign, m.membership_due
+            "SELECT m.id AS member_id,
+                    COALESCE(NULLIF(m.first_name, ''), m.field2) AS first_name,
+                    COALESCE(NULLIF(m.last_name,  ''), m.field1) AS last_name,
+                    COALESCE(NULLIF(m.callsign,   ''), m.field4) AS callsign,
+                    m.membership_due
              FROM `{$prefix}member` m
              WHERE m.deleted_at IS NULL {$rptMemberFrag}{$memberIdFrag}
                AND m.membership_due IS NOT NULL
@@ -1460,9 +1938,24 @@ switch ($report) {
             ['key' => 'last_activity', 'label' => 'Last Logged Time'],
             ['key' => 'reason',        'label' => 'Reason'],
         ];
+        // GH#95 — see license_expirations above for why these read
+        // named-then-legacy. The WHERE-clause "not available" filter needs
+        // the same shape as the SELECT alias, not just a matching filter --
+        // an install where `available` is the populated column would
+        // otherwise never match a bare legacy-only comparison even though
+        // the SELECT now shows the right value. available/field8 uses a
+        // dominant-'No' shape rather than the named-then-legacy COALESCE
+        // every other field here uses -- see the matching comment above
+        // roster_snapshot's query for why (both columns share the same
+        // NOT NULL DEFAULT 'Yes', so an unwritten column and an explicit
+        // 'Yes' are the same stored value; 'No' from either side can only
+        // be a deliberate write, so it wins).
         $rows = safe_fetch_all_rpt(
-            "SELECT m.id, m.field2 AS first_name, m.field1 AS last_name,
-                    m.field4 AS callsign, m.field8 AS available,
+            "SELECT m.id,
+                    COALESCE(NULLIF(m.first_name, ''), m.field2) AS first_name,
+                    COALESCE(NULLIF(m.last_name,  ''), m.field1) AS last_name,
+                    COALESCE(NULLIF(m.callsign,   ''), m.field4) AS callsign,
+                    CASE WHEN m.available = 'No' OR m.field8 = 'No' THEN 'No' ELSE 'Yes' END AS available,
                     ms.status_val AS status_name,
                     (SELECT MAX(te.started_at)
                      FROM `{$prefix}member_time_entries` te
@@ -1470,14 +1963,14 @@ switch ($report) {
              FROM `{$prefix}member` m
              LEFT JOIN `{$prefix}member_status` ms ON m.member_status_id = ms.id
              WHERE m.deleted_at IS NULL {$rptMemberFrag}{$memberIdFrag}
-               AND (m.field8 = 'No'
+               AND (m.available = 'No' OR m.field8 = 'No'
                     OR ms.status_val IN ('Inactive', 'On Leave')
                     OR NOT EXISTS (
                         SELECT 1 FROM `{$prefix}member_time_entries` te2
                         WHERE te2.member_id = m.id
                           AND te2.started_at >= DATE_SUB(NOW(), INTERVAL 90 DAY)
                     ))
-             ORDER BY m.field1, m.field2",
+             ORDER BY last_name, first_name",
             array_merge($rptMemberVars, $memberIdVars)
         );
         $member_link_cols[] = 0;
@@ -1522,8 +2015,13 @@ switch ($report) {
         ];
         $member_link_cols[] = 0;
         $member_link_cols[] = 1;
+        // GH#95 — see license_expirations above for why these read
+        // named-then-legacy.
         $rows = safe_fetch_all_rpt(
-            "SELECT m.id AS member_id, m.field2 AS first_name, m.field1 AS last_name, m.field4 AS callsign,
+            "SELECT m.id AS member_id,
+                    COALESCE(NULLIF(m.first_name, ''), m.field2) AS first_name,
+                    COALESCE(NULLIF(m.last_name,  ''), m.field1) AS last_name,
+                    COALESCE(NULLIF(m.callsign,   ''), m.field4) AS callsign,
                     COUNT(te.id)         AS entry_count,
                     COALESCE(SUM(te.hours), 0) AS total_hours,
                     MAX(te.started_at)   AS last_activity
@@ -1558,8 +2056,14 @@ ini_set('display_errors', $prevDisplay);
 // instead since the Personnel filter is new and this is the one place
 // that already knows $member_id was applied and IDOR-checked).
 if ($isPersonnel && $member_id > 0) {
+    // GH#95 — same named-then-legacy fallback as the report queries above,
+    // so the header label doesn't silently drop the name on installs where
+    // first_name/last_name are the populated columns.
     $memberName = safe_fetch_value_rpt(
-        "SELECT TRIM(CONCAT(field2, ' ', field1)) FROM `{$prefix}member` WHERE id = ?",
+        "SELECT TRIM(CONCAT(
+                    COALESCE(NULLIF(first_name, ''), field2), ' ',
+                    COALESCE(NULLIF(last_name,  ''), field1)))
+           FROM `{$prefix}member` WHERE id = ?",
         [$member_id]
     );
     if ($memberName) {
@@ -1642,5 +2146,10 @@ json_response([
     // 'interval_report' case above for how these are built).
     'interval_by_type' => $interval_by_type,
     'interval_by_unit' => $interval_by_unit,
+    // GH#96 — only non-empty for 'mileage_report'. One entry per
+    // organization / per vehicle seen in the period (see the
+    // 'mileage_report' case above for how these are built).
+    'mileage_by_org'  => $mileage_by_org,
+    'mileage_by_unit' => $mileage_by_unit,
     'links' => $links,
 ]);

@@ -12,6 +12,10 @@ Facts a schema dump alone cannot show. Read this section before writing any new 
 
 `sort_order` is NOT in the base schema. It is added lazily, at runtime, the first time `api/comm-identifiers.php`'s `_ensure_sort_order_column()` runs. A fresh CI install (which never hits that admin endpoint) will not have it — naming it in a raw INSERT 1054-errors there even though it works on any dev DB that has. Check `inc/comm_resolve.php`'s `_comm_resolve_has_sort_order()` for the existing guard pattern before referencing this column anywhere new.
 
+### `facilities` / `responder` / `teams` / `newui_equipment` / `newui_vehicles`
+
+`org_id` is NOT in the base schema for any of these five (Phase 99j-6, "org-scope filter for units, facilities, teams, vehicles, equipment") — same shape as `member_comm_identifiers.sort_order` above. It is added lazily by `inc/org-scope.php`'s `ensure_org_id_column($table)`, called at the top of every writer that needs it (`facility_upsert_internal()`, `responder_upsert_internal()`, `team_upsert_internal()`, `api/equipment.php`'s save action, `api/vehicles.php`'s save action) before the INSERT that references it. A fresh CI install has none of the five until the FIRST create call for that table runs. `tools/schema_audit.php`'s own parser doesn't use `tools/sql_extract.php` (a pre-existing gap, not fixed here) so it only ever sees the two of these five built as a single literal `"INSERT INTO \`{$prefix}table\` (...)"` string (`facilities`, `responder`) — those two are in `tools/schema_audit_baseline.txt`; `teams` (built via `. db_table('teams') .` concatenation) and `newui_equipment`/`newui_vehicles` (built from a fully dynamic `$fields` array) are invisible to that parser regardless and need no baseline entry, but are exactly as lazily-self-healed as the two that do.
+
 ### `settings / config`
 
 TWO separate stores, easy to cross. `settings` (name/value, ~255 rows) is what the Settings UI actually writes and what `get_variable($name)` reads — this is where a new feature toggle belongs. `config` (key/value, ~8 rows) is a small bootstrap-ish store read by `get_setting($key, $default)` that the Settings UI does NOT write to. Reading a UI-saved toggle with `get_setting()` silently returns the default forever, with no error anywhere (GH #79).
@@ -44,7 +48,7 @@ Has NO `member_id` column — a query written against a remembered `responder.me
 
 Fully data-driven: `fields_json` on each row defines the per-mode form field shape, and the existing Roster -> member -> Comm/Location IDs UI renders any row generically. Adding a new identifier type (a new messaging channel, a new device type) is a migration seeding one row plus a reverse-map entry in `inc/comm_resolve.php` -- it is NOT new UI code.
 
-## Tables (262)
+## Tables (261)
 
 | Table | Jump |
 |---|---|
@@ -188,7 +192,6 @@ Fully data-driven: `fields_json` on each row defines the per-mode form field sha
 | `newui_equipment_types` | [#`newui_equipment_types`](#newui_equipment_types) |
 | `newui_events` | [#`newui_events`](#newui_events) |
 | `newui_event_participants` | [#`newui_event_participants`](#newui_event_participants) |
-| `newui_facility_capacity` | [#`newui_facility_capacity`](#newui_facility_capacity) |
 | `newui_major_incidents` | [#`newui_major_incidents`](#newui_major_incidents) |
 | `newui_major_incident_links` | [#`newui_major_incident_links`](#newui_major_incident_links) |
 | `newui_service_events` | [#`newui_service_events`](#newui_service_events) |
@@ -230,7 +233,6 @@ Fully data-driven: `fields_json` on each row defines the per-mode form field sha
 | `remote_devices` | [#`remote_devices`](#remote_devices) |
 | `replacetext` | [#`replacetext`](#replacetext) |
 | `replacetext_order` | [#`replacetext_order`](#replacetext_order) |
-| `requests` | [#`requests`](#requests) |
 | `responder` | [#`responder`](#responder) |
 | `responder_notes` | [#`responder_notes`](#responder_notes) |
 | `responder_rota` | [#`responder_rota`](#responder_rota) |
@@ -297,7 +299,6 @@ Fully data-driven: `fields_json` on each row defines the per-mode form field sha
 | `weather_alert_areas` | [#`weather_alert_areas`](#weather_alert_areas) |
 | `weather_alert_dispatch` | [#`weather_alert_dispatch`](#weather_alert_dispatch) |
 | `weather_alert_rules` | [#`weather_alert_rules`](#weather_alert_rules) |
-| `webhooks` | [#`webhooks`](#webhooks) |
 | `webhook_deliveries` | [#`webhook_deliveries`](#webhook_deliveries) |
 | `webhook_subscriptions` | [#`webhook_subscriptions`](#webhook_subscriptions) |
 | `wizard_settings` | [#`wizard_settings`](#wizard_settings) |
@@ -2960,8 +2961,10 @@ Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
 | `ended_at` | datetime | YES |  | NULL |  |
 | `notes` | varchar(255) | YES |  | NULL |  |
 | `created_at` | datetime | NO |  | current_timestamp() |  |
+| `org_id` | int(11) | YES | MUL | NULL |  |
 
 Indexes:
+- `KEY idx_mileage_org` (org_id)
 - `KEY idx_mileage_responder` (responder_id)
 - `KEY idx_mileage_ticket` (ticket_id)
 - `KEY idx_mileage_user` (user_id)
@@ -3240,26 +3243,6 @@ Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
 Indexes:
 - `KEY idx_member` (member_id)
 - `UNIQUE KEY uq_event_member` (event_id, member_id)
-
-### `newui_facility_capacity`
-
-Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
-
-| Column | Type | Null | Key | Default | Extra |
-|---|---|---|---|---|---|
-| `id` | int(11) | NO | PRI |  | auto_increment |
-| `facility_id` | int(11) | NO | MUL |  |  |
-| `category` | varchar(64) | NO |  |  |  |
-| `total` | int(11) | NO |  | 0 |  |
-| `occupied` | int(11) | NO |  | 0 |  |
-| `available` | int(11) | YES |  | NULL | STORED GENERATED |
-| `status` | enum('open','full','closed') | NO | MUL | 'open' |  |
-| `updated_at` | datetime | YES |  | current_timestamp() | on update current_timestamp() |
-| `updated_by` | int(11) | YES |  | NULL |  |
-
-Indexes:
-- `KEY idx_facility` (facility_id)
-- `KEY idx_status` (status)
 
 ### `newui_major_incidents`
 
@@ -4111,51 +4094,6 @@ Engine: InnoDB · Collation: latin1_swedish_ci
 | `id` | int(11) | NO | PRI |  | auto_increment |
 | `displayorder` | int(2) | NO |  |  |  |
 | `info_name` | varchar(24) | NO |  |  |  |
-
-### `requests`
-
-Engine: InnoDB · Collation: latin1_swedish_ci
-
-| Column | Type | Null | Key | Default | Extra |
-|---|---|---|---|---|---|
-| `id` | bigint(8) | NO | PRI |  | auto_increment |
-| `org` | int(3) | NO |  | 0 |  |
-| `contact` | varchar(48) | NO |  | '' |  |
-| `email` | varchar(128) | YES |  | NULL |  |
-| `street` | varchar(12000) | YES |  | NULL |  |
-| `city` | varchar(12000) | YES |  | NULL |  |
-| `postcode` | varchar(16) | YES |  | NULL |  |
-| `state` | char(4) | YES |  | NULL |  |
-| `the_name` | varchar(64) | YES |  | NULL |  |
-| `phone` | varchar(16) | YES |  | NULL |  |
-| `to_address` | varchar(1024) | YES |  | NULL |  |
-| `pickup` | varchar(12) | YES |  | NULL |  |
-| `arrival` | varchar(12) | YES |  | NULL |  |
-| `orig_facility` | int(4) | YES |  | 0 |  |
-| `rec_facility` | int(4) | YES |  | 0 |  |
-| `scope` | text | NO |  |  |  |
-| `description` | text | NO |  |  |  |
-| `comments` | text | YES |  | NULL |  |
-| `lat` | varchar(12000) | YES |  | NULL |  |
-| `lng` | varchar(12000) | YES |  | NULL |  |
-| `request_date` | datetime | YES |  | NULL |  |
-| `status` | enum('Open','Tentative','Accepted','Resourced','Complete','Declined','Closed') | NO |  | 'Open' |  |
-| `tentative_date` | datetime | YES |  | NULL |  |
-| `accepted_date` | datetime | YES |  | NULL |  |
-| `declined_date` | datetime | YES |  | NULL |  |
-| `resourced_date` | datetime | YES |  | NULL |  |
-| `completed_date` | datetime | YES |  | NULL |  |
-| `closed` | datetime | YES |  | NULL |  |
-| `cancelled` | datetime | YES |  | NULL |  |
-| `requester` | bigint(8) | NO | MUL |  |  |
-| `ticket_id` | bigint(8) | YES |  | NULL |  |
-| `_by` | int(7) | NO |  |  |  |
-| `_on` | datetime | NO |  |  |  |
-| `_from` | varchar(45) | YES |  | NULL |  |
-
-Indexes:
-- `UNIQUE KEY ID` (id)
-- `KEY requester` (requester)
 
 ### `responder`
 
@@ -5599,26 +5537,6 @@ Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
 
 Indexes:
 - `KEY idx_area` (area_id)
-
-### `webhooks`
-
-Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
-
-| Column | Type | Null | Key | Default | Extra |
-|---|---|---|---|---|---|
-| `id` | int(11) | NO | PRI |  | auto_increment |
-| `name` | varchar(128) | NO |  | '' |  |
-| `url` | varchar(512) | NO |  |  |  |
-| `secret` | varchar(128) | NO |  | '' |  |
-| `events_json` | text | NO |  |  |  |
-| `active` | tinyint(1) | NO | MUL | 1 |  |
-| `retry_max` | tinyint(4) | NO |  | 3 |  |
-| `created_by` | int(11) | NO |  | 0 |  |
-| `created_at` | datetime | NO |  | current_timestamp() |  |
-| `updated_at` | datetime | NO |  | current_timestamp() | on update current_timestamp() |
-
-Indexes:
-- `KEY idx_webhooks_active` (active)
 
 ### `webhook_deliveries`
 

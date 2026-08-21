@@ -43,7 +43,9 @@ if ($method === 'POST') {
 if ($method === 'GET') {
     // Phase 94 Stage 6 part 2 (2026-06-28): reads from the NEW
     // webhook_subscriptions table (per Decision #3) instead of the
-    // legacy `webhooks` table. Column projection aliases the new
+    // legacy webhooks table (dropped 2026-08-21, SPEC-STATUS.md B20 —
+    // see sql/run_webhooks_legacy_table_drop.php). Column projection
+    // aliases the new
     // names to the legacy names the existing settings panel JS
     // expects (url, secret, events_json, retry_max), so no JS
     // changes were needed. Retry_max is derived from the per-
@@ -160,9 +162,9 @@ if ($method === 'POST') {
     // ── DELETE ───────────────────────────────────────────────
     // Phase 94 Stage 6 part 2: deletes from webhook_subscriptions
     // (the new table per Decision #3) and uses subscription_id on
-    // the deliveries cleanup. The legacy `webhooks` table is kept in
-    // place until Stage 6 fully decommissions it; deleting via this
-    // endpoint only touches the new authoritative table.
+    // the deliveries cleanup. The legacy webhooks table was dropped
+    // 2026-08-21 (SPEC-STATUS.md B20); deleting via this endpoint
+    // only ever touched the new authoritative table.
     if ($action === 'delete') {
         $id = (int) ($input['id'] ?? 0);
         if (!$id) json_error('Missing webhook id');
@@ -354,7 +356,8 @@ if ($method === 'POST') {
 
     // ── SAVE (create / update) ──────────────────────────────
     // Phase 94 Stage 6 part 2: writes to webhook_subscriptions (NEW
-    // table per Decision #3) instead of the legacy `webhooks` table.
+    // table per Decision #3) instead of the legacy webhooks table
+    // (dropped 2026-08-21, SPEC-STATUS.md B20).
     // Legacy field names on input (url, secret, events, retry_max)
     // are accepted for back-compat with the unchanged settings UI;
     // retry_max gets wrapped in the retry_policy_json shape with

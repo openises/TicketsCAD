@@ -1,0 +1,211 @@
+# Baseline for tools/dead_control_audit.php, API-response-key check (d).
+#
+# One "apikey:<key>" per line, exactly as printed by the audit. A key
+# belongs here only with a comment explaining why it's accepted rather
+# than fixed (wire it into assets/js/) — matching every other baseline
+# file in this project.
+#
+# 2026-08-20 sweep (part of the check (c)/(d) build this baseline shipped
+# with). severity_breakdown/disposition_breakdown (the confirmed
+# real-world instance that motivated building this check) and
+# keys_dir_exposed/keys_dir_note/keys_dir (a genuine security-relevant
+# gap — an admin-facing web-exposure warning that api/tfa-key.php
+# computed but nothing rendered) were FIXED, not baselined — see
+# assets/js/reports.js's renderIncidentSummaryBreakdown() and
+# settings.php's tfaKeysDirExposureBox respectively.
+#
+# Everything below was investigated but left as-is. A representative
+# sample across every distinct SHAPE this sweep found was verified
+# file:line against its actual JS caller (not guessed); the remainder of
+# each shape-cluster was spot-checked rather than individually verified,
+# matching this project's own established precedent for a wide sweep
+# (see tools/dead_control_column_baseline.txt's "GH #91 wider sweep"
+# entry) — Eric's own stated goal here is understanding the PATTERN, not
+# a silent mass-fix, so the shapes are named explicitly rather than
+# dumped as a flat list.
+
+# --- SHAPE 1: extra structured fields alongside an already-consumed
+#     human-readable string (the confirm()/message pattern) — the JS
+#     shows data.message in a dialog/toast and never reads the
+#     structured fields that would let it build a richer UI (a link to
+#     the other unit, etc.). Verified: api/unit-assignments.php:209-215's
+#     'message' field already embeds the same info
+#     ("This member is currently assigned to <name>. Reassign?") that
+#     current_unit_name/current_unit_id/current_assignment_id also
+#     carry structurally; unit-detail.js's doAssignPersonnel confirm()
+#     flow reads only .message. auto_bindings (same file, line 289/295)
+#     is a count returned alongside 'success' that the caller doesn't
+#     currently surface. Real API completeness, not a broken promise.
+apikey:current_unit_name
+apikey:current_unit_id
+apikey:current_assignment_id
+apikey:auto_bindings
+
+# --- SHAPE 2: a permission flag returned by an endpoint, where the SAME
+#     permission is ALSO delivered via a page-load global the JS
+#     actually reads instead. Verified:
+#     assets/js/org-relationships-admin.js:376 reads
+#     window.ORR_CAN_ACT_GLOBAL / window.ORR_CAN_ACTIVATE, which
+#     org-relationships-admin.php:351-353 sets directly from PHP at page
+#     load — a completely separate channel from api/org-relationships.php's
+#     own can_propose/can_activate_any list-response fields. The real
+#     authorization check exists and is used; these two fields are a
+#     redundant second copy of the same information. Not a security gap
+#     (server-side RBAC still gates the actual write endpoints
+#     independently either way) — a duplicate-plumbing cleanup
+#     candidate, not urgent.
+apikey:can_propose
+apikey:can_activate_any
+
+# --- SHAPE 3: a `caps`/permission-flag object returned so a future or
+#     external consumer can gate UI without a second round-trip, where
+#     TODAY's UI simply always shows the control and relies on the
+#     server-side rbac_can()/is_admin() check on the actual write
+#     endpoint to refuse an unauthorized attempt (defense in depth still
+#     holds — this is a UX polish gap, not an authorization bypass).
+#     Verified the pattern at api/aprs-watchlist.php:60
+#     ('can_write' => rbac_can('action.manage_aprs_watchlist') || is_admin())
+#     and api/zone-coverage.php:101/257, api/net-control.php:324 — same
+#     shape at each site. Confirmed the corresponding write endpoints
+#     independently re-check the same permission (not relying on the
+#     client to have honored this flag).
+apikey:can_write
+apikey:can_set_own_zone
+apikey:can_issue_equipment
+
+# --- SHAPE 4: a diagnostics/status endpoint that returns MORE machine
+#     detail than the current UI panel renders — the panel shows a
+#     human-summarized view (progress bar, human-readable sizes, a
+#     provider policy table) and doesn't need the raw numbers/internal
+#     state alongside them. Verified: assets/js/config.js's
+#     loadTileProxyStatus() (~line 7121) renders cache.bytes_human,
+#     cache.max_human, cache.free_human, cache.pct_used, cache.reserve_ok,
+#     d.user_agent, d.ua_is_default, and d.policy — but never the raw
+#     byte counts or circuit-breaker internals also present in the same
+#     response. breakers/breaker_policy in particular could feed a
+#     future "why is this provider not being proxied right now"
+#     indicator — a plausible enhancement, not a defect.
+apikey:max_bytes
+apikey:min_free_bytes
+apikey:effective_mode
+apikey:breakers
+apikey:breaker_policy
+apikey:cooloff_s
+apikey:fail_max_age_s
+apikey:connect_timeout_s
+apikey:read_timeout_s
+
+# --- SHAPE 5: a "here's the suggested next step" structured block
+#     returned alongside a value the UI DOES show, where the structured
+#     block itself is unused. Verified: api/dvswitch.php's
+#     channel_create action (line 354-372) returns bridge_token (shown —
+#     assets/js/dvswitch-admin.js:231-279 reads d.bridge_token) and a
+#     prose 'note' field, but the structured suggested_env object
+#     (meant to let the admin copy a ready-made .env block for the DMR
+#     bridge) is never referenced anywhere in assets/js/ — confirmed via
+#     `grep -n suggested_env assets/js/dvswitch-admin.js` (zero matches).
+#     A real, moderate-value enhancement opportunity (render the .env
+#     block instead of/alongside the prose note) — flagged for Eric, not
+#     fixed here; not a security or dispatch-safety issue.
+apikey:suggested_env
+apikey:dmr_instance
+apikey:dmr_usrp_listen_port
+apikey:dmr_usrp_send_port
+apikey:dmr_usrp_send_host
+apikey:dmr_http_port
+apikey:dmr_audit_dir
+apikey:dmr_log_level
+
+# --- SHAPE 6: a field made redundant by a DERIVED value the UI reads
+#     instead. Verified: api/tfa-key.php's key_source ('dedicated_file'
+#     string) is emitted alongside dedicated_exists (boolean) — the same
+#     fact two ways. settings.php's loadTfaKeyStatus() (fixed this same
+#     session to also read keys_dir_exposed/keys_dir_note/keys_dir — see
+#     git history) uses ONLY dedicated_exists to drive the badge/warning
+#     logic; key_source itself carries no information the boolean
+#     doesn't already provide to the one consumer that exists.
+apikey:key_source
+
+# --- SHAPE 7: an action-confirmation endpoint returning descriptive
+#     detail alongside a `success`/primary-value field the caller
+#     actually reads, where the description itself isn't surfaced —
+#     spot-checked a sample of this shape across several unrelated
+#     endpoints (POST-action handlers whose JS caller checks .success
+#     or a single primary field and refreshes the panel rather than
+#     rendering every returned descriptive key). Not individually
+#     verified file-by-file the way Shapes 1-6 above were — this is the
+#     "wide sweep, not full triage" bucket, following the same
+#     documented precedent as tools/dead_control_column_baseline.txt's
+#     own "GH #91 wider sweep" entry. None of these are UI CONTROLS
+#     promising behavior the way a checkbox/dropdown is (the class of
+#     bug GH #91 is centrally about); every one is response metadata
+#     from an already-functioning write/read action.
+apikey:already_revoked
+apikey:binding_deactivated
+apikey:has_binding
+apikey:incident_active
+apikey:queued_push
+apikey:auto_approved
+apikey:follow_up_posted
+apikey:marked_read
+apikey:invalid_rows
+apikey:exportable
+apikey:match_columns
+apikey:conflict_count
+apikey:delimiter
+apikey:bound_to
+apikey:expires_in
+apikey:proxy_path
+apikey:outbox_id
+apikey:outbox_kind
+apikey:replayed_from
+apikey:routed_as
+apikey:test_message
+apikey:total_routes
+apikey:scheduled_count
+apikey:scoped_to
+apikey:seconds_remaining
+apikey:snoozed_hours
+apikey:snoozed_until
+apikey:next_in
+apikey:next_reminder_days
+apikey:last_fail_at
+apikey:last_sort
+apikey:days_checked
+apikey:required_certs
+apikey:recipient_count
+apikey:road_condition
+apikey:target_protocol
+apikey:thread_key
+apikey:in_reply_to
+apikey:reply_kind
+apikey:orig_name
+apikey:updated_by
+apikey:created_by
+apikey:edited_by
+apikey:geofence_events
+apikey:global_enabled
+apikey:device_count
+apikey:my_subscriptions
+apikey:vapid_public_key
+apikey:expected_hold_seconds
+apikey:kept_secrets
+apikey:api_version
+apikey:active_org_id
+apikey:org_scoped
+apikey:is_admin
+apikey:users_with_grants
+apikey:training_types
+apikey:type_counts
+apikey:bridge_code
+apikey:bridge_body
+
+# --- vapid_public_key note: api/diagnostics.php's copy is a read-only
+#     admin diagnostic display (confirming the server HAS a VAPID key
+#     configured); it is NOT the functional path a browser's
+#     PushManager.subscribe() uses to actually request a push
+#     subscription — that's a separate, already-wired endpoint. Grouped
+#     into Shape 7 above rather than given its own shape since it's a
+#     single instance, but singled out in this comment because "the push
+#     key is unused" would misread as a broken push feature if seen out
+#     of context; it is not.

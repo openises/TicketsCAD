@@ -3,11 +3,12 @@
  * NewUI v4.0 — Outbound Webhook Dispatcher
  *
  * Fires HTTP POST callbacks to registered external subscribers when
- * relevant audit events occur. Subscriptions live in the new
- * webhook_subscriptions table (Phase 94 Stage 1, Decision #3). The
- * legacy webhooks table is kept in place until Stage 6 verifies the
- * switchover; webhook_fire() reads ONLY from webhook_subscriptions
- * going forward.
+ * relevant audit events occur. Subscriptions live in the
+ * webhook_subscriptions table (Phase 94 Stage 1, Decision #3);
+ * webhook_fire() reads ONLY from webhook_subscriptions. The legacy
+ * webhooks table was dropped 2026-08-21 (SPEC-STATUS.md B20,
+ * sql/run_webhooks_legacy_table_drop.php) after Stage 6 verification
+ * found it had zero readers/writers anywhere in the app.
  *
  * Two ways events get fired:
  *

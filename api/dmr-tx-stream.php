@@ -23,6 +23,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/audit.php';
 require_once __DIR__ . '/../inc/dmr_token.php';
+require_once __DIR__ . '/../inc/fcc_station_id.php';
 ini_set('display_errors', '0');
 header('Content-Type: application/json');
 
@@ -40,16 +41,19 @@ if (!is_admin() && !$rbacOk) {
 }
 
 $channelId = (int) ($_GET['channel'] ?? 0);
+// Captured before session_write_close() below (the array stays readable
+// afterward, but capture explicitly for clarity at the point of use).
+$userId = (int) ($_SESSION['user_id'] ?? 0);
 $prefix = $GLOBALS['db_prefix'] ?? '';
 if ($channelId > 0) {
     $channel = db_fetch_one(
-        "SELECT id, label, bridge_host, bridge_port, bridge_token
+        "SELECT id, label, bridge_host, bridge_port, bridge_token, id_interval_seconds
          FROM `{$prefix}dmr_channels` WHERE id = ? LIMIT 1",
         [$channelId]
     );
 } else {
     $channel = db_fetch_one(
-        "SELECT id, label, bridge_host, bridge_port, bridge_token
+        "SELECT id, label, bridge_host, bridge_port, bridge_token, id_interval_seconds
          FROM `{$prefix}dmr_channels` WHERE enabled = 1
          ORDER BY id LIMIT 1"
     );
@@ -173,6 +177,11 @@ if (function_exists('audit_log')) {
          'elapsed_sec' => round($elapsed, 2),
          'bytes_forwarded' => $inputBytesRead]
     );
+}
+// Phase 148 — FCC 97.119: see api/dmr-tx-audio.php's identical hook for
+// the full rationale. Informational bookkeeping only.
+if (function_exists('fcc_record_tx')) {
+    fcc_record_tx((int) $channel['id'], $userId, (int) ($channel['id_interval_seconds'] ?? 600));
 }
 http_response_code(200);
 echo $resp;

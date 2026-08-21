@@ -189,6 +189,18 @@ if (!empty($responderIds)) {
 
     // Attempt 2 — `personnel` table (forenames/surname) if member gave
     // nothing (schema divergence handled per CLAUDE.md).
+    //
+    // dead_control_audit.php check (c), 2026-08-20: confirmed via a full
+    // sweep of both this tree and the legacy tickets/ tree that NOTHING
+    // writes to `personnel` — it is defined in both base_schema.sql and
+    // legacy DB_FULL.sql but has no INSERT anywhere. api/responders.php
+    // already carries an explicit comment stating "there is no personnel
+    // table — the people table is member" (the historical schema-mismatch
+    // bug this project fixed once). This branch is therefore speculative
+    // for every install observed so far — reachable code that has never
+    // been seen to produce a row. Left in place (not removed) in case a
+    // future/unusual install schema populates it, but do not assume it is
+    // load-bearing anywhere.
     if (empty($rosterRows)) {
         $rosterRows = _nc_fetch_all(
             "SELECT upa.responder_id,

@@ -157,6 +157,18 @@
         }
         document.getElementById('fpStatusAbout').value = (data.facility && data.facility.status_about) || '';
 
+        // GH#102 — beds_a/beds_o are the automation's own number (see
+        // inc/bed_auto.php); already returned by this same API call but
+        // never rendered before this fix.
+        var bedsAvailEl = document.getElementById('fpBedsAvailable');
+        var bedsOccEl = document.getElementById('fpBedsOccupied');
+        if (bedsAvailEl && bedsOccEl) {
+            var ba = (data.facility && data.facility.beds_a !== '' && data.facility.beds_a != null) ? data.facility.beds_a : '–';
+            var bo = (data.facility && data.facility.beds_o !== '' && data.facility.beds_o != null) ? data.facility.beds_o : '–';
+            bedsAvailEl.textContent = ba;
+            bedsOccEl.textContent = bo;
+        }
+
         categoriesById = {};
         for (var c = 0; c < (data.categories || []).length; c++) {
             categoriesById[data.categories[c].id] = data.categories[c];
@@ -204,6 +216,40 @@
             });
     }
 
+    // GH#102 — the facility's own inverse of inc/bed_auto.php's automatic
+    // decrement. See inc/facility-bed-release.php's docblock for the full
+    // design rationale (targets beds_a/beds_o directly, floor-at-occupied
+    // is the safety ceiling, coarse "release N" rather than a per-delivery
+    // undo).
+    function releaseBed() {
+        var countEl = document.getElementById('fpReleaseCount');
+        var noteEl = document.getElementById('fpReleaseNote');
+        var hintEl = document.getElementById('fpReleaseHint');
+        var btn = document.getElementById('fpReleaseBed');
+        var count = parseInt(countEl.value || '1', 10);
+        if (!count || count < 1) count = 1;
+
+        btn.disabled = true;
+        hintEl.textContent = '';
+        apiPost({ action: 'release_bed', count: count, note: noteEl.value || '' })
+            .then(function (resp) {
+                btn.disabled = false;
+                if (resp && resp.beds_a !== undefined) {
+                    document.getElementById('fpBedsAvailable').textContent = resp.beds_a;
+                    document.getElementById('fpBedsOccupied').textContent = resp.beds_o;
+                }
+                var releasedCount = resp && resp.released ? resp.released : count;
+                hintEl.textContent = 'Released ' + releasedCount + ' bed' + (releasedCount === 1 ? '' : 's') + '.';
+                hintEl.className = 'small text-success mt-1';
+                noteEl.value = '';
+            })
+            .catch(function (err) {
+                btn.disabled = false;
+                hintEl.textContent = err.message || 'Failed to release a bed';
+                hintEl.className = 'small text-danger mt-1';
+            });
+    }
+
     function saveCapacityRow(tr) {
         var catId = parseInt(tr.getAttribute('data-cat'), 10);
         var total = parseInt(tr.querySelector('.fp-cap-total').value || '0', 10);
@@ -219,6 +265,8 @@
         loadStatus();
 
         document.getElementById('fpSaveStatus').addEventListener('click', saveStatus);
+        var releaseBtn = document.getElementById('fpReleaseBed');
+        if (releaseBtn) releaseBtn.addEventListener('click', releaseBed);
         document.getElementById('fpCapacityBody').addEventListener('click', function (e) {
             var btn = e.target.closest ? e.target.closest('.fp-cap-save') : null;
             if (!btn) return;

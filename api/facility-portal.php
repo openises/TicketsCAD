@@ -17,6 +17,14 @@
  *      the self-report form needs.
  * POST {action:'set_status', status_id, status_about}
  * POST {action:'set_capacity', category_id, total, available, notes}
+ * POST {action:'release_bed', count?, note?} — GH#102: the facility's own
+ *      inverse of inc/bed_auto.php's automatic decrement. See
+ *      inc/facility-bed-release.php for the full design rationale
+ *      (targets beds_a/beds_o — the SAME columns automation touches —
+ *      not the separate facility_capacity table; coarse "release N",
+ *      floor-at-occupied-count as the safety ceiling, not a per-delivery
+ *      undo). Always scoped to $facilityId = facility_session_facility_id()
+ *      like every other write in this file — never a client-supplied id.
  *
  * RBAC: screen.facility_portal for GET, action.facility_self_report for
  * POST — both held ONLY by role 7 (Facility) by default (sql/rbac.sql).
@@ -32,6 +40,7 @@ require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/audit.php';
 require_once __DIR__ . '/../inc/facility-scope.php';
 require_once __DIR__ . '/../inc/severity.php';
+require_once __DIR__ . '/../inc/facility-bed-release.php';
 
 $prefix = $GLOBALS['db_prefix'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
@@ -203,21 +212,18 @@ if ($method === 'GET') {
         // inc/org-sharing.php (org_share_redact_assignment_fields()) —
         // "never leak a roster" applies to an external facility account
         // even more than to a partner org.
-        $units = [];
-        try {
-            $units = db_fetch_all(
-                "SELECT r.`name` AS responder_name, r.`handle`,
-                        us.`status_val`, us.`bg_color`, us.`text_color`,
-                        a.`u2fenr`, a.`u2farr`
-                 FROM `{$prefix}assigns` a
-                 LEFT JOIN `{$prefix}responder` r ON a.`responder_id` = r.`id`
-                 LEFT JOIN `{$prefix}un_status` us ON r.`un_status_id` = us.`id`
-                 WHERE a.`ticket_id` = ?
-                   AND (a.`clear` IS NULL OR DATE_FORMAT(a.`clear`, '%y') = '00')
-                 ORDER BY a.`id`",
-                [$ticketId]
-            );
-        } catch (Throwable $e) { /* assigns/responder join unavailable */ }
+        //
+        // GH#99 (2026-08-20): a multi-unit incident can have units
+        // transporting to DIFFERENT facilities — the units list must be
+        // filtered to whichever units are actually relevant to THIS
+        // viewing facility, not every unit on the ticket. See
+        // facility_portal_visible_units()'s own docblock for the
+        // origin-vs-receiving distinction; it resolves each unit's
+        // effective destination with the same COALESCE inc/bed_auto.php
+        // already uses, so a diverted unit (and its facility-leg
+        // en_route_at/arrived_at timestamps, which would otherwise read
+        // as "coming to you") never reaches a facility it isn't going to.
+        $units = facility_portal_visible_units($ticketId, $facilityId, (int) $row['facility'], (int) $row['rec_facility']);
 
         $incidents[] = [
             'id'              => $ticketId,
@@ -351,6 +357,38 @@ if ($method === 'POST') {
         );
 
         json_response(['success' => true]);
+    }
+
+    if ($action === 'release_bed') {
+        $count = max(1, (int) ($input['count'] ?? 1));
+        $note  = trim((string) ($input['note'] ?? ''));
+
+        // Denormalized display name for facility_bed_release_log, resolved
+        // from the DB (same COALESCE(name_f/name_l, login) convention
+        // api/reports.php's mileage_report driver-name lookup already
+        // uses) rather than trusting a session value — the acting user id
+        // itself ($userId, above) is what actually matters for
+        // attribution and is never derived from anything client-supplied.
+        $userName = '';
+        try {
+            $userName = (string) (db_fetch_value(
+                "SELECT COALESCE(NULLIF(TRIM(CONCAT(`name_f`, ' ', `name_l`)), ''), `user`)
+                 FROM `{$prefix}user` WHERE `id` = ? LIMIT 1",
+                [$userId]
+            ) ?? '');
+        } catch (Throwable $e) { $userName = ''; }
+
+        $release = facility_bed_release_apply($facilityId, $count, $note, $userId, $userName);
+        if (!$release['success']) {
+            json_error($release['error'] ?? 'Unable to release a bed', 400);
+        }
+
+        json_response([
+            'success'  => true,
+            'released' => $release['released'],
+            'beds_a'   => $release['beds_a'],
+            'beds_o'   => $release['beds_o'],
+        ]);
     }
 
     json_error('Unknown action', 400);

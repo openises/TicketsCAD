@@ -20,6 +20,7 @@
     var REFRESH_MS = 15000;      // strip status refresh
     var PROBE_EVERY = 4;         // probe (heavier) every Nth refresh
     var FEED_MS = 10000;         // open-drawer feed refresh
+    var FCC_BADGE_REFRESH_MS = 45000;   // Phase 148 — AMATEUR badge live status
     var TAB_KEY = 'newui_console_active_view';
 
     var bank = document.getElementById('consoleBank');
@@ -33,6 +34,7 @@
     var channels = [];           // last fetched channel list (enabled only)
     var channelsById = {};
     var views = [];              // shared views from the designer
+    var myViews = [];             // Phase 114b3 — the caller's own personal views
     var activeView = 'auto';     // 'auto' or a view id (string)
     var openFeeds = {};          // channelId -> feed element while drawer open
     var refreshCount = 0;
@@ -80,6 +82,194 @@
         return out;
     }
 
+    // ── Select / Simulselect / Monitor / Mute / Volume (Phase 114b3) ──
+    // Select + Simulselect are universal strip chrome — present on EVERY
+    // strip in EVERY view (auto and designer-authored alike), not part of
+    // the designer's placeable-component palette. Rationale: "which
+    // channel has my attention right now" and "which channels page out
+    // together" are per-operator RUNTIME behaviors orthogonal to how an
+    // admin laid the board out, the same way the LED/label are always
+    // present regardless of a designer's choices. Monitor/mute/volume,
+    // by contrast, stay individually placeable palette components (see
+    // renderComponent() below) because they're genuinely optional per
+    // strip in the free-form designer.
+    function audioState(chId) {
+        return window.ConsoleAudio
+            ? window.ConsoleAudio.getState(chId)
+            : { selected: false, mon: true, muted: false, volume: 100, simulselect: false };
+    }
+
+    // Select + (if voice_tx) Simulselect checkbox. Appended to a strip's
+    // header chrome.
+    function buildSelectChrome(ch) {
+        var wrap = el('div', 'console-select-chrome');
+        var st = audioState(ch.id);
+
+        var selBtn = el('button', 'btn btn-sm console-sel-btn' + (st.selected ? ' active' : ''), 'Sel');
+        selBtn.type = 'button';
+        selBtn.title = 'Select — this channel plays at full volume; other channels drop to monitor level while anything is selected';
+        selBtn.setAttribute('aria-pressed', st.selected ? 'true' : 'false');
+        selBtn.addEventListener('click', function () {
+            if (!window.ConsoleAudio) { return; }
+            window.ConsoleAudio.setSelected(ch.id, !window.ConsoleAudio.getState(ch.id).selected);
+        });
+        wrap.appendChild(selBtn);
+
+        var caps = ch.capabilities || {};
+        if (caps.voice_tx) {
+            var simLbl = el('label', 'console-simulselect-chk form-check form-check-inline mb-0', null);
+            var simInp = document.createElement('input');
+            simInp.type = 'checkbox';
+            simInp.className = 'form-check-input';
+            simInp.checked = !!st.simulselect;
+            simInp.title = 'Simulselect — include this channel in the multi-TX paging set';
+            simInp.addEventListener('change', function () {
+                if (!window.ConsoleAudio) { return; }
+                window.ConsoleAudio.setSimulselect(ch.id, simInp.checked);
+                renderSimulselectBar();
+            });
+            simLbl.appendChild(simInp);
+            simLbl.appendChild(el('span', 'form-check-label small', 'Sim'));
+            wrap.appendChild(simLbl);
+        }
+        return wrap;
+    }
+
+    // Real Mon / Mute / Volume block for a voice_rx-capable channel.
+    // Used by the auto/flat strip renderer; the designer's positioned
+    // view places these as independent components instead (see
+    // renderComponent()).
+    function buildAudioControlsBlock(ch) {
+        var wrap = el('div', 'console-audio-controls');
+        var st = audioState(ch.id);
+
+        var monBtn = el('button', 'btn btn-sm console-audio-btn console-mon-btn' + (st.mon ? ' active' : ''), 'Mon');
+        monBtn.type = 'button';
+        monBtn.title = st.mon
+            ? 'Monitor ON — audible at reduced volume while another channel is selected. Click to silence while unselected.'
+            : 'Monitor OFF — silent while this channel is not selected. Click to include it in the background mix again.';
+        monBtn.setAttribute('aria-pressed', st.mon ? 'true' : 'false');
+        monBtn.addEventListener('click', function () {
+            if (!window.ConsoleAudio) { return; }
+            window.ConsoleAudio.setMon(ch.id, !window.ConsoleAudio.getState(ch.id).mon);
+        });
+        wrap.appendChild(monBtn);
+
+        var muteBtn = el('button', 'btn btn-sm console-audio-btn console-mute-btn' + (st.muted ? ' active' : ''), 'Mute');
+        muteBtn.type = 'button';
+        muteBtn.title = st.muted ? 'Muted — click to unmute' : 'Click to mute this channel';
+        muteBtn.setAttribute('aria-pressed', st.muted ? 'true' : 'false');
+        muteBtn.addEventListener('click', function () {
+            if (!window.ConsoleAudio) { return; }
+            window.ConsoleAudio.setMuted(ch.id, !window.ConsoleAudio.getState(ch.id).muted);
+        });
+        wrap.appendChild(muteBtn);
+
+        var volWrap = el('div', 'console-volume-row');
+        var volInp = document.createElement('input');
+        volInp.type = 'range';
+        volInp.min = '0';
+        volInp.max = '100';
+        volInp.className = 'form-range console-volume-slider';
+        volInp.value = String(st.volume);
+        volInp.title = 'Volume';
+        volInp.addEventListener('input', function () {
+            if (!window.ConsoleAudio) { return; }
+            window.ConsoleAudio.setVolume(ch.id, volInp.value);
+        });
+        volWrap.appendChild(volInp);
+        wrap.appendChild(volWrap);
+
+        return wrap;
+    }
+
+    // Re-paint pressed/active state + slider values on ALREADY-RENDERED
+    // audio chrome without a full re-render (keeps open feed drawers,
+    // in-progress typing, etc. intact) — called whenever ConsoleAudio's
+    // state changes, and after every renderBank().
+    function paintAudioState() {
+        var strips = bank.querySelectorAll('[data-channel-id]');
+        for (var i = 0; i < strips.length; i++) {
+            var chId = strips[i].getAttribute('data-channel-id');
+            var st = audioState(chId);
+
+            var selBtn = strips[i].querySelector('.console-sel-btn');
+            if (selBtn) {
+                selBtn.classList.toggle('active', st.selected);
+                selBtn.setAttribute('aria-pressed', st.selected ? 'true' : 'false');
+            }
+            var simInp = strips[i].querySelector('.console-simulselect-chk input');
+            if (simInp) { simInp.checked = st.simulselect; }
+            var monBtn = strips[i].querySelector('.console-mon-btn');
+            if (monBtn) {
+                monBtn.classList.toggle('active', st.mon);
+                monBtn.setAttribute('aria-pressed', st.mon ? 'true' : 'false');
+            }
+            var muteBtn = strips[i].querySelector('.console-mute-btn');
+            if (muteBtn) {
+                muteBtn.classList.toggle('active', st.muted);
+                muteBtn.setAttribute('aria-pressed', st.muted ? 'true' : 'false');
+            }
+            var volInp = strips[i].querySelector('.console-volume-slider');
+            if (volInp && document.activeElement !== volInp) { volInp.value = String(st.volume); }
+
+            // Text-channel prominence (select/mute -> visual weight, never
+            // a literal audio concept — see console-audio-logic.js's
+            // textProminence() docblock).
+            var prom = window.ConsoleAudio ? window.ConsoleAudio.textProminence(chId) : 'normal';
+            strips[i].classList.remove('console-strip-prominent', 'console-strip-suppressed');
+            if (prom === 'prominent') {
+                strips[i].classList.add('console-strip-prominent');
+                // Select promotes a text channel's feed to "always visible"
+                // — auto-open its drawer if the auto/flat renderer built
+                // one and it's currently closed (positioned-view text
+                // components are already always-visible, nothing to do).
+                var toggle = strips[i].querySelector('.console-text-toggle');
+                var drawer = strips[i].querySelector('.console-strip-drawer');
+                if (toggle && drawer && drawer.classList.contains('d-none')) { toggle.click(); }
+            }
+            if (prom === 'suppressed') { strips[i].classList.add('console-strip-suppressed'); }
+        }
+    }
+
+    // Master "Simulselect PTT" hold-to-talk button — appears only when at
+    // least one TX-capable channel is currently a simulselect member.
+    // Keys every member's REAL adapter PTT simultaneously (see console-
+    // audio.js's own architectural-honesty docblock for exactly what
+    // "simultaneously" can mean today).
+    function renderSimulselectBar() {
+        var bar = document.getElementById('consoleSimulselectBar');
+        if (!bar || !window.ConsoleAudio) { return; }
+        var members = window.ConsoleAudio.simulselectMembers();
+        bar.innerHTML = '';
+        if (!members.length) { bar.classList.add('d-none'); return; }
+        bar.classList.remove('d-none');
+        var names = [];
+        for (var i = 0; i < members.length; i++) {
+            var c = channelsById[members[i]];
+            if (c) { names.push(c.short_label || c.label); }
+        }
+        var btn = el('button', 'btn btn-danger btn-sm console-simulselect-ptt', null);
+        btn.type = 'button';
+        btn.appendChild(el('i', 'bi bi-broadcast-pin me-1'));
+        btn.appendChild(document.createTextNode('Simulselect PTT (' + members.length + ')'));
+        btn.title = 'Hold to transmit on: ' + names.join(', ');
+        if (!canTx) {
+            btn.disabled = true;
+            btn.title = 'Listen-only (no console_tx permission)';
+        } else {
+            var start = function (e) { e.preventDefault(); window.ConsoleAudio.simulselectPttStart(); btn.classList.add('console-simulselect-active'); };
+            var stop = function () { window.ConsoleAudio.simulselectPttStop(); btn.classList.remove('console-simulselect-active'); };
+            btn.addEventListener('mousedown', start);
+            btn.addEventListener('touchstart', start, { passive: false });
+            btn.addEventListener('mouseup', stop);
+            btn.addEventListener('mouseleave', stop);
+            btn.addEventListener('touchend', stop);
+            btn.addEventListener('touchcancel', stop);
+        }
+        bar.appendChild(btn);
+    }
+
     // ── Strip rendering ──────────────────────────────────────────
     // cfg (optional, from a designer view): {overrides:{label,short_label,
     // color,ptt_color,ptt_mode}, controls:[...], width:1|2}
@@ -104,9 +294,18 @@
         led.title = 'Status: ' + (ch.state || 'unknown');
         head.appendChild(led);
         strip.appendChild(head);
+        strip.appendChild(buildSelectChrome(ch));
 
         if (ch.regulatory_class === 'amateur') {
-            strip.appendChild(el('div', 'console-strip-reg', 'AMATEUR — ID required'));
+            var regBadge = el('div', 'console-strip-reg', 'AMATEUR — ID required');
+            // Phase 148 — FCC 97.119 live status. Only dmr_bm channels carry
+            // config.dmr_channel_id (see inc/channel_registry.php); the badge
+            // stays static text for any other amateur adapter until it, too,
+            // has real enforcement wired to api/dmr-station-id.php.
+            if (ch.config && ch.config.dmr_channel_id) {
+                regBadge.setAttribute('data-dmr-channel-id', ch.config.dmr_channel_id);
+            }
+            strip.appendChild(regBadge);
         }
 
         if ((int0(ch.enabled)) !== 1) {
@@ -156,6 +355,13 @@
             }
             if (!canTx) {
                 controlsBox.appendChild(el('div', 'console-strip-note', 'Listen-only (no TX permission)'));
+            }
+            // Phase 114b3 — real Mon/Mute/Volume, for every channel this
+            // console can actually receive audio from (Zello + DMR today;
+            // see console-audio.js's docblock for the honest scope of what
+            // "real" means while each adapter is still a singleton widget).
+            if (caps.voice_rx && (ch.adapter === 'zello' || ch.adapter === 'dmr_bm' || ch.adapter === 'dmr_local')) {
+                controlsBox.appendChild(buildAudioControlsBlock(ch));
             }
         }
 
@@ -263,22 +469,29 @@
     }
 
     // ── Tabs ─────────────────────────────────────────────────────
+    // Phase 114b3: personal views (myViews) are shown alongside the
+    // shared designer views, prefixed with a person icon. They're
+    // view/switch only from here — editing happens in console-designer.php
+    // (now open to any screen.console holder for their OWN views; see
+    // console-designer.js), keeping console.php focused on running the
+    // console rather than duplicating a whole editing UI in the tab bar.
     function renderTabs() {
         if (!tabBar) { return; }
         tabBar.innerHTML = '';
-        // Hide the whole bar when no designer views exist — the auto view
-        // needs no chrome (b1 look).
-        if (!views.length) {
+        // Hide the whole bar when no views (shared OR personal) exist —
+        // the auto view needs no chrome (b1 look).
+        if (!views.length && !myViews.length) {
             tabBar.classList.add('d-none');
             if (activeView !== 'auto') { activeView = 'auto'; }
             return;
         }
         tabBar.classList.remove('d-none');
 
-        var mk = function (key, icon, label) {
+        var mk = function (key, icon, label, isPersonal) {
             var li = el('li', 'nav-item');
             var a = el('a', 'nav-link' + (String(activeView) === String(key) ? ' active' : ''), null);
             a.href = '#';
+            if (isPersonal) { a.appendChild(el('i', 'bi bi-person-fill me-1 console-tab-personal-icon')); }
             if (icon) { a.appendChild(el('i', 'bi ' + icon + ' me-1')); }
             a.appendChild(document.createTextNode(label));
             a.addEventListener('click', function (e) {
@@ -293,13 +506,23 @@
         };
 
         for (var i = 0; i < views.length; i++) {
-            tabBar.appendChild(mk(views[i].id, views[i].icon || 'bi-broadcast-pin', views[i].name));
+            tabBar.appendChild(mk(views[i].id, views[i].icon || 'bi-broadcast-pin', views[i].name, false));
         }
-        tabBar.appendChild(mk('auto', 'bi-grid', 'All Channels'));
+        for (var m = 0; m < myViews.length; m++) {
+            tabBar.appendChild(mk('mine:' + myViews[m].id, myViews[m].icon || 'bi-broadcast-pin', myViews[m].name, true));
+        }
+        tabBar.appendChild(mk('auto', 'bi-grid', 'All Channels', false));
     }
 
     function currentView() {
         if (activeView === 'auto') { return null; }
+        if (String(activeView).indexOf('mine:') === 0) {
+            var myId = String(activeView).slice(5);
+            for (var m = 0; m < myViews.length; m++) {
+                if (String(myViews[m].id) === myId) { return myViews[m]; }
+            }
+            return null;
+        }
         for (var i = 0; i < views.length; i++) {
             if (String(views[i].id) === String(activeView)) { return views[i]; }
         }
@@ -400,20 +623,47 @@
             // Feed boxes are always visible in positioned strips — poll them.
             openFeeds[ch.id] = feed;
             loadFeed(ch.id, feed);
+        } else if (comp.type === 'monitor') {
+            // Phase 114b3 — REAL, wired to ConsoleAudio (console-audio.js).
+            var monSt = audioState(ch.id);
+            node = el('button', 'ccp ccp-btn console-mon-btn' + (monSt.mon ? ' active' : ''), props.text || 'Mon');
+            node.type = 'button';
+            node.title = monSt.mon
+                ? 'Monitor ON — audible at reduced volume while another channel is selected'
+                : 'Monitor OFF — silent while unselected';
+            node.setAttribute('aria-pressed', monSt.mon ? 'true' : 'false');
+            node.addEventListener('click', function () {
+                if (window.ConsoleAudio) { window.ConsoleAudio.setMon(ch.id, !window.ConsoleAudio.getState(ch.id).mon); }
+            });
+        } else if (comp.type === 'mute') {
+            var muteSt = audioState(ch.id);
+            node = el('button', 'ccp ccp-btn console-mute-btn' + (muteSt.muted ? ' active' : ''), props.text || 'Mute');
+            node.type = 'button';
+            node.title = muteSt.muted ? 'Muted — click to unmute' : 'Click to mute this channel';
+            node.setAttribute('aria-pressed', muteSt.muted ? 'true' : 'false');
+            node.addEventListener('click', function () {
+                if (window.ConsoleAudio) { window.ConsoleAudio.setMuted(ch.id, !window.ConsoleAudio.getState(ch.id).muted); }
+            });
+        } else if (comp.type === 'volume') {
+            var volSt = audioState(ch.id);
+            node = el('div', 'ccp ccp-volume');
+            var volInp2 = document.createElement('input');
+            volInp2.type = 'range';
+            volInp2.min = '0';
+            volInp2.max = '100';
+            volInp2.className = 'form-range console-volume-slider';
+            volInp2.value = String(volSt.volume);
+            volInp2.title = 'Volume';
+            volInp2.addEventListener('input', function () {
+                if (window.ConsoleAudio) { window.ConsoleAudio.setVolume(ch.id, volInp2.value); }
+            });
+            node.appendChild(volInp2);
         } else {
-            // Future components (monitor/mute/volume/say) — visible, honest,
-            // disabled until their backend lands with the audio bus.
-            var labels = { monitor: 'Mon', mute: 'Mute', volume: '', say: 'Say' };
-            if (comp.type === 'volume') {
-                node = el('div', 'ccp ccp-volume ccp-future-rt');
-                node.appendChild(el('div', 'ccp-vol-track'));
-            } else {
-                node = el('button', 'ccp ccp-btn ccp-future-rt',
-                    props.text || labels[comp.type] || comp.type);
-                node.type = 'button';
-                node.disabled = true;
-            }
-            node.title = 'Available when the audio matrix lands (Phase 114c)';
+            // 'say' (TTS button) — no backend yet, honestly disabled.
+            node = el('button', 'ccp ccp-btn ccp-future-rt', props.text || 'Say');
+            node.type = 'button';
+            node.disabled = true;
+            node.title = 'Say (TTS) arrives with a future phase — no backend yet';
         }
         node.classList.add('console-comp');
         node.style.position = 'absolute';
@@ -443,6 +693,13 @@
         }
         strip.appendChild(inner);
 
+        // Select + Simulselect — universal chrome, overlaid at the strip
+        // level (not part of the designer-placed component set) so it's
+        // present regardless of what an admin chose to lay out inside.
+        var selChrome = buildSelectChrome(ch);
+        selChrome.classList.add('console-select-chrome-abs');
+        strip.appendChild(selChrome);
+
         if ((parseInt(ch.enabled, 10) || 0) !== 1) {
             strip.classList.add('console-strip-disabled');
             strip.appendChild(el('div', 'console-strip-off-note', 'Channel disabled'));
@@ -450,6 +707,10 @@
         if (ch.regulatory_class === 'amateur') {
             var reg = el('div', 'console-strip-reg console-strip-reg-abs', 'AMATEUR');
             reg.title = 'Amateur radio channel — station ID required';
+            // Phase 148 — see the identical comment in renderStrip() above.
+            if (ch.config && ch.config.dmr_channel_id) {
+                reg.setAttribute('data-dmr-channel-id', ch.config.dmr_channel_id);
+            }
             strip.appendChild(reg);
         }
         return strip;
@@ -501,6 +762,75 @@
             }
         }
         if (count) { count.textContent = String(rendered); }
+        paintAudioState();
+        renderSimulselectBar();
+    }
+
+    // Phase 148 — FCC 97.119 badge live status. Makes the "AMATEUR — ID
+    // required" badge (previously purely decorative — see
+    // specs/SPEC-STATUS.md section B3) reflect the logged-in operator's own
+    // real countdown state on that channel: a small colored dot + updated
+    // title, sourced from the same status inc/fcc_station_id.php computes
+    // for the radio widget. One fetch per distinct dmr_channel_id currently
+    // on screen (a channel may appear in more than one strip across views).
+    function fccRefreshBadges() {
+        var badges = bank.querySelectorAll('[data-dmr-channel-id]');
+        if (!badges.length) return;
+        var seen = {};
+        for (var i = 0; i < badges.length; i++) {
+            var chId = badges[i].getAttribute('data-dmr-channel-id');
+            if (seen[chId]) continue;
+            seen[chId] = true;
+            fetch('api/dmr-station-id.php?action=status&channel=' + encodeURIComponent(chId),
+                { credentials: 'same-origin' })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (st) {
+                    if (!st) return;
+                    fccPaintBadges(st);
+                })
+                .catch(function () { /* view-only operator, DMR unconfigured, etc — leave static */ });
+        }
+    }
+
+    function fccPaintBadges(st) {
+        if (!st.channel_id) return;
+        var badges = bank.querySelectorAll('[data-dmr-channel-id="' + st.channel_id + '"]');
+        var dotClass = 'console-strip-reg-dot-' + (st.zone || 'none');
+        var title = st.callsign_present
+            ? ('Amateur radio channel — station ID required. '
+               + (st.zone === 'none' ? 'No ID on record yet for ' + st.callsign + '.'
+                  : st.zone === 'red' ? st.callsign + '’s next transmission must include a callsign.'
+                  : st.zone === 'yellow' ? st.callsign + '’s ID interval is closing.'
+                  : st.callsign + ' IDed within the last ' + Math.round((st.seconds_since_id || 0) / 60) + ' min.'))
+            : 'Amateur radio channel — station ID required. No callsign on file for this operator.';
+        for (var i = 0; i < badges.length; i++) {
+            badges[i].title = title;
+            badges[i].classList.remove(
+                'console-strip-reg-dot-none', 'console-strip-reg-dot-green',
+                'console-strip-reg-dot-yellow', 'console-strip-reg-dot-red');
+            badges[i].classList.add(dotClass);
+        }
+    }
+
+    // Phase 114b3 — "new activity" flash, mute-aware. lastActivitySeen
+    // tracks the last last_rx_at we've already reacted to per channel, so
+    // a flash only fires on a genuine transition (not on every poll tick
+    // re-showing the same value), and never on the very first load (no
+    // "everything just flashed because the page opened" false alarm).
+    var lastActivitySeen = {};
+    var FLASH_MS = 1500;
+    function maybeFlashActivity(ch, stripEls) {
+        var prevSeen = lastActivitySeen[ch.id];
+        var seenBefore = Object.prototype.hasOwnProperty.call(lastActivitySeen, ch.id);
+        lastActivitySeen[ch.id] = ch.last_rx_at || null;
+        if (!ch.last_rx_at || ch.last_rx_at === prevSeen || !seenBefore) { return; }
+        if (audioState(ch.id).muted) { return; } // mute suppresses the flash — see console-audio-logic.js textProminence()
+        for (var i = 0; i < stripEls.length; i++) {
+            (function (elx) {
+                elx.classList.add('console-strip-flash');
+                setTimeout(function () { elx.classList.remove('console-strip-flash'); }, FLASH_MS);
+            })(stripEls[i]);
+        }
     }
 
     // In-place status update — a full re-render would destroy the send
@@ -510,6 +840,7 @@
         for (var i = 0; i < list.length; i++) {
             var ch = list[i];
             var strips = bank.querySelectorAll('[data-channel-id="' + ch.id + '"]');
+            maybeFlashActivity(ch, strips);
             for (var k = 0; k < strips.length; k++) {
                 var led = strips[k].querySelector('.console-led');
                 if (led) {
@@ -534,6 +865,7 @@
         channels = list;
         channelsById = {};
         for (var i = 0; i < list.length; i++) { channelsById[list[i].id] = list[i]; }
+        if (window.ConsoleAudio) { window.ConsoleAudio.registerChannels(list); }
     }
 
     function sameChannelSet(list) {
@@ -567,6 +899,7 @@
             .then(function (r) { return r.json(); })
             .then(function (j) {
                 views = (j && j.views) || [];
+                myViews = (j && j.my_views) || [];
                 renderTabs();
                 if (then) { then(); }
             })
@@ -603,6 +936,27 @@
         refreshCount++;
         refresh(refreshCount % PROBE_EVERY === 0);
     }, REFRESH_MS);
+
+    // Phase 148 — FCC 97.119 live badge status. Independent of the
+    // channel-refresh loop above (which may skip a full renderBank() via
+    // updateInPlace() and so can't be relied on to re-run this) — scans
+    // whatever [data-dmr-channel-id] badges currently exist in the DOM
+    // each tick, works after either a full render or an in-place update.
+    // Fails silently (e.g. a 403 for a view-only operator) — the badge
+    // just stays its static "AMATEUR — ID required" text, which is still
+    // an accurate claim, just not a live one.
+    setInterval(fccRefreshBadges, FCC_BADGE_REFRESH_MS);
+    fccRefreshBadges();
+
+    // Phase 114b3 — repaint select/mon/mute/volume chrome + the
+    // simulselect bar whenever ConsoleAudio's state changes (a user
+    // touching a control, or the persisted state arriving from the
+    // server). Kept separate from renderBank()'s own end-of-function call
+    // so a state change alone never has to rebuild the whole bank.
+    if (window.ConsoleAudio) {
+        window.ConsoleAudio.subscribe(function () { paintAudioState(); renderSimulselectBar(); });
+        window.ConsoleAudio.load(); // fire-and-forget — subscribe() above repaints once it lands
+    }
 
     // Initial load: channels first (so the bank can render), then views.
     fetch(API + '?probe=1')

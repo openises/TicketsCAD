@@ -36,12 +36,23 @@ $bs_theme = ($theme === 'Night') ? 'dark' : 'light';
 $csrf     = csrf_token();
 $active_page = 'facility-board';
 
-// Check if bed/capacity tracking table exists
+// Check if bed/capacity tracking table exists.
+//
+// B19 fix (2026-08-21, SPEC-STATUS.md): this used to check for
+// `newui_facility_capacity` -- a dead, unread table (sql/facility_beds.sql)
+// that was itself retired in the same change. The JS this flag gates
+// (assets/js/facility-board.js's loadCapacity()) calls
+// api/facility-capacity.php, which reads `facility_capacity` -- a
+// DIFFERENT table (sql/run_facility_capacity_tables.php). Checking the
+// wrong table's existence as a proxy for "is the RIGHT table's data
+// available" only ever worked by coincidence, because
+// `newui_facility_capacity` happened to be created on every install too.
+// Now checks the table the capacity fetch actually reads.
 $has_capacity = false;
 try {
     $check = db_fetch_value(
         "SELECT COUNT(*) FROM `information_schema`.`TABLES`
-         WHERE `TABLE_SCHEMA` = DATABASE() AND `TABLE_NAME` = 'newui_facility_capacity'"
+         WHERE `TABLE_SCHEMA` = DATABASE() AND `TABLE_NAME` = 'facility_capacity'"
     );
     $has_capacity = ((int) $check > 0);
 } catch (Exception $e) {

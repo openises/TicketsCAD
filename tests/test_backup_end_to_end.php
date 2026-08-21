@@ -13,12 +13,14 @@
  *
  * So this file drives the real writers:
  *
- *   1. backup_guard() against a REAL directory with an impossible reserve —
- *      does it actually say no?
- *   2. backup_run_now() with that same reserve — does it refuse, write NOTHING,
- *      and leave no half-written archive behind? (The failure mode Eric named
- *      is "we consumed the disk space", and a partial 3 GB zip from a run that
- *      died mid-write consumes it just as thoroughly as a complete one.)
+ *   1. backup_guard() against a REAL directory with a genuinely impossible
+ *      condition — does it actually say no? (See the GH#94 note at section 1
+ *      below for how this scenario is built and why.)
+ *   2. backup_run_now() against that same condition — does it refuse, write
+ *      NOTHING, and leave no half-written archive behind? (The failure mode
+ *      Eric named is "we consumed the disk space", and a partial 3 GB zip
+ *      from a run that died mid-write consumes it just as thoroughly as a
+ *      complete one.)
  *   3. The settings round-trip ACROSS PROCESSES. get_variable() caches the whole
  *      settings table in a static on first read, so a write-then-read inside one
  *      process returns the stale value and would pass no matter which table the
@@ -81,9 +83,24 @@ if (!$haveDb) {
     $origMaxDir  = get_variable('backup_max_dir_mb');
     $dir = e2e_tmpdir('guard');
 
-    // An impossible reserve: demand that 1 EB remain free after the write.
-    // Any real filesystem fails this, so the guard MUST refuse.
-    backup_setting_set('backup_min_free_mb', (string) (1024 * 1024 * 1024));
+    // GH#94 (2026-08-20): backup_min_free_mb is now CLAMPED to a sane ceiling
+    // (BACKUP_MAX_MIN_FREE_MB, 1 TiB — see inc/backup_schedule.php and
+    // tests/test_gh94_backup_min_free_mb_clamp.php) so a byte-value-typed-
+    // into-an-MB-field mistake can no longer manufacture a permanently
+    // impossible reserve. That is the whole point of the fix, but it also
+    // means this scenario's ORIGINAL technique — demanding an absurd amount
+    // of free space — can no longer force a refusal on a machine whose real
+    // disk is bigger than 1 TiB (this dev box measured ~3.7 TB total). So
+    // this scenario now forces the SAME "backup_guard() must actually refuse,
+    // and backup_run_now() must actually honour that" property through the
+    // OTHER guard instead: the folder-size CAP (backup_max_dir_mb), which is
+    // disk-size-independent — a pre-seeded archive plus a cap smaller than it
+    // is unconditionally "over cap" on any machine, regardless of how much
+    // real disk space is free.
+    // 2 MB of dummy content against a 1 MB cap — comfortably over, regardless
+    // of the archive-size estimate (which adds on top, never subtracts).
+    file_put_contents("$dir/ticketscad-preexisting.zip", str_repeat('x', 2 * $MB));
+    backup_setting_set('backup_max_dir_mb', '1'); // 1 MB cap vs a 2 MB pre-existing archive
 
     // backup_setting() reads through get_variable()'s per-process static cache,
     // so this process would keep seeing the OLD value. Ask a fresh process.
@@ -92,11 +109,11 @@ if (!$haveDb) {
         echo ($g["ok"] ? "ALLOW" : "REFUSE") . "|" . $g["reason"];
     ');
     is_ok(strpos($probe, 'REFUSE') === 0,
-        'an impossible free-space reserve makes backup_guard() actually refuse', $probe);
-    is_ok(stripos($probe, 'disk space') !== false || stripos($probe, 'reserve') !== false,
-        'the refusal names disk space, so an operator can act on it', $probe);
+        'a folder-size cap smaller than what is already stored makes backup_guard() actually refuse', $probe);
+    is_ok(stripos($probe, 'limit') !== false,
+        'the refusal names the folder limit, so an operator can act on it', $probe);
 
-    // ── 2. backup_run_now() refuses and writes NOTHING ──────────────────
+    // ── 2. backup_run_now() refuses and writes NOTHING NEW ──────────────
     $before = glob("$dir/*") ?: [];
     $run = e2e_probe(__DIR__ . '/..', '
         $r = backup_run_now(' . var_export($dir, true) . ');
@@ -107,7 +124,7 @@ if (!$haveDb) {
 
     $after = glob("$dir/*") ?: [];
     is_ok(count($after) === count($before),
-        'a refused backup leaves NO file behind — not even a partial archive',
+        'a refused backup leaves NO NEW file behind — not even a partial archive',
         'files after: ' . implode(', ', array_map('basename', $after)));
 
     // The refusal must be legible to the admin UI, not just to error_log.
@@ -121,16 +138,22 @@ if (!$haveDb) {
     $skipAt = e2e_probe(__DIR__ . '/..', 'echo (string) (int) get_variable("backup_last_skip_at");');
     is_ok((int) $skipAt > 0, 'the refusal stamps backup_last_skip_at so staleness is visible', $skipAt);
 
-    // Put the reserve back, then prove the SAME directory is allowed again —
-    // otherwise "it refused" might just mean the guard always refuses.
-    backup_setting_set('backup_min_free_mb', $origMinFree === false ? '1024' : (string) $origMinFree);
+    // Put the folder limit back to something sane, then prove the SAME
+    // directory is allowed again — otherwise "it refused" might just mean
+    // the guard always refuses.
+    backup_setting_set('backup_max_dir_mb', $origMaxDir === false ? (string) BACKUP_DEFAULT_MAX_DIR_MB : (string) $origMaxDir);
     $probe2 = e2e_probe(__DIR__ . '/..', '
         $g = backup_guard(' . var_export($dir, true) . ');
         echo ($g["ok"] ? "ALLOW" : "REFUSE") . "|" . $g["reason"];
     ');
     is_ok(strpos($probe2, 'ALLOW') === 0,
-        'with a sane reserve the same directory is allowed — the guard discriminates', $probe2);
+        'with a sane folder limit the same directory is allowed — the guard discriminates', $probe2);
 
+    // Restore whatever was really configured before this test ran (both
+    // settings this scenario touched — backup_min_free_mb was never modified
+    // this run, but keep the restore for symmetry/safety in case a future
+    // edit reintroduces a min-free-mb mutation here).
+    backup_setting_set('backup_min_free_mb', $origMinFree === false ? '1024' : (string) $origMinFree);
     if ($origMaxDir !== false) backup_setting_set('backup_max_dir_mb', (string) $origMaxDir);
     e2e_rmdir($dir);
 }

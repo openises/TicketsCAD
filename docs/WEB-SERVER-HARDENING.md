@@ -11,6 +11,17 @@ TicketsCAD ships the rules to close this. **The rules only work on Apache.**
 If you run nginx or IIS you must add the equivalent yourself — this page tells
 you exactly what to add.
 
+This page is about which *directories* your web server publishes. It is not
+about whether traffic reaching TicketsCAD is actually encrypted — for that,
+see **[HTTPS-VERIFICATION.md](HTTPS-VERIFICATION.md)**. The two are related
+in one specific way: if your reverse proxy config translates a client
+header into your web server's own `HTTPS` flag (an Apache `SetEnvIf
+X-Forwarded-Proto ... HTTPS=on` line, for example) without scoping it to
+your proxy's IP address, that single misconfigured line can undermine
+`Trusted Reverse Proxies` just as thoroughly as a missing deny rule
+undermines the directories below — see that page's Cloudflare walkthrough
+for the concrete example.
+
 ---
 
 ## Which do I need?

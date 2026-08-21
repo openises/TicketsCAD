@@ -135,6 +135,17 @@
             "regulatory_class",
             "sort_order"
         ],
+        "comm_routes": [
+            "allow_cross_class",
+            "created_by",
+            "dst_channel_id",
+            "ducking",
+            "enabled",
+            "gain_db",
+            "note",
+            "priority",
+            "src_channel_id"
+        ],
         "conditions": [
             "_by",
             "_from",
@@ -157,6 +168,7 @@
             "width"
         ],
         "console_views": [
+            "based_on_view_id",
             "created_by",
             "icon",
             "name",
@@ -185,6 +197,14 @@
             "usrp_listen_port",
             "usrp_send_port"
         ],
+        "dmr_id_log": [
+            "callsign",
+            "channel_id",
+            "id_at",
+            "notes",
+            "source",
+            "user_id"
+        ],
         "dmr_messages": [
             "audio_format",
             "audio_path",
@@ -203,6 +223,12 @@
             "transcript",
             "transcript_engine",
             "transcript_partials"
+        ],
+        "dmr_ptt_state": [
+            "channel_id",
+            "conversation_started_at",
+            "last_tx_at",
+            "user_id"
         ],
         "dmr_ws_tokens": [
             "channel_id",
@@ -297,6 +323,7 @@
             "lat",
             "lng",
             "name",
+            "org_id",
             "state",
             "status_about",
             "status_id",
@@ -314,6 +341,14 @@
             "status_id",
             "status_val",
             "ticket_id"
+        ],
+        "facility_bed_release_log": [
+            "delta_a",
+            "delta_o",
+            "facility_id",
+            "note",
+            "released_by",
+            "released_by_name"
         ],
         "facility_capacity": [
             "available",
@@ -693,6 +728,7 @@
             "ended_at",
             "miles",
             "notes",
+            "org_id",
             "responder_id",
             "start_odo",
             "started_at",
@@ -994,6 +1030,7 @@
             "multi",
             "name",
             "ogts",
+            "org_id",
             "other",
             "pager_p",
             "pager_s",
@@ -1165,6 +1202,7 @@
             "nims_resource_type",
             "nims_typing_level",
             "on",
+            "org_id",
             "rtlt_code",
             "sub-group",
             "team",
@@ -1479,6 +1517,7 @@
         "comm_channel_state",
         "comm_channels",
         "comm_modes",
+        "comm_routes",
         "conditions",
         "config",
         "console_view_strips",
@@ -1488,7 +1527,9 @@
         "css_night",
         "dashboard_layouts",
         "dmr_channels",
+        "dmr_id_log",
         "dmr_messages",
+        "dmr_ptt_state",
         "dmr_ws_tokens",
         "email_list_members",
         "email_lists",
@@ -1501,6 +1542,7 @@
         "fac_types",
         "facilities",
         "facility_bed_auto_log",
+        "facility_bed_release_log",
         "facility_capacity",
         "facility_notes",
         "fcc_amateur",
@@ -1645,8 +1687,8 @@
     "_meta": {
         "generated_by": "tools/gen_schema_manifest.php",
         "purpose": "columns this code writes to + tables it references; checked by inc/schema-verify.php",
-        "tables": 146,
-        "columns": 1164,
-        "required_tables": 183
+        "tables": 150,
+        "columns": 1194,
+        "required_tables": 187
     }
 }

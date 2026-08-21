@@ -304,6 +304,8 @@ function _build_sidebar(string $base, string $current): string
         ],
         'For administrators' => [
             ['INSTALLATION-CHECKLIST',      'Installation checklist'],
+            ['HTTPS-SETUP',                 'Enabling HTTPS'],
+            ['HTTPS-VERIFICATION',          'HTTPS verification & trusted proxies'],
             ['WEB-SERVER-HARDENING',        'Web server hardening'],
             ['MAINTENANCE-RUNBOOK',         'Maintenance runbook'],
             ['TROUBLESHOOTING',             'Troubleshooting'],
@@ -314,6 +316,7 @@ function _build_sidebar(string $base, string $current): string
         ],
         'Integrations' => [
             ['DVSWITCH-ADMIN-GUIDE',        'DVSwitch DMR bridge'],
+            ['FCC-STATION-ID-COMPLIANCE',   'FCC station-ID compliance'],
             ['MESH-BRIDGE-GUIDE',           'Meshtastic / MeshCore'],
             ['APRS-LISTENER-SETUP',         'APRS-IS listener'],
             ['OWNTRACKS-CONFIG-PUSH',       'OwnTracks config push'],

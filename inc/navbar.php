@@ -928,6 +928,15 @@ if (http_enc_should_prompt_admin((int) ($_SESSION['user_id'] ?? 0))) {
 ?>
 
 <?php
+// SPEC-STATUS.md gap B16: "Require HTTPS" enforcement banner. Admins only,
+// and only when the require_https setting is ON and the CURRENT request
+// does not verify as TLS (is_https_verified()). Distinct from the
+// http-encryption-notice block just above — see that file's docblock for
+// the difference. Never blocks; see inc/https-enforcement.php.
+include_once __DIR__ . '/https-enforcement-notice.php';
+?>
+
+<?php
 // Phase 13 (2026-06-11): pending-database-migrations banner.
 //   For admins only. Fetches /api/migrations-check.php once per page
 //   load; if pending > 0 OR tracking_table is missing, shows a yellow
@@ -1101,6 +1110,36 @@ if (!preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/', $__pttC
                 <input type="range" id="radioScrubber" min="0" max="30" step="0.1" value="30"
                        title="Scrub up to 30 seconds back" aria-label="Playback position">
                 <span class="radio-position-label" id="radioPosLabel">live</span>
+            </div>
+        </div>
+        <!-- Phase 148 — FCC 97.119 station-ID panel. Hidden entirely when
+             the channel's id_enforce='off' or no DMR channel is configured
+             (assets/js/radio-widget.js toggles .radio-fcc-hidden). See
+             inc/fcc_station_id.php + api/dmr-station-id.php. -->
+        <div class="radio-fcc-panel radio-fcc-hidden" id="radioFccPanel">
+            <div class="radio-fcc-row radio-fcc-row-top">
+                <span class="radio-fcc-callsign" id="radioFccCallsign">—</span>
+                <span class="radio-fcc-conv" id="radioFccConv">Conversation: —:—</span>
+            </div>
+            <div class="radio-fcc-row">
+                <div class="radio-fcc-bar" id="radioFccBar" title="Time since last station ID">
+                    <div class="radio-fcc-bar-fill" id="radioFccBarFill"></div>
+                </div>
+                <span class="radio-fcc-timer" id="radioFccTimer">—</span>
+            </div>
+            <div class="radio-fcc-row radio-fcc-row-actions">
+                <button type="button" class="btn btn-sm btn-outline-secondary radio-fcc-btn" id="radioFccMonitorBtn" title="Fire a standalone &quot;callsign monitoring&quot; ID now">
+                    <i class="bi bi-mic"></i> Monitoring ID
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary radio-fcc-btn" id="radioFccEndBtn" title="Close the current conversation" disabled>
+                    <i class="bi bi-stop-circle"></i> End conversation
+                </button>
+            </div>
+            <div class="radio-fcc-banner radio-fcc-hidden" id="radioFccBanner"></div>
+            <div class="radio-fcc-confirm radio-fcc-hidden" id="radioFccConfirm">
+                <span>Did that transmission include your callsign?</span>
+                <button type="button" class="btn btn-sm btn-success" id="radioFccConfirmYes">Yes</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="radioFccConfirmNo">No</button>
             </div>
         </div>
         <div class="radio-ptt-bar">

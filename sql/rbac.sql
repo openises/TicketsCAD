@@ -85,6 +85,14 @@ INSERT IGNORE INTO `permissions` (`code`, `name`, `category`, `description`) VAL
     ('screen.incident_detail', 'Incident Detail',      'screen', 'View incident details'),
     ('screen.search',          'Search',               'screen', 'Search past incidents'),
     ('screen.new_incident',    'New Incident',         'screen', 'Access the new incident form'),
+    -- SPEC-STATUS.md B12 (2026-08-21) — units.php gates on this now. The
+    -- code was already referenced (via a loop variable, never a literal
+    -- rbac_can() call) in inc/access.php + api/stream.php's OR-chains but
+    -- had never actually been seeded — harmless there only because it rode
+    -- alongside real codes in the same chain. See
+    -- sql/run_units_screen_perm.php for the companion migration that
+    -- reaches installs that already ran this file before today.
+    ('screen.units',           'Units List',           'screen', 'View the units/responders list'),
     ('screen.unit_detail',     'Unit Detail',          'screen', 'View responder/unit details'),
     ('screen.unit_edit',       'Unit Edit',            'screen', 'Edit responder/unit records'),
     ('screen.settings',        'Settings / Config',    'screen', 'Access settings/config panel'),
@@ -462,7 +470,15 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
                                        -- for the dedicated Facility role (7) only, never Dispatcher.
                                        -- This grant has no category restriction, so both new codes
                                        -- must be named here explicitly.
-        'action.facility_self_report'
+        'action.facility_self_report',
+        'action.manage_matrix'         -- Phase 114c (sql/run_phase114c_comm_routes.php) — audio-
+                                       -- matrix patch management is admin-only (roles 1-2, same tier
+                                       -- as console.design/action.intercom_unlock just above). Found
+                                       -- missing from this list 2026-08-20 while building the
+                                       -- matrix-admin.php UI: confirmed LIVE on the dev database that
+                                       -- Dispatcher (role 3) had already been swept up by this file's
+                                       -- broad NOT-IN grant on a prior re-import, exactly the pattern
+                                       -- this file's own repair-DELETE history documents.
     );
 
 -- Repair (2026-08-16, RBAC canonical-alias privilege-leak fix — same two
@@ -484,7 +500,8 @@ DELETE `role_permissions` FROM `role_permissions`
         'action.manage_ics_form_types', 'action.manage_ics_form_types_org',
         'action.manage_org_routing', 'action.manage_org_routing_org',
         'action.manage_org_relationships',
-        'screen.facility_portal', 'action.facility_self_report'
+        'screen.facility_portal', 'action.facility_self_report',
+        'action.manage_matrix'
       );
 
 DELETE rp FROM `role_permissions` rp
@@ -501,7 +518,8 @@ DELETE rp FROM `role_permissions` rp
         'action.manage_ics_form_types', 'action.manage_ics_form_types_org',
         'action.manage_org_routing', 'action.manage_org_routing_org',
         'action.manage_org_relationships',
-        'screen.facility_portal', 'action.facility_self_report'
+        'screen.facility_portal', 'action.facility_self_report',
+        'action.manage_matrix'
       );
 
 -- Operator gets all screens/widgets/fields + key operational actions (45 permissions)

@@ -21,6 +21,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/audit.php';
 require_once __DIR__ . '/../inc/dmr_token.php';
+require_once __DIR__ . '/../inc/fcc_station_id.php';
 // csrf_verify lives in inc/functions.php, already loaded via config.php.
 ini_set('display_errors', '0');
 header('Content-Type: application/json');
@@ -56,13 +57,13 @@ $channelId = (int) ($_POST['channel'] ?? 0);
 $prefix = $GLOBALS['db_prefix'] ?? '';
 if ($channelId > 0) {
     $channel = db_fetch_one(
-        "SELECT id, label, bridge_host, bridge_port, bridge_token
+        "SELECT id, label, bridge_host, bridge_port, bridge_token, id_interval_seconds
          FROM `{$prefix}dmr_channels` WHERE id = ? LIMIT 1",
         [$channelId]
     );
 } else {
     $channel = db_fetch_one(
-        "SELECT id, label, bridge_host, bridge_port, bridge_token
+        "SELECT id, label, bridge_host, bridge_port, bridge_token, id_interval_seconds
          FROM `{$prefix}dmr_channels` WHERE enabled = 1
          ORDER BY id LIMIT 1"
     );
@@ -140,6 +141,15 @@ if (function_exists('audit_log')) {
             'mime'       => $mime,
         ]
     );
+}
+// Phase 148 — FCC 97.119: a successful forward is the authoritative "a
+// transmission actually happened" signal for the station-ID timer's
+// informational last_tx_at/conversation_started_at bookkeeping. Never
+// touches last_id_at itself (see inc/fcc_station_id.php) -- only an
+// explicit ID event (confirmed_tx / monitoring_id / end_of_conversation)
+// via api/dmr-station-id.php can do that.
+if (function_exists('fcc_record_tx')) {
+    fcc_record_tx((int) $channel['id'], (int) ($_SESSION['user_id'] ?? 0), (int) ($channel['id_interval_seconds'] ?? 600));
 }
 http_response_code(200);
 echo $resp;

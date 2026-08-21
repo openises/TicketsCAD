@@ -51,6 +51,12 @@
     var incidentFilter    = document.getElementById('incidentFilter');
     var memberFilter      = document.getElementById('memberFilter');
     var memberFilterCol   = document.getElementById('memberFilterCol');
+    // GH#96 — Mileage Log's own Driver (login/user account) and
+    // Organization filters, distinct from Responder/Vehicle and Member.
+    var driverFilter        = document.getElementById('driverFilter');
+    var driverFilterCol     = document.getElementById('driverFilterCol');
+    var mileageOrgFilter    = document.getElementById('mileageOrgFilter');
+    var mileageOrgFilterCol = document.getElementById('mileageOrgFilterCol');
     var btnRunReport      = document.getElementById('btnRunReport');
     var btnExportCSV      = document.getElementById('btnExportCSV');
     var btnPrint          = document.getElementById('btnPrint');
@@ -71,6 +77,20 @@
     var intervalBreakdownPanel = document.getElementById('intervalBreakdownPanel');
     var intervalByTypeBody     = document.getElementById('intervalByTypeBody');
     var intervalByUnitBody     = document.getElementById('intervalByUnitBody');
+    // dead_control_audit.php check (d) (2026-08-20) — Incident Summary's
+    // severity/disposition breakdown panel. api/reports.php's
+    // 'incident_summary' case has computed severity_breakdown /
+    // disposition_breakdown as top-level response keys since Phase 132 /
+    // GH#87-GH#88, but nothing in this file ever read either one — the
+    // grand-total-by-severity and grand-total-by-disposition breakdowns
+    // were silently dropped on every render. See renderIncidentSummaryBreakdown().
+    var incidentSummaryBreakdownPanel = document.getElementById('incidentSummaryBreakdownPanel');
+    var severityBreakdownBody         = document.getElementById('severityBreakdownBody');
+    var dispositionBreakdownBody      = document.getElementById('dispositionBreakdownBody');
+    // GH#96 — Mileage Log's by-org/by-vehicle breakdown panel.
+    var mileageBreakdownPanel = document.getElementById('mileageBreakdownPanel');
+    var mileageByOrgBody      = document.getElementById('mileageByOrgBody');
+    var mileageByUnitBody     = document.getElementById('mileageByUnitBody');
 
     // ── Init ──────────────────────────────────────────────────────────────────
 
@@ -78,6 +98,7 @@
         bindEvents();
         loadResponders();
         loadMembers();
+        loadMileageFilters();
         setDefaultDates();
     }
 
@@ -203,12 +224,24 @@
         // duplicated).
         // GH#64 — Interval Report accepts the same responder_id filter as
         // unit_log/dispatch_log (api/reports.php's interval_report case).
+        // GH#96 — Mileage Log also accepts the same responder_id filter
+        // (as "Vehicle"), reusing this Responder selector as-is.
         var showResponder = (type === 'unit_log' || type === 'dispatch_log' ||
                              type === 'facility_log' || type === 'notes_log' ||
-                             type === 'incident_report' || type === 'interval_report');
+                             type === 'incident_report' || type === 'interval_report' ||
+                             type === 'mileage_report');
         responderFilterCol.classList.toggle('d-none', !showResponder);
         if (!showResponder) {
             responderFilter.value = '0';
+        }
+
+        // GH#96 — Driver/Organization filters are Mileage Log-only.
+        var showMileageFilters = (type === 'mileage_report');
+        driverFilterCol.classList.toggle('d-none', !showMileageFilters);
+        mileageOrgFilterCol.classList.toggle('d-none', !showMileageFilters);
+        if (!showMileageFilters) {
+            driverFilter.value = '0';
+            mileageOrgFilter.value = '0';
         }
 
         var showIncident = (type === 'after_action');
@@ -362,6 +395,48 @@
             });
     }
 
+    // ── Load Driver/Organization options for the Mileage Log filter ────────────
+    // GH#96 — a dedicated api/reports.php GET branch (list_filters=mileage),
+    // not api/responders.php or api/members.php: Driver is `user` (a login
+    // account), not `member` or `responder`, and both lists are scoped to
+    // the caller's own org-visibility server-side (see that branch's own
+    // comment). A caller without the "Run Aggregate Reports" permission
+    // gets a 403 here -- caught silently, same as loadResponders()/
+    // loadMembers() above, since the Mileage Log tab itself is unusable for
+    // that caller anyway unless they narrow by Vehicle (the responder_id
+    // exemption api/reports.php already applies uniformly).
+
+    function loadMileageFilters() {
+        fetch('api/reports.php?list_filters=mileage', { credentials: 'same-origin' })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.drivers) {
+                    var dsel = driverFilter;
+                    for (var i = 0; i < data.drivers.length; i++) {
+                        var d = data.drivers[i];
+                        var dopt = document.createElement('option');
+                        dopt.value = d.id;
+                        dopt.textContent = d.name;
+                        dsel.appendChild(dopt);
+                    }
+                }
+                if (data.organizations) {
+                    var osel = mileageOrgFilter;
+                    for (var j = 0; j < data.organizations.length; j++) {
+                        var o = data.organizations[j];
+                        var oopt = document.createElement('option');
+                        oopt.value = o.id;
+                        oopt.textContent = o.name;
+                        osel.appendChild(oopt);
+                    }
+                }
+            })
+            .catch(function () {
+                // Filter option lists failed to load — the Mileage Log
+                // report still runs unfiltered by Driver/Organization.
+            });
+    }
+
     // ── Run Report ────────────────────────────────────────────────────────────
 
     function runReport() {
@@ -381,6 +456,16 @@
         var mid = parseInt(memberFilter.value, 10) || 0;
         if (mid > 0) {
             params += '&member_id=' + mid;
+        }
+
+        // GH#96 — Mileage Log's Driver/Organization filters.
+        var did = parseInt(driverFilter.value, 10) || 0;
+        if (did > 0) {
+            params += '&driver_id=' + did;
+        }
+        var moid = parseInt(mileageOrgFilter.value, 10) || 0;
+        if (moid > 0) {
+            params += '&org_id=' + moid;
         }
 
         // GH#51 — send the dispatcher's own case number as typed (e.g.
@@ -451,6 +536,8 @@
         summaryCards.classList.add('d-none');
         afterActionPanel.classList.add('d-none');
         intervalBreakdownPanel.classList.add('d-none');
+        incidentSummaryBreakdownPanel.classList.add('d-none');
+        mileageBreakdownPanel.classList.add('d-none');
         btnExportCSV.disabled = true;
         btnPrint.disabled = true;
     }
@@ -538,6 +625,20 @@
             renderIntervalBreakdown();
         } else {
             intervalBreakdownPanel.classList.add('d-none');
+        }
+
+        // Incident Summary's severity/disposition breakdown panel.
+        if (currentReport === 'incident_summary') {
+            renderIncidentSummaryBreakdown();
+        } else {
+            incidentSummaryBreakdownPanel.classList.add('d-none');
+        }
+
+        // GH#96 — Mileage Log's by-org/by-vehicle breakdown panel.
+        if (currentReport === 'mileage_report') {
+            renderMileageBreakdown();
+        } else {
+            mileageBreakdownPanel.classList.add('d-none');
         }
     }
 
@@ -779,6 +880,50 @@
             var timeStr = hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + 'm';
             cards.push({ label: 'Avg Close (Mins)', value: timeStr, color: 'secondary', icon: 'bi-clock' });
         }
+        // GH#96 — Mileage Log's own summary fields. total_miles/trip_count
+        // give the headline numbers at a glance; unattributed_trip_count is
+        // surfaced deliberately (not hidden) so an admin can see when trips
+        // have no organization on file, matching this report's own
+        // "transparency about attribution gaps" design goal -- confirmed
+        // live (your-server.example.com) that these fields existed in the
+        // JSON response but were never rendered until this fix, the same
+        // "dead API response key" shape tools/dead_control_audit.php's
+        // check (d) already looks for elsewhere in this codebase.
+        if (currentReport === 'mileage_report') {
+            if (summary.trip_count !== null && summary.trip_count !== undefined) {
+                cards.push({ label: 'Trips', value: summary.trip_count, color: 'primary', icon: 'bi-signpost-split' });
+            }
+            if (summary.total_miles !== null && summary.total_miles !== undefined) {
+                cards.push({ label: 'Total Miles', value: summary.total_miles, color: 'info', icon: 'bi-speedometer2' });
+            }
+            if (summary.open_trip_count) {
+                cards.push({ label: 'Open Trips', value: summary.open_trip_count, color: 'warning', icon: 'bi-hourglass-split' });
+            }
+            if (summary.unattributed_trip_count) {
+                cards.push({ label: 'Unattributed', value: summary.unattributed_trip_count, color: 'secondary', icon: 'bi-question-diamond' });
+            }
+        }
+        // GH#102 — Facility Bed Adjustments summary. The split between
+        // auto_decrement_count and self_release_count is the whole point
+        // of this report (see api/reports.php's own case comment): a
+        // period where the auto count keeps climbing with zero releases
+        // is exactly the drift the original bug report was about, and an
+        // operator should be able to see that split at a glance rather
+        // than counting row-by-row.
+        if (currentReport === 'facility_bed_adjustments') {
+            if (summary.adjustment_count !== null && summary.adjustment_count !== undefined) {
+                cards.push({ label: 'Adjustments', value: summary.adjustment_count, color: 'primary', icon: 'bi-clipboard-data' });
+            }
+            if (summary.auto_decrement_count !== null && summary.auto_decrement_count !== undefined) {
+                cards.push({ label: 'Auto Decrements', value: summary.auto_decrement_count, color: 'warning', icon: 'bi-arrow-down-circle' });
+            }
+            if (summary.self_release_count !== null && summary.self_release_count !== undefined) {
+                cards.push({ label: 'Facility Releases', value: summary.self_release_count, color: 'success', icon: 'bi-arrow-up-circle' });
+            }
+            if (summary.beds_released_total) {
+                cards.push({ label: 'Beds Released', value: summary.beds_released_total, color: 'info', icon: 'bi-hospital' });
+            }
+        }
 
         if (cards.length === 0) return;
 
@@ -937,6 +1082,124 @@
 
         fillTable(intervalByTypeBody, byType, 'Unknown');
         fillTable(intervalByUnitBody, byUnit, 'Unknown Unit');
+    }
+
+    // ── Incident Summary Breakdown Panel ──────────────────────────────────────
+
+    /**
+     * Populate the severity/disposition grand-total mini-tables from
+     * reportData.severity_breakdown / disposition_breakdown
+     * (api/reports.php's 'incident_summary' case — one entry per
+     * configured severity level, and one per disposition, aggregated
+     * across every incident-type row in the main report table). These
+     * two keys have existed on the server since Phase 132 (disposition)
+     * and GH#87/GH#88 (severity) but were never read anywhere in this
+     * file — found by tools/dead_control_audit.php's check (d) ("dead
+     * API response key"). Built with plain DOM methods (textContent, not
+     * innerHTML), same convention as renderIntervalBreakdown() above.
+     */
+    function renderIncidentSummaryBreakdown() {
+        var sevData  = (reportData && reportData.severity_breakdown) || [];
+        var dispData = (reportData && reportData.disposition_breakdown) || [];
+
+        if (sevData.length === 0 && dispData.length === 0) {
+            incidentSummaryBreakdownPanel.classList.add('d-none');
+            return;
+        }
+        incidentSummaryBreakdownPanel.classList.remove('d-none');
+
+        severityBreakdownBody.innerHTML = '';
+        for (var i = 0; i < sevData.length; i++) {
+            var sev = sevData[i];
+            var sevRow = document.createElement('tr');
+
+            var sevLabelCell = document.createElement('td');
+            sevLabelCell.className = 'small';
+            var swatch = document.createElement('span');
+            swatch.className = 'd-inline-block me-2';
+            swatch.style.width = '10px';
+            swatch.style.height = '10px';
+            swatch.style.borderRadius = '50%';
+            swatch.style.backgroundColor = sev.color || '#6c757d';
+            sevLabelCell.appendChild(swatch);
+            sevLabelCell.appendChild(document.createTextNode(sev.label || ('Severity ' + sev.value)));
+            sevRow.appendChild(sevLabelCell);
+
+            var sevCountCell = document.createElement('td');
+            sevCountCell.className = 'small text-end';
+            sevCountCell.textContent = String(sev.count);
+            sevRow.appendChild(sevCountCell);
+
+            severityBreakdownBody.appendChild(sevRow);
+        }
+
+        dispositionBreakdownBody.innerHTML = '';
+        for (var j = 0; j < dispData.length; j++) {
+            var disp = dispData[j];
+            var dispRow = document.createElement('tr');
+
+            var dispLabelCell = document.createElement('td');
+            dispLabelCell.className = 'small';
+            dispLabelCell.textContent = disp.disposition;
+            dispRow.appendChild(dispLabelCell);
+
+            var dispTotalCell = document.createElement('td');
+            dispTotalCell.className = 'small text-end';
+            dispTotalCell.textContent = String(disp.total);
+            dispRow.appendChild(dispTotalCell);
+
+            dispositionBreakdownBody.appendChild(dispRow);
+        }
+    }
+
+    // ── Mileage Log Breakdown Panel (GH#96) ───────────────────────────────────
+
+    /**
+     * Populate the By Organization / By Vehicle mini-tables from
+     * reportData.mileage_by_org / mileage_by_unit (api/reports.php's
+     * 'mileage_report' case -- one entry per org/vehicle seen in the
+     * period, each carrying trip_count + total_miles, already sorted by
+     * total_miles descending server-side). Same plain-DOM-methods
+     * convention as renderIntervalBreakdown()/renderIncidentSummaryBreakdown()
+     * above.
+     */
+    function renderMileageBreakdown() {
+        var byOrg  = (reportData && reportData.mileage_by_org) || [];
+        var byUnit = (reportData && reportData.mileage_by_unit) || [];
+
+        if (byOrg.length === 0 && byUnit.length === 0) {
+            mileageBreakdownPanel.classList.add('d-none');
+            return;
+        }
+        mileageBreakdownPanel.classList.remove('d-none');
+
+        function fillTable(tbody, items, labelFallback) {
+            tbody.innerHTML = '';
+            for (var i = 0; i < items.length; i++) {
+                var item = items[i];
+                var tr = document.createElement('tr');
+
+                var tdLabel = document.createElement('td');
+                tdLabel.className = 'small';
+                tdLabel.textContent = item.label || labelFallback;
+                tr.appendChild(tdLabel);
+
+                var tdCount = document.createElement('td');
+                tdCount.className = 'small text-end';
+                tdCount.textContent = String(item.trip_count);
+                tr.appendChild(tdCount);
+
+                var tdMiles = document.createElement('td');
+                tdMiles.className = 'small text-end';
+                tdMiles.textContent = String(item.total_miles);
+                tr.appendChild(tdMiles);
+
+                tbody.appendChild(tr);
+            }
+        }
+
+        fillTable(mileageByOrgBody, byOrg, 'Unattributed');
+        fillTable(mileageByUnitBody, byUnit, 'Unknown Unit');
     }
 
     // ── CSV Export ─────────────────────────────────────────────────────────────

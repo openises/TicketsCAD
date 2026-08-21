@@ -990,6 +990,33 @@ $csrf     = csrf_token();
             html += '</span></div>';
         });
 
+        // ── Require HTTPS enforcement (SPEC-STATUS.md gap B16) ──────
+        // https_enforcement_status (inc/https-enforcement.php) is the one
+        // canonical answer the navbar banner, this row, and the Settings
+        // live-state box near the checkbox all read — never disagreeing by
+        // construction. 'warn' only when an admin turned the setting ON and
+        // THIS request does not verify as TLS; an install that has never
+        // touched the setting always reads 'ok'.
+        var he = data.https_enforcement || {};
+        if (he.checked) {
+            html += '<div class="status-detail-row">';
+            html += '<span class="status-detail-label">Require HTTPS enforcement</span>';
+            html += '<span class="status-detail-value">';
+            if (!he.enabled) {
+                html += '<span class="text-body-secondary">off</span> ' + sevBadge('ok');
+            } else if (he.verified) {
+                html += '<span class="text-success fw-bold">on, verified TLS</span> ' + sevBadge('ok');
+            } else {
+                var heState = he.reason === 'untrusted_proxy' ? 'on, proxy not trusted' : 'on, not encrypted';
+                html += '<span class="text-warning fw-bold">' + esc(heState) + '</span> ' + sevBadge('warn');
+            }
+            if (he.enabled && he.message) {
+                html += '<br><span class="text-muted" style="white-space:pre-wrap">' +
+                        esc(he.message) + '</span>';
+            }
+            html += '</span></div>';
+        }
+
         // ── Where the backups are ──────────────────────────────────
         var bk = data.backups || {};
         if (bk.checked) {

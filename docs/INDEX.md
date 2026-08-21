@@ -59,6 +59,7 @@ We follow the [Diátaxis](https://diataxis.fr) framework: four kinds of document
 ### Integrations and field hardware
 
 - **[DMR Radio — end-to-end install](RADIO-DMR-INSTALL.md)** — start here to enable the radio feature; covers bridge install, proxy, Apache, dmr_channels row, RBAC, on-air verification
+- **[FCC station-ID compliance](FCC-STATION-ID-COMPLIANCE.md)** — the radio widget's §97.119 station-ID countdown, Monitoring ID / End conversation controls, per-channel enforcement levels, and what the software can and cannot do without speech-to-text
 - **[DVSwitch DMR bridge setup](DVSWITCH-ADMIN-GUIDE.md)** — Analog_Bridge + MMDVM_Bridge + md380-emu + Piper + Vosk (deeper architecture reference)
 - **[Radio AI — admin guide](RADIO-AI-ADMIN-GUIDE.md)** — Phase 85f Claude-on-amateur-radio: listener daemon, approval API, settings, security
 - **[Radio AI — operator guide](RADIO-AI-USER-GUIDE.md)** — review/approve/edit/reject AI-drafted voice responses; dry-run + auto-approve safeties

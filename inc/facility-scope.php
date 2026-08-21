@@ -255,3 +255,79 @@ function facility_can_see_ticket(int $ticketId, ?int $facilityId = null): bool
         return false;
     }
 }
+
+/**
+ * GH#99 (2026-08-20) — which of a ticket's active unit assignments a
+ * facility-confined viewer may see, and only the fields
+ * api/facility-portal.php already exposes (identity + status timeline;
+ * never crew roster/comments — see that file's own docblock on the
+ * org-sharing view-tier redaction precedent it follows).
+ *
+ * A multi-unit incident can have units transporting to DIFFERENT
+ * facilities — a mass-casualty call is the textbook case. Before this
+ * fix, the units query was scoped to the TICKET only: every unit on the
+ * call was returned to every facility that had ANY leg on that ticket,
+ * including units destined somewhere else entirely — along with
+ * `en_route_at`/`arrived_at` (assigns.u2fenr/u2farr, the FACILITY-leg
+ * timestamps GH#64 shipped), which read as "this unit is coming to /
+ * has arrived at YOU" regardless of where it was actually headed. On a
+ * real mass-casualty incident that is exactly the kind of false signal
+ * that holds a bed or stands up a trauma team for a patient who was
+ * never coming (reported as GH#99).
+ *
+ * The two relationships a facility can have to a ticket (see
+ * facility_ticket_visibility_sql() above for the three legs a ticket
+ * itself can carry) need two different rules here:
+ *
+ *   - ORIGIN (`ticket.facility` === this facility — the incident is
+ *     physically AT this facility, e.g. a group home reporting a
+ *     resident emergency): every responding unit is relevant regardless
+ *     of transport destination — they are all responding to ITS
+ *     location. Filtering here would be a pure functionality
+ *     regression (the facility watching its own incident would lose
+ *     visibility on every unit the moment any ambulance starts
+ *     transporting elsewhere) with no matching security benefit — this
+ *     facility already had legitimate access to "who responded to my
+ *     call," and that relationship doesn't change because of where a
+ *     patient ends up.
+ *
+ *   - RECEIVING-ONLY (`ticket.rec_facility`, or ONLY a per-unit
+ *     `assigns.rec_facility_id` leg, points at this facility — the
+ *     reported case): a unit is relevant ONLY if it is actually coming
+ *     here. Filtered to units whose EFFECTIVE destination —
+ *     `COALESCE(NULLIF(assigns.rec_facility_id,0), NULLIF(ticket.rec_facility,0))`
+ *     — resolves to this facility. This is the EXACT resolution
+ *     `inc/bed_auto.php:228` already uses for "which facility is this
+ *     unit actually going to," reused verbatim so both places agree —
+ *     never re-derived.
+ *
+ * $ticketFacility / $ticketRecFacility are the CALLER's own
+ * already-fetched `ticket.facility` / `ticket.rec_facility` for this
+ * ticket (api/facility-portal.php's incidents query selects both
+ * columns per ticket already) — passed in rather than re-joined, since
+ * the caller has them in hand for the very same row.
+ */
+function facility_portal_visible_units(int $ticketId, int $facilityId, int $ticketFacility, int $ticketRecFacility): array
+{
+    if ($ticketId <= 0 || $facilityId <= 0) return [];
+    $prefix = $GLOBALS['db_prefix'] ?? '';
+    $isOrigin = ($ticketFacility > 0 && $ticketFacility === $facilityId) ? 1 : 0;
+
+    try {
+        return db_fetch_all(
+            "SELECT r.`name` AS responder_name, r.`handle`,
+                    us.`status_val`, us.`bg_color`, us.`text_color`,
+                    a.`u2fenr`, a.`u2farr`
+             FROM `{$prefix}assigns` a
+             LEFT JOIN `{$prefix}responder` r ON a.`responder_id` = r.`id`
+             LEFT JOIN `{$prefix}un_status` us ON r.`un_status_id` = us.`id`
+             WHERE a.`ticket_id` = ?
+               AND (a.`clear` IS NULL OR DATE_FORMAT(a.`clear`, '%y') = '00')
+               AND (? = 1 OR COALESCE(NULLIF(a.`rec_facility_id`, 0), NULLIF(?, 0)) = ?)
+             ORDER BY a.`id`",
+            [$ticketId, $isOrigin, $ticketRecFacility, $facilityId]
+        );
+    } catch (Throwable $e) {
+        return [];
+    }
+}

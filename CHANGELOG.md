@@ -3,6 +3,234 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.24] — 2026-08-21
+
+### Security
+
+- **A fourth instance of the RBAC exclusion-list privilege leak — a live
+  migration was still re-granting `action.manage_config` to Org Admin on
+  every fresh install.** `sql/run_phase12_org_admin_manage_config.php`
+  predates every later decision that made `action.manage_config`
+  Super-Admin-only, and — unlike the two leak mechanisms closed on
+  2026-08-16 — it is a still-executing migration that actively re-creates
+  the grant, not a stale one left over from before the exclusion list
+  existed, so it was invisible to that repair. Because it sorts
+  lexicographically before `sql/rbac.sql`'s own repair statements in the
+  install pipeline, it ran on every fresh install regardless. Confirmed
+  live: a plain, freshly-granted Org Admin account with no other history
+  resolved full admin access. Fixed by reversing the script's own
+  behavior (grant → revoke); because the migration runner tracks each
+  script's hash, the fix self-propagates to every existing install
+  (including both of our hosted beta deployments) on its next routine
+  migration run.
+- **`require_https` is now a real, live HTTPS-verification signal instead
+  of a checkbox that enforced nothing.** It now drives a dismissible
+  admin banner, a live-state box in Settings, and a warn-severity System
+  Health row, all reading one canonical verification function that never
+  trusts a spoofable header — by explicit design this is detection and
+  disclosure only, and never blocks, redirects, or refuses a request in
+  any state. While building this, an unscoped `SetEnvIf X-Forwarded-Proto
+  "https" HTTPS=on` line was found and fixed on our own training vhost: a
+  line like this makes *any* client that can reach the vhost — not just a
+  real reverse proxy — able to forge the "this is TLS" signal the
+  verification mechanism exists to require proof of. The setting had
+  always been off there, so nothing was silently broken for users, but
+  turning it on would have shown "verified" for connections that were
+  never actually proven so. New `docs/HTTPS-VERIFICATION.md` covers
+  configuring Trusted Reverse Proxies and this exact trap for anyone
+  running a similar reverse-proxy/CDN topology.
+
+### Added
+
+- **FCC §97.119 station-ID enforcement for the DMR/BrandMeister radio
+  widget (closes a long-open gap where the console's "AMATEUR — ID
+  required" badge was purely decorative).** The system-generated
+  transmissions (weather bulletins, AI-drafted responses) already
+  suffixed a station ID correctly, but a live dispatcher keying up the
+  widget had no tracking or enforcement at all. Now: a per-channel
+  configurable ID interval (capped at the FCC's 10-minute regulatory
+  maximum) and enforcement level (off / soft / hard), a live countdown
+  and conversation-elapsed display, and Monitoring ID / End Conversation
+  controls — all built around the rule's actual timing model (the
+  10-minute clock is anchored to the last ID, tracks the *conversation*
+  rather than each individual transmission, and never nags an operator to
+  come back on the air during legal silence). "Hard" enforcement requires
+  an explicit one-click operator acknowledgment before a transmission
+  proceeds past the deadline — it never blocks a transmission outright,
+  since software must not itself suppress or force amateur radio traffic.
+- **A real Settings panel — and a real kill switch — for Radio AI
+  (Claude on Radio).** Previously the feature's enable flag, wake word,
+  channel list, topic scope, and model choice had no writer anywhere in
+  the app; arming or disarming it required a direct SQL update. Settings
+  → Communications & Integrations → Voice now writes all five through the
+  standard admin settings endpoint, Super-Admin-only. The master switch
+  is a genuine kill switch — the listener re-reads it every poll cycle
+  (default 5s), so disabling it takes effect within seconds with no
+  daemon restart — and toggling it writes a dedicated high-severity audit
+  log entry.
+- **An admin UI for the audio-matrix patch routing table.** The matrix's
+  route table (`comm_routes`) had a schema and a live reader in the
+  Python audio-matrix service, but no writer anywhere in the app, so the
+  `action.manage_matrix` permission gated nothing real. A new interactive
+  channel×channel patch grid (linked from the Communications Console and
+  the Settings sidebar) now creates, edits, and deletes routes — mirroring
+  the live service's own validation rules exactly, including the FCC Part
+  97.113 cross-class regulatory guard, so the admin UI can never create a
+  route the service would silently refuse to load. A route created
+  through the UI was verified byte-for-byte consumable by the real,
+  unmodified matrix service against a live database. Still open: no
+  install currently runs the matrix service itself as a daemon, so the
+  routes this UI writes aren't live anywhere yet — that's a separate
+  infrastructure decision.
+- **Communications Console: real Select / Monitor / Mute / Volume /
+  Simulselect, and personal or shareable operator layouts.** The
+  console-designer's Monitor and Mute controls previously carried a
+  visible "future" badge; they're now fully wired to the real Zello and
+  radio widget audio output, following the standard commercial-console
+  select/monitor model — an untouched console still plays every channel
+  exactly as before, and attenuation only appears as the deliberate
+  result of an operator pressing Select. Text-only channels get the same
+  three-state model translated into UI prominence (highlighting,
+  activity-flash suppression) instead of a literal volume. Simulselect
+  lets an operator hold one button to key Zello and DMR radio
+  simultaneously for channels enrolled in it — the "page out over radio
+  and Zello at once" case. Per-operator layout preferences can now be
+  kept personal or shared with the team.
+- **A generic audit for the RBAC exclusion-list privilege-leak bug class,
+  wired into CI and the pre-commit hook.** This shape of bug (an
+  admin-only permission silently handed back to a lower role through a
+  stale grant, a canonical-alias rename, or a still-live migration) has
+  now been found and fixed four separate times. `tools/rbac_exclusion_
+  leak_audit.php` parses the actual exclusion lists directly out of the
+  seed SQL — generic over any role, not a hand-maintained list of known
+  codes — and checks the live database for a direct or aliased leak, drift
+  between the two seed files, and any migration that grants an excluded
+  code outright, so a fifth instance is caught automatically going
+  forward rather than by chance during an unrelated fix.
+- **Missing page-level RBAC gates on the dashboard and the Units page.**
+  Both were reachable by any authenticated session regardless of role,
+  unlike every other authenticated page in the app. The dashboard now
+  gates on the existing `screen.dashboard` permission; Units gates on a
+  new `screen.units` permission, granted to every role except Field Unit
+  (matching the existing unit-detail/unit-edit precedent).
+- **Mileage Log report.** A neutral trip-log/utilization report under
+  Reports — organization, vehicle, driver, incident link, odometer,
+  miles, notes — with Vehicle/Driver/Organization filters and two
+  breakdowns (by organization, by vehicle). Deliberately not
+  billing-flavored: no rate tables, no invoice/payment status, no
+  IRS-mileage-rate conversion. Chosen via a 5-persona design review (fire
+  chief / ARES volunteer / patient-transport coordinator / campus security
+  / sysadmin).
+- **A prioritized research brief on DMR/AMBE speech-to-text accuracy**
+  (49 ideas from an 8-lens multi-agent brainstorm, tiered by cost and
+  impact) plus a measurement harness — pure-PHP word/character error rate
+  scoring and a real-call corpus sampler — to validate any of those ideas
+  before Radio AI feature work resumes on top of them. Measurement only;
+  the live transcription path is untouched, and the harness ships with
+  zero labeled ground truth yet.
+
+### Fixed
+
+- **Backup could be permanently, silently blocked by a misconfigured free-
+  space reserve.** A real install had `backup_min_free_mb` set to a value
+  clearly meant as bytes (a "1 GB" entry that landed as ~1 billion),
+  which — after the unit conversion the setting is supposed to receive —
+  demanded roughly a petabyte of free space no disk could ever satisfy,
+  quietly refusing every backup for two days before anyone noticed. The
+  value is now clamped to a sane ceiling both when it's saved and when
+  it's read (so an install that already has a bad value self-heals with
+  no migration needed), and the Status page now distinguishes "this
+  reserve exceeds the volume's total capacity" — a configuration error no
+  amount of freed space can fix — from an ordinary low-disk-space warning.
+- **Personnel reports could silently show stale or empty data depending on
+  how an install's `member` table columns were built.** Six Personnel
+  reports (license expirations, roster snapshot, DMR inventory,
+  membership due, inactive members, time summary) read only the legacy
+  `field1`/`field2`/etc. columns; on installs where the human-readable
+  named columns (last name, first name, callsign, email, phone, etc.) are
+  independently writable rather than generated from the legacy ones, data
+  saved through the roster UI never appeared in these reports. Every
+  affected query now prefers the named column and falls back to legacy,
+  correct on either kind of install. A follow-up fix corrected one column
+  pair (`available`/`field8`) where a plain fallback wasn't enough — that
+  field's default value is indistinguishable from an explicit "yes", so
+  it now treats an explicit "no" from either column as authoritative
+  rather than letting an unwritten default mask a real legacy value.
+- **The lookup-data updater (FCC amateur/GMRS/ZIP data) crashed outright
+  on hosts that disable PHP's shell-execution functions** — a common
+  hardening setting unrelated to whether the tool it was trying to shell
+  out to is installed. It tried `exec()`-based extraction and streaming
+  import first and fell back to safe, in-process alternatives only as a
+  last resort; both are now tried in the safe order first, with an
+  explicit, non-fatal message naming the actual restriction when every
+  fallback is genuinely unavailable.
+- **Adding a second patient to an incident, or opening an incident that
+  already had two or more, could silently drop a patient row.** The
+  placeholder-clearing logic matched on a shared Bootstrap CSS class that
+  also appears inside a real rendered patient row, so once one patient
+  row existed, adding another (or loading several) could wipe it from the
+  screen. No data was ever lost from the database — only the display was
+  affected — and the guard now checks for the placeholder specifically
+  rather than any element sharing its styling.
+- **The per-unit "Dest" (destination facility) dropdown on the incident
+  detail page could silently fail to save**, appearing to the dispatcher
+  as if the destination had simply reverted on the next status change.
+  The control referenced an undeclared variable while building its save
+  request, so the request was never actually sent — the field was fixed,
+  and now carries regression coverage that failed to exist for it before.
+- **A facility using the facility portal could see units responding to a
+  shared incident that were actually bound for a *different* facility**,
+  including that unit's arrival timestamps — on a real multi-casualty
+  call, this could have led a facility to hold a bed or stand up a trauma
+  team for a patient who was never coming to them. The portal now
+  resolves each unit's actual destination the same way the bed-automation
+  logic already does, and filters the units list to it; a facility that
+  is an incident's own origin (not just a receiving destination) is
+  unaffected and still sees every responding unit.
+- **Saving a non-empty OwnTracks location-tracking default fatally
+  crashed the request**, calling a function that didn't exist anywhere in
+  the codebase — discovered and fixed along with a second instance of the
+  identical undefined-function call found in the same file shortly after.
+- **`mileage_log` entries were silently lost for the two most common
+  Send-To targets.** A mileage value entered through a unit-status prompt
+  only produced a structured `mileage_log` row when the status's "Send
+  To" target was "Incident record" — the other two targets, "Action Log"
+  (Settings' own labeled default) and "Unit record", recorded the value
+  in the action-log note text only, never as structured data. All three
+  targets now write a structured `mileage_log` row; target continues to
+  control only where the note text is also shown. `mileage_log` also
+  gained a session-derived `org_id` column, backfilled best-effort from
+  `ticket.org_id` for rows with a resolvable ticket link.
+- **Facility Board's capacity display checked the wrong table's
+  existence.** It gated loading bed/capacity data on whether the
+  now-removed `newui_facility_capacity` table existed, rather than
+  `facility_capacity` — the table its own capacity fetch actually reads.
+  Worked only by coincidence, since the dead table used to be created on
+  every install too.
+
+### Removed
+
+- **Dropped the unused legacy `requests` table** (v3 mutual-aid resource
+  requests) — zero rows and zero code references on every install
+  checked; org attribution is already handled by `ticket.org_id`. The
+  separate, unrelated `access_requests` table (facility/account access
+  requests) is untouched.
+- **Retired the dead, unauthenticatable APRS-IS listener**
+  (`services/aprs-is/listener.py`) — it POSTed to `/api/location.php` with
+  only a CSRF token and no session, and that endpoint requires an
+  authenticated session and dispatcher/admin RBAC, so it could never
+  actually authenticate. It never ran anywhere. The maintained listener,
+  `services/aprs/aprs_listener.py`, writes directly to the database and
+  is unaffected; setup docs now point at it.
+- **Dropped two more dead tables no code ever read or wrote:**
+  `newui_facility_capacity` (a superseded facility-capacity design; the
+  live model is `capacity_categories` + `facility_capacity`) and the
+  legacy `webhooks` table (superseded by `webhook_subscriptions`, which
+  every code path already used). Both are dropped on existing installs
+  only after confirming there's nothing real in them — see
+  `sql/run_facility_capacity_legacy_table_drop.php` and
+  `sql/run_webhooks_legacy_table_drop.php`.
+
 ## [4.2.23] — 2026-08-19
 
 ### Security

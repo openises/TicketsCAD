@@ -453,7 +453,7 @@ Add:
 
 **Audit-log trim:** built and shipped (2026-08-03) — `tools/audit_log_purge_tick.php`, added to the crontab block above. Off by default (`audit_log_retention_days` = `0`); an administrator turns it on in Settings → Audit Log → Retention & Purge. See [AUDIT-LOG-REFERENCE.md § Retention](AUDIT-LOG-REFERENCE.md#retention). **location-reports trim** is still planned/not yet shipped — that part of this note remains accurate.
 
-Alternative to cron: systemd timers. Templates can be derived from the existing unit files under `services/dvswitch/` and `services/aprs-is/`.
+Alternative to cron: systemd timers. Templates can be derived from the existing unit files under `services/dvswitch/` and `services/aprs/`.
 
 ---
 

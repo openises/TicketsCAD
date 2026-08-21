@@ -386,6 +386,7 @@
         else if (tab === 'roles-levels')     loadRbac();
         else if (tab === 'slack')            loadSlackConfig();
         else if (tab === 'radio-messaging')  loadRadioMsgConfig();
+        else if (tab === 'radio-ai')         loadRadioAiConfig();
         else if (tab === 'webhooks')         loadWebhooks();
         else if (tab === 'chat-settings')    loadChatSettings();
         else if (tab === 'external-api-tokens') loadExternalApiTokens();
@@ -1151,6 +1152,12 @@
 
             // Phase 10: trigger CJIS warning visibility on initial load.
             updateCjisWarnings();
+
+            // SPEC-STATUS.md gap B16: show the LIVE require_https verification
+            // state next to the checkbox, not just the saved on/off value —
+            // an admin configuring this needs to see whether it currently
+            // verifies, not just whether it's ticked.
+            loadRequireHttpsLiveStatus();
         });
         form.addEventListener('submit', function (e) {
             e.preventDefault();
@@ -1168,6 +1175,10 @@
                 showAlert('Login settings saved (' + data.saved + ' updated).');
                 // Refresh local cache so subsequent reads see new values.
                 cache.loginSettings = Object.assign(cache.loginSettings || {}, pairs);
+                // Re-fetch so the live-state box reflects the just-saved value
+                // (e.g. turning the checkbox on for the first time immediately
+                // shows whether THIS connection already verifies).
+                loadRequireHttpsLiveStatus();
             }).catch(function (err) { showAlert(err.message, 'danger'); });
         });
 
@@ -1200,6 +1211,56 @@
         if (btnRefreshAttempts) {
             btnRefreshAttempts.addEventListener('click', loadLoginAttempts);
         }
+    }
+
+    /*
+     * SPEC-STATUS.md gap B16 — live require_https verification state next
+     * to the checkbox. Reads api/https-enforcement-status.php, the same
+     * canonical endpoint the navbar banner and Status page pull from — all
+     * three surfaces show the same answer by construction, never their own
+     * copy of the logic. Admin-only (403 silently no-ops, matching every
+     * other live-status box on this page). Built with DOM methods only —
+     * message/reason are server-supplied text, not user input, but this
+     * page never uses innerHTML for dynamically-inserted content either
+     * way (see #tfaKeysDirExposureBox for the established pattern).
+     */
+    function loadRequireHttpsLiveStatus() {
+        var box = document.getElementById('requireHttpsLiveStatus');
+        if (!box) return;
+        fetch('api/https-enforcement-status.php', { credentials: 'same-origin' })
+            .then(function (r) { return r.status === 200 ? r.json() : null; })
+            .then(function (data) {
+                box.innerHTML = '';
+                if (!data) return;
+
+                var alertDiv = document.createElement('div');
+                alertDiv.className = 'small';
+
+                var badge = document.createElement('span');
+                if (!data.enabled) {
+                    badge.className = 'badge bg-secondary';
+                    badge.textContent = 'off';
+                } else if (data.verified) {
+                    badge.className = 'badge bg-success';
+                    badge.textContent = 'this connection verifies as TLS';
+                } else {
+                    badge.className = 'badge bg-warning text-dark';
+                    badge.textContent = data.reason === 'untrusted_proxy'
+                        ? 'this connection: proxy not trusted'
+                        : 'this connection: not encrypted';
+                }
+                alertDiv.appendChild(badge);
+
+                if (data.enabled && data.message) {
+                    var msg = document.createElement('div');
+                    msg.className = 'text-body-secondary mt-1';
+                    msg.appendChild(document.createTextNode(data.message));
+                    alertDiv.appendChild(msg);
+                }
+
+                box.appendChild(alertDiv);
+            })
+            .catch(function () { /* silent — matches every other live-status box */ });
     }
 
     /*
@@ -3352,6 +3413,84 @@
             }
             apiPost('settings', { settings: pairs }).then(function (data) {
                 showAlert('Radio messaging settings saved.', 'success');
+            }).catch(function (err) { showAlert(err.message, 'danger'); });
+        });
+    }
+
+    // ── Radio AI (Claude on Radio) Config ──
+    // SPEC-STATUS.md B2 (2026-08-20 internal audit) — radio_ai_enabled /
+    // radio_ai_wake_word / radio_ai_channel_ids / radio_ai_topic_scope /
+    // radio_ai_model each had a reader (inc/radio_ai_listener.php,
+    // inc/radio_ai_client.php) and no writer anywhere in the app — no admin
+    // panel, no kill switch. This is that writer, same id-map +
+    // apiPost('settings') pattern as loadRadioMsgConfig() just above.
+    // api/config-admin.php's settings section already requires
+    // action.manage_config (Super-Admin-only in practice — see is_admin()'s
+    // contract) for every key posted through it, so this reuses that gate
+    // rather than adding a bespoke one.
+    function loadRadioAiConfig() {
+        var form = document.getElementById('radioAiConfigForm');
+        if (!form) return;
+
+        var radioAiMap = {
+            setRadioAiEnabled:    'radio_ai_enabled',
+            setRadioAiWakeWord:   'radio_ai_wake_word',
+            setRadioAiChannelIds: 'radio_ai_channel_ids',
+            setRadioAiTopicScope: 'radio_ai_topic_scope',
+            setRadioAiModel:      'radio_ai_model'
+        };
+
+        // Visual reinforcement that the master switch is a live kill switch,
+        // not just another setting — red "ON — listening" vs. gray "OFF".
+        function refreshRadioAiStatusBadge() {
+            var cb    = document.getElementById('setRadioAiEnabled');
+            var badge = document.getElementById('radioAiStatusBadge');
+            if (!cb || !badge) return;
+            if (cb.checked) {
+                badge.textContent = 'ON — listening';
+                badge.className = 'badge text-bg-danger';
+            } else {
+                badge.textContent = 'OFF';
+                badge.className = 'badge text-bg-secondary';
+            }
+        }
+
+        apiGet('settings').then(function (data) {
+            var s = data.settings || {};
+            for (var id in radioAiMap) {
+                var el = document.getElementById(id);
+                if (!el) continue;
+                var key = radioAiMap[id];
+                if (el.type === 'checkbox') {
+                    el.checked = (s[key] === '1');
+                } else if (s[key] !== undefined && s[key] !== null) {
+                    el.value = s[key];
+                }
+            }
+            refreshRadioAiStatusBadge();
+        }).catch(function (err) {
+            showAlert('Failed to load Radio AI settings: ' + err.message, 'danger');
+        });
+
+        var enabledCb = document.getElementById('setRadioAiEnabled');
+        if (enabledCb) enabledCb.addEventListener('change', refreshRadioAiStatusBadge);
+
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var pairs = {};
+            for (var id in radioAiMap) {
+                var el = document.getElementById(id);
+                if (!el) continue;
+                var key = radioAiMap[id];
+                pairs[key] = (el.type === 'checkbox') ? (el.checked ? '1' : '0') : el.value;
+            }
+            apiPost('settings', { settings: pairs }).then(function () {
+                refreshRadioAiStatusBadge();
+                var nowOn = pairs.radio_ai_enabled === '1';
+                showAlert(
+                    'Radio AI settings saved — listener is now ' + (nowOn ? 'ENABLED' : 'disabled') + '.',
+                    nowOn ? 'warning' : 'success'
+                );
             }).catch(function (err) { showAlert(err.message, 'danger'); });
         });
     }
@@ -13926,8 +14065,16 @@
         // outage" surfaces — a refused backup and a stale backup are different
         // problems and get different wording.
         if (st.space_warning) {
-            h += '<div class="alert alert-warning small mt-2 mb-0 py-2">' +
-                 '<i class="bi bi-exclamation-triangle-fill me-1"></i>' + esc(st.space_warning) + '</div>';
+            // GH#94 — a configuration error (the reserve is bigger than the
+            // whole volume, see backup_space_verdict() in
+            // inc/backup_schedule.php) is not fixable by freeing space, so it
+            // gets the same visual weight as the stale-backup alert below
+            // (alert-danger + a "stop" icon) instead of the ordinary
+            // low-space warning styling.
+            var spaceAlertClass = st.space_config_error ? 'alert-danger' : 'alert-warning';
+            var spaceAlertIcon  = st.space_config_error ? 'bi-exclamation-octagon-fill' : 'bi-exclamation-triangle-fill';
+            h += '<div class="alert ' + spaceAlertClass + ' small mt-2 mb-0 py-2">' +
+                 '<i class="bi ' + spaceAlertIcon + ' me-1"></i>' + esc(st.space_warning) + '</div>';
         }
         if (st.stale && st.warning) {
             h += '<div class="alert alert-danger small mt-2 mb-0 py-2">' +

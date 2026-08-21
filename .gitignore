@@ -26,7 +26,7 @@ ticketscad-sbom-signing*
 # verify the SBOM signature without contacting us. It must escape "*.pem".
 !SBOM-signing-key.pub.pem
 
-# Python build/cache artifacts (services/aprs-is, services/meshtastic, etc.)
+# Python build/cache artifacts (services/aprs, services/meshtastic, etc.)
 __pycache__/
 *.pyc
 
@@ -84,6 +84,13 @@ Thumbs.db
 /tests/tmp/
 /tools/data/
 *.sql.gz
+
+# DMR/AMBE STT measurement harness corpus — real captured radio audio
+# (.wav) and its transcripts (Whisper output + a human's hand-labeled
+# ground truth in manifest.json). Never commit real radio traffic audio
+# or its transcripts. See docs/DMR-STT-MEASUREMENT.md and
+# tools/dmr_stt_corpus_sample.php.
+/tools/dmr-stt-corpus/
 
 # ──────────────────────────────────────────────────────────────────────
 #  Project-internal scratch / one-off scripts

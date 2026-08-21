@@ -1,0 +1,14 @@
+# tools/rbac_exclusion_leak_audit_baseline.txt
+#
+# One entry per verified-legitimate finding, format:
+#   kind|role_id|code|detail
+#
+# Add an entry ONLY after confirming with a human that the finding is not
+# a real leak (e.g. a documented, intentional grant made through some path
+# this tool's static analysis can't see). Every entry needs a comment
+# above it explaining why. Do NOT baseline an unexplained finding just to
+# get the gate green -- see tools/rbac_exclusion_leak_audit.php's own
+# docblock for what each "kind" means and how to investigate it.
+#
+# Empty by design: every finding this tool has produced so far was a real
+# leak and was fixed, not grandfathered.

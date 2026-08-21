@@ -1,29 +1,31 @@
 -- ============================================================
--- Facility Bed/Capacity Tracking
--- Extends the facilities table with capacity categories
+-- Facility Bed/Capacity Tracking — RETIRED (SPEC-STATUS.md B19, 2026-08-21)
 -- ============================================================
-
--- Add capacity columns to facilities if they don't exist
--- (Use run script for idempotent ALTER)
-
-CREATE TABLE IF NOT EXISTS `newui_facility_capacity` (
-    `id`            INT AUTO_INCREMENT PRIMARY KEY,
-    `facility_id`   INT NOT NULL,
-    `category`      VARCHAR(64) NOT NULL COMMENT 'e.g., ICU, ER, General, Shelter Cots, Kennels',
-    `total`         INT NOT NULL DEFAULT 0,
-    `occupied`      INT NOT NULL DEFAULT 0,
-    `available`     INT GENERATED ALWAYS AS (total - occupied) STORED,
-    `status`        ENUM('open','full','closed') NOT NULL DEFAULT 'open',
-    `updated_at`    DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    `updated_by`    INT DEFAULT NULL,
-    KEY `idx_facility` (`facility_id`),
-    KEY `idx_status` (`status`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- Seed some capacity categories
-INSERT IGNORE INTO `newui_facility_capacity` (facility_id, category, total, occupied, status)
-SELECT f.id, 'General', 0, 0, 'open'
-FROM `facilities` f
-WHERE NOT EXISTS (
-    SELECT 1 FROM `newui_facility_capacity` fc WHERE fc.facility_id = f.id
-);
+--
+-- This file used to CREATE + seed `newui_facility_capacity`. That table
+-- was never read or written by any API endpoint or page — the live
+-- capacity model is a different pair, `capacity_categories` +
+-- `facility_capacity` (sql/run_facility_capacity_tables.php,
+-- api/facility-capacity.php). `newui_facility_capacity` was absent from
+-- sql/schema_manifest.json, confirming it was genuinely outside the
+-- tracked-writer set: a decoy a future developer could easily mistake for
+-- the real capacity model.
+--
+-- The only place that ever looked at `newui_facility_capacity` was
+-- facility-board.php, and only to check the table's EXISTENCE (never its
+-- data) as a proxy for "is capacity tracking available" — which was
+-- itself checking the wrong table's existence to gate loading data from
+-- the RIGHT one. Fixed in the same change (facility-board.php now checks
+-- `facility_capacity`, the table its own capacity fetch actually reads).
+--
+-- Existing installs: sql/run_facility_capacity_legacy_table_drop.php drops
+-- the table, but only after confirming every row still matches the exact
+-- auto-seeded placeholder shape this file used to INSERT
+-- (category='General', total=0, occupied=0, status='open') — never a
+-- blind drop. This file is kept (rather than removed from
+-- tools/install_fresh.php's foundational-imports list) as a no-op so its
+-- filename and this history stay easy to find.
+--
+-- This file intentionally creates nothing on a fresh install going
+-- forward. Do not re-add the CREATE TABLE below without re-reading the
+-- B19 writeup in specs/SPEC-STATUS.md first.

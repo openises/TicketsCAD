@@ -464,7 +464,7 @@ You don't have to subscribe to every event. Per webhook, pick:
 - **Categories** with `*` wildcard (e.g. `incident.*`, `auth.*`)
 - **All events** with just `*`
 
-Stored as a JSON array in `webhooks.subscribed_events`. The webhook fires only if at least one of its subscriptions matches the event type.
+Stored as a JSON array in `webhook_subscriptions.event_filters_json`. The webhook fires only if at least one of its subscriptions matches the event type.
 
 Filtering is server-side (we don't waste a network round-trip if you're not subscribed).
 
@@ -510,33 +510,40 @@ Every attempt (success and failure) writes a row to `webhook_deliveries`:
 | Column | Purpose |
 |---|---|
 | `id` | PK |
-| `webhook_id` | FK to `webhooks` |
+| `subscription_id` | FK to `webhook_subscriptions` (the live column — see note below) |
 | `event_type` | The event name |
 | `delivery_uid` | UUID shared across retries and operator replays; sent as `X-Webhook-Delivery` |
-| `attempt_number` | 1, 2, 3, … up to 7 |
-| `request_body` | The JSON we sent |
-| `response_status` | HTTP code we got back |
-| `response_body` | Trimmed to 4 KB |
+| `attempt` | 1, 2, 3, … up to the subscription's `retry_policy_json.max_attempts` (default 5) |
+| `payload` | The JSON we sent |
+| `http_status` | HTTP code we got back |
+| `response_body` | The response body |
+| `duration_ms` | How long the delivery attempt took |
 | `error` | Free-text reason on failure |
+| `dead_lettered_at` | When this delivery was marked `dead_letter` (NULL until then) |
+| `replayed_from_id` | Set when this row is an operator-triggered replay of an earlier delivery |
 | `created_at` | When THIS attempt was made |
-| `next_retry_at` | Next attempt time (NULL on success / permanent failure) |
-| `status` | `pending`, `succeeded`, `failed`, `permanently_failed` |
+| `status` | `pending`, `success`, `failed`, `retried`, `dead_letter` |
+
+> **Note:** `webhook_deliveries` also has a legacy `webhook_id` column, kept
+> NULLable for backward compatibility with the retired bare `webhooks`
+> table — it is never populated by current code. Always join on
+> `subscription_id`.
 
 View in Settings → Integrations → Webhooks → row → Delivery Log. Useful queries:
 
 ```sql
--- Failure rate per webhook in last 24 h
-SELECT w.name,
-       SUM(CASE WHEN d.status='succeeded' THEN 1 ELSE 0 END) AS ok,
-       SUM(CASE WHEN d.status IN ('failed','permanently_failed') THEN 1 ELSE 0 END) AS bad
-  FROM webhooks w
-  JOIN webhook_deliveries d ON d.webhook_id = w.id
+-- Failure rate per subscription in last 24 h
+SELECT s.name,
+       SUM(CASE WHEN d.status='success' THEN 1 ELSE 0 END) AS ok,
+       SUM(CASE WHEN d.status IN ('failed','dead_letter') THEN 1 ELSE 0 END) AS bad
+  FROM webhook_subscriptions s
+  JOIN webhook_deliveries d ON d.subscription_id = s.id
  WHERE d.created_at > NOW() - INTERVAL 1 DAY
- GROUP BY w.id;
+ GROUP BY s.id;
 
--- Permanently-failed deliveries needing manual re-fire
+-- Dead-lettered deliveries needing manual re-fire
 SELECT * FROM webhook_deliveries
- WHERE status = 'permanently_failed'
+ WHERE status = 'dead_letter'
  ORDER BY created_at DESC LIMIT 50;
 ```
 
@@ -584,8 +591,8 @@ For each webhook receiver:
 | Admin endpoint | [`api/webhooks.php`](../api/webhooks.php) |
 | Delivery engine | [`inc/webhooks.php`](../inc/webhooks.php) |
 | Cron job for retries | [`tools/webhook_retry_tick.php`](../tools/webhook_retry_tick.php) — run on a schedule (see [`tools/newui-webhook-retry.service.example`](../tools/newui-webhook-retry.service.example) + `.timer.example`) |
-| Schema | `webhooks`, `webhook_deliveries` tables (`sql/run_webhooks.php`) |
-| Tests | tools/test_webhooks.php (if present) |
+| Schema | `webhook_subscriptions` (`sql/run_phase94_external_api.php`), `webhook_deliveries` (`sql/run_webhooks.php`) |
+| Tests | tests/test_webhook_delivery.php, tests/test_webhook_replay_protection.php |
 
 ---
 

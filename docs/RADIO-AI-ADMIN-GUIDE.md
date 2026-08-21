@@ -105,26 +105,42 @@ The file should be `mode 0640 root:www-data` so Apache + the listener can read i
 
 ### 3. Configure settings
 
-The seed values are safe but you'll need to flip `radio_ai_enabled` to `1` to actually start listening. From an admin SQL prompt (or via the settings page once that admin UI lands):
+**As of 2026-08-20 there is a real admin panel** — log in as a Super Admin, go to
+**Settings → Communications & Integrations → Voice → Radio AI (Claude on Radio)**
+(`settings.php#radio-ai`). That panel is now the writer for `radio_ai_enabled` /
+`radio_ai_wake_word` / `radio_ai_channel_ids` / `radio_ai_topic_scope` /
+`radio_ai_model` — the seed values below are just what ships until you change them
+there. The master **Radio AI listener enabled** switch is a real, live kill switch:
+the listener re-reads it every poll cycle (default 5s — see `RADIO_AI_LOOP_INTERVAL`),
+so flipping it off stops new drafts within a few seconds with **no daemon restart
+needed**. It cannot recall a reply already approved and sent. Toggling it writes a
+dedicated `AUDIT_HIGH` audit-log entry with the before/after value, separate from the
+generic "Updated N system setting(s)" row every other settings save produces.
+
+The panel is gated the same way every other admin-only settings panel is
+(`action.manage_config`, Super-Admin-only in practice) — there's no separate RBAC code
+for it, since arming an FCC-regulated automated-transmission feature warranted the same
+posture as the rest of System Settings rather than a narrower one.
+
+If you ever need to bypass the UI (e.g. scripting a fresh install), the direct SQL
+still works — the panel writes to the exact same `settings` table row:
 
 ```sql
 UPDATE settings SET value = '1'        WHERE name = 'radio_ai_enabled';
 UPDATE settings SET value = 'claude'   WHERE name = 'radio_ai_wake_word';        -- default
 UPDATE settings SET value = '3'        WHERE name = 'radio_ai_channel_ids';      -- CSV of dmr_channels.id
-UPDATE settings SET value = '75'       WHERE name = 'radio_ai_max_response_words';
-UPDATE settings SET value = '50000'    WHERE name = 'radio_ai_daily_token_budget';
 ```
 
-| Setting | Purpose | Sane range |
-|---|---|---|
-| `radio_ai_enabled` | Master kill-switch. `0` makes the listener idle without consuming Anthropic credit. | 0 or 1 |
-| `radio_ai_wake_word` | Case-insensitive substring matched with word boundaries on each transcript. | A single short word; "claude" works well. |
-| `radio_ai_channel_ids` | Comma-separated `dmr_channels.id` values. Empty = all channels. | Just the channels you want monitored. |
-| `radio_ai_max_response_words` | Soft cap surfaced in the system prompt; Claude is told to stay under this. | 50–100. Voice traffic should be short. |
-| `radio_ai_auto_discard_seconds` | How long a pending row sits before being auto-marked discarded. Not implemented yet — currently just metadata. | 60–180. |
-| `radio_ai_topic_scope` | A label that scopes which system prompt to use. | `ham_general_science` (default). |
-| `radio_ai_daily_token_budget` | Soft daily ceiling on Anthropic input+output tokens. | 20k–200k depending on activity. |
-| `radio_ai_model` | Anthropic model ID. | `claude-sonnet-4-6` (default). |
+| Setting | Purpose | Sane range | In the admin panel? |
+|---|---|---|---|
+| `radio_ai_enabled` | Master kill-switch. `0` makes the listener idle without consuming Anthropic credit. | 0 or 1 | **Yes** |
+| `radio_ai_wake_word` | Case-insensitive substring matched with word boundaries on each transcript. | A single short word; "claude" works well. | **Yes** |
+| `radio_ai_channel_ids` | Comma-separated `dmr_channels.id` values. Empty = all channels. | Just the channels you want monitored. | **Yes** |
+| `radio_ai_topic_scope` | Which content-filter system prompt to use. | `ham_general_science` (default). | **Yes** |
+| `radio_ai_model` | Anthropic model ID. | `claude-sonnet-4-6` (default). | **Yes** |
+| `radio_ai_max_response_words` | Soft cap surfaced in the system prompt; Claude is told to stay under this. | 50–100. Voice traffic should be short. | No — has zero readers anywhere in the tree; not enforced by anything, so exposing it would be misleading. SQL-only, follow-up. |
+| `radio_ai_auto_discard_seconds` | How long a pending row sits before being auto-marked discarded. Not implemented yet — currently just metadata. | 60–180. | No — same reason. Follow-up. |
+| `radio_ai_daily_token_budget` | Soft daily ceiling on Anthropic input+output tokens. | 20k–200k depending on activity. | No — same reason; see "Watching cost" below for the manual query. Follow-up. |
 
 ### 4. Run the listener daemon
 

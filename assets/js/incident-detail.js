@@ -2747,21 +2747,44 @@
                         }
                         sel.innerHTML = oh;
                         sel.addEventListener('change', function () {
+                            var selfRef = this;
+                            // GH#98 (2026-08-20) — ticketId must be resolved here,
+                            // same as every other handler in this file (getIncidentId()
+                            // at lines 1707, 1779, 1892, 1954, 2039, 3378, 3684, 3838).
+                            // This handler previously referenced an out-of-scope
+                            // `ticketId`, which threw a ReferenceError while building
+                            // the request body — after disabling the select but before
+                            // fetch() ran, so neither .then() nor .catch() ever fired
+                            // and the control was silently bricked with no request sent.
+                            var ticketId = getIncidentId();
+                            if (!ticketId) return;
                             var assignId = parseInt(this.getAttribute('data-assign-id'), 10);
                             var facId = parseInt(this.value, 10) || 0;
-                            var selfRef = this;
-                            selfRef.disabled = true;
-                            fetch('api/incident-assign.php', {
-                                method: 'POST',
-                                credentials: 'same-origin',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
+                            // Build the request body BEFORE disabling the control, and
+                            // guard it with try/catch: a throw here must never leave the
+                            // dropdown permanently disabled with no visible error — that
+                            // silent-brick behavior is what turned this bug into a
+                            // mysterious "the value reverts" report instead of a visible
+                            // console error.
+                            var body;
+                            try {
+                                body = JSON.stringify({
                                     action:      'set_rec_facility',
                                     ticket_id:   ticketId,
                                     assign_id:   assignId,
                                     facility_id: facId,
                                     csrf_token:  getCsrfToken()
-                                })
+                                });
+                            } catch (e) {
+                                showAlert('Failed to set destination.', 'danger');
+                                return;
+                            }
+                            selfRef.disabled = true;
+                            fetch('api/incident-assign.php', {
+                                method: 'POST',
+                                credentials: 'same-origin',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: body
                             }).then(function (r) { return r.json(); }).then(function (data) {
                                 selfRef.disabled = false;
                                 if (data && data.error) { showAlert(data.error, 'danger'); return; }
@@ -3690,7 +3713,7 @@
                 var list = (data && data.patients) ? data.patients : [];
                 container.innerHTML = '';
                 if (list.length === 0) {
-                    container.innerHTML = '<div class="text-body-secondary small">No patients recorded.</div>';
+                    container.innerHTML = '<div class="text-body-secondary small" data-placeholder="1">No patients recorded.</div>';
                 } else {
                     for (var i = 0; i < list.length; i++) addPatientRow(list[i]);
                 }
@@ -3704,8 +3727,18 @@
     function addPatientRow(patient) {
         var container = document.getElementById('patientList');
         // First add — wipe the "no patients" placeholder if present.
-        var placeholder = container.querySelector('.text-body-secondary');
-        if (placeholder && container.children.length === 1) {
+        // GH TicketsCAD#97 (2026-08-20) — this USED to match on the shared
+        // Bootstrap utility class '.text-body-secondary', but a real
+        // rendered patient row carries that same class four times over
+        // (Insurance/Facility/Facility Contact labels + the dob-age span),
+        // so querySelector matched a label INSIDE an existing row and
+        // container.innerHTML = '' wiped it. The placeholder now carries
+        // its own data-placeholder="1" marker (see loadPatients() above),
+        // and we only clear when the single existing child genuinely IS
+        // that placeholder — never when it merely contains a descendant
+        // that shares a class name with it.
+        var onlyChild = (container.children.length === 1) ? container.children[0] : null;
+        if (onlyChild && onlyChild.getAttribute('data-placeholder') === '1') {
             container.innerHTML = '';
         }
 

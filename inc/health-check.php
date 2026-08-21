@@ -2927,6 +2927,37 @@ function health_check_cache_dir_writable(
 }
 
 /**
+ * ── Require HTTPS enforcement (SPEC-STATUS.md gap B16) ──────────────────
+ * Reports whether the require_https setting is on AND the CURRENT request
+ * verifies as TLS via https_enforcement_status() (inc/https-enforcement.php,
+ * itself built on is_https_verified()/https_verification_failure_reason()
+ * in inc/https.php). This is a report, not a gate — it never blocks
+ * anything, matching every other severity in this check.
+ *
+ * 'warn', never 'critical': an admin who has not yet finished configuring
+ * trusted_proxies behind a real proxy is not a broken install, and this
+ * check must not read as an emergency the way health_check_web_exposure()
+ * correctly does for an actually-exposed backup archive. 'ok' covers both
+ * "verified TLS" and "setting is off" (nothing to check) — an install
+ * that has never touched require_https should never see this row turn
+ * amber.
+ */
+function health_check_https_enforcement(): array
+{
+    if (!function_exists('https_enforcement_status')) {
+        try { require_once __DIR__ . '/https-enforcement.php'; } catch (Throwable $e) { /* optional */ }
+    }
+    if (!function_exists('https_enforcement_status')) {
+        return ['checked' => false, 'severity' => 'unknown'];
+    }
+    $status = https_enforcement_status();
+    return array_merge($status, [
+        'checked'  => true,
+        'severity' => ($status['enabled'] && !$status['verified']) ? 'warn' : 'ok',
+    ]);
+}
+
+/**
  * GEOCODE_CACHE_DIR specifically. See health_check_cache_dir_writable().
  *
  * @param array|null $webUser Override, for tests — see health_check_cache_dir_writable().
@@ -3322,6 +3353,7 @@ function health_check_all(): array
         $tileCacheWritable    = health_check_tile_cache_writable();
         $publicBoard = health_check_public_board();
         $teamMembership = health_check_team_membership_reconciliation();
+        $httpsEnforcement = health_check_https_enforcement();
 
         $critical = 0;
         $warn     = 0;
@@ -3363,7 +3395,7 @@ function health_check_all(): array
             $warn++;
         }
         foreach ([$backups, $keys, $exposure, $geocoding, $geocodeCacheWritable, $tileCacheWritable,
-                  $publicBoard, $teamMembership] as $sec) {
+                  $publicBoard, $teamMembership, $httpsEnforcement] as $sec) {
             if (($sec['severity'] ?? '') === 'critical') {
                 $critical++;
             } elseif (($sec['severity'] ?? '') === 'warn') {
@@ -3401,6 +3433,7 @@ function health_check_all(): array
             'tile_cache_writable'    => $tileCacheWritable,
             'public_board' => $publicBoard,
             'team_membership' => $teamMembership,
+            'https_enforcement' => $httpsEnforcement,
             'summary'      => ['critical' => $critical, 'warn' => $warn, 'unknown' => $unknown],
         ];
     } catch (Throwable $e) {

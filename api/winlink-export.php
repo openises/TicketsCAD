@@ -13,6 +13,7 @@
 ini_set('display_errors', '0');
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/access.php';
+require_once __DIR__ . '/../inc/severity.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 if ($method !== 'GET') json_error('Method not allowed', 405);
@@ -37,15 +38,39 @@ if ($ticketId && !user_can_access_entity('incident', $ticketId)) {
 $incident = null;
 if ($ticketId) {
     try {
+        // GH#100 — `in_types` has no `name` column; the incident-type
+        // label is `type` (see api/incident-detail.php's own
+        // `` it.`type` AS `type_name` `` for the reference shape). The
+        // old `it.name` alias threw SQLSTATE[42S22] on every export,
+        // which the catch below silently turned into "incident not
+        // found" for EVERY ticket, not just missing ones.
         $incident = db_fetch_one(
-            "SELECT t.*, it.name AS incident_type_name
+            "SELECT t.*, it.`type` AS incident_type_name
              FROM " . db_table('ticket') . " t
              LEFT JOIN " . db_table('in_types') . " it ON t.in_types_id = it.id
              WHERE t.id = ?
                AND (t.deleted_at IS NULL OR t.deleted_at = '0000-00-00 00:00:00')",
             [$ticketId]
         );
+        if ($incident) {
+            // GH#100 — `ticket.status` is the raw int (1=Closed,
+            // 2=Open, 3=Scheduled); label it the same way
+            // api/incident-detail.php's `$status_labels` map does so
+            // the exported form's Status line reads "Open" instead of
+            // a bare digit.
+            $statusLabels = [1 => 'Closed', 2 => 'Open', 3 => 'Scheduled'];
+            $incident['status_text'] = $statusLabels[(int) ($incident['status'] ?? 0)] ?? 'Unknown';
+        }
     } catch (Exception $e) {
+        // GH#100 — a malformed query here used to degrade IDENTICALLY
+        // to a genuinely missing/deleted incident (both silently
+        // produced the blank-form fallback below), which is exactly
+        // what let the it.name/it.type column bug go unnoticed. Log
+        // so a future query error is distinguishable from "no such
+        // incident" without changing the graceful-degradation
+        // behavior itself (inc/responder-write.php's bed_auto catch is
+        // the reference pattern: log and swallow, never fatal).
+        error_log('[winlink-export] incident query failed for ticket #' . $ticketId . ': ' . $e->getMessage());
         $incident = null;
     }
 }
@@ -87,11 +112,17 @@ function generateICS213($incident, $orgName) {
         // Phase 99p — prefer the case number over the internal id.
         $incidentName = $incident['scope'] ?? ('Incident ' . ($incident['incident_number'] ?? ('#' . $incident['id'])));
         $subject = ($incident['incident_type_name'] ?? 'Incident') . ' - ' . $incidentName;
+        // GH#100 — `ticket` has no `curstat` column (it's `status`,
+        // labeled above into `status_text`); severity is rendered via
+        // severity_label() (inc/severity.php) rather than the raw
+        // integer so a Winlink recipient reading a paper printout sees
+        // "Elevated" instead of "2" — same convention
+        // api/incident-detail.php already uses for `severity_label`.
         $body = trim(
             "Type: " . ($incident['incident_type_name'] ?? '') . "\n" .
             "Location: " . trim(($incident['street'] ?? '') . ', ' . ($incident['city'] ?? '')) . "\n" .
-            "Severity: " . ($incident['severity'] ?? '') . "\n" .
-            "Status: " . ($incident['curstat'] ?? '') . "\n" .
+            "Severity: " . (isset($incident['severity']) ? severity_label((int) $incident['severity']) : '') . "\n" .
+            "Status: " . ($incident['status_text'] ?? $incident['status'] ?? '') . "\n" .
             ($incident['description'] ? "Description: " . $incident['description'] . "\n" : '')
         );
         $dateTime = $incident['date'] ?? $now;

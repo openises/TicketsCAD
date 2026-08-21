@@ -191,6 +191,7 @@ function backupStatusFresh(string $base): array {
 $savedStatus  = backup_setting('backup_last_status', 'never run');
 $savedSkipAt  = backup_setting('backup_last_skip_at', '0');
 $savedFloorMb = backup_setting('backup_min_free_mb', '1024');
+$savedCapMb   = backup_setting('backup_max_dir_mb', (string) BACKUP_DEFAULT_MAX_DIR_MB);
 
 try {
     $staleReason = 'skipped: on the backup directory (' . sys_get_temp_dir()
@@ -214,29 +215,60 @@ try {
         ? ok('GH#32: cleared refusal does not claim to still be happening')
         : bad('GH#32: should not claim still-present', $st['space_warning'] ?? '');
 
-    // (b) Now make the floor genuinely impossible to satisfy (no real disk
-    //     has 1000 TB free) -- the SAME stale message should now correctly
-    //     read as a live, current problem.
-    backup_setting_set('backup_min_free_mb', (string) (1000 * 1024 * 1024)); // ~1000 TB
-    $st2 = backupStatusFresh($base);
-    ($st2['space_ok_now'] ?? null) === false
-        ? ok('GH#32: live space check fails against an impossible floor')
-        : bad('GH#32: live check should fail', json_encode($st2));
-    (strpos($st2['space_warning'] ?? '', 'condition is still present') !== false)
-        ? ok('GH#32: a genuinely current refusal is worded as a live problem')
-        : bad('GH#32: still-present wording', $st2['space_warning'] ?? json_encode($st2));
+    // (b) Now make the CURRENT condition genuinely, deterministically broken --
+    //     the SAME stale message should now correctly read as a live problem.
+    //
+    //     GH#94 (2026-08-20) changed how this scenario has to be built. Before
+    //     that fix, an absurd backup_min_free_mb (~1000 TB) reliably forced
+    //     backup_space_verdict() to refuse on every real machine, because no
+    //     real disk had anywhere near that much free space. GH#94 now CLAMPS
+    //     backup_min_free_bytes() to a sane ceiling (BACKUP_MAX_MIN_FREE_MB,
+    //     1 TiB) precisely so a value like that can no longer manufacture a
+    //     permanently-impossible reserve -- which is the fix working. On a
+    //     machine whose real disk is bigger than that ceiling (this dev box:
+    //     ~3.7 TB total, see GH#94's test file for the measurement) NO value
+    //     of backup_min_free_mb can force a refusal any more via disk space,
+    //     by design.
+    //
+    //     So this scenario now uses the OTHER guard -- the backup-folder size
+    //     CAP (backup_max_dir_mb) -- which is disk-size-independent: it
+    //     compares bytes-already-stored to a configured ceiling, never touches
+    //     free/total disk space, and flows through the exact same
+    //     backup_live_space_check()/backup_status() pipeline this scenario
+    //     exists to exercise (see backup_live_space_check()'s capVerdict
+    //     branch). The real backup directory already holds real archives from
+    //     normal use, so setting the cap below their combined size is a
+    //     genuine, always-true-regardless-of-hardware "still broken" condition.
+    $realUsage = backup_dir_usage(backup_dir());
+    if ($realUsage['count'] < 1) {
+        echo "SKIP: GH#32 (b)/(c) need at least one real archive in the backup"
+            . " directory to exercise the folder-cap guard deterministically\n";
+    } else {
+        // 1 MB is far below any real archive's size, so this is unconditionally
+        // "over cap" no matter how big or small the existing archives are.
+        backup_setting_set('backup_max_dir_mb', '1');
+        $st2 = backupStatusFresh($base);
+        ($st2['space_ok_now'] ?? null) === false
+            ? ok('GH#32: live space check fails against a genuinely broken condition')
+            : bad('GH#32: live check should fail', json_encode($st2));
+        (strpos($st2['space_warning'] ?? '', 'condition is still present') !== false)
+            ? ok('GH#32: a genuinely current refusal is worded as a live problem')
+            : bad('GH#32: still-present wording', $st2['space_warning'] ?? json_encode($st2));
 
-    // (c) backup_live_space_check() itself reports both targets the guard
-    //     actually checks (backup dir AND temp dir -- the dump lands in temp
-    //     before compression), so an admin can see which one is short rather
-    //     than only ever seeing the backup directory's own number.
-    $live = backup_live_space_check(backup_dir());
-    (array_key_exists('backup_directory', $live['targets']) && array_key_exists('temporary_directory', $live['targets']))
-        ? ok('GH#32: live check reports both the backup dir and the temp dir')
-        : bad('GH#32: live check targets shape', json_encode(array_keys($live['targets'])));
-    (array_key_exists('temp_free_size', $st2) && array_key_exists('temp_directory', $st2))
-        ? ok('GH#32: backup_status() surfaces the temp-directory numbers too')
-        : bad('GH#32: temp dir surfaced in status()', json_encode($st2));
+        // (c) backup_live_space_check() itself reports both targets the guard
+        //     actually checks (backup dir AND temp dir -- the dump lands in temp
+        //     before compression), so an admin can see which one is short rather
+        //     than only ever seeing the backup directory's own number.
+        $live = backup_live_space_check(backup_dir());
+        (array_key_exists('backup_directory', $live['targets']) && array_key_exists('temporary_directory', $live['targets']))
+            ? ok('GH#32: live check reports both the backup dir and the temp dir')
+            : bad('GH#32: live check targets shape', json_encode(array_keys($live['targets'])));
+        (array_key_exists('temp_free_size', $st2) && array_key_exists('temp_directory', $st2))
+            ? ok('GH#32: backup_status() surfaces the temp-directory numbers too')
+            : bad('GH#32: temp dir surfaced in status()', json_encode($st2));
+
+        backup_setting_set('backup_max_dir_mb', $savedCapMb !== '' ? $savedCapMb : (string) BACKUP_DEFAULT_MAX_DIR_MB);
+    }
 } finally {
     // Never leave the real settings table worse than we found it -- this test
     // exists BECAUSE a stale/impossible setting silently poisoned status
@@ -244,6 +276,7 @@ try {
     backup_setting_set('backup_last_status', $savedStatus);
     backup_setting_set('backup_last_skip_at', $savedSkipAt);
     backup_setting_set('backup_min_free_mb', $savedFloorMb);
+    backup_setting_set('backup_max_dir_mb', $savedCapMb !== '' ? $savedCapMb : (string) BACKUP_DEFAULT_MAX_DIR_MB);
 }
 
 echo "\n$pass passed, $fail failed\n";

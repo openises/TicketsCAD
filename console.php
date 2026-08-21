@@ -41,6 +41,7 @@ $csrf     = csrf_token();
 $can_tx       = rbac_can('action.console_tx');
 $can_send     = rbac_can('action.send_chat') || $can_tx;
 $can_design   = rbac_can('console.design');
+$can_matrix   = rbac_can('action.manage_matrix');
 $active_page  = 'console';
 ?>
 <!DOCTYPE html>
@@ -80,6 +81,21 @@ $active_page  = 'console';
                     title="Re-scan configured channels into the registry">
                 <i class="bi bi-arrow-repeat me-1"></i>Sync Channels
             </button>
+            <?php else: ?>
+            <!-- Phase 114b3 - any screen.console holder may build a PERSONAL
+                 layout, no console.design needed. Reuses the designer's
+                 canvas/inspector UI, scoped to "My Personal Views" (see
+                 console-designer.php's gate + console-designer.js). -->
+            <a href="console-designer.php" class="btn btn-sm btn-outline-secondary"
+               title="Build your own personal layout for this console -- no admin permission needed">
+                <i class="bi bi-person-workspace me-1"></i>My Views
+            </a>
+            <?php endif; ?>
+            <?php if ($can_matrix): ?>
+            <a href="matrix-admin.php" class="btn btn-sm btn-outline-primary"
+               title="Create and manage audio patches between channels">
+                <i class="bi bi-diagram-3 me-1"></i>Patch Matrix
+            </a>
             <?php endif; ?>
             <a href="index.php" class="btn btn-sm btn-outline-secondary">
                 <i class="bi bi-arrow-left me-1"></i><?php echo e(t('nav.dashboard', 'Dashboard')); ?>
@@ -89,6 +105,10 @@ $active_page  = 'console';
 
     <!-- View tabs (b2) — hidden until a designer view exists -->
     <ul class="nav nav-tabs mb-3 d-none" id="consoleTabs"></ul>
+
+    <!-- Simulselect master PTT (Phase 114b3) - hidden until at least one
+         TX-capable channel is a simulselect member (assets/js/console.js). -->
+    <div class="mb-2 d-none" id="consoleSimulselectBar"></div>
 
     <!-- Strip bank: the active view, or the auto-generated all-channels view -->
     <div class="console-bank" id="consoleBank">
@@ -106,6 +126,13 @@ $active_page  = 'console';
      Zello" fired into the void. Include the shared template so it inits. -->
 <?php include_once NEWUI_ROOT . '/inc/zello-widget-template.php'; ?>
 <script src="assets/js/zello-widget.js?v=<?php echo asset_v('assets/js/zello-widget.js'); ?>"></script>
+<!-- Phase 114b3 — console-audio-logic.js (pure state machine) must load
+     BEFORE console-audio.js (its DOM/network glue) and console.js (which
+     calls into window.ConsoleAudio at render time). zello-widget.js /
+     radio-widget.js (navbar-global) already define window.ZelloConsoleAudio
+     / window.RadioConsoleAudio by the time this runs. -->
+<script src="assets/js/console-audio-logic.js?v=<?php echo asset_v('assets/js/console-audio-logic.js'); ?>"></script>
+<script src="assets/js/console-audio.js?v=<?php echo asset_v('assets/js/console-audio.js'); ?>"></script>
 <script src="assets/js/console.js?v=<?php echo asset_v('assets/js/console.js'); ?>"></script>
 </body>
 </html>

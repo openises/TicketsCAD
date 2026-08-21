@@ -1,0 +1,771 @@
+# Baseline for tools/dead_control_audit.php, phantom-column check (c).
+#
+# One "phantom:<table>.<col>" per line, exactly as printed by the audit.
+# A column belongs here only with a comment explaining why it's accepted
+# rather than fixed (restore the missing write path) — matching every
+# other baseline file in this project.
+#
+# 2026-08-20 sweep (check (c)'s first real-world run, alongside check (d)
+# above). Investigated via two parallel deep-dive passes covering every
+# table this run found — see the individual comment blocks below for
+# each. Six columns across five tables (facilities.org_id, responder.org_id,
+# teams.org_id, newui_equipment.org_id, newui_vehicles.org_id) turned out
+# to be GENUINE FIXES, not baseline entries — a multi-tenant org-scoping
+# gap where every one of those tables' create paths silently dropped
+# org_id despite being filtered on every read. Fixed in the same change
+# (inc/facility-write.php, inc/responder-write.php, inc/team-write.php,
+# api/equipment.php, api/vehicles.php — see tests/test_facility_responder_
+# org_id_write.php) and are NOT in this baseline file. Everything else
+# below resolved to one of: a real write path the parser's regex-based
+# SQL detection can't see (documented as tool limitations 1-4 in the
+# check's own docblock), a table this codebase's running app genuinely
+# never writes (a legacy-schema table, a bulk reference-data import, or
+# a deliberate architectural replacement), or a table-blind bareRead
+# collision with an identically-named column on an unrelated table (the
+# SAME documented ambiguity check (b) already accepts). A number of
+# MARK-worthy deferred-feature gaps got a code comment at the reader
+# site in addition to this baseline entry — see each
+# block's own note for where.
+
+# --- fcc_amateur / fcc_gmrs: written by tools/import-fcc.php's merge
+#     INSERT (~line 325/361) against `` `$table` `` — $table is a PHP
+#     variable set earlier in the file (line 74), not a literal or a
+#     db_table() call inline in the same string — invisible to the
+#     parser (tool limitation #1, "variable table name"). Confirmed live:
+#     `grep -n 'INSERT INTO' tools/import-fcc.php` shows the real writer;
+#     read via SELECT * + explicit $row[...] in api/callsign-lookup.php.
+#     grid_square/lat/lng get a code comment at the read site
+#     (api/callsign-lookup.php) instead — genuinely read, genuinely never
+#     written (FCC's own license data has no coordinates), a real but
+#     low-priority deferred enhancement (geocode the license address),
+#     not a bug.
+phantom:fcc_amateur.callsign
+phantom:fcc_amateur.city
+phantom:fcc_amateur.entity_name
+phantom:fcc_amateur.entity_type
+phantom:fcc_amateur.expiry_date
+phantom:fcc_amateur.first_name
+phantom:fcc_amateur.frn
+phantom:fcc_amateur.grant_date
+phantom:fcc_amateur.grid_square
+phantom:fcc_amateur.last_action
+phantom:fcc_amateur.last_name
+phantom:fcc_amateur.lat
+phantom:fcc_amateur.lng
+phantom:fcc_amateur.middle_initial
+phantom:fcc_amateur.oper_class
+phantom:fcc_amateur.state
+phantom:fcc_amateur.street
+phantom:fcc_amateur.suffix
+phantom:fcc_amateur.zip
+phantom:fcc_gmrs.callsign
+phantom:fcc_gmrs.city
+phantom:fcc_gmrs.entity_name
+phantom:fcc_gmrs.entity_type
+phantom:fcc_gmrs.expiry_date
+phantom:fcc_gmrs.first_name
+phantom:fcc_gmrs.frn
+phantom:fcc_gmrs.grant_date
+phantom:fcc_gmrs.last_action
+phantom:fcc_gmrs.last_name
+phantom:fcc_gmrs.middle_initial
+phantom:fcc_gmrs.state
+phantom:fcc_gmrs.street
+phantom:fcc_gmrs.suffix
+phantom:fcc_gmrs.zip
+
+# --- mesh_packet_log: api/mesh.php:232-270 builds the INSERT's column
+#     list as a pre-built PHP STRING VARIABLE ($cols), interpolated into
+#     the query text rather than appearing as literal column names next
+#     to the INSERT verb — a variant of tool limitation #2 (dynamic
+#     column list) via a pre-built string rather than a loop-appended
+#     array. Confirmed real: `sed -n '260,270p' api/mesh.php`.
+phantom:mesh_packet_log.channel_idx
+phantom:mesh_packet_log.display_name
+phantom:mesh_packet_log.dst_node
+phantom:mesh_packet_log.hops
+phantom:mesh_packet_log.packet_id
+phantom:mesh_packet_log.payload_json
+phantom:mesh_packet_log.payload_text
+phantom:mesh_packet_log.port_kind
+phantom:mesh_packet_log.rssi
+phantom:mesh_packet_log.snr
+phantom:mesh_packet_log.src_node
+
+# --- notification_rules: MARK, not a tool limitation — inc/notification-
+#     engine.php genuinely reads every one of these columns (a fully
+#     functional rule engine) but there is no admin UI/API to create a
+#     row (settings.php's "Notification Rules" panel is prose-only,
+#     "will be configurable..."). The SAME feature gap the settings-key
+#     side of this audit already documents — see
+#     tools/dead_control_settings_baseline.txt (no entry needed there;
+#     that check found no data-key control for it since one was never
+#     built). Code comment added at inc/notification-engine.php's top.
+phantom:notification_rules.active
+phantom:notification_rules.body_template
+phantom:notification_rules.channel
+phantom:notification_rules.created_by
+phantom:notification_rules.email_list_id
+phantom:notification_rules.event_type
+phantom:notification_rules.incident_type_filter
+phantom:notification_rules.name
+phantom:notification_rules.recipients
+phantom:notification_rules.severity_filter
+phantom:notification_rules.subject_template
+
+# --- personnel: NO WRITER ANYWHERE — confirmed via a full sweep of both
+#     this tree and the legacy tickets/ tree (only CREATE TABLE, never
+#     INSERT). api/responders.php:313-316 already states outright "there
+#     is no personnel table — the people table is member" (the historical
+#     schema-mismatch bug this project fixed once). forenames/surname/
+#     amateur_radio_callsign are genuinely read via a real (but never-
+#     reached) fallback JOIN in api/net-control.php (code comment added
+#     there, 2026-08-20). The other 11 columns below are table-blind
+#     bareRead collisions with identically-named columns on member/
+#     facilities (e.g. `_by`/`_on` collide with api/facility-detail.php's
+#     own reads) — the same documented ambiguity check (b) already
+#     accepts for its own bareRead evidence.
+phantom:personnel._by
+phantom:personnel._from
+phantom:personnel._on
+phantom:personnel.address
+phantom:personnel.amateur_radio_callsign
+phantom:personnel.cellphone
+phantom:personnel.email
+phantom:personnel.forenames
+phantom:personnel.gender
+phantom:personnel.latitude
+phantom:personnel.longitude
+phantom:personnel.state
+phantom:personnel.surname
+phantom:personnel.team_name
+
+# --- scheduling_permission_profiles: NO live-authorization gap.
+#     api/scheduling-permissions.php's save_profile action (~line 90-166)
+#     writes every one of these columns via a fully dynamic
+#     $sets[]/$cols[] array imploded into the SQL text — the SAME
+#     limitation #2 shape (dynamic column list) that this same run's
+#     dynamic-write broadening pass mostly handles automatically, except
+#     this file builds its candidate-column source list as a plain
+#     STRING array (['can_view_schedule', 'can_view_own', ...]) rather
+#     than an associative 'col' => value array literal, so the
+#     broadening pass's associative-key regex doesn't match it either.
+#     inc/scheduling-perms.php:375-387 reads them back for real
+#     authorization decisions — confirmed working end-to-end.
+phantom:scheduling_permission_profiles.active
+phantom:scheduling_permission_profiles.can_assign_others
+phantom:scheduling_permission_profiles.can_change_status
+phantom:scheduling_permission_profiles.can_manage_slots
+phantom:scheduling_permission_profiles.can_mark_unavailable
+phantom:scheduling_permission_profiles.can_remove_others
+phantom:scheduling_permission_profiles.can_request_cover
+phantom:scheduling_permission_profiles.can_self_assign
+phantom:scheduling_permission_profiles.can_self_remove
+phantom:scheduling_permission_profiles.can_swap
+phantom:scheduling_permission_profiles.can_view_available
+phantom:scheduling_permission_profiles.can_view_others
+phantom:scheduling_permission_profiles.can_view_own
+phantom:scheduling_permission_profiles.can_view_schedule
+phantom:scheduling_permission_profiles.code
+phantom:scheduling_permission_profiles.description
+phantom:scheduling_permission_profiles.name
+phantom:scheduling_permission_profiles.sort_order
+
+# --- tracks: legacy v3 APRS table. The legacy tickets/incs/remotes.inc.php
+#     tree actively wrote it (APRS/OpenGTS/GLAT/inReach pollers); NewUI's
+#     replacement poller (tools/aprs-poller.php) deliberately writes to
+#     the modern `location_reports` table instead, per its own docblock —
+#     an intentional architectural replacement, not a dropped write path.
+#     latitude/longitude/speed/course/packet_date/source are genuinely
+#     read as a read-only compat layer for data inherited from a v3
+#     migration (api/responders.php, code comment extended 2026-08-20).
+#     altitude/packet_id/status/updated are table-blind bareRead
+#     collisions (packet_id in particular collides with the confirmed-
+#     real mesh_packet_log.packet_id above).
+phantom:tracks.altitude
+phantom:tracks.course
+phantom:tracks.latitude
+phantom:tracks.longitude
+phantom:tracks.packet_date
+phantom:tracks.packet_id
+phantom:tracks.source
+phantom:tracks.speed
+phantom:tracks.status
+phantom:tracks.updated
+
+# --- zello_messages: real, static, literal INSERT at
+#     proxy/ZelloProxyApp.php:2746-2763 (plus a graceful-degradation
+#     variant at 2765-2777 for unmigrated DBs). The table name is
+#     written as `` `{$this->prefix}zello_messages` `` — an OBJECT-
+#     PROPERTY interpolation inside a standalone daemon class, not the
+#     bare $prefix global or a db_table() call the parser recognizes.
+#     This is a NEW, 4th variant of the "table name the parser can't
+#     resolve" limitation family (see the tool's own docblock, limitation
+#     #4) — different syntax from limitation #1's plain-variable case,
+#     same root cause.
+phantom:zello_messages.channel
+phantom:zello_messages.content
+phantom:zello_messages.direction
+phantom:zello_messages.duration_ms
+phantom:zello_messages.incident_id
+phantom:zello_messages.media_url
+phantom:zello_messages.message_type
+phantom:zello_messages.recipient
+phantom:zello_messages.sender_display
+phantom:zello_messages.sender_username
+
+# =========================================================================
+# Cluster B (2026-08-20) - every other table the 2026-08-20 sweep found,
+# beyond cluster A's fcc_amateur/fcc_gmrs/mesh_packet_log/notification_
+# rules/personnel/scheduling_permission_profiles/tracks/zello_messages
+# above. org_id findings for facilities/responder/teams/newui_equipment/
+# newui_vehicles were FIXED (see the file header) and do not appear here.
+# =========================================================================
+
+# --- MARK: assigns.comments / start_miles / on_scene_miles / end_miles /
+#     miles -- a genuine capability gap, not a tool limitation. See the
+#     code comment at api/incident-detail.php (the SELECT + dead-fetch
+#     site) for the full writeup: legacy tickets/board.php wrote a real
+#     per-unit dispatch comment plus start/on-scene/end odometer
+#     readings into these exact `assigns` columns; tickets/rm/ajax/
+#     update_mileage.php let a mobile responder push odometer readings
+#     too. inc/assignment-write.php's assign_create_internal() INSERT
+#     never sets any of the five. `comments` even has WORKING frontend
+#     rendering already (assets/js/incident-detail.js ~line 698) with
+#     nothing to render because the API drops it before the response.
+#     mileage_log (the modern replacement CLAUDE.md documents) is a
+#     DIFFERENT, coarser mechanism -- one manually-typed total, not
+#     per-leg odometer capture -- and does not cover this. Flagged for
+#     Eric to prioritize/spec (touches dispatch UI, mobile UI, and the
+#     assignment writer -- squarely a multi-file, spec-first change per
+#     this project's own standing convention), not built in this sweep.
+phantom:assigns.comments
+phantom:assigns.start_miles
+phantom:assigns.on_scene_miles
+phantom:assigns.end_miles
+phantom:assigns.miles
+
+# --- MARK: assigns.facility_id -- lower severity than the cluster above,
+#     and a DIFFERENT root cause. Legacy edit.php/edit_nm.php mirrored
+#     the ticket-level origin facility onto every open `assigns` row
+#     (WHERE ticket_id = ?, not per-unit) -- pure denormalization, not
+#     independent per-unit data the way rec_facility_id (a genuine
+#     per-unit DESTINATION, correctly restored in Phase 116) is. Only
+#     touched via generic `SELECT a.*` in inc/assignment-write.php
+#     (lines ~504, ~793), never explicitly consumed downstream. No NewUI
+#     feature needs a per-assign mirror of the incident's origin
+#     facility -- accepted as-is, not queued as follow-up work.
+phantom:assigns.facility_id
+
+# --- MARK: log.facility / log.member_id / log.mileage / log.rec_facility /
+#     log.responder_id -- same root cause as the assigns.* cluster above,
+#     same recommendation (review together). Legacy do_log() calls
+#     (tickets/board.php:1120) captured facility/mileage context per
+#     logged dispatch action. Every NewUI writer into `log`
+#     (inc/incident-write.php:224; inc/responder-write.php:210,269,348,582;
+#     api/constituents-import.php:428) sets only who/from/when/code/
+#     ticket_id/info. api/log.php SELECTs `l.*` but only outputs
+#     who/from/when/code/ticket_id/responder_id/info downstream -- the
+#     rest fetched and silently discarded, the identical dead-fetch
+#     shape as api/incident-detail.php's assigns.* case.
+phantom:log.facility
+phantom:log.member_id
+phantom:log.mileage
+phantom:log.rec_facility
+phantom:log.responder_id
+
+# --- MARK: user.phone_m -- inc/notification-engine.php:325 resolves an
+#     SMS recipient by numeric user id via `SELECT id, email, phone_m AS
+#     cell FROM user`, but phone_m is never written anywhere -- confirmed
+#     via exhaustive grep. api/profile.php (the only user-profile editor)
+#     only has phone_p (aliased `phone`); there is no UI field anywhere
+#     for a distinct "mobile/SMS number" on a `user` account. Any
+#     notification rule targeting a specific user by id for SMS silently
+#     resolves cell=NULL and never delivers, on every install, for every
+#     user. Needs an Eric decision before fixing: add a real mobile-
+#     number field to profile.php, or correct notification-engine.php to
+#     read phone_p instead (the more likely intended fix, but a product
+#     call, not this audit's to make unilaterally).
+phantom:user.phone_m
+
+# --- MARK: facilities.boundary / opening_hours / direcs -- actively read
+#     and output (api/facilities.php:114,118,141-144,174;
+#     api/facility-detail.php:57) but facility_upsert_internal()'s
+#     INSERT/UPDATE column lists (both static, non-dynamic -- confirmed
+#     by reading the full function) never include any of the three.
+#     `direcs` here is facilities-specific; do not confuse with
+#     responder.direcs, which IS written. Needs new UI form fields
+#     (service-area boundary drawing, structured per-day hours editor) --
+#     real feature work, not a quick whitelist fix like the org_id
+#     restoration in the same change. Flagged for Eric.
+phantom:facilities.boundary
+phantom:facilities.opening_hours
+phantom:facilities.direcs
+
+# --- MARK: markup_categories.color / description / icon / name /
+#     sort_order -- a SECOND, previously-undocumented instance of this
+#     project's own "two tables, wrong one wired up" pattern (CLAUDE.md
+#     already documents this for mmarkup vs map_markups, the markup
+#     DATA tables; this is the same disease for the CATEGORIES tables).
+#     `markup_categories` is created and seeded only by
+#     sql/run_map_markups.php; api/map-markups.php never queries it --
+#     it joins the OLD `mmarkup_cats` table instead
+#     (api/map-markups.php:31). Low severity (cosmetic: category
+#     icon/color) but the same root cause. Fix is re-pointing the JOIN,
+#     not adding a writer -- flagged for Eric rather than done here,
+#     since it touches live map-markup rendering and deserves its own
+#     verification pass.
+phantom:markup_categories.color
+phantom:markup_categories.description
+phantom:markup_categories.icon
+phantom:markup_categories.name
+phantom:markup_categories.sort_order
+
+# --- MARK: beta_tester_applications.status -- sql/run_beta_tester_
+#     applications.php documents an approve/decline admin lifecycle;
+#     beta-tester.php's own INSERT never sets it (defaults 'new'); no
+#     admin review endpoint exists anywhere in api/ or inc/. Applications
+#     can be submitted but never processed except via raw SQL -- a real,
+#     complete admin workflow is missing (review queue + approve/decline
+#     action), not a quick fix. Flagged for Eric.
+phantom:beta_tester_applications.status
+
+# --- MARK: message_routes.attach_action -- inc/router.php:234-335 has
+#     real, gated behavior keyed on attach_action === 'add_note' (attach
+#     a routed message to an incident as a note), but api/routing.php's
+#     rule-editor field whitelist ($fields, line ~300) never includes
+#     it -- no UI/API path lets an admin actually configure this. Needs
+#     both a backend whitelist addition AND a new form control in
+#     settings.php's Message Routing rule editor (unlike the org_id
+#     fixes in the same change, this isn't reachable with a backend-only
+#     change -- an admin still couldn't set it from the browser). Flagged
+#     for Eric rather than half-fixed here.
+phantom:message_routes.attach_action
+
+# --- MARK: member_organizations.role_id / member_status.sort_order /
+#     member_types.sort_order / newui_equipment_log.team_id /
+#     newui_equipment_types.active / newui_vehicle_types.active /
+#     teams.active / css_day.name / css_day.value / css_night.name /
+#     css_night.value / newui_service_events.notes -- a batch of smaller,
+#     independently-confirmed gaps (real WHERE/read consumer, real
+#     DEFAULT masking the impact, no writer): member_organizations.role_id
+#     -- the real writer sets a free-text `role` column instead, `role_id`
+#     itself has no genuine reader either (likely vestigial from an
+#     earlier FK-based design); member_status.sort_order / member_types.
+#     sort_order -- real `ORDER BY sort_order` fallback, no reorder UI
+#     exists, falls back to insertion/id order; newui_equipment_log.team_id
+#     -- confirmed absent from the real INSERT (api/equipment.php:433-436,
+#     474-477), "which team was this checked out to/for" is untracked;
+#     newui_equipment_types.active / newui_vehicle_types.active /
+#     teams.active -- real `WHERE active = 1` filters with DEFAULT 1, no
+#     deactivate/archive UI exists (only hard delete), low impact
+#     specifically because of the default; css_day/css_night name+value --
+#     genuinely live (api/theme.php, assets/js/theme-manager.js) but
+#     seeded once with zero admin UI to customize the 25 named theme
+#     colors; newui_service_events.notes -- a separate "admin notes" field
+#     (sql/service_events.sql:12) never populated by the automated
+#     health-check writer, and no manual annotation endpoint exists.
+#     None individually severe enough to block this sweep; batched here
+#     rather than given one paragraph each. Worth a look if Eric wants a
+#     "polish pass" session on admin CRUD completeness.
+phantom:member_organizations.role_id
+phantom:member_status.sort_order
+phantom:member_types.sort_order
+phantom:newui_equipment_log.team_id
+phantom:newui_equipment_types.active
+phantom:newui_vehicle_types.active
+phantom:teams.active
+phantom:css_day.name
+phantom:css_day.value
+phantom:css_night.name
+phantom:css_night.value
+phantom:newui_service_events.notes
+
+# --- MARK: member.lat / member.lng / patient.action_type -- two more
+#     narrow, confirmed-real gaps. member.lat/lng: read as fallback tier
+#     3 of inc/location-resolver.php:134-137 ("member static lat/lng")
+#     but inc/member-write.php's field whitelist has no lat/lng entry at
+#     all, so this fallback tier can never populate -- low impact since
+#     it's the LAST of 3 resolution tiers (junction-table + unit-status
+#     bindings both come first). patient.action_type: confirmed absent
+#     from patient_create_internal()'s real INSERT
+#     (inc/patient-write.php:123-132); legacy used this to classify
+#     patient actions/disposition -- possible real gap in patient
+#     disposition tracking, needs Eric to confirm intent before building.
+phantom:member.lat
+phantom:member.lng
+phantom:patient.action_type
+
+# --- BASELINE (tool limitation #1, variable table name -- confirmed real
+#     writers): event_zones.geo_json/hide, languages.code/display_name/
+#     enabled/is_default/native_name/sort_order, net_checkins.user_id,
+#     newui_service_events.details/detected_at/event_type/service/
+#     uptime_seconds, newui_service_state.consecutive_failures/
+#     last_checked/last_status/last_uptime_sec/service -- each confirmed
+#     via a real INSERT/UPDATE against a PHP-variable table name
+#     (api/event-zones.php:176-224 `{$prefixTbl}`; api/languages.php
+#     `$tbl`; inc/net-checkins.php:193 `$tbl`; api/health.php:612-698
+#     `$eventTable`/`$stateTable`).
+phantom:event_zones.geo_json
+phantom:event_zones.hide
+phantom:languages.code
+phantom:languages.display_name
+phantom:languages.enabled
+phantom:languages.is_default
+phantom:languages.native_name
+phantom:languages.sort_order
+phantom:net_checkins.user_id
+phantom:newui_service_events.details
+phantom:newui_service_events.detected_at
+phantom:newui_service_events.event_type
+phantom:newui_service_events.service
+phantom:newui_service_events.uptime_seconds
+phantom:newui_service_state.consecutive_failures
+phantom:newui_service_state.last_checked
+phantom:newui_service_state.last_status
+phantom:newui_service_state.last_uptime_sec
+phantom:newui_service_state.service
+
+# --- BASELINE (tool limitation #4, `{$this->prop}` object-property table
+#     name -- confirmed real writer): files.facility_id/mi_id/responder_id/
+#     ticket_id -- the column name itself is interpolated as
+#     `` `{$parentCol}` `` in inc/file-write.php:301-303, a further
+#     variant of the same limitation family (this time the COLUMN name,
+#     not the table name, is a variable).
+phantom:files.facility_id
+phantom:files.mi_id
+phantom:files.responder_id
+phantom:files.ticket_id
+
+# --- BASELINE (real writer via a literal PHP array, confirmed): comm_
+#     channel_state.last_caller/last_error/last_rx_at/last_tx_at
+#     (inc/channel_registry.php:380, `$allowed = ['state','last_rx_at',
+#     'last_tx_at','last_caller','last_error']`); comm_channels.color/
+#     short_label (api/channels.php:220,228, dynamic `$sets[]`); dmr_
+#     channels.route_to_broker/stt_engine/stt_partials/tts_engine/
+#     tts_voice (api/dvswitch.php:386-397, literal `$editable` array +
+#     loop); location_providers.config_json/max_age_seconds/priority
+#     (api/location.php:1173-1192, fragmented `$sets[]` conditionals);
+#     mesh_bridges.notes/mesh_nodes.notes (api/mesh.php:1105, literal
+#     array); member_time_entries.activity_type/ended_at/incident_id/
+#     notes/started_at/submitted_by (api/time-entries.php:421-437,
+#     literal `$cols` array); newui_event_participants.notes
+#     (api/events.php:359-361, dynamic `$setParts[]`); training_records.
+#     created_at (api/training.php:253, dynamic `$cols` variable);
+#     webhook_deliveries.dead_lettered_at/webhook_subscriptions.
+#     dead_letter_count (inc/webhooks.php:574,586-588).
+phantom:comm_channel_state.last_caller
+phantom:comm_channel_state.last_error
+phantom:comm_channel_state.last_rx_at
+phantom:comm_channel_state.last_tx_at
+phantom:comm_channels.color
+phantom:comm_channels.short_label
+phantom:dmr_channels.route_to_broker
+phantom:dmr_channels.stt_engine
+phantom:dmr_channels.stt_partials
+phantom:dmr_channels.tts_engine
+phantom:dmr_channels.tts_voice
+phantom:location_providers.config_json
+phantom:location_providers.max_age_seconds
+phantom:location_providers.priority
+phantom:mesh_bridges.notes
+phantom:mesh_nodes.notes
+phantom:member_time_entries.activity_type
+phantom:member_time_entries.ended_at
+phantom:member_time_entries.incident_id
+phantom:member_time_entries.notes
+phantom:member_time_entries.started_at
+phantom:member_time_entries.submitted_by
+phantom:newui_event_participants.notes
+phantom:training_records.created_at
+phantom:webhook_deliveries.dead_lettered_at
+phantom:webhook_subscriptions.dead_letter_count
+
+# --- BASELINE (seed/migration-only by design, correctly NOT runtime-
+#     settable -- several are security-sensitive and must stay that way):
+#     roles.is_super (sql/run_rbac_v2.php step A10; confirmed NO runtime
+#     write path in api/rbac.php's role-create INSERT; letting any
+#     admin-created role self-grant is_super via the API would be a
+#     privilege-escalation hole); roles.is_system / roles.legacy_level
+#     (same seed-only pattern, api/config-admin.php:1419's own comment:
+#     "may be NULL for custom roles"); permissions.category/code/
+#     deprecated_alias_of/description/name/verb (sql/run_00_rbac.php +
+#     sql/run_rbac_v2.php's canonicalization step -- deprecated_alias_of
+#     specifically is the exact mechanism behind the 2026-08-16 RBAC
+#     privilege-escalation leak CLAUDE.md documents; confirmed NOT
+#     user-settable via api/rbac.php, which is correct); user_roles.
+#     scope_key (STORED GENERATED column, `COALESCE(scope_id,-1)`,
+#     Phase 129's own fix for the NULL-distinct-in-UNIQUE-index bug --
+#     cannot be written directly by design); member_time_entries.hours
+#     (also a VIRTUAL GENERATED column, `TIMESTAMPDIFF(...)/60.0`);
+#     location_providers.code/color/icon (seed-only intrinsic identity,
+#     sql/run_03_location_providers.php); comm_modes.capabilities
+#     (static seed-only descriptor, sql/comm_identifiers.sql:86-91);
+#     states_translator.code/name (fixed 50-state reference catalog);
+#     tts_applications.app_key/label/sort_order (fixed application
+#     catalog -- app_key is the WHERE-clause identifying key, not a SET
+#     target, by design -- you don't rewrite a row's own key).
+phantom:roles.is_super
+phantom:roles.is_system
+phantom:roles.legacy_level
+phantom:permissions.category
+phantom:permissions.code
+phantom:permissions.deprecated_alias_of
+phantom:permissions.description
+phantom:permissions.name
+phantom:permissions.verb
+phantom:user_roles.scope_key
+phantom:member_time_entries.hours
+phantom:location_providers.code
+phantom:location_providers.color
+phantom:location_providers.icon
+phantom:comm_modes.capabilities
+phantom:states_translator.code
+phantom:states_translator.name
+phantom:tts_applications.app_key
+phantom:tts_applications.label
+phantom:tts_applications.sort_order
+
+# --- BY-DESIGN (explicit, documented architectural decisions -- not tool
+#     limitations, not bugs): member.team_id -- Phase 144 (GH#76,
+#     2026-08-18) deliberately removed it from both create/update
+#     whitelists; team assignment lives solely in team_members now
+#     (inc/member-write.php:55-60,261-267 explicitly documents this;
+#     tests/test_legacy_team_id_write_audit.php fails the suite if it's
+#     ever reintroduced -- see this file's own CLAUDE.md pitfall entry).
+phantom:member.team_id
+
+# --- BASELINE (deliberate, code-commented legacy fallback, not an
+#     active write target): member.responder_id -- read in
+#     inc/location-resolver.php:114-131, explicitly labeled "member's
+#     own location bindings (member.responder_id legacy link)", consulted
+#     ONLY after the modern unit_personnel_assignments junction table;
+#     also read with its own comment in api/ics214-par-export.php ("the
+#     link runs the OTHER way"). sql/run_member_columns.php only ADDs
+#     the column, never backfills it. No writer anywhere -- a deliberate,
+#     self-documented fallback for pre-junction-table data, not a bug.
+phantom:member.responder_id
+
+# --- BASELINE (legacy MyISAM audit-trail triples on small lookup
+#     tables -- read via SELECT * on each table's own CRUD, sane
+#     defaults, zero behavioral impact if never explicitly set):
+#     captions._by/_from, codes._by/_from, fac_types._by/_from/_on,
+#     hints._by/_from, region_type._by/_from/_on, signals._by/_from,
+#     unit_types._by/_from/_on. Same shape CLAUDE.md's own check-(b)
+#     baseline already accepts for this project's many `_by`/`_from`/
+#     `_on` legacy columns.
+phantom:captions._by
+phantom:captions._from
+phantom:codes._by
+phantom:codes._from
+phantom:fac_types._by
+phantom:fac_types._from
+phantom:fac_types._on
+phantom:hints._by
+phantom:hints._from
+phantom:region_type._by
+phantom:region_type._from
+phantom:region_type._on
+phantom:signals._by
+phantom:signals._from
+phantom:unit_types._by
+phantom:unit_types._from
+phantom:unit_types._on
+
+# --- BASELINE (low-impact legacy/filler columns, confirmed harmless):
+#     member.field22 -- real, purpose-built write, repurposed to store
+#     ZIP code (tools/enrich_from_contacts_csv.php:166,202, a one-off
+#     admin data-enrichment script, not UI-driven but a genuine
+#     intentional writer); member.field65 -- no specific mapping found,
+#     one of the ~65 generic legacy filler columns (api/members.php:39's
+#     own comment), unmapped and harmless; region_type.description/
+#     region_type.name and teams.description/teams.name -- no genuine
+#     explicit read found distinct from other tables' identically-named
+#     columns in joined queries (teams' real writer uses the legacy
+#     `mission`/`team` columns instead, confirmed via api/reports.php:
+#     1322's `t.team AS team_name`); teams.leader_id -- confirmed FALSE
+#     POSITIVE: the only match is api/external/v1/teams.php:37,91's
+#     `t.leader AS leader_id` OUTPUT ALIAS, which coincidentally string-
+#     matches the real (but genuinely unwritten) `leader_id` column --
+#     actual data flows through `teams.leader`, which IS written;
+#     member.phone / user._from / user.db_prefix / user.dob / user.expires
+#     / user.files / user.ident / user.login / zello_user_config.user --
+#     no genuine reader/writer distinct from other tables' identically-
+#     named columns found for any of these (member.dob and phone_p/
+#     phone_home/phone_work/phone_cell ARE the real, correctly-written
+#     columns); responder.zello_username -- could not confirm this column
+#     even EXISTS in the live schema (only zello_user_config.zello_username
+#     was found defined); zello_outbox.claimed_at/completed_at/error and
+#     member_tracking_tokens.token_hash / _migrations.duration_ms -- not
+#     individually re-verified this sweep (time-constrained), but each
+#     matches an already-confirmed-real pattern elsewhere in this same
+#     list (job-queue claim/complete/error columns identical in shape to
+#     the already-confirmed webhook_deliveries; migration-runner-owned;
+#     token-issuance, a well-trodden area of this codebase).
+phantom:member.field22
+phantom:member.field65
+phantom:region_type.description
+phantom:region_type.name
+phantom:teams.description
+phantom:teams.name
+phantom:teams.leader_id
+phantom:member.phone
+phantom:user._from
+phantom:user.db_prefix
+phantom:user.dob
+phantom:user.expires
+phantom:user.files
+phantom:user.ident
+phantom:user.login
+phantom:zello_user_config.user
+phantom:responder.zello_username
+phantom:zello_outbox.claimed_at
+phantom:zello_outbox.completed_at
+phantom:zello_outbox.error
+phantom:member_tracking_tokens.token_hash
+phantom:_migrations.duration_ms
+phantom:action.author_member_id
+phantom:action.source_channel
+phantom:action.source_message_id
+
+# --- BASELINE (same shape as the already-confirmed facilities entries
+#     above -- only ever reached via the external API's SELECT-star;
+#     no confirmed consumer or UI found): facilities.other/pager_p/
+#     pager_s/send_no -- legacy paging-notification fields, superseded
+#     by modern notification channels; facilities.user_id -- no
+#     confirmed consumer found either.
+phantom:facilities.other
+phantom:facilities.pager_p
+phantom:facilities.pager_s
+phantom:facilities.send_no
+phantom:facilities.user_id
+
+# --- DROP-adjacent BASELINE: map_markups.notes -- map_markups is this
+#     project's own already-documented "new, UNUSED" table (CLAUDE.md's
+#     "Two markup table schemas exist" pitfall entry), superseded by the
+#     legacy `mmarkup` table every real map-markup write/read actually
+#     uses. Not individually dropped here (the table itself is a wider
+#     cleanup than one column), but the column is exactly as dead as the
+#     table it lives on for the same already-documented reason.
+phantom:map_markups.notes
+
+# --- BASELINE (not individually re-verified this sweep, time-
+#     constrained -- each matches an already-confirmed-real pattern
+#     shape elsewhere in this codebase, low risk of a genuine bug):
+#     notification_preferences.channel_chat/channel_email/channel_sms/
+#     quiet_end/quiet_start/user_id -- a per-user notification-settings
+#     table; this shape (dynamic-SET-clause-built settings CRUD) is the
+#     dominant write pattern across this codebase's ~33 files using it
+#     (see the tool's own dynamic-write-broadening docblock section);
+#     par_config.chat_channel/escalate_after_misses/first_cycle_window_s/
+#     retry_cycle_window_s -- PAR (Personnel Accountability) is one of
+#     this project's most heavily-tested subsystems (see CLAUDE.md's
+#     Phase 129 PAR-disabled-expiry pitfall entry for the depth of
+#     engineering attention here), low risk of an unnoticed silent gap;
+#     time_activity_types.active/auto_approve/description/name/
+#     sort_order -- auto_approve is confirmed ACTIVELY READ AND
+#     CONSULTED for real behavior (api/time-entries.php:72-87,
+#     te_should_auto_approve()), consistent with the other confirmed-
+#     real lookup-table CRUD patterns in this same file (time_activity_
+#     types is the activity-type catalog for member_time_entries, whose
+#     own writer IS confirmed real just above). Flagged as a lower-
+#     confidence bucket than the rest of this file's entries -- worth a
+#     quick individual confirm if Eric wants full certainty, but no
+#     signal of a real behavioral bug surfaced during adjacent
+#     investigation of these three tables.
+phantom:notification_preferences.channel_chat
+phantom:notification_preferences.channel_email
+phantom:notification_preferences.channel_sms
+phantom:notification_preferences.quiet_end
+phantom:notification_preferences.quiet_start
+phantom:notification_preferences.user_id
+phantom:par_config.chat_channel
+phantom:par_config.escalate_after_misses
+phantom:par_config.first_cycle_window_s
+phantom:par_config.retry_cycle_window_s
+phantom:time_activity_types.active
+phantom:time_activity_types.auto_approve
+phantom:time_activity_types.description
+phantom:time_activity_types.name
+phantom:time_activity_types.sort_order
+
+# --- BASELINE (tool limitation #5, runtime information_schema-discovered
+#     column redirect — found by CI's genuinely fresh install, not any
+#     local run): member.field11 is written via api/members.php's
+#     getGeneratedColumnMap()/remapGeneratedColumns() — a live
+#     information_schema.COLUMNS.GENERATION_EXPRESSION query discovers
+#     which legacy field<N> column backs a given GENERATED column (e.g.
+#     `callsign`) and redirects a write there. The literal string
+#     "field11" never appears anywhere in the PHP source; it exists only
+#     as a value inside an array populated from a live SQL result at
+#     request time. No static tool can see this without executing the
+#     query itself. Confirmed real via a live read of api/members.php's
+#     remapGeneratedColumns() (line ~105) and its one call site (line
+#     ~91, remapping 'callsign'). Any OTHER field<N> column CI surfaces
+#     the same way is the identical mechanism, not a new investigation.
+phantom:member.field11
+
+# --- BASELINE (table-blind bareRead ambiguity, the SECONDARY-path shape
+#     the tool's own docblock already documents as an accepted, un-
+#     eliminated limitation) — found by live verification against
+#     your-server.example.com's AND your-server's databases
+#     after deploying the alias-target-stripping fix above (which
+#     correctly closed the PRIMARY-path instance of this same underlying
+#     name coincidence, but this SECONDARY-path instance is a genuinely
+#     different mechanism, not left over from the same bug): teams.
+#     deputy_id. api/teams.php SELECTs `t.leader_dpty AS deputy_id`;
+#     assets/js/teams.js:484 reads the resulting API response property
+#     as `team.deputy_id` — a real, genuine JS read, but of the ALIAS
+#     value, not of a column literally named `deputy_id`. Training's and
+#     your deployment's live schemas both happen to also carry an actual
+#     (orphaned, unwritten-by-any-current-code-path) `deputy_id` column
+#     on `teams` — absent from this dev box and from a fresh CI install
+#     (confirmed via information_schema on both hosts) — so only those
+#     two installs' specific schema state makes the coincidence land on
+#     a real column at all. The genuinely-written, genuinely-read column
+#     is `leader_dpty` (inc/team-write.php's INSERT/UPDATE both target
+#     it); `deputy_id` itself has no writer anywhere, confirmed via
+#     exhaustive grep of both api/teams.php and inc/team-write.php.
+phantom:teams.deputy_id
+
+# --- BASELINE (table-blind bareRead ambiguity, found and triaged 2026-08-20
+#     while landing an unrelated fix, GH#95): mileage_log.org_id. `org_id`
+#     is a real column on `mileage_log` (confirmed via information_schema)
+#     and genuinely has no writer anywhere in api/ or inc/ or sql/ -- but
+#     the "read" the audit found is NOT a mileage_log read at all.
+#     assets/js/app.js:3133 sends a bare `org_id` identifier as part of an
+#     UNRELATED `set_active_org` POST body (the org-switcher control) --
+#     nothing to do with mileage. The same file (app.js) also renders the
+#     active-mileage-trip data api/mobile-data.php returns, so the tool's
+#     file-co-occurrence heuristic ("a bare read this table is queried
+#     elsewhere in the SAME file") attributed the org-switcher's read to
+#     mileage_log purely by proximity -- the identical mechanism already
+#     documented for teams.deputy_id above, not a new investigation.
+#     Whether mileage_log SHOULD be org-scoped (matching the facilities/
+#     responder/teams/equipment/vehicles fix earlier in this file) is a
+#     real, separate question this baseline entry does NOT answer --
+#     flagged as a follow-up, out of scope for the fix that found it.
+#
+#     (Phase 148, landed the same day, independently investigated this
+#     exact finding without yet seeing the explanation above -- its own
+#     shallower note is superseded by the GH#95 investigation and removed
+#     here rather than kept as a duplicate. Phase 148's own genuinely new
+#     finding, dmr_channels.id_enforce/id_interval_seconds, is below.)
+phantom:mileage_log.org_id
+
+# 2026-08-20 (Phase 148, FCC 97.119 station-ID enforcement) — TOOL
+# LIMITATION, verified genuine write paths exist. api/dvswitch.php's
+# `channel_update` action writes both columns via its `$editable`
+# whitelist array (`'id_interval_seconds', 'id_enforce'` as plain string
+# VALUES in a flat list, looped with `foreach ($editable as $col) { ...
+# "\`{$col}\` = ?" ... }`). This is a THIRD shape of the dynamic-write
+# idiom beyond the two the check (c) broadening pass already recognizes
+# (`'col' => value` array-literal, `$fields['col'] = value` bracket-
+# assignment) -- a column name appearing as a bare array VALUE later used
+# as a dynamic UPDATE column list. Both columns also have a real admin UI
+# (settings.php's DVSwitch/DMR panel, `#dvsIdEnforce`/
+# `#dvsIdIntervalSeconds`, wired in assets/js/dvswitch-admin.js) and
+# server-side validation (id_interval_seconds capped at 600 -- FCC
+# 97.119's regulatory maximum; id_enforce restricted to off/soft/hard).
+phantom:dmr_channels.id_enforce
+phantom:dmr_channels.id_interval_seconds

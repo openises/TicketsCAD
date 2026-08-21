@@ -69,6 +69,20 @@
     var pttBtn = null;
     var vuBar = null;
 
+    // Phase 148 — FCC 97.119 station-ID panel DOM refs.
+    var fccPanel = null;
+    var fccCallsignEl = null;
+    var fccConvEl = null;
+    var fccBarEl = null;
+    var fccBarFillEl = null;
+    var fccTimerEl = null;
+    var fccMonitorBtn = null;
+    var fccEndBtn = null;
+    var fccBannerEl = null;
+    var fccConfirmEl = null;
+    var fccConfirmYesBtn = null;
+    var fccConfirmNoBtn = null;
+
     // ── State ───────────────────────────────────────────────────
     var visible      = false;
     var minimized    = false;
@@ -86,6 +100,15 @@
     try {
         audioMuted = (localStorage.getItem('radio_audio_muted') === '1');
     } catch (e) { /* Safari private mode etc. */ }
+
+    // Phase 114b3 — Communications Console select/monitor/mute/volume
+    // (assets/js/console-audio.js). Independent, additive, MULTIPLICATIVE
+    // layer applied to every sample pullSamples() emits — never touches
+    // the widget's own muted/audioMuted state above. Defaults (gain 1,
+    // not muted) mean a console.php session that never touches the new
+    // controls plays audio exactly as it always has.
+    var consoleGain  = 1;
+    var consoleMuted = false;
 
     // GH #55 (Eric 2026-07-04) — Live monitor, mirroring the Zello widget.
     // ON: channel audio plays even while the widget is minimized or you have
@@ -126,6 +149,17 @@
     var pttRecorder = null;
     var vuRaf = null;
 
+    // Phase 148 — FCC 97.119 station-ID state. See inc/fcc_station_id.php
+    // for the full timing model this mirrors client-side.
+    var fccStatus = null;          // last fetched status payload (or null)
+    var fccSkewMs = 0;             // server_now - Date.now(), sampled per poll
+    var fccPollTimer = null;       // re-fetch status every FCC_POLL_MS while open
+    var fccTickTimer = null;       // re-render the countdown every FCC_TICK_MS
+    var fccPressZone = 'none';     // zone at the moment PTT was pressed
+    var fccChannelIdForTx = null;  // last known channel id, for the POST actions
+    var FCC_POLL_MS = 30000;
+    var FCC_TICK_MS = 1000;
+
     // ── Init ────────────────────────────────────────────────────
     function init() {
         var tpl = document.getElementById('tpl-radio-widget');
@@ -149,6 +183,19 @@
         pttBtn       = widget.querySelector('#radioPttBtn');
         vuBar        = widget.querySelector('.radio-vu-bar');
 
+        fccPanel        = widget.querySelector('#radioFccPanel');
+        fccCallsignEl   = widget.querySelector('#radioFccCallsign');
+        fccConvEl       = widget.querySelector('#radioFccConv');
+        fccBarEl        = widget.querySelector('#radioFccBar');
+        fccBarFillEl    = widget.querySelector('#radioFccBarFill');
+        fccTimerEl      = widget.querySelector('#radioFccTimer');
+        fccMonitorBtn   = widget.querySelector('#radioFccMonitorBtn');
+        fccEndBtn       = widget.querySelector('#radioFccEndBtn');
+        fccBannerEl     = widget.querySelector('#radioFccBanner');
+        fccConfirmEl    = widget.querySelector('#radioFccConfirm');
+        fccConfirmYesBtn = widget.querySelector('#radioFccConfirmYes');
+        fccConfirmNoBtn  = widget.querySelector('#radioFccConfirmNo');
+
         // Restore position
         var saved = loadPosition();
         if (saved) {
@@ -169,6 +216,7 @@
         wireKeyboard();
         wireDrag();
         wireResize();
+        wireFcc();
 
         // Phase 84-followup-9: SINGLE source of truth for opening.
         // The widget's own delegator handles every data-action="radio"
@@ -239,6 +287,7 @@
         ensureStream();
         startUiLoop();
         loadHistoryOnce();
+        fccStartPolling();
         // Prefetch mic permission so the first PTT doesn't race the
         // browser prompt. We don't keep the stream — just trigger the
         // permission dialog one time, then release.
@@ -502,6 +551,7 @@
         try { localStorage.setItem('radio-widget-open', '0'); } catch (e) {}
         widget.classList.add('radio-hidden');
         stopUiLoop();
+        fccStopPolling();
         // Don't close the stream — keep DVR buffer filling so user
         // can re-open and rewind without losing context.
     }
@@ -831,12 +881,16 @@
         // when live-monitor is off and the widget isn't open+expanded,
         // stay silent. Return an all-zeros buffer either way so the
         // AudioWorklet keeps ticking without dropping the pipeline.
-        if (muted || audioMuted || !audioAllowed()) return out;
+        if (muted || audioMuted || consoleMuted || !audioAllowed()) return out;
         var avail = totalWritten - totalPlayed;
         if (avail <= 0) return out;
         var i = 0;
+        // Phase 114b3 — scale by the console's select/monitor gain. At
+        // gain 1 (the default, untouched-by-the-console value) this is a
+        // no-op multiply, so existing behavior is unchanged unless an
+        // operator has actually used the console's controls.
         while (i < n && totalPlayed < totalWritten) {
-            out[i++] = ring[playIndex];
+            out[i++] = ring[playIndex] * consoleGain;
             playIndex = (playIndex + 1) % RING_SAMPLES;
             totalPlayed++;
         }
@@ -1405,6 +1459,11 @@
     var preTxMuted = false;
     function pttStart() {
         if (pttActive) return;
+        // Phase 148 — FCC 97.119 gate. Must run BEFORE pttActive flips true:
+        // wireKeyboard()'s Space-bar path calls this directly and does not
+        // consult pttBtn.disabled, so the callsign-missing check has to live
+        // here, not just as an HTML disabled attribute on the button.
+        if (!fccGateBeforeTx()) return;
         pttActive = true;
         pttHoldStartMs = Date.now();
         pttBtn.classList.add('radio-ptt-active');
@@ -1968,6 +2027,15 @@
         if (held < PTT_MIN_HOLD_MS) {
             // Treat as accidental tap — don't transmit.
             pttRecorder = null;
+        } else {
+            // Phase 148 — only prompt when the timer was actually in a zone
+            // where an ID was warranted for this TX (never on every release —
+            // the skill is explicit that pestering the operator on every
+            // transmission is the wrong shape). Re-fetch status shortly after
+            // so the countdown/zone reflect this TX's informational
+            // last_tx_at bookkeeping (api/dmr-tx-audio.php/-stream.php record
+            // it server-side).
+            fccOnPttEnd();
         }
     }
 
@@ -2002,6 +2070,273 @@
             console.warn('[radio] tx-audio post failed:', e);
             showBanner('Transmit request failed: ' + (e && e.message ? e.message : e), 'err');
         });
+    }
+
+    // ── Phase 148 — FCC 97.119 station-ID panel ────────────────────
+    //
+    // Mirrors inc/fcc_station_id.php's timing model client-side: the
+    // countdown/zone are purely DISPLAY, re-derived every FCC_TICK_MS from
+    // the last server status fetch (never a client-side compliance
+    // decision) using a clock-skew-corrected "now" (server_now sampled per
+    // poll, same convention as assets/js/org-relationships-admin.js). The
+    // one function whose return value has regulatory meaning is
+    // fccGateBeforeTx(), which runs at PTT key-down — never on a tick.
+    // See inc/fcc_station_id.php's docblock before changing anything here.
+    var FCC_STATUS_URL = 'api/dmr-station-id.php';
+
+    function fccCsrf() {
+        var el = document.getElementById('csrfToken');
+        if (el && el.value) return el.value;
+        var meta = document.querySelector('meta[name="csrf-token"]');
+        return meta ? meta.getAttribute('content') : (window.CSRF_TOKEN || '');
+    }
+
+    function fccNowMs() {
+        return Date.now() + fccSkewMs;
+    }
+
+    function wireFcc() {
+        if (fccMonitorBtn) {
+            fccMonitorBtn.addEventListener('click', function () { fccMonitoringId(); });
+        }
+        if (fccEndBtn) {
+            fccEndBtn.addEventListener('click', function () { fccEndConversation(); });
+        }
+        if (fccConfirmYesBtn) {
+            fccConfirmYesBtn.addEventListener('click', function () { fccConfirmTx(true); });
+        }
+        if (fccConfirmNoBtn) {
+            fccConfirmNoBtn.addEventListener('click', function () { fccConfirmTx(false); });
+        }
+    }
+
+    function fccStartPolling() {
+        fccFetchStatus();
+        if (fccPollTimer) clearInterval(fccPollTimer);
+        fccPollTimer = setInterval(fccFetchStatus, FCC_POLL_MS);
+        if (fccTickTimer) clearInterval(fccTickTimer);
+        fccTickTimer = setInterval(fccRenderCountdown, FCC_TICK_MS);
+    }
+
+    function fccStopPolling() {
+        if (fccPollTimer) { clearInterval(fccPollTimer); fccPollTimer = null; }
+        if (fccTickTimer) { clearInterval(fccTickTimer); fccTickTimer = null; }
+    }
+
+    function fccFetchStatus() {
+        var url = FCC_STATUS_URL + '?action=status';
+        if (fccChannelIdForTx) url += '&channel=' + encodeURIComponent(fccChannelIdForTx);
+        fetch(url, { credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (j) {
+                if (!j) return;
+                fccStatus = j;
+                fccChannelIdForTx = j.channel_id;
+                if (j.server_now) {
+                    var serverNowMs = new Date(String(j.server_now).replace(' ', 'T')).getTime();
+                    if (!isNaN(serverNowMs)) fccSkewMs = serverNowMs - Date.now();
+                }
+                fccRender();
+            })
+            .catch(function (e) { console.warn('[radio] fcc status fetch failed:', e); });
+    }
+
+    // ── Rendering ───────────────────────────────────────────────
+    function fccRender() {
+        if (!fccPanel) return;
+        var st = fccStatus;
+        if (!st || st.id_enforce === 'off' || !st.channel_id) {
+            fccPanel.classList.add('radio-fcc-hidden');
+            if (pttBtn) { pttBtn.disabled = false; pttBtn.title = ''; }
+            return;
+        }
+        fccPanel.classList.remove('radio-fcc-hidden');
+
+        // Callsign
+        if (fccCallsignEl) {
+            if (st.callsign_present) {
+                fccCallsignEl.textContent = st.callsign;
+                fccCallsignEl.classList.remove('radio-fcc-callsign-missing');
+            } else {
+                fccCallsignEl.textContent = 'No callsign on file';
+                fccCallsignEl.classList.add('radio-fcc-callsign-missing');
+            }
+        }
+
+        // PTT gate: a blank callsign disables PTT outright (regardless of
+        // id_enforce level — the widget cannot attribute a transmission to
+        // anyone without one). See the docblock above wireKeyboard()'s
+        // Space-bar path for why fccGateBeforeTx() ALSO re-checks this.
+        if (pttBtn) {
+            if (!st.callsign_present) {
+                pttBtn.disabled = true;
+                pttBtn.title = 'Add your amateur callsign in your profile before transmitting on amateur frequencies.';
+            } else {
+                pttBtn.disabled = false;
+                pttBtn.title = '';
+            }
+        }
+
+        fccRenderCountdown();
+
+        // Monitoring ID: usable any time a callsign is on file — an
+        // operator may want to volunteer one even before their first TX of
+        // the session.
+        if (fccMonitorBtn) fccMonitorBtn.disabled = !st.callsign_present;
+
+        // End conversation: per specs/phase-85e-fcc-station-id/spec.md's UI
+        // section, disabled until a conversation is actually open.
+        if (fccEndBtn) fccEndBtn.disabled = !st.conversation_started_at;
+
+        if (fccConvEl) {
+            if (st.conversation_started_at) {
+                var startMs = new Date(String(st.conversation_started_at).replace(' ', 'T')).getTime();
+                var elapsedS = Math.max(0, Math.floor((fccNowMs() - startMs) / 1000));
+                fccConvEl.textContent = 'Conversation: ' + fccFmtMs(elapsedS) + ' elapsed';
+            } else {
+                fccConvEl.textContent = 'Conversation: —:—';
+            }
+        }
+    }
+
+    function fccFmtMs(totalSeconds) {
+        var m = Math.floor(totalSeconds / 60);
+        var s = totalSeconds % 60;
+        return m + ':' + (s < 10 ? '0' : '') + s;
+    }
+
+    // Re-renders the countdown bar/timer from the LAST fetched status,
+    // ticking the clock forward locally between polls. Purely a display
+    // refresh — never re-derives compliance, never fires a network call.
+    function fccRenderCountdown() {
+        if (!fccPanel || fccPanel.classList.contains('radio-fcc-hidden')) return;
+        var st = fccStatus;
+        if (!st || !st.last_id_at) {
+            if (fccBarFillEl) {
+                fccBarFillEl.className = 'radio-fcc-bar-fill radio-fcc-zone-none';
+            }
+            if (fccTimerEl) fccTimerEl.textContent = 'never IDed';
+            fccRenderBanner('none', null);
+            return;
+        }
+        var lastIdMs = new Date(String(st.last_id_at).replace(' ', 'T')).getTime();
+        var elapsedS = Math.max(0, Math.floor((fccNowMs() - lastIdMs) / 1000));
+        var interval = st.id_interval_seconds || 600;
+        var remainingS = interval - elapsedS;
+        var zone = elapsedS >= interval ? 'red' : (elapsedS >= Math.round(interval * 0.8) ? 'yellow' : 'green');
+
+        if (fccBarFillEl) {
+            fccBarFillEl.className = 'radio-fcc-bar-fill radio-fcc-zone-' + zone;
+            var pct = Math.max(0, Math.min(100, 100 - (elapsedS / interval) * 100));
+            fccBarFillEl.style.width = pct + '%';
+        }
+        if (fccTimerEl) {
+            fccTimerEl.textContent = remainingS >= 0
+                ? fccFmtMs(remainingS) + ' left'
+                : fccFmtMs(elapsedS) + ' since ID';
+        }
+        fccRenderBanner(zone, st);
+    }
+
+    function fccRenderBanner(zone, st) {
+        if (!fccBannerEl) return;
+        if (zone === 'yellow' || zone === 'red') {
+            fccBannerEl.textContent = 'Include your callsign in this transmission — '
+                + (zone === 'red' ? 'ID interval elapsed.' : 'ID interval closing.');
+            fccBannerEl.classList.remove('radio-fcc-hidden');
+            fccBannerEl.classList.toggle('radio-fcc-banner-red', zone === 'red');
+        } else {
+            fccBannerEl.classList.add('radio-fcc-hidden');
+        }
+    }
+
+    // ── PTT gate (the one function with regulatory meaning) ───────
+    function fccGateBeforeTx() {
+        var st = fccStatus;
+        if (!st || st.id_enforce === 'off' || !st.channel_id) {
+            fccPressZone = 'none';
+            return true;   // no DMR channel configured, or enforcement off
+        }
+        fccPressZone = st.zone;
+        if (!st.callsign_present) {
+            showBanner('Add your amateur callsign in your profile before transmitting on amateur frequencies.', 'err');
+            return false;
+        }
+        if (st.id_enforce === 'hard' && !st.may_transmit_without_id) {
+            var mins = Math.floor((st.seconds_since_id || 0) / 60);
+            var ok = window.confirm(
+                'Your last station ID was ' + mins + ' minute(s) ago. Include your callsign, '
+                + st.callsign + ', in this transmission.\n\nContinue?'
+            );
+            if (!ok) return false;
+        }
+        return true;
+    }
+
+    // ── Post-TX self-report prompt ─────────────────────────────────
+    // No speech-to-text in this phase (see inc/fcc_station_id.php) — the
+    // widget asks, it never assumes. Only shown when the timer actually
+    // warranted an ID for the transmission that just ended.
+    function fccOnPttEnd() {
+        if (fccPressZone !== 'yellow' && fccPressZone !== 'red') return;
+        if (!fccStatus || !fccStatus.callsign_present) return;
+        if (fccConfirmEl) fccConfirmEl.classList.remove('radio-fcc-hidden');
+        // Re-fetch status shortly after so the countdown reflects this TX's
+        // informational last_tx_at (recorded server-side by
+        // api/dmr-tx-audio.php / api/dmr-tx-stream.php).
+        setTimeout(fccFetchStatus, 800);
+    }
+
+    function fccConfirmTx(included) {
+        if (fccConfirmEl) fccConfirmEl.classList.add('radio-fcc-hidden');
+        if (!included) return;
+        fccPost('confirm_tx').then(function (j) {
+            if (j && j.status) { fccStatus = j.status; fccRender(); }
+        });
+    }
+
+    function fccMonitoringId() {
+        if (fccMonitorBtn) fccMonitorBtn.disabled = true;
+        fccPost('monitoring_id').then(function (j) {
+            if (fccMonitorBtn) fccMonitorBtn.disabled = !(fccStatus && fccStatus.callsign_present);
+            if (!j) return;
+            if (j.status) { fccStatus = j.status; fccRender(); }
+            if (j.ok) {
+                showBanner('Monitoring ID transmitted.', 'info');
+                setTimeout(clearBanner, 3000);
+            } else {
+                showBanner('Monitoring ID failed: ' + (j.detail || 'unknown error'), 'err');
+            }
+        });
+    }
+
+    function fccEndConversation() {
+        if (fccEndBtn) fccEndBtn.disabled = true;
+        fccPost('end_conversation').then(function (j) {
+            if (!j) return;
+            if (j.status) { fccStatus = j.status; fccRender(); }
+            if (j.ok) {
+                showBanner(j.detail || 'Conversation closed.', 'info');
+                setTimeout(clearBanner, 3000);
+            } else {
+                showBanner('End conversation failed: ' + (j.detail || 'unknown error'), 'err');
+            }
+        });
+    }
+
+    function fccPost(action) {
+        var url = FCC_STATUS_URL + '?action=' + encodeURIComponent(action);
+        if (fccChannelIdForTx) url += '&channel=' + encodeURIComponent(fccChannelIdForTx);
+        return fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ csrf_token: fccCsrf() }),
+        }).then(function (r) { return r.json(); })
+          .catch(function (e) {
+              console.warn('[radio] fcc ' + action + ' failed:', e);
+              return null;
+          });
     }
 
     // ── Drag / Resize ───────────────────────────────────────────
@@ -2147,6 +2482,27 @@
         var s = String(d.getSeconds()).padStart(2, '0');
         return h + ':' + m + ':' + s;
     }
+
+    // ── Console audio hook (Phase 114b3) ───────────────────────────
+    // Minimal, additive public surface for assets/js/console-audio.js.
+    // setLevel() scales real playback (see pullSamples() above); ptt.
+    // start()/stop() call the SAME pttStart()/pttEnd() the widget's own
+    // PTT button and Spacebar handler call — including the FCC 97.119
+    // station-ID gate inside pttStart() (fccGateBeforeTx()) — this is
+    // real momentary PTT through the production transmit path, not a
+    // simulation. isActive() lets the console reflect TX state without
+    // polling.
+    window.RadioConsoleAudio = {
+        setLevel: function (vol01, muted) {
+            consoleGain = (typeof vol01 === 'number' && isFinite(vol01)) ? Math.max(0, Math.min(1, vol01)) : 1;
+            consoleMuted = !!muted;
+        },
+        ptt: {
+            start: function () { pttStart(); },
+            stop: function () { pttEnd(); },
+            isActive: function () { return pttActive; }
+        }
+    };
 
     // ── Boot ────────────────────────────────────────────────────
     if (document.readyState === 'loading') {

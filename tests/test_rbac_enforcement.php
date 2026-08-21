@@ -65,6 +65,12 @@ $pageGates = [
     'incident-list.php' => 'screen.incidents',
     'incident-detail.php' => 'screen.incident_detail',
     'situation.php' => 'screen.situation',
+    // SPEC-STATUS.md B12 (2026-08-21) — index.php (dashboard) and
+    // units.php were the two authenticated pages with no
+    // rbac_require_screen() gate at all. Both now gate like every other
+    // page in this list.
+    'index.php' => 'screen.dashboard',
+    'units.php' => 'screen.units',
     'unit-detail.php' => 'screen.unit_detail',
     'unit-edit.php' => 'screen.unit_edit',
     'facilities.php' => 'screen.facilities',
@@ -171,22 +177,30 @@ if (!$sandbox) {
             'action.manage_members' => true, 'action.manage_teams' => true,
             'action.change_unit_status' => true, 'screen.new_incident' => true,
             'widget.map' => true,
+            'screen.dashboard' => true, 'screen.units' => true,
         ],
         'Operator' => [
             'action.manage_members' => false,   // Operator can't manage roster
             'action.change_unit_status' => true,
             'action.import_data' => false,
             'screen.incidents' => true,
+            'screen.dashboard' => true, 'screen.units' => true,
         ],
         'Read-Only' => [
             'action.manage_members' => false, 'action.change_unit_status' => false,
             'action.create_incident' => false,
             'screen.incidents' => true,         // can VIEW
             'widget.map' => true,               // can see the map widget
+            'screen.dashboard' => true, 'screen.units' => true,
         ],
         'Field Unit' => [
             'action.manage_members' => false,
             'action.change_unit_status' => true,
+            'screen.dashboard' => true,
+            // Field Unit's explicit allowlist withholds screen.units the
+            // same way it withholds screen.unit_detail/screen.unit_edit —
+            // a mobile responder isn't meant to browse the full roster.
+            'screen.units' => false,
         ],
     ];
     foreach ($expect as $role => $checks) {

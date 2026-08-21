@@ -279,10 +279,29 @@ $canCfg   = (!function_exists('rbac_can') || rbac_can('action.manage_config'));
         <?php // Phase 113 — pluggable text-to-speech engines (standalone page).
               if (!function_exists('rbac_can') || rbac_can('action.manage_tts')) {
                   _cfg_link('voice-speech', 'voice-speech.php', t('sidebar.tab.voice_speech', 'Voice & Speech'), 'tts piper deepgram openai text to speech'); } ?>
+        <?php // Phase 114c — audio-matrix patch admin (standalone page). Closes
+              // SPEC-STATUS.md §B1: comm_routes had a schema and a reader
+              // (services/audio-matrix/service.py) but no writer anywhere in the
+              // app until api/matrix.php + matrix-admin.php.
+              if (!function_exists('rbac_can') || rbac_can('action.manage_matrix')) {
+                  _cfg_link('matrix-admin', 'matrix-admin.php', t('sidebar.tab.matrix_admin', 'Audio Matrix Patches'), 'audio matrix patch route comm_routes dmr zello allstar'); } ?>
         <?php _cfg_tab('radio-messaging',   t('sidebar.tab.radio_messaging',   'Radio Messaging'), 'radio messaging meshtastic dmr text aprs'); ?>
         <?php _cfg_tab('zello-radio',       t('sidebar.tab.zello_radio',       'Zello Network Radio'), 'zello poc push to talk ptt'); ?>
         <?php _cfg_tab('dvswitch-dmr',      t('sidebar.tab.dvswitch_dmr',      'DMR (DVSwitch)'), 'dmr dvswitch brandmeister digital radio'); ?>
         <?php _cfg_tab('talkgroups',        t('sidebar.tab.talkgroups',        'DMR Talkgroups'), 'talkgroup brandmeister dmr'); ?>
+        <?php // SPEC-STATUS.md B2 (2026-08-20) — radio_ai_enabled had a reader
+              // (inc/radio_ai_listener.php) and no writer anywhere in the app;
+              // there was no kill-switch. Gated on $canCfg (action.manage_config)
+              // rather than a new RBAC code: api/config-admin.php's settings
+              // section already requires action.manage_config for EVERY key in
+              // this panel (the master enable is a licensed-transmission safety
+              // control, so it inherits that endpoint's existing Super-Admin-only
+              // posture — see is_admin()'s contract in inc/rbac.php). Hiding the
+              // tab from anyone who couldn't load its values anyway avoids a
+              // panel that renders and then 403s.
+              if ($canCfg): ?>
+        <?php _cfg_tab('radio-ai',          t('sidebar.tab.radio_ai',          'Radio AI (Claude on Radio)'), 'radio ai claude wake word talkgroup kill switch dmr amateur'); ?>
+        <?php endif; ?>
 
         <?php _cfg_sub(t('sidebar.sub.text', 'Text')); ?>
         <?php _cfg_tab('chat-settings',     t('sidebar.tab.chat_settings',     'Chat Settings'), 'chat local messaging instant'); ?>

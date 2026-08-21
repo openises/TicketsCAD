@@ -3,21 +3,17 @@
 -- ============================================================
 -- Fires HTTP POST callbacks to external systems on CAD events.
 -- Run via: php sql/run_webhooks.php
+--
+-- B20 (SPEC-STATUS.md, 2026-08-21): this file used to ALSO CREATE a bare
+-- `webhooks` table. It had zero readers/writers anywhere in the app --
+-- every live code path uses `webhook_subscriptions`
+-- (sql/run_phase94_external_api.php) instead. Removed here so a fresh
+-- install (tools/install_fresh.php's foundational-imports list) no longer
+-- creates it; sql/run_webhooks_legacy_table_drop.php drops it on installs
+-- that already have it, after confirming it is empty. Do not re-add the
+-- CREATE TABLE below without re-reading the B20 writeup in
+-- specs/SPEC-STATUS.md first.
 -- ============================================================
-
-CREATE TABLE IF NOT EXISTS `webhooks` (
-    `id`           INT AUTO_INCREMENT PRIMARY KEY,
-    `name`         VARCHAR(128)  NOT NULL DEFAULT '',
-    `url`          VARCHAR(512)  NOT NULL,
-    `secret`       VARCHAR(128)  NOT NULL DEFAULT '',
-    `events_json`  TEXT          NOT NULL,
-    `active`       TINYINT(1)   NOT NULL DEFAULT 1,
-    `retry_max`    TINYINT      NOT NULL DEFAULT 3,
-    `created_by`   INT          NOT NULL DEFAULT 0,
-    `created_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    KEY `idx_webhooks_active` (`active`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `webhook_deliveries` (
     `id`           INT AUTO_INCREMENT PRIMARY KEY,

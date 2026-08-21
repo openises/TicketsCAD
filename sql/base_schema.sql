@@ -2949,63 +2949,20 @@ INSERT IGNORE INTO `replacetext_order` VALUES
 UNLOCK TABLES;
 commit;
 
---
--- Table structure for table `requests`
---
-
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE IF NOT EXISTS `requests` (
-  `id` bigint(8) NOT NULL AUTO_INCREMENT,
-  `org` int(3) NOT NULL DEFAULT 0 COMMENT 'Organisation',
-  `contact` varchar(48) NOT NULL DEFAULT '',
-  `email` varchar(128) DEFAULT NULL,
-  `street` varchar(12000) DEFAULT NULL,
-  `city` varchar(12000) DEFAULT NULL,
-  `postcode` varchar(16) DEFAULT NULL,
-  `state` char(4) DEFAULT NULL,
-  `the_name` varchar(64) DEFAULT NULL,
-  `phone` varchar(16) DEFAULT NULL,
-  `to_address` varchar(1024) DEFAULT NULL,
-  `pickup` varchar(12) DEFAULT NULL,
-  `arrival` varchar(12) DEFAULT NULL,
-  `orig_facility` int(4) DEFAULT 0,
-  `rec_facility` int(4) DEFAULT 0,
-  `scope` text NOT NULL,
-  `description` text NOT NULL,
-  `comments` text DEFAULT NULL,
-  `lat` varchar(12000) DEFAULT NULL,
-  `lng` varchar(12000) DEFAULT NULL,
-  `request_date` datetime DEFAULT NULL,
-  `status` enum('Open','Tentative','Accepted','Resourced','Complete','Declined','Closed') NOT NULL DEFAULT 'Open',
-  `tentative_date` datetime DEFAULT NULL,
-  `accepted_date` datetime DEFAULT NULL,
-  `declined_date` datetime DEFAULT NULL,
-  `resourced_date` datetime DEFAULT NULL,
-  `completed_date` datetime DEFAULT NULL,
-  `closed` datetime DEFAULT NULL,
-  `cancelled` datetime DEFAULT NULL,
-  `requester` bigint(8) NOT NULL,
-  `ticket_id` bigint(8) DEFAULT NULL,
-  `_by` int(7) NOT NULL,
-  `_on` datetime NOT NULL,
-  `_from` varchar(16) NOT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `ID` (`id`),
-  KEY `requester` (`requester`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `requests`
---
-
-LOCK TABLES `requests` WRITE;
-/*!40000 ALTER TABLE `requests` DISABLE KEYS */;
-set autocommit=0;
-/*!40000 ALTER TABLE `requests` ENABLE KEYS */;
-UNLOCK TABLES;
-commit;
+-- GH#96 (2026-08-20) — the legacy `requests` table (v3 mutual-aid resource
+-- requests) was dropped: zero rows on every install checked, zero PHP
+-- references anywhere outside its own CREATE TABLE statement (here and in
+-- base_schema_RESET_DESTRUCTIVE.sql) and a generated schema doc. Its one
+-- historical job -- inferring an org for billing via a fragile
+-- requests->user->organisations three-hop join -- is already superseded by
+-- the direct, indexed ticket.org_id column and the org_query_filter()/
+-- org_ticket_query_filter() machinery v4 already has. An UPGRADE install
+-- (one with a pre-existing `requests` table from before this change) is
+-- handled by sql/run_gh96_drop_requests_table.php, NOT here -- this file
+-- only controls what a FRESH install creates. Do not confuse this with the
+-- separate, unrelated `access_requests` table (facility/account access
+-- requests, a real live v4 feature, defined earlier in this file) -- the
+-- name similarity is a trap.
 
 --
 -- Table structure for table `responder`

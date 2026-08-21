@@ -673,6 +673,29 @@ function org_member_query_filter(string $memberIdRef = 'm.id', ?int $userId = nu
 }
 
 /**
+ * GH#96 (2026-08-20) — mileage_log's own org-scope filter. A thin, deliberate
+ * wrapper around org_query_filter('ml.org_id') rather than a call to
+ * org_ticket_query_filter(): mileage_log.org_id is a DIRECT session-derived
+ * attribute of the trip/vehicle itself (see inc/responder-write.php's
+ * _phase95_record_mileage_log() and api/mobile-data.php's start_mileage),
+ * not a ticket-visibility question — so Phase 141/143's cross-org
+ * incident_shares / org_relationships widening deliberately does NOT apply
+ * here. A future need to surface shared-ticket mileage cross-org would be a
+ * distinct decision, not an automatic consequence of ticket-sharing.
+ *
+ * Usage:
+ *   [$frag, $vars] = org_mileage_query_filter();
+ *   $sql = "SELECT ... FROM mileage_log ml WHERE 1=1 {$frag} ...";
+ *
+ * Returns ['', []] for Super Admin (no filter applied), same contract as
+ * org_query_filter() itself.
+ */
+function org_mileage_query_filter(?int $userId = null): array
+{
+    return org_query_filter('ml.org_id', $userId);
+}
+
+/**
  * Visibility gate for a single member. True if any of the member's
  * junction rows is in the session's visible-org set, OR the member
  * has no junction rows (legacy fallback). Super Admin always wins.

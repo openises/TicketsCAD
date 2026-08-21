@@ -33,7 +33,8 @@
     var INNER_CELL = 14;   // px per inner row — matches runtime console.js
     var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
 
-    var viewListEl = document.getElementById('cdViewList');
+    var viewListEl = document.getElementById('cdViewList');       // shared (admin-only panel, may be absent)
+    var myViewListEl = document.getElementById('cdMyViewList');   // personal (always present)
     var canvasEl = document.getElementById('cdCanvas');
     var canvasTitle = document.getElementById('cdCanvasTitle');
     var channelListEl = document.getElementById('cdChannelList');
@@ -43,15 +44,24 @@
     var inspectorBody = document.getElementById('cdInspectorBody');
     var saveBtn = document.getElementById('cdSaveBtn');
     var newViewBtn = document.getElementById('cdNewViewBtn');
+    var newPersonalViewBtn = document.getElementById('cdNewPersonalViewBtn');
+    var cloneBtn = document.getElementById('cdCloneBtn');
+    var cloneSourcesCard = document.getElementById('cdCloneSourcesCard');
+    var cloneSourceListEl = document.getElementById('cdCloneSourceList');
     var dirtyFlag = document.getElementById('cdDirtyFlag');
-    if (!viewListEl || !canvasEl || typeof window.GridStack === 'undefined') { return; }
+    if (!myViewListEl || !canvasEl || typeof window.GridStack === 'undefined') { return; }
+
+    var canDesign = document.body.getAttribute('data-can-design') === '1';
 
     var channels = [];
     var channelsById = {};
-    var views = [];
+    var views = [];              // shared (owner_user_id NULL)
+    var myViews = [];            // Phase 114b3 — the caller's own personal views
+    var sharedPersonalViews = []; // Phase 114b3 — OTHER users' is_shared personal views (clone sources)
     var componentCatalog = {};   // type -> {needs, label, future, props}
     var currentViewId = null;
-    var meta = { name: '', icon: '' };
+    var currentViewScope = null; // 'shared' | 'personal' — which list currentViewId lives in
+    var meta = { name: '', icon: '', is_shared: false };
     var dirty = false;
 
     var outerGrid = null;        // GridStack instance for the canvas
@@ -88,6 +98,8 @@
             body: JSON.stringify(payload)
         }).then(function (r) { return r.json(); }).then(function (j) {
             if (j && j.views) { views = j.views; }
+            if (j && j.my_views) { myViews = j.my_views; }
+            if (j && j.shared_personal_views) { sharedPersonalViews = j.shared_personal_views; }
             cb(j || {});
         }).catch(function () { cb({ error: 'network error' }); });
     }
@@ -354,33 +366,48 @@
     }
 
     // ── View list ────────────────────────────────────────────────
-    function renderViewList() {
-        viewListEl.innerHTML = '';
-        if (!views.length) {
-            viewListEl.appendChild(el('div', 'list-group-item small text-body-secondary',
-                'No views yet — create one.'));
+    // Renders one view list into a target element. scope is 'shared' or
+    // 'personal' — click handlers stash it on currentViewScope so
+    // renderCanvasChrome()/save know which behaviors apply (is_shared
+    // toggle only makes sense for personal views).
+    function renderOneViewList(targetEl, list, scope, emptyText) {
+        if (!targetEl) { return; }
+        targetEl.innerHTML = '';
+        if (!list.length) {
+            targetEl.appendChild(el('div', 'list-group-item small text-body-secondary', emptyText));
         }
-        for (var i = 0; i < views.length; i++) {
+        for (var i = 0; i < list.length; i++) {
             (function (v) {
                 var a = el('a', 'list-group-item list-group-item-action py-2 d-flex align-items-center'
-                    + (v.id === currentViewId ? ' active' : ''), null);
+                    + ((v.id === currentViewId && scope === currentViewScope) ? ' active' : ''), null);
                 a.href = '#';
                 a.appendChild(el('i', 'bi ' + (v.icon || 'bi-broadcast-pin') + ' me-2'));
                 a.appendChild(el('span', 'flex-grow-1 text-truncate small', v.name));
+                if (scope === 'personal' && v.is_shared) {
+                    var shIcon = el('i', 'bi bi-people-fill text-success me-1');
+                    shIcon.title = 'Shared — other operators can clone this';
+                    a.appendChild(shIcon);
+                }
                 a.appendChild(el('span', 'badge bg-secondary ms-1', String((v.strips || []).length)));
                 a.addEventListener('click', function (e) {
                     e.preventDefault();
                     if (dirty && !window.confirm('Discard unsaved changes to the current view?')) { return; }
-                    selectView(v.id);
+                    selectView(v.id, scope);
                 });
-                viewListEl.appendChild(a);
-            })(views[i]);
+                targetEl.appendChild(a);
+            })(list[i]);
         }
     }
 
-    function findView(id) {
-        for (var i = 0; i < views.length; i++) {
-            if (views[i].id === id) { return views[i]; }
+    function renderViewList() {
+        if (viewListEl) { renderOneViewList(viewListEl, views, 'shared', 'No shared views yet — create one.'); }
+        renderOneViewList(myViewListEl, myViews, 'personal', 'No personal views yet — create one, or clone an existing view.');
+    }
+
+    function findView(id, scope) {
+        var list = (scope === 'personal') ? myViews : views;
+        for (var i = 0; i < list.length; i++) {
+            if (list[i].id === id) { return list[i]; }
         }
         return null;
     }
@@ -398,13 +425,14 @@
         canvasEl.innerHTML = '';
     }
 
-    function selectView(id) {
+    function selectView(id, scope) {
         currentViewId = id;
+        currentViewScope = scope;
         selStrip = null;
         selComp = null;
         destroyCanvas();
-        var v = findView(id);
-        meta = { name: v ? v.name : '', icon: (v && v.icon) || '' };
+        var v = findView(id, scope);
+        meta = { name: v ? v.name : '', icon: (v && v.icon) || '', is_shared: !!(v && v.is_shared) };
         renderCanvasChrome();
         if (v) {
             outerGrid = GridStack.init({
@@ -454,15 +482,40 @@
         iconInp.title = 'Tab icon (a Bootstrap Icons bi-* class)';
         iconInp.addEventListener('input', function () { meta.icon = iconInp.value; setDirty(true); });
         canvasTitle.appendChild(iconInp);
+
+        // Phase 114b3 — "available for others to adopt" toggle, personal
+        // views only. Never a live shared tab; just makes this view show
+        // up in OTHER operators' "Clone from…" list (console_views.
+        // is_shared, see inc/console-views.php's docblock).
+        if (currentViewScope === 'personal') {
+            var shareLbl = el('label', 'form-check form-check-inline ms-2 mb-0 cd-share-toggle', null);
+            var shareInp = document.createElement('input');
+            shareInp.type = 'checkbox';
+            shareInp.className = 'form-check-input';
+            shareInp.checked = !!meta.is_shared;
+            shareInp.title = 'Let other operators clone this layout for themselves';
+            shareInp.addEventListener('change', function () {
+                meta.is_shared = shareInp.checked;
+                setDirty(true);
+            });
+            shareLbl.appendChild(shareInp);
+            shareLbl.appendChild(el('span', 'form-check-label small', 'Shared'));
+            canvasTitle.appendChild(shareLbl);
+        }
+
         var delBtn = el('button', 'btn btn-sm btn-outline-danger ms-2', null);
         delBtn.type = 'button';
         delBtn.title = 'Delete this view';
         delBtn.appendChild(el('i', 'bi bi-trash'));
         delBtn.addEventListener('click', function () {
-            if (!window.confirm('Delete view "' + meta.name + '"? Dispatchers lose this tab.')) { return; }
+            var warn = (currentViewScope === 'shared')
+                ? 'Delete shared view "' + meta.name + '"? Every dispatcher using it loses this tab.'
+                : 'Delete your personal view "' + meta.name + '"?';
+            if (!window.confirm(warn)) { return; }
             post({ action: 'delete', id: currentViewId }, function (j) {
                 if (j.ok) {
                     currentViewId = null;
+                    currentViewScope = null;
                     destroyCanvas();
                     setDirty(false);
                     renderViewList();
@@ -477,43 +530,111 @@
         canvasTitle.appendChild(delBtn);
     }
 
+    // Shared "new view" prompt row, reused for both the shared-views panel
+    // (console.design) and the personal-views panel (Phase 114b3, any
+    // screen.console holder — payloadExtra carries {personal:true} and,
+    // for a clone, {based_on_view_id}).
+    function promptNewViewRow(containerEl, scope, payloadExtra, placeholder) {
+        if (containerEl.querySelector('.cd-newview-row')) { return; }
+        var row = el('div', 'list-group-item py-2 cd-newview-row');
+        var grp = el('div', 'input-group input-group-sm');
+        var inp = document.createElement('input');
+        inp.type = 'text';
+        inp.className = 'form-control form-control-sm';
+        inp.placeholder = placeholder || 'View name';
+        inp.maxLength = 80;
+        var ok = el('button', 'btn btn-sm btn-primary', null);
+        ok.type = 'button';
+        ok.appendChild(el('i', 'bi bi-check-lg'));
+        grp.appendChild(inp);
+        grp.appendChild(ok);
+        row.appendChild(grp);
+        containerEl.insertBefore(row, containerEl.firstChild);
+        inp.focus();
+        var create = function () {
+            var name = inp.value.replace(/^\s+|\s+$/g, '');
+            if (!name) { row.parentNode.removeChild(row); return; }
+            ok.disabled = true;
+            var payload = { action: 'create', name: name };
+            for (var k in payloadExtra) { if (Object.prototype.hasOwnProperty.call(payloadExtra, k)) { payload[k] = payloadExtra[k]; } }
+            post(payload, function (j) {
+                if (j.ok) {
+                    renderViewList();
+                    selectView(j.id, scope);
+                } else {
+                    ok.disabled = false;
+                    window.alert(j.error || 'Create failed');
+                }
+            });
+        };
+        ok.addEventListener('click', create);
+        inp.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); create(); }
+            if (e.key === 'Escape') { row.parentNode.removeChild(row); }
+        });
+    }
+
     if (newViewBtn) {
         newViewBtn.addEventListener('click', function () {
-            if (viewListEl.querySelector('.cd-newview-row')) { return; }
-            var row = el('div', 'list-group-item py-2 cd-newview-row');
-            var grp = el('div', 'input-group input-group-sm');
-            var inp = document.createElement('input');
-            inp.type = 'text';
-            inp.className = 'form-control form-control-sm';
-            inp.placeholder = 'View name';
-            inp.maxLength = 80;
-            var ok = el('button', 'btn btn-sm btn-primary', null);
-            ok.type = 'button';
-            ok.appendChild(el('i', 'bi bi-check-lg'));
-            grp.appendChild(inp);
-            grp.appendChild(ok);
-            row.appendChild(grp);
-            viewListEl.insertBefore(row, viewListEl.firstChild);
-            inp.focus();
-            var create = function () {
-                var name = inp.value.replace(/^\s+|\s+$/g, '');
-                if (!name) { row.parentNode.removeChild(row); return; }
-                ok.disabled = true;
-                post({ action: 'create', name: name }, function (j) {
-                    if (j.ok) {
-                        renderViewList();
-                        selectView(j.id);
-                    } else {
-                        ok.disabled = false;
-                        window.alert(j.error || 'Create failed');
-                    }
-                });
-            };
-            ok.addEventListener('click', create);
-            inp.addEventListener('keydown', function (e) {
-                if (e.key === 'Enter') { e.preventDefault(); create(); }
-                if (e.key === 'Escape') { row.parentNode.removeChild(row); }
-            });
+            promptNewViewRow(viewListEl, 'shared', {}, 'Shared view name');
+        });
+    }
+
+    if (newPersonalViewBtn) {
+        newPersonalViewBtn.addEventListener('click', function () {
+            promptNewViewRow(myViewListEl, 'personal', { personal: true }, 'Personal view name');
+        });
+    }
+
+    // ── Clone an existing view (Phase 114b3) ───────────────────────
+    // Browses: every shared view, the caller's OWN personal views, and
+    // other users' is_shared personal views — exactly console_view_
+    // visible_as_clone_source()'s rule on the server, mirrored here for
+    // display (the server re-validates on submit regardless).
+    function renderCloneSources() {
+        if (!cloneSourceListEl) { return; }
+        cloneSourceListEl.innerHTML = '';
+        var groups = [
+            { label: 'Shared Views', list: views },
+            { label: 'My Personal Views', list: myViews },
+            { label: 'Shared by other operators', list: sharedPersonalViews }
+        ];
+        var any = false;
+        for (var g = 0; g < groups.length; g++) {
+            if (!groups[g].list.length) { continue; }
+            any = true;
+            cloneSourceListEl.appendChild(el('div', 'list-group-item py-1 small fw-semibold text-body-secondary', groups[g].label));
+            for (var i = 0; i < groups[g].list.length; i++) {
+                (function (v) {
+                    var a = el('a', 'list-group-item list-group-item-action py-2 d-flex align-items-center', null);
+                    a.href = '#';
+                    a.appendChild(el('i', 'bi ' + (v.icon || 'bi-broadcast-pin') + ' me-2'));
+                    var lbl = v.name + (v.owner_display ? ' — ' + v.owner_display : '');
+                    a.appendChild(el('span', 'flex-grow-1 text-truncate small', lbl));
+                    a.appendChild(el('span', 'badge bg-secondary ms-1', String((v.strips || []).length)));
+                    a.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        cloneSourcesCard.classList.add('d-none');
+                        var suggested = v.name + ' copy';
+                        promptNewViewRow(myViewListEl, 'personal',
+                            { personal: true, based_on_view_id: v.id }, 'New view name');
+                        var pending = myViewListEl.querySelector('.cd-newview-row input');
+                        if (pending) { pending.value = suggested; pending.select(); }
+                    });
+                    cloneSourceListEl.appendChild(a);
+                })(groups[g].list[i]);
+            }
+        }
+        if (!any) {
+            cloneSourceListEl.appendChild(el('div', 'list-group-item small text-body-secondary', 'No views available to clone yet.'));
+        }
+    }
+
+    if (cloneBtn) {
+        cloneBtn.addEventListener('click', function () {
+            var hidden = cloneSourcesCard.classList.contains('d-none');
+            if (hidden) { renderCloneSources(); }
+            cloneSourcesCard.classList.toggle('d-none');
         });
     }
 
@@ -785,13 +906,16 @@
                     window.alert(j.error || 'Publish failed');
                 }
             };
-            var v = findView(currentViewId);
-            var metaChanged = v && (v.name !== meta.name || (v.icon || '') !== (meta.icon || ''));
+            var v = findView(currentViewId, currentViewScope);
+            var metaChanged = v && (v.name !== meta.name || (v.icon || '') !== (meta.icon || '')
+                || (currentViewScope === 'personal' && !!v.is_shared !== !!meta.is_shared));
             var publishStrips = function () {
                 post({ action: 'save_strips', id: currentViewId, strips: serialize() }, finish);
             };
             if (metaChanged) {
-                post({ action: 'update', id: currentViewId, name: meta.name, icon: meta.icon }, function (j) {
+                var updatePayload = { action: 'update', id: currentViewId, name: meta.name, icon: meta.icon };
+                if (currentViewScope === 'personal') { updatePayload.is_shared = !!meta.is_shared; }
+                post(updatePayload, function (j) {
                     if (!j.ok) { finish(j); return; }
                     publishStrips();
                 });
@@ -813,10 +937,17 @@
         .then(function (r) { return r.json(); })
         .then(function (j) {
             views = (j && j.views) || [];
+            myViews = (j && j.my_views) || [];
+            sharedPersonalViews = (j && j.shared_personal_views) || [];
             componentCatalog = (j && j.components) || {};
             renderViewList();
             renderChannelList();
-            if (views.length) { selectView(views[0].id); } else { renderCanvasChrome(); }
+            // Land on the caller's first personal view if they have one and
+            // no shared view exists to show instead (a non-designer never
+            // sees a shared view here at all, since viewListEl is absent).
+            if (views.length) { selectView(views[0].id, 'shared'); }
+            else if (myViews.length) { selectView(myViews[0].id, 'personal'); }
+            else { renderCanvasChrome(); }
         })
         .catch(function () {
             canvasEl.appendChild(el('div', 'text-danger p-3 small', 'Failed to load channels/views.'));

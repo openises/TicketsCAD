@@ -383,6 +383,21 @@ function handlePost() {
             ]);
         } else {
             $fields['created_at'] = date('Y-m-d H:i:s');
+            // dead_control_audit.php check (c), 2026-08-20: newui_vehicles.org_id
+            // (the org-SCOPING column ensure_org_id_column()/org_query_filter()
+            // above filter on — distinct from `owner_org_id`, which IS correctly
+            // written above and means "which agency owns this vehicle", not
+            // "which org can see this row") was never attempted on write. Same
+            // fix shape as the sibling facilities/responder/teams/equipment
+            // org_id restorations in the same change. Create-only.
+            global $current_user_id;
+            require_once __DIR__ . '/../inc/org-scope.php';
+            ensure_org_id_column('newui_vehicles');
+            $orgId = (isset($input['org_id']) && (int) $input['org_id'] > 0) ? (int) $input['org_id'] : null;
+            if ($orgId === null) {
+                try { $orgId = org_user_home_id((int) $current_user_id); } catch (Exception $e) { $orgId = null; }
+            }
+            $fields['org_id'] = $orgId;
             $cols = array_keys($fields);
             $placeholders = array_fill(0, count($cols), '?');
             db_query(

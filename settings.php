@@ -872,7 +872,7 @@ foreach ($personnelSections as $sec) {
                                 <i class="bi bi-question-circle text-body-secondary" tabindex="0"
                                    data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
                                    data-bs-html="true"
-                                   data-bs-content="<b>Action Log</b> — the value is appended to the incident's action-log entry so it appears in the incident detail's activity feed and any exported ICS-214. Best default; visible where the status change is meaningful.<br><br><b>Incident record</b> — writes to a per-type column on the ticket row (facility → ticket.rec_facility, mileage → ticket.mileage, etc.). Use when you want the value to be part of the incident's structured data, not just its log.<br><br><b>Unit record</b> — writes to a per-type column on the responder row (mileage → responder.mileage_last, note → responder.status_about, etc.). See the Unit History Log (Personnel &gt; Unit History) to review every write over time."
+                                   data-bs-content="All three targets record a Mileage value as a structured trip in the Mileage Log (Reports &gt; Mileage Log) — the choice below controls ONLY where the human-readable note also appears.<br><br><b>Action Log</b> — the value is appended to the incident's action-log entry so it appears in the incident detail's activity feed and any exported ICS-214. Best default; visible where the status change is meaningful.<br><br><b>Incident record</b> — ALSO writes to a per-type column on the ticket row (facility → ticket.rec_facility; mileage has no separate ticket column, so this option behaves the same as Action Log for Mileage besides the note placement). Use when you want a facility/location value to be part of the incident's structured data, not just its log.<br><br><b>Unit record</b> — ALSO writes to a per-type column on the responder row (today: location only — mileage/note have no separate unit column). See the Unit History Log (Personnel &gt; Unit History) to review every write over time."
                                    title="Where the value ends up"></i>
                             </label>
                             <select class="form-select form-select-sm" id="statusExtraDataTarget" name="extra_data_target">
@@ -1183,17 +1183,23 @@ foreach ($personnelSections as $sec) {
                             </select>
                         </div>
                         <div class="col-md-6">
-                            <label for="setLoginBanner" class="form-label form-label-sm">Login Banner Text <span class="badge bg-secondary fw-normal">Not yet wired</span></label>
-                            <input type="text" class="form-control form-control-sm" id="setLoginBanner" data-key="login_banner" maxlength="500" placeholder="Authorized users only. All activity is logged." disabled>
+                            <label for="setLoginBanner" class="form-label form-label-sm">Login Banner Text</label>
+                            <input type="text" class="form-control form-control-sm" id="setLoginBanner" data-key="login_banner" maxlength="500" placeholder="Authorized users only. All activity is logged.">
+                            <div class="form-text small">Shown near the top of the login page (both the credential form and the 2FA form) — plain informational text, no acknowledgement required. Different from the CJIS click-through notice in Settings -> Login Settings, which requires a checkbox before login is accepted.</div>
                         </div>
                     </div>
-                    <!-- GH #91 audit (2026-08-19): each of the three fields above
-                         is a real login-page setting an admin would reasonably
-                         expect to work — the day/night default, table row density,
-                         and a banner shown on the login screen — but nothing
-                         anywhere reads any of the three keys back. Disabled with a
-                         note rather than removed: each is a plausible, small future
-                         feature, not a superseded mechanism. -->
+                    <!-- GH #91 audit (2026-08-19): the two fields above (Default
+                         Theme, Table Density) are real login/display settings an
+                         admin would reasonably expect to work, but nothing
+                         anywhere reads either key back. Disabled with a note
+                         rather than removed: each is a plausible, small future
+                         feature, not a superseded mechanism. login_banner (the
+                         third field GH #91 found in this group) was wired for
+                         real in SPEC-STATUS.md B17's follow-up (2026-08-21) —
+                         see login.php's $loginBannerText — specifically because
+                         it sat right next to the CJIS notice pair (which DOES
+                         work) and an admin filling in the wrong box had no way
+                         to tell which one was broken. -->
                     <div class="form-text small text-body-secondary mt-1">
                         <i class="bi bi-slash-circle me-1"></i>Fields marked "Not yet wired" save but have no effect yet (tracked in GH #91).
                     </div>
@@ -3833,24 +3839,30 @@ foreach ($personnelSections as $sec) {
                             </div>
                         </div>
                         <div class="col-md-8">
-                            <label class="form-label form-label-sm" for="setLoginPanelBanner">Login Banner Text <span class="badge bg-secondary fw-normal">Not yet wired</span></label>
-                            <input type="text" class="form-control form-control-sm" id="setLoginPanelBanner" data-key="login_banner" placeholder="Displayed on the login page" disabled>
+                            <label class="form-label form-label-sm" for="setLoginPanelBanner">Login Banner Text</label>
+                            <input type="text" class="form-control form-control-sm" id="setLoginPanelBanner" data-key="login_banner" placeholder="Displayed on the login page">
+                            <div class="form-text">Same setting as Display Settings -> Appearance above (both boxes edit the same value). Plain text shown on login.php; distinct from the CJIS click-through notice below, which requires a checkbox.</div>
                         </div>
                     </div>
-                    <!-- GH #91 audit (2026-08-19): login_banner, login_userlist,
-                         and require_https all save to the `settings` table but
-                         nothing reads any of the three back — login.php shows
-                         only the separate, working CJIS click-through notice
-                         (cjis_login_notice_enabled/_text) and never queries these.
-                         require_https in particular looks like a security control
-                         and is not one: inc/https.php's is_https()/is_https_verified()
-                         detect the CURRENT request's scheme, they do not enforce or
-                         redirect based on this toggle. Disabled rather than wired up
-                         here — a redirect-on-toggle needs care around trusted-proxy
-                         detection (see inc/https.php's own docblock) to avoid a
-                         redirect loop for operators behind a reverse proxy, and that
-                         is a real change deserving its own review, not a byproduct
-                         of a dead-control sweep. -->
+                    <!-- GH #91 audit (2026-08-19) found login_banner, login_userlist,
+                         and require_https all saved to the `settings` table with
+                         nothing reading any of the three back (SPEC-STATUS.md gap
+                         B16 for require_https specifically). login_userlist remains
+                         unwired below. login_banner was wired for real in
+                         SPEC-STATUS.md B17's follow-up (2026-08-21) — see
+                         login.php's $loginBannerText — specifically because it sat
+                         right next to the CJIS notice pair a few lines below (which
+                         DOES work) and an admin filling in the wrong box had no way
+                         to tell which one was broken. require_https is now
+                         wired (2026-08-2x): it does NOT redirect or refuse anything
+                         — Eric's explicit direction was informational only, never
+                         blocking — it drives a dismissible admin banner + this
+                         live-state box + the Status page, all reading the single
+                         canonical https_enforcement_status function (inc/https-enforcement.php),
+                         built on inc/https.php's is_https_verified(), which honours
+                         X-Forwarded-Proto only from a peer listed in Trusted Reverse
+                         Proxies below. See documentation/?doc=HTTPS-VERIFICATION for
+                         the full explanation of what "verified" means and why. -->
                     <div class="row g-2 mt-1">
                         <div class="col-md-6">
                             <div class="form-check">
@@ -3860,13 +3872,21 @@ foreach ($personnelSections as $sec) {
                         </div>
                         <div class="col-md-6">
                             <div class="form-check">
-                                <input type="checkbox" class="form-check-input" data-key="require_https" id="setRequireHttps" disabled>
-                                <label class="form-check-label" for="setRequireHttps">Require HTTPS <span class="badge bg-secondary fw-normal">Not yet wired</span></label>
+                                <input type="checkbox" class="form-check-input" data-key="require_https" id="setRequireHttps">
+                                <label class="form-check-label" for="setRequireHttps">
+                                    Require HTTPS
+                                    <i class="bi bi-question-circle text-body-secondary" tabindex="0"
+                                       data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                                       data-bs-html="true"
+                                       data-bs-content="Shows an admin banner (never blocks access) whenever this connection is NOT verified as TLS-encrypted. See <a href='documentation/?doc=HTTPS-VERIFICATION' target='_blank'>How this works</a>."
+                                       title="Require HTTPS help"></i>
+                                </label>
+                                <div id="requireHttpsLiveStatus" class="mt-1"></div>
                             </div>
                         </div>
                     </div>
                     <div class="form-text small text-body-secondary mt-1">
-                        <i class="bi bi-slash-circle me-1"></i>Fields marked "Not yet wired" save but have no effect yet (tracked in GH #91).
+                        <i class="bi bi-slash-circle me-1"></i><code>login_userlist</code> saves but has no effect yet (tracked in GH #91).
                     </div>
                     <div class="row g-2 mt-1">
                         <div class="col-12">
@@ -4260,6 +4280,13 @@ foreach ($personnelSections as $sec) {
 
                 <div id="tfaKeyWarningBox">
                     <!-- Populated dynamically by JS based on actual key source -->
+                </div>
+                <div id="tfaKeysDirExposureBox">
+                    <!-- dead_control_audit.php check (d), 2026-08-20: api/tfa-key.php has
+                         computed keys_dir_exposed/keys_dir_note (served_dir_exposure()
+                         against FE_KEYS_DIR — the same web-exposure check this project's
+                         GHSA advisory history is built around) since the API shipped, but
+                         nothing ever rendered it to an admin. Populated dynamically by JS. -->
                 </div>
             </div>
         </div>
@@ -8896,6 +8923,31 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                                         </label>
                                     </div>
                                 </div>
+                                <!-- Phase 148 — FCC 97.119 station-ID policy. This channel is
+                                     amateur radio (BrandMeister-linked DMR); every live human
+                                     PTT is subject to the station-ID requirement. See
+                                     docs/FCC-STATION-ID-COMPLIANCE.md. -->
+                                <div class="col-md-6">
+                                    <label class="form-label form-label-sm" for="dvsIdEnforce">Station-ID enforcement</label>
+                                    <select class="form-select form-select-sm" id="dvsIdEnforce">
+                                        <option value="off">Off (not a real RF-linked amateur channel)</option>
+                                        <option value="soft" selected>Soft — countdown + banner, never blocks a transmission</option>
+                                        <option value="hard">Hard — require an acknowledgment when the ID timer has expired</option>
+                                    </select>
+                                    <div class="form-text">
+                                        "Hard" never suppresses a transmission outright — the operator can
+                                        always click through — it only forces an explicit acknowledgment.
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label form-label-sm" for="dvsIdIntervalSeconds">Station-ID interval (seconds)</label>
+                                    <input type="number" class="form-control form-control-sm"
+                                           id="dvsIdIntervalSeconds" value="600" min="1" max="600">
+                                    <div class="form-text">
+                                        FCC 97.119's maximum is 600 seconds (10 minutes). Set lower for a
+                                        safety margin — never higher.
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Token reveal section (shown once after create or rotate) -->
@@ -9007,6 +9059,131 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- ── Radio AI (Claude on Radio, Phase 85f admin panel) ───────
+             SPEC-STATUS.md B2 (2026-08-20 internal audit): radio_ai_enabled /
+             radio_ai_wake_word / radio_ai_model / radio_ai_channel_ids /
+             radio_ai_topic_scope all had a reader (inc/radio_ai_listener.php,
+             inc/radio_ai_client.php) and NO writer anywhere in the app — the
+             feature could only be turned on (or off) with a direct SQL UPDATE.
+             This panel is that writer. It deliberately does NOT expose
+             radio_ai_max_response_words / radio_ai_auto_discard_seconds /
+             radio_ai_daily_token_budget — those settings are seeded but have
+             ZERO readers anywhere in the tree (confirmed by grep before this
+             panel was built), so a control for them would be exactly the
+             "setting that was never wired to anything" pattern this project's
+             CLAUDE.md already documents once (tile_mode) — decorative, and
+             actively misleading since an admin would reasonably read a rate/
+             budget field as an enforced limit. Flagged as a follow-up. -->
+        <div class="config-panel" id="panel-radio-ai">
+            <div class="config-panel-title">
+                <i class="bi bi-robot text-danger"></i> Radio AI (Claude on Radio)
+            </div>
+            <div class="alert alert-warning small mb-3">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                <strong>Amateur radio, licensed-operator tool — not an autonomous
+                station.</strong> When armed, this feature drafts voice responses
+                for questions asked on a monitored DMR talkgroup, using Claude.
+                Nothing transmits without an operator explicitly approving the
+                draft on the
+                <a href="radio-ai.php" target="_blank" rel="noopener">Radio AI operator console</a> —
+                this panel only controls whether the listener is armed to
+                <em>generate</em> drafts at all, and which channel(s)/wake word/
+                topics it will act on. See the
+                <code>claude-on-amateur-radio</code> operating model: Claude is
+                content-generation tooling used by the licensed control operator,
+                the same way a teleprompter or logging program is — the license,
+                the FCC obligations, and the callsign stay with the human.
+            </div>
+
+            <form id="radioAiConfigForm">
+                <div class="settings-group">
+                    <div class="settings-group-title">Master switch</div>
+                    <div class="d-flex align-items-center flex-wrap gap-3 mb-2">
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" role="switch"
+                                   id="setRadioAiEnabled" style="width:3em;height:1.5em;">
+                            <label class="form-check-label fw-semibold" for="setRadioAiEnabled">
+                                Radio AI listener enabled
+                            </label>
+                        </div>
+                        <span class="badge text-bg-secondary" id="radioAiStatusBadge">unknown</span>
+                    </div>
+                    <div class="form-text">
+                        This is the kill switch. The listener daemon re-reads this
+                        setting on every poll cycle (default every 5 seconds — see
+                        <code>RADIO_AI_LOOP_INTERVAL</code>), so switching it OFF
+                        stops new drafts from being generated within a few seconds,
+                        even mid-session — no restart needed. It cannot recall a
+                        reply an operator already approved and sent. Default is OFF.
+                        Per the skill's "office hours" pattern, only arm this during
+                        a supervised session with an operator actively watching the
+                        <a href="radio-ai.php" target="_blank" rel="noopener">approval console</a>.
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <div class="settings-group-title">Listening</div>
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <label class="form-label form-label-sm" for="setRadioAiWakeWord">Wake word</label>
+                            <input type="text" class="form-control form-control-sm"
+                                   id="setRadioAiWakeWord" maxlength="40" placeholder="claude">
+                            <div class="form-text">Matched as a whole word, case-insensitive, against each inbound transcript.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label form-label-sm" for="setRadioAiChannelIds">Channel IDs (DMR talkgroups)</label>
+                            <input type="text" class="form-control form-control-sm"
+                                   id="setRadioAiChannelIds" placeholder="3">
+                            <div class="form-text">Comma-separated <code>dmr_channels.id</code> values. Blank = listen on every channel.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label form-label-sm" for="setRadioAiTopicScope">Topic scope (content filter)</label>
+                            <select class="form-select form-select-sm" id="setRadioAiTopicScope">
+                                <option value="ham_general_science">Ham + general science (default)</option>
+                                <option value="ham_only">Amateur radio topics only</option>
+                                <option value="skywarn_only">Skywarn spotter procedures only</option>
+                                <option value="broad">Broad (general technical / educational)</option>
+                            </select>
+                            <div class="form-text">Constrains what Claude's system prompt is allowed to discuss on the air.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <div class="settings-group-title">Model</div>
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label form-label-sm" for="setRadioAiModel">Claude model</label>
+                            <input type="text" class="form-control form-control-sm"
+                                   id="setRadioAiModel" placeholder="claude-sonnet-4-6">
+                            <div class="form-text">
+                                Anthropic model id used to draft replies. Requires a
+                                working key at <code>/etc/ticketscad/anthropic.env</code>
+                                on the listener host — see the
+                                <a href="documentation/?doc=RADIO-AI-ADMIN-GUIDE" target="_blank" rel="noopener">Radio AI Admin Guide</a>.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-2">
+                    <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-check-lg me-1"></i>Save</button>
+                    <a href="radio-ai.php" class="btn btn-sm btn-outline-danger" target="_blank" rel="noopener">
+                        <i class="bi bi-mic-fill me-1"></i>Open Operator Console
+                    </a>
+                </div>
+            </form>
+
+            <div class="small text-body-secondary mt-3">
+                <i class="bi bi-info-circle me-1"></i>
+                Not yet enforced by this build, so deliberately not exposed as a
+                control here (a field that looks like a limit but isn't would be
+                worse than no field): per-caller and per-minute transmit rate
+                limits, and the daily token budget. Every draft still requires
+                individual operator approval regardless of these gaps.
             </div>
         </div>
 
@@ -10611,6 +10788,39 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
                                 'Click <strong>Migrate to Dedicated Key</strong> above to prevent this.' +
                                 '</div>';
                         }
+                    }
+                }
+
+                // dead_control_audit.php check (d), 2026-08-20: keys_dir_exposed /
+                // keys_dir_note / keys_dir were computed by api/tfa-key.php (via
+                // served_dir_exposure(FE_KEYS_DIR)) but never rendered anywhere —
+                // the one web-exposure check the whole TFA key panel exists to
+                // reassure an admin about was silently dropped. keys_dir_note is
+                // server-supplied config text, not user input, but built via DOM
+                // methods (textContent) rather than innerHTML anyway, matching
+                // this project's standing convention for any dynamically-inserted
+                // content.
+                var exposureBox = document.getElementById('tfaKeysDirExposureBox');
+                if (exposureBox) {
+                    exposureBox.innerHTML = '';
+                    if (data.keys_dir_exposed) {
+                        var alertDiv = document.createElement('div');
+                        alertDiv.className = 'alert alert-danger py-2 mt-2 mb-0 small';
+                        alertDiv.setAttribute('role', 'alert');
+
+                        var icon = document.createElement('i');
+                        icon.className = 'bi bi-exclamation-triangle-fill me-1';
+                        alertDiv.appendChild(icon);
+
+                        var strong = document.createElement('strong');
+                        strong.textContent = 'Keys directory may be web-reachable. ';
+                        alertDiv.appendChild(strong);
+
+                        var noteText = (data.keys_dir_note || 'Verify the directory is not served over HTTP.')
+                            + (data.keys_dir ? ' (' + data.keys_dir + ')' : '');
+                        alertDiv.appendChild(document.createTextNode(noteText));
+
+                        exposureBox.appendChild(alertDiv);
                     }
                 }
             })

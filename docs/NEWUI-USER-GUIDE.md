@@ -737,6 +737,8 @@ The reports page provides pre-built reports that help you analyze your operation
 - **Incident Summary** --- Count of incidents broken down by type, severity, or time period.
 - **Intervals** --- Response, scene, and transport time analysis (see below).
 - **Unit Log / Dispatch Log** --- Every unit's dispatch/responding/on-scene/clear timestamps for the period.
+- **Mileage Log** --- Trip log by organization, vehicle, driver, and incident (see below).
+- **Bed Adjustments** --- Timeline of every automatic bed-count decrement and facility self-release, per facility (see below).
 - **Daily/Weekly/Monthly Activity** --- Incident volume over time shown as charts or tables.
 
 All reports can be filtered by date range, incident type, unit, and other criteria.
@@ -763,6 +765,46 @@ the main report break the average response and scene times down by incident
 type and by unit, so you can see, for example, which incident types or which
 units are running the slowest response times this month. Click any incident
 number or unit name to jump to that record.
+
+### Mileage Log
+
+Click the **Mileage Log** tab on the Reports page for a trip log of every
+mileage entry recorded during the period --- whether entered through a unit
+status prompt (Settings > Statuses) or through the mobile app's start/stop
+trip tracker. Each row shows the organization, vehicle, driver, linked
+incident (if any), start/end time, start/end odometer, miles, and notes.
+A trip still in progress (no end odometer yet) shows blank Miles/Ended cells
+rather than an error; a trip with no organization on file shows
+"Unattributed" rather than being hidden.
+
+Filter by **Responder** (vehicle), **Driver**, or **Organization**, in
+addition to the usual date range. Two tables below the main report --- by
+organization and by vehicle --- show trip counts and total miles, useful for
+reimbursement reconciliation or fleet utilization review. Click any vehicle
+name or incident number to jump to that record.
+
+This report is intentionally a plain trip log --- it does not compute
+reimbursement dollar amounts, generate invoices, or track payment status.
+Export to CSV (top of the page) for use in whatever accounting or grant
+reporting process your organization already uses.
+
+### Bed Adjustments
+
+Click the **Bed Adjustments** tab on the Reports page to see who moved a
+facility's simple bed count (Available/Occupied) and why. Every row is
+labeled either **Automatic (delivery)** --- the system's own decrement when
+a unit delivers a patient to a facility in Automatic mode --- or **Facility
+self-release** --- a facility with its own portal login releasing beds back
+to Available. Each row shows the change to both counters, who did it, and
+any note. Filter by **Facility**, in addition to the usual date range;
+newest changes appear first. The summary cards at the top break the period
+down into automatic decrements vs. facility releases, so you can tell at a
+glance whether a facility's count is being actively maintained or only ever
+going one direction --- see "How Facility Bed Counts Update" in Help for
+the full explanation of Automatic mode and how a facility releases a bed.
+A dispatcher's manual correction on the facility's own Edit page does not
+appear as its own row here (it's a plain facility edit, not a bed-specific
+event) --- it shows up as a gap between two rows instead.
 
 ## ICS-213 Export
 
@@ -859,21 +901,40 @@ Each strip shows:
 - A **status light** — green (connected), amber (degraded), red (down), grey (unknown/quiet).
 - The **last caller** heard on the channel and how long ago.
 - An **AMATEUR — ID required** badge on amateur-radio channels as a licensing reminder.
-- The controls that channel supports. Voice channels (Zello, DMR) get a button that opens the matching radio widget for listening and push-to-talk. Text channels get a **Messages** drawer with recent traffic and a send box. Feed channels (weather alerts, event bus) get a read-only activity drawer.
+- The controls that channel supports. Voice channels (Zello, DMR) get a button that opens the matching radio widget for listening and push-to-talk, plus real **Select / Mon / Mute** buttons and a **Volume** slider (see below). Text channels get a **Messages** drawer with recent traffic and a send box. Feed channels (weather alerts, event bus) get a read-only activity drawer.
+- Every strip also carries a **Sel** (Select) button, and TX-capable strips carry a **Sim** (Simulselect) checkbox — see "Select, Monitor, Mute, Volume" below.
 
-### Console views (tabs)
+### Select, Monitor, Mute, Volume
 
-Administrators with the *Design Shared Console Views* permission can author named layouts in the **Console Designer** (the **Design Views** button on the console). The designer works like a diagramming tool — a grid layout within a grid layout:
+Every strip has a **Sel** button next to its status light. Selecting a channel marks it as the one you're actively working: once *anything* on the console is selected, every *other* voice channel drops to a quieter background ("monitor") level so the channel you're on comes through clearly — exactly like a commercial dispatch console. Until you select anything, nothing is de-prioritized; the console sounds exactly as it always has.
 
-1. Create a view (for example "Day Shift" or "EOC Activation") and give it a tab icon.
+Voice channels (Zello, DMR) additionally get:
+
+- **Mon** — when ON (the default), an unselected channel still plays quietly in the background. Turn it OFF to silence a channel entirely while you're not on it.
+- **Mute** — silences the channel outright, overriding Select and Mon.
+- **Volume** — a per-channel ceiling under either state.
+
+Text-only channels (Meshtastic, local chat, weather alerts, the event bus, …) don't have a literal volume, so Select and Mute work differently there: selecting one highlights its strip and opens its message feed automatically; muting one stops its new-message flash without hiding the channel — you can still open it and read traffic any time. A text channel never goes quiet just because you selected a different one; a missed message matters more than a moment of visual calm.
+
+**Simulselect** — check the **Sim** box on any TX-capable channel (voice channels only) to add it to the paging set, then use the **Simulselect PTT** button that appears above the strip bank to hold-to-talk on every channel in that set at once — the way you'd page out an announcement over radio and Zello simultaneously.
+
+### Console views (tabs) — shared and personal
+
+Administrators with the *Design Shared Console Views* permission can author named layouts everyone sees as tabs (for example "Day Shift" or "EOC Activation") in the **Console Designer** (the **Design Views** button on the console).
+
+**Any dispatcher** — including one without that admin permission — can build their **own personal layout** too: click **My Views** on the console (it takes the place of Design Views when you don't hold the admin permission) to open the same designer, scoped to a "My Personal Views" panel. Build one from scratch, or click **Clone an existing view…** to start from any shared view, your own view, or another operator's view they've marked shared. A personal view is yours alone unless you explicitly check **Shared** on it — that makes it available for other operators to *clone* into their own copy; it never appears as a tab on anyone else's console uninvited.
+
+The designer works like a diagramming tool — a grid layout within a grid layout:
+
+1. Create a view and give it a tab icon.
 2. Click channels on the right to add strips. **Drag a strip by its title bar** to place it anywhere on the view canvas, and **resize it from its corner** — both width and height are yours.
-3. Inside each strip, every component — the label block, status light, last-caller line, PTT button, messages/feed box — is its own draggable, resizable element on a fine grid. Move them anywhere, make the PTT as wide or tall as you want, stack small buttons side by side. Components may overlap, exactly like a drawing canvas.
-4. Click a component to edit its properties in the inspector (label text, background color, PTT color and momentary/latch mode). Click the strip title bar to edit strip-level settings (label override, accent color). The component palette only offers what the channel is actually capable of — a published view can never contain a dead button. Components tagged *future* (monitor, mute, volume, Say) can be placed now for layout planning and light up when the audio matrix backend arrives.
-5. Click **Publish View**. The view immediately appears as a tab on every dispatcher's console, rendered exactly as designed.
+3. Inside each strip, every component — the label block, status light, last-caller line, PTT button, messages/feed box, and now **Mon / Mute / Volume** — is its own draggable, resizable element on a fine grid. Move them anywhere, make the PTT as wide or tall as you want, stack small buttons side by side. Components may overlap, exactly like a drawing canvas.
+4. Click a component to edit its properties in the inspector (label text, background color, PTT color and momentary/latch mode). Click the strip title bar to edit strip-level settings (label override, accent color). The component palette only offers what the channel is actually capable of — a published view can never contain a dead button. Only **Say** (text-to-speech) remains a *future* placeholder — everything else in the palette, including Mon/Mute/Volume, is fully working today.
+5. Click **Publish View**. A shared view immediately appears as a tab on every dispatcher's console; a personal view appears only on your own.
 
 The built-in **All Channels** tab always lists everything enabled and cannot be removed. Your last-used tab is remembered per browser.
 
-Access requires the Communications Console screen permission; transmitting requires Console Transmit; authoring shared views requires Design Shared Console Views. All view publishing and edits are captured in the audit log.
+Access requires the Communications Console screen permission; transmitting requires Console Transmit; authoring *shared* views requires Design Shared Console Views. Your own personal views need no extra permission. All view publishing and edits are captured in the audit log.
 
 ## Internal Messaging
 
@@ -1505,7 +1566,8 @@ When responding to a call:
 2. After completing the response, enter your ending odometer reading.
 3. The system calculates and logs the mileage automatically.
 
-Mileage data is available in reports for reimbursement and fleet management.
+Mileage data is available in the **Mileage Log** report (Reports page ---
+see Part 6) for reimbursement reconciliation and fleet utilization review.
 
 ---
 

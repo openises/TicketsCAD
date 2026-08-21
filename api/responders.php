@@ -466,6 +466,20 @@ foreach ($rows as $row) {
     //   (2) legacy APRS tracks table (`tracks` keyed by callsign)
     //   (3) responder's own stored lat/lng (Location form on unit-edit)
     //   (4) most recent active assignment's incident location
+    //
+    // dead_control_audit.php check (c), 2026-08-20: layer (2) is
+    // genuinely read (the batched query above) but NewUI never WRITES to
+    // `tracks` — confirmed the legacy tickets/incs/remotes.inc.php tree
+    // actively wrote it (APRS/OpenGTS/GLAT/inReach pollers), but the
+    // NewUI rewrite's replacement poller (tools/aprs-poller.php) writes
+    // to the modern `location_reports` table instead, per its own
+    // docblock — a deliberate architectural replacement, not a dropped
+    // write path. This layer only ever serves rows inherited from a
+    // legacy v3 -> NewUI migration; no NewUI code will ever add a new
+    // one. Safe to leave in place (read-only compat, ages out on its
+    // own) but do not "fix" it by adding a new NewUI writer without
+    // checking with Eric first — location_reports is the intended
+    // modern equivalent.
     $resolved = null;
     try {
         $resolved = location_resolve_unit($id);

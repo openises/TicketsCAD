@@ -36,6 +36,7 @@ whichever one drifted.
 | `assigns.user_id` / `responder.description` etc. are `NOT NULL` with no default | Must be included in every INSERT to these tables. |
 | MyISAM tables don't support transactions | Seed SQL uses individual statements, not BEGIN/COMMIT, for MyISAM tables. |
 | MySQL 8.0 `ONLY_FULL_GROUP_BY` / `STRICT_TRANS_TABLES` | Legacy queries/empty-string datetimes need these disabled at connection time (already handled in `db.inc.php`/`functions.inc.php`). |
+| A "phantom" column (read, never written) is the mirror of a dead column, and more dangerous | `tools/dead_control_audit.php` check (c): a column genuinely read but with no confirmed write path fails SILENTLY as "no data yet" rather than loudly — worse than check (b)'s dead-write columns. AUTO_INCREMENT/CURRENT_TIMESTAMP columns are excluded via live `information_schema`, not regex guessing; a same-file "dynamic-write broadening" pass catches this codebase's dominant `$fields['col'] = $value;` idiom. Real fixes it found: `facilities`/`responder`/`teams`/`newui_equipment`/`newui_vehicles`.org_id were computed-then-dropped or never-attempted across five multi-tenant-scoped tables. |
 
 ## RBAC / authentication
 
@@ -86,6 +87,7 @@ whichever one drifted.
 | The API↔JS contract pattern | JS reading a data key no endpoint emits (wrong key name, a server-side field dropped at output mapping). `tools/api_contract_audit.php` flags JS reads with no matching PHP/Python emitter. |
 | A REASSURING status code is not proof (2026-08-02 advisory correction) | A `403` on a *directory* does not prove *files* inside it are blocked — only a request for a real file (via a short-lived token, never a real archive) proves exposure is closed. |
 | "Nothing could be tested" is a third state, not a pass | Split `untested` into `inconclusive` (something exists, couldn't be probed) vs `absent` (certain, and the healthy state) — a row that's grey on every correct install is a row nobody reads. |
+| A dead API response key (the OTHER contract direction) | `tools/dead_control_audit.php` check (d): a `json_response()`/`echo json_encode()` key that no `assets/js/` file ever reads — the mirror of `api_contract_audit.php`'s JS-reads-nothing-emits check. Must scan inline `<script>` blocks on page templates too (`situation.php`'s `severity_counts` read was missed until this was added), and must be TOKEN-based, not a char-by-char string scanner — an apostrophe inside an ordinary comment ("callers that `don't` know...") desynchronized an early char-scanning version and silently swallowed the real target keys. Confirmed real instance: `severity_breakdown`/`disposition_breakdown` (api/reports.php) computed since Phase 132/GH#87-88, never read by `assets/js/reports.js` until this fix. |
 
 ## Web exposure / hardening
 

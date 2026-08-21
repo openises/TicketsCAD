@@ -116,8 +116,50 @@ $csrf     = csrf_token();
                 </div>
             </div>
 
+            <!-- GH#102: the dispatch-facing "Bed Capacity" card
+                 (facility-detail.php) shows facilities.beds_a/beds_o --
+                 the number inc/bed_auto.php's automatic mode actually
+                 decrements on delivery. That number was already fetched
+                 by this page's own status API but never displayed here,
+                 so a facility using Automatic mode had no way to see the
+                 figure dispatch was routing patients against, let alone
+                 correct it. This card shows it and, when it's occupied,
+                 offers the release action that was missing entirely
+                 before GH#102 -- the facility's own inverse of the
+                 automatic decrement (see inc/facility-bed-release.php). -->
+            <div class="card mb-3" id="fpSimpleBedsCard">
+                <div class="card-header d-flex align-items-center justify-content-between">
+                    <span><i class="bi bi-hospital me-1"></i>Bed Count</span>
+                    <span class="small text-body-secondary" title="This is the number dispatch sees on the facility's own detail page. Releasing a bed here moves it from Occupied back to Available -- the mirror image of what happens automatically when a unit delivers a patient here.">
+                        <i class="bi bi-info-circle"></i>
+                    </span>
+                </div>
+                <div class="card-body">
+                    <div class="row g-2 text-center mb-2">
+                        <div class="col-6">
+                            <div class="text-body-secondary small">Available</div>
+                            <div class="fs-4 fw-bold text-success" id="fpBedsAvailable">&ndash;</div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-body-secondary small">Occupied</div>
+                            <div class="fs-4 fw-bold text-warning" id="fpBedsOccupied">&ndash;</div>
+                        </div>
+                    </div>
+                    <div class="input-group input-group-sm mb-2">
+                        <span class="input-group-text">Release</span>
+                        <input type="number" min="1" max="50" value="1" class="form-control form-control-sm" id="fpReleaseCount" style="max-width:5rem;">
+                        <button type="button" id="fpReleaseBed" class="btn btn-outline-success">
+                            <i class="bi bi-arrow-up-circle me-1"></i>Release Bed(s)
+                        </button>
+                    </div>
+                    <input type="text" class="form-control form-control-sm" id="fpReleaseNote"
+                           placeholder="Note (optional) -- e.g. patient discharged" maxlength="500">
+                    <div class="small text-body-secondary mt-1" id="fpReleaseHint"></div>
+                </div>
+            </div>
+
             <div class="card">
-                <div class="card-header"><i class="bi bi-clipboard-data me-1"></i>Bed / Capacity</div>
+                <div class="card-header"><i class="bi bi-clipboard-data me-1"></i>Bed / Capacity by Category</div>
                 <div class="card-body p-0">
                     <table class="table table-sm mb-0" id="fpCapacityTable">
                         <thead>

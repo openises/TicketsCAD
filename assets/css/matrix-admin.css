@@ -1,0 +1,69 @@
+/* Phase 114c — Audio Matrix patch admin (matrix-admin.php)
+ *
+ * Colour comes ONLY from Bootstrap utility classes applied in JS/markup
+ * (text-bg-success / text-bg-secondary / text-bg-warning / bg-success /
+ * bg-secondary / bg-warning) so both themes are handled by Bootstrap's own
+ * CSS variables — nothing here hardcodes a hex colour on a themed property
+ * (tools/ui_consistency_audit.php's theme-color rule). This file is layout
+ * only: sizing, spacing, cursor, and the sticky grid header.
+ */
+
+.mx-grid th, .mx-grid td {
+    text-align: center;
+    vertical-align: middle;
+    white-space: nowrap;
+    font-size: 0.8rem;
+}
+
+.mx-grid thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.mx-grid tbody th {
+    text-align: left;
+    white-space: nowrap;
+}
+
+.mx-cell {
+    width: 2.25rem;
+    height: 2.25rem;
+    min-width: 2.25rem;
+    cursor: pointer;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+}
+
+.mx-cell-diag {
+    cursor: default;
+    opacity: 0.5;
+}
+
+.mx-cell-empty {
+    background: transparent;
+    border: 1px dashed currentColor;
+    opacity: 0.55;
+}
+.mx-cell-empty:hover {
+    opacity: 1;
+}
+
+.mx-cell-on:hover, .mx-cell-off:hover, .mx-cell-cross:hover {
+    filter: brightness(1.1);
+}
+
+.mx-swatch {
+    display: inline-block;
+    width: 0.85rem;
+    height: 0.85rem;
+    border-radius: 3px;
+    vertical-align: middle;
+    margin-right: 0.25rem;
+}
+.mx-swatch-empty {
+    border: 1px dashed currentColor;
+}

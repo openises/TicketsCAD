@@ -86,6 +86,21 @@ const BACKUP_DEFAULT_MIN_FREE_MB    = 1024;
 const BACKUP_DEFAULT_MAX_DIR_MB     = 5120;
 /** Never leave the operator with zero backups, whatever the policy says. */
 const BACKUP_MIN_KEEP               = 1;
+/**
+ * Upper bound for backup_min_free_mb (GH#94, 2026-08-20). Matches the
+ * decorative max="1048576" the Settings input has always carried
+ * (settings.php) — 1 TiB is already three orders of magnitude past the
+ * 1024 MB default and far more than any real safety-margin reserve needs
+ * to be, so it doubles as both a sane administrative ceiling AND a guard
+ * against the exact class of mistake that produced GH#94: a BYTE figure
+ * (1073741824 = 1024^3, "1 GB expressed in bytes") typed into a field
+ * measured in MB, producing a ~1 petabyte reserve requirement that no real
+ * disk could ever satisfy — silently and permanently refusing every
+ * automatic backup from then on. See backup_min_free_bytes() (read-time
+ * clamp, self-heals a value already this bad) and api/config-admin.php's
+ * settings POST handler (write-time clamp, stops a new one being saved).
+ */
+const BACKUP_MAX_MIN_FREE_MB         = 1048576; // 1 TiB in MB
 
 /** Read a backup setting with a default (settings table via get_variable). */
 function backup_setting(string $name, string $default = ''): string {
@@ -255,9 +270,19 @@ function backup_retention_days(): int {
 function backup_min_free_bytes(): int {
     $mb = backup_setting('backup_min_free_mb', (string) BACKUP_DEFAULT_MIN_FREE_MB);
     // An explicit '0' is a deliberate "I accept the risk" and must survive; only
-    // a negative/garbage value falls back to the default.
+    // a negative/garbage value falls back to the default. GH#94 — an absurdly
+    // large value is CLAMPED to BACKUP_MAX_MIN_FREE_MB rather than trusted,
+    // regardless of how it got into the settings table (a bad save, a
+    // hand-edited row, an old fixture). This is a READ-TIME self-heal: it
+    // fixes an install that already carries a broken value with no migration
+    // required, per this project's defensive-database-pattern convention.
+    // api/config-admin.php clamps the same way on WRITE so a new bad value
+    // never gets saved in the first place — either guard alone leaves a gap
+    // (write-time alone never helps an install that is already broken;
+    // read-time alone still shows a bad value sitting in Settings as "saved").
     $n = (int) $mb;
     if ($n < 0) $n = BACKUP_DEFAULT_MIN_FREE_MB;
+    if ($n > BACKUP_MAX_MIN_FREE_MB) $n = BACKUP_MAX_MIN_FREE_MB;
     return $n * 1024 * 1024;
 }
 
@@ -323,17 +348,46 @@ function backup_free_bytes(string $dir): ?int {
 }
 
 /**
+ * Total capacity of the filesystem holding $dir, or NULL when undeterminable.
+ * Same ancestor-walk as backup_free_bytes(). GH#94: used only to tell two
+ * shapes of refusal apart — "not enough free space right now" (freeing space,
+ * lowering the reserve, or pruning old backups can genuinely fix it) versus
+ * "the configured reserve is bigger than the WHOLE VOLUME" (none of those
+ * remedies can ever fix it — it is a configuration error, not a space
+ * shortage, and telling an operator to go free up disk space is actively
+ * misleading in that case).
+ */
+function backup_total_bytes(string $dir): ?int {
+    $probe = rtrim($dir, '/\\');
+    $guard = 0;
+    while ($probe !== '' && !@is_dir($probe) && $guard++ < 64) {
+        $parent = dirname($probe);
+        if ($parent === $probe) break;
+        $probe = $parent;
+    }
+    if ($probe === '' || !@is_dir($probe)) return null;
+    $total = @disk_total_space($probe);
+    if ($total === false || $total === null || !is_numeric($total)) return null;
+    return (int) $total;
+}
+
+/**
  * PURE disk-space decision. No filesystem, no clock, no DB — so "exactly at the
  * floor" and "free space unreadable" are testable without a full disk.
  *
- * @param ?int $freeBytes  NULL = could not be determined
- * @param ?int $needBytes  NULL = could not be estimated (treated as 0)
- * @param int  $floorBytes free space that must REMAIN after the write
- * @return array{ok:bool,undetermined:bool,reason:string}
+ * @param ?int $freeBytes   NULL = could not be determined
+ * @param ?int $needBytes   NULL = could not be estimated (treated as 0)
+ * @param int  $floorBytes  free space that must REMAIN after the write
+ * @param ?int $totalBytes  GH#94 — total capacity of the same filesystem, NULL
+ *                          when undeterminable. When the floor alone exceeds
+ *                          this, the refusal is a configuration error (see
+ *                          backup_total_bytes()'s docblock) and is worded
+ *                          distinctly from an ordinary "not enough room" one.
+ * @return array{ok:bool,undetermined:bool,config_error:bool,reason:string}
  */
-function backup_space_verdict(?int $freeBytes, ?int $needBytes, int $floorBytes): array {
+function backup_space_verdict(?int $freeBytes, ?int $needBytes, int $floorBytes, ?int $totalBytes = null): array {
     if ($freeBytes === null) {
-        return ['ok' => true, 'undetermined' => true,
+        return ['ok' => true, 'undetermined' => true, 'config_error' => false,
                 'reason' => 'free disk space could not be determined — proceeding without the space guard'];
     }
     $need  = ($needBytes !== null && $needBytes > 0) ? $needBytes : 0;
@@ -341,13 +395,28 @@ function backup_space_verdict(?int $freeBytes, ?int $needBytes, int $floorBytes)
     // >= is deliberate: landing exactly ON the floor is within policy. The floor
     // is "space that must remain", not "space that must be exceeded".
     if ($floorBytes > 0 && $after < $floorBytes) {
-        return ['ok' => false, 'undetermined' => false,
+        // GH#94 — when the reserve alone is bigger than the entire volume, no
+        // remedy the generic message suggests can ever work: freeing space
+        // still leaves free space capped by total capacity, lowering the
+        // reserve is the ONLY real fix, and pruning old backups cannot create
+        // space that was never there to begin with. Say that plainly instead
+        // of sending the operator to go hunt for disk space that does not
+        // exist on any volume of this size.
+        if ($totalBytes !== null && $totalBytes > 0 && $floorBytes > $totalBytes) {
+            return ['ok' => false, 'undetermined' => false, 'config_error' => true,
+                    'reason' => 'configuration error: the configured reserve (' . backup_format_size($floorBytes)
+                                . ') exceeds this volume\'s total capacity (' . backup_format_size($totalBytes)
+                                . ') — this can never be satisfied by freeing space, pruning backups, or reducing'
+                                . ' how many are kept. Lower the "minimum free space" reserve (backup_min_free_mb)'
+                                . ' to a value smaller than the volume itself.'];
+        }
+        return ['ok' => false, 'undetermined' => false, 'config_error' => false,
                 'reason' => 'not enough disk space: ' . backup_format_size($freeBytes) . ' free, this backup needs about '
                             . backup_format_size($need) . ', which would leave ' . backup_format_size(max(0, $after))
                             . ' — below the ' . backup_format_size($floorBytes) . ' reserve. Free some space, lower the'
                             . ' reserve, or reduce how many backups are kept.'];
     }
-    return ['ok' => true, 'undetermined' => false,
+    return ['ok' => true, 'undetermined' => false, 'config_error' => false,
             'reason' => 'space ok: ' . backup_format_size($freeBytes) . ' free, about '
                         . backup_format_size($need) . ' needed'];
 }
@@ -613,7 +682,8 @@ function backup_apply_retention(string $dir, ?int $keepCount = null, ?int $keepD
  * destroyed anything of value.
  *
  * @return array{ok:bool,reason:string,free:?int,need:?int,dir_bytes:int,
- *                dir_count:int,over_cap:bool,undetermined:bool,pruned:int}
+ *                dir_count:int,over_cap:bool,undetermined:bool,pruned:int,
+ *                config_error:bool}
  */
 function backup_guard(string $dir): array {
     $floor = backup_min_free_bytes();
@@ -631,6 +701,7 @@ function backup_guard(string $dir): array {
         'ok' => true, 'reason' => '', 'pruned' => $pre['pruned'],
         'free' => null, 'need' => $est['archive'], 'undetermined' => false,
         'dir_bytes' => $usage['bytes'], 'dir_count' => $usage['count'], 'over_cap' => false,
+        'config_error' => false,
     ];
 
     // 3. The directory ceiling.
@@ -651,14 +722,16 @@ function backup_guard(string $dir): array {
     ];
     foreach ($targets as [$path, $need, $label]) {
         $free    = backup_free_bytes((string) $path);
-        $verdict = backup_space_verdict($free, $need !== null ? (int) $need : null, $floor);
+        $total   = backup_total_bytes((string) $path);
+        $verdict = backup_space_verdict($free, $need !== null ? (int) $need : null, $floor, $total);
         if ($label === 'backup directory') {
             $out['free'] = $free;
             $out['undetermined'] = !empty($verdict['undetermined']);
         }
         if (!$verdict['ok']) {
-            $out['ok']     = false;
-            $out['reason'] = 'on the ' . $label . ' (' . $path . '): ' . $verdict['reason'];
+            $out['ok']           = false;
+            $out['config_error'] = !empty($verdict['config_error']);
+            $out['reason']       = 'on the ' . $label . ' (' . $path . '): ' . $verdict['reason'];
             return $out;
         }
         if (!empty($verdict['undetermined'])) {
@@ -693,7 +766,7 @@ function backup_guard(string $dir): array {
  * from whatever the guard saw — sometimes a DIFFERENT directory (temp) than
  * the one the live figure described.
  *
- * @return array{ok:bool,reason:string,undetermined:bool,
+ * @return array{ok:bool,reason:string,undetermined:bool,config_error:bool,
  *   targets:array<string,array{path:string,free:?int,free_size:string,need:?int,ok:bool}>}
  */
 function backup_live_space_check(string $dir): array {
@@ -702,7 +775,8 @@ function backup_live_space_check(string $dir): array {
     $usage = backup_dir_usage($dir);
     $est   = backup_estimate_bytes($dir);
 
-    $out = ['ok' => true, 'reason' => 'space and limits ok', 'undetermined' => false, 'targets' => []];
+    $out = ['ok' => true, 'reason' => 'space and limits ok', 'undetermined' => false,
+            'config_error' => false, 'targets' => []];
 
     $capVerdict = backup_cap_verdict($usage['bytes'], $usage['count'], $est['archive'], $cap);
     if (!$capVerdict['ok']) {
@@ -716,7 +790,8 @@ function backup_live_space_check(string $dir): array {
     ];
     foreach ($targets as $key => [$path, $need]) {
         $free    = backup_free_bytes((string) $path);
-        $verdict = backup_space_verdict($free, $need !== null ? (int) $need : null, $floor);
+        $total   = backup_total_bytes((string) $path);
+        $verdict = backup_space_verdict($free, $need !== null ? (int) $need : null, $floor, $total);
         $out['targets'][$key] = [
             'path'      => $path,
             'free'      => $free,
@@ -726,8 +801,9 @@ function backup_live_space_check(string $dir): array {
         ];
         if (!empty($verdict['undetermined'])) $out['undetermined'] = true;
         if ($out['ok'] && !$verdict['ok']) {
-            $out['ok']     = false;
-            $out['reason'] = 'on the ' . str_replace('_', ' ', $key) . ' (' . $path . '): ' . $verdict['reason'];
+            $out['ok']           = false;
+            $out['config_error'] = !empty($verdict['config_error']);
+            $out['reason']       = 'on the ' . str_replace('_', ' ', $key) . ' (' . $path . '): ' . $verdict['reason'];
         }
     }
     return $out;
@@ -1205,6 +1281,11 @@ function backup_status(): array {
         'temp_free_size'  => $live['targets']['temporary_directory']['free_size'] ?? 'unknown',
         'space_ok_now'    => $live['ok'],
         'space_warning'   => $spaceWarning,
+        // GH#94 — true when the current refusal is a configuration error (the
+        // reserve exceeds the volume's total capacity) rather than an ordinary
+        // "not enough room right now" — so the UI can style/word it distinctly
+        // from an ordinary space warning if it chooses to.
+        'space_config_error' => !empty($live['config_error']),
         'last_skip_at'    => (int) backup_setting('backup_last_skip_at', '0') ?: null,
         'last_ok_at'      => $lastOk ?: null,
         'last_ok_age_hours' => $ageHours,

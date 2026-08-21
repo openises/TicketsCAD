@@ -579,6 +579,20 @@ function handlePost() {
             audit_log('asset', 'update', 'equipment', $id, "Updated equipment '{$name}'");
         } else {
             $fields['created_at'] = date('Y-m-d H:i:s');
+            // dead_control_audit.php check (c), 2026-08-20: newui_equipment.org_id
+            // is filtered on every read (ensure_org_id_column()/org_query_filter()
+            // above) but was never attempted on write — same gap, same fix shape,
+            // as facility_upsert_internal()/responder_upsert_internal()/
+            // team_upsert_internal()'s org_id restoration in the same change.
+            // Create-only (matching that same convention — org assignment is a
+            // create-time decision, never touched by a general edit).
+            require_once __DIR__ . '/../inc/org-scope.php';
+            ensure_org_id_column('newui_equipment');
+            $orgId = (isset($input['org_id']) && (int) $input['org_id'] > 0) ? (int) $input['org_id'] : null;
+            if ($orgId === null) {
+                try { $orgId = org_user_home_id((int) $current_user_id); } catch (Exception $e) { $orgId = null; }
+            }
+            $fields['org_id'] = $orgId;
             $cols = array_keys($fields);
             $placeholders = array_fill(0, count($cols), '?');
             db_query(

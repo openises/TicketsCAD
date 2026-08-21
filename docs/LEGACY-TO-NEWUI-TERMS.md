@@ -128,7 +128,7 @@ If you query the database directly, here's what to look for. Always confirm with
 | (no equivalent) | `location_providers`, `location_reports`, `unit_location_bindings` | **New** — see [TRACCAR-SETUP.md](TRACCAR-SETUP.md) |
 | (no equivalent) | `geofences`, `dmr_channels`, `dmr_messages`, `mesh_nodes`, `mesh_packet_log` | **New** per feature |
 | (no equivalent) | `ics_forms`, `internal_messages`, `message_recipients` | **New** |
-| (no equivalent) | `webhooks`, `webhook_deliveries` | **New** |
+| (no equivalent) | `webhook_subscriptions`, `webhook_deliveries` | **New** |
 | (no equivalent) | `active_sessions`, `user_tfa`, `user_password_history` | **New** for CJIS hardening |
 | (no equivalent) | `captions`, `languages` | **New** for i18n |
 | (no equivalent) | `routes`, `routing_log` | **New** for routing engine |

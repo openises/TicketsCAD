@@ -599,6 +599,31 @@ try {
     // settings table missing or pre-99i — silently leave notice off.
 }
 
+// SPEC-STATUS.md B17 follow-up (2026-08-21) — generic login-page banner
+// (settings key `login_banner`, Settings -> Display Settings ->
+// Appearance AND Settings -> Login Settings -> General; both write the
+// same key). GH #91's audit (2026-08-19) found this control saved to
+// the `settings` table with nothing reading it back, disabled it in
+// both panels with a "Not yet wired" badge, and flagged the specific
+// risk that it sits next to the CJIS notice pair immediately above,
+// which DOES work — an admin filling in the wrong box would see no
+// effect either way and have no way to tell which box was "the
+// broken one". Wiring this up (rather than removing it) resolves that
+// ambiguity by making both controls work: this is deliberately NOT
+// the same mechanism as the CJIS notice — no click-through checkbox,
+// no login block, just short informational text (e.g. "Authorized
+// users only. All activity is logged.") shown near the top of every
+// login-page view, credential form and 2FA form alike.
+$loginBannerText = '';
+try {
+    $loginBannerText = trim((string) db_fetch_value(
+        "SELECT value FROM " . db_table('settings') . " WHERE name = ? LIMIT 1",
+        ['login_banner']
+    ));
+} catch (Exception $e) {
+    // settings table missing — silently leave banner off.
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  HANDLE LOGIN (step 1 — username/password)
 // ═══════════════════════════════════════════════════════════════
@@ -820,6 +845,13 @@ $isTrustedNetwork = tfa_check_trusted_network();
     <div class="login-card<?php echo $cjisNoticeEnabled ? ' login-card-wide' : ''; ?> card shadow-lg">
         <div class="card-body p-4">
             <?php echo https_warning_banner(); ?>
+            <?php if ($loginBannerText !== ''): ?>
+            <!-- B17 (2026-08-21) — the generic login banner, distinct from
+                 the CJIS click-through notice further down: plain text,
+                 no acknowledgement required, shown on every view of this
+                 page (credential form and 2FA form alike). -->
+            <div class="alert alert-light border py-2 mb-3 small text-center" role="note" id="loginBannerText"><?php echo e($loginBannerText); ?></div>
+            <?php endif; ?>
             <div class="text-center mb-4">
                 <i class="bi bi-broadcast-pin fs-1 text-primary"></i>
                 <h4 class="mt-2"><?php echo e(t('login.title', 'Tickets NewUI')); ?></h4>

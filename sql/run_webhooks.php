@@ -1,13 +1,25 @@
 <?php
 /**
- * Run Webhooks — Create webhook management and delivery tracking tables.
+ * Run Webhooks — Create webhook delivery tracking table.
  *
- * Purpose:  Creates webhooks and webhook_deliveries tables for outbound
- *           event notification delivery with retry tracking.
+ * Purpose:  Creates webhook_deliveries for outbound event notification
+ *           delivery with retry tracking.
  * Usage:    php sql/run_webhooks.php
  * Prerequisites: config.php with valid database credentials.
  * Safety:   Idempotent. Uses CREATE TABLE IF NOT EXISTS. Safe to re-run.
  * Output:   [OK]/[WARN] per table creation.
+ *
+ * B20 (SPEC-STATUS.md, 2026-08-21): this script used to ALSO create a bare
+ * `webhooks` table (name/url/secret/events_json/retry_max). Every live code
+ * path uses `webhook_subscriptions` instead (inc/webhooks.php says so
+ * explicitly) — the legacy table had zero readers or writers anywhere in
+ * the app; api/webhooks.php never inserted into it, only into
+ * webhook_subscriptions. It was absent from sql/schema_manifest.json. The
+ * CREATE TABLE for it is removed here so it stops appearing on fresh
+ * installs; sql/run_facility_capacity_legacy_table_drop.php's B20 sibling,
+ * sql/run_webhooks_legacy_table_drop.php, drops it (empty-check-or-refuse)
+ * on installs that already have it. Do not re-add the CREATE TABLE below
+ * without re-reading the B20 writeup in specs/SPEC-STATUS.md first.
  */
 
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
@@ -16,24 +28,6 @@ require_once __DIR__ . '/../config.php';
 
 $prefix = $GLOBALS['db_prefix'] ?? '';
 echo "=== Webhooks Schema Setup ===\n\n";
-
-// ── webhooks table ──────────────────────────────────────────
-try {
-    db_query("CREATE TABLE IF NOT EXISTS `{$prefix}webhooks` (
-        `id`           INT AUTO_INCREMENT PRIMARY KEY,
-        `name`         VARCHAR(128)  NOT NULL DEFAULT '',
-        `url`          VARCHAR(512)  NOT NULL,
-        `secret`       VARCHAR(128)  NOT NULL DEFAULT '',
-        `events_json`  TEXT          NOT NULL,
-        `active`       TINYINT(1)   NOT NULL DEFAULT 1,
-        `retry_max`    TINYINT      NOT NULL DEFAULT 3,
-        `created_by`   INT          NOT NULL DEFAULT 0,
-        `created_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        `updated_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        KEY `idx_webhooks_active` (`active`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    echo "[OK] webhooks table\n";
-} catch (Exception $e) { echo "[WARN] " . $e->getMessage() . "\n"; }
 
 // ── webhook_deliveries table ────────────────────────────────
 try {

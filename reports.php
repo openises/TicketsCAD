@@ -107,6 +107,12 @@ $csrf     = csrf_token();
                     <button type="button" class="btn btn-outline-primary" data-report="facility_log">
                         <i class="bi bi-hospital me-1"></i>Facility Log
                     </button>
+                    <button type="button" class="btn btn-outline-primary" data-report="facility_bed_adjustments" title="Who moved a facility's bed count and why -- automatic decrements vs. facility self-releases (GH#102)">
+                        <i class="bi bi-clipboard-data me-1"></i>Bed Adjustments
+                    </button>
+                    <button type="button" class="btn btn-outline-primary" data-report="mileage_report" title="Trip log: organization, vehicle, driver, odometer, miles">
+                        <i class="bi bi-speedometer2 me-1"></i>Mileage Log
+                    </button>
                     <button type="button" class="btn btn-outline-primary" data-report="notes_log">
                         <i class="bi bi-sticky me-1"></i>Notes Log
                     </button>
@@ -193,6 +199,27 @@ $csrf     = csrf_token();
                     <label class="form-label small mb-1" for="memberFilter">Member</label>
                     <select class="form-select form-select-sm" id="memberFilter" style="width: auto;">
                         <option value="0">All Members</option>
+                    </select>
+                </div>
+
+                <!-- Driver Filter (Mileage Log only -- a login/user account,
+                     distinct from both Responder/Vehicle and Member above) -->
+                <div class="col-auto d-none" id="driverFilterCol">
+                    <label class="form-label small mb-1" for="driverFilter">Driver</label>
+                    <select class="form-select form-select-sm" id="driverFilter" style="width: auto;">
+                        <option value="0">All Drivers</option>
+                    </select>
+                </div>
+
+                <!-- Organization Filter (Mileage Log only). Options are
+                     populated purely from whatever the caller is authorized
+                     to see (api/reports.php's server-side org-visibility) --
+                     a caller who can only see one org gets a single-option
+                     selector with no separate JS logic required. -->
+                <div class="col-auto d-none" id="mileageOrgFilterCol">
+                    <label class="form-label small mb-1" for="mileageOrgFilter">Organization</label>
+                    <select class="form-select form-select-sm" id="mileageOrgFilter" style="width: auto;">
+                        <option value="0">All Organizations</option>
                     </select>
                 </div>
 
@@ -306,6 +333,100 @@ $csrf     = csrf_token();
                                 </tr>
                             </thead>
                             <tbody id="intervalByUnitBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Incident Summary: severity/disposition breakdown (shown only for incident_summary) -->
+    <div class="row g-3 mt-1 d-none" id="incidentSummaryBreakdownPanel">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header py-1">
+                    <i class="bi bi-exclamation-diamond me-2"></i>
+                    <span class="fw-semibold small">Incidents by Severity</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th class="small">Severity</th>
+                                    <th class="small text-end">Count</th>
+                                </tr>
+                            </thead>
+                            <tbody id="severityBreakdownBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header py-1">
+                    <i class="bi bi-clipboard-check me-2"></i>
+                    <span class="fw-semibold small">Incidents by Disposition</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th class="small">Disposition</th>
+                                    <th class="small text-end">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dispositionBreakdownBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mileage Log: by-org/by-vehicle breakdown (shown only for mileage_report) -->
+    <div class="row g-3 mt-1 d-none" id="mileageBreakdownPanel">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header py-1">
+                    <i class="bi bi-diagram-3 me-2"></i>
+                    <span class="fw-semibold small">Mileage by Organization</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th class="small">Organization</th>
+                                    <th class="small text-end">Trips</th>
+                                    <th class="small text-end">Miles</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mileageByOrgBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header py-1">
+                    <i class="bi bi-truck me-2"></i>
+                    <span class="fw-semibold small">Mileage by Vehicle</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th class="small">Vehicle</th>
+                                    <th class="small text-end">Trips</th>
+                                    <th class="small text-end">Miles</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mileageByUnitBody"></tbody>
                         </table>
                     </div>
                 </div>

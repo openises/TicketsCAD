@@ -74,6 +74,27 @@ function facility_upsert_internal(array $input, int $userId, ?int $existingId = 
     // Self-healing to keep this shippable without a hard migration step.
     _facility_ensure_bed_auto_column($prefix);
 
+    // dead_control_audit.php check (c), 2026-08-20: org_id was being SET
+    // on $input by api/facility-save.php ("Phase 99j-6b — ... default
+    // org_id on CREATE") but this function's INSERT never included it —
+    // the value was computed, handed in, and silently dropped. Every
+    // facility ever created (via api/facility-save.php OR
+    // api/external/v1/facilities.php, which never even attempted to set
+    // it) landed with org_id NULL, which org_query_filter() treats as
+    // visible to every org under the default fallback — or invisible to
+    // everyone but Super Admin if org_strict_isolation_enabled() is ever
+    // turned on. Resolved HERE, not left to each caller, so both existing
+    // callers are fixed by one change: honor a caller-supplied org_id if
+    // present and positive, otherwise default the CREATING user's home
+    // org — the same fallback inc/incident-write.php already uses for
+    // ticket.org_id.
+    require_once __DIR__ . '/org-scope.php';
+    ensure_org_id_column('facilities');
+    $orgId = (isset($input['org_id']) && (int) $input['org_id'] > 0) ? (int) $input['org_id'] : null;
+    if ($isNew && $orgId === null) {
+        try { $orgId = org_user_home_id($userId); } catch (Exception $e) { $orgId = null; }
+    }
+
     if (!$isNew) {
         $existing = db_fetch_one(
             "SELECT `id` FROM `{$prefix}facilities` WHERE `id` = ?",
@@ -118,8 +139,8 @@ function facility_upsert_internal(array $input, int $userId, ?int $existingId = 
              `contact_name`, `contact_email`, `contact_phone`,
              `capab`, `beds_a`, `beds_o`, `beds_info`,
              `bed_auto_mode`, `status_about`,
-             `updated`, `_by`, `_on`)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             `updated`, `_by`, `_on`, `org_id`)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             $name, $handle, $callsign, $description,
             $street, $city, $state, $lat, $lng,
@@ -127,7 +148,7 @@ function facility_upsert_internal(array $input, int $userId, ?int $existingId = 
             $contact_name, $contact_email, $contact_phone,
             $capab, $beds_a, $beds_o, $beds_info,
             $bed_auto_mode, $status_about,
-            $now, $userId, $now,
+            $now, $userId, $now, $orgId,
         ]
     );
     $newId = (int) db_insert_id();

@@ -63,6 +63,24 @@
     padding: 1px 5px;
     text-align: center;
 }
+/* Phase 148 — FCC 97.119 live status dot. Appended via a modifier class
+   (console.js's fccPaintBadges()) once api/dmr-station-id.php answers for
+   this channel; absent (no dot) until the first successful fetch, so a
+   view-only operator or an unconfigured DMR channel just sees the static
+   badge text unchanged. */
+.console-strip-reg[class*="console-strip-reg-dot-"]::after {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+.console-strip-reg-dot-none::after   { background: var(--bs-secondary); opacity: 0.6; }
+.console-strip-reg-dot-green::after  { background: var(--bs-success); }
+.console-strip-reg-dot-yellow::after { background: var(--bs-warning); }
+.console-strip-reg-dot-red::after    { background: var(--bs-danger); }
 
 .console-strip-activity {
     font-size: 0.75rem;
@@ -237,3 +255,84 @@
 @media (max-width: 576px) {
     .console-strip:not(.console-strip-abs), .console-strip-wide { width: 100%; }
 }
+
+/* ── Phase 114b3 — Select / Simulselect / Monitor / Mute / Volume ── */
+
+.console-select-chrome {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.7rem;
+}
+/* Positioned (designer-authored) strips: overlay the same chrome in the
+   strip's top-right corner rather than a flow header (there is no fixed
+   header row in a free-form layout). */
+.console-select-chrome-abs {
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    z-index: 3;
+    background: var(--bs-body-bg);
+    border-radius: 4px;
+    padding: 1px 3px;
+}
+
+.console-sel-btn, .console-audio-btn {
+    padding: 0.05rem 0.4rem;
+    font-size: 0.68rem;
+    line-height: 1.3;
+    background: var(--bs-secondary-bg);
+    border: 1px solid var(--bs-border-color);
+    color: var(--bs-body-color);
+}
+.console-sel-btn.active {
+    background: var(--bs-primary);
+    border-color: var(--bs-primary);
+    color: #fff;
+}
+.console-audio-btn.active {
+    background: var(--bs-info-bg-subtle);
+    border-color: var(--bs-info-border-subtle);
+    color: var(--bs-info-text-emphasis);
+}
+.console-mute-btn.active  { background: var(--bs-danger); border-color: var(--bs-danger); color: #fff; }
+
+.console-simulselect-chk {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+}
+.console-simulselect-chk .form-check-input { margin: 0; }
+
+.console-audio-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: 0.25rem;
+}
+.console-volume-row { flex: 1 1 100%; }
+.console-volume-slider { width: 100%; height: 1rem; }
+
+/* Non-audio (text) channel prominence — select/mute translate into UI
+   weight, never a literal audio concept (console-audio-logic.js's
+   textProminence() docblock has the reasoning). */
+.console-strip-prominent {
+    border-top-color: var(--bs-primary) !important;
+    box-shadow: 0 0 0 2px var(--bs-primary-border-subtle, var(--bs-primary));
+}
+.console-strip-suppressed { opacity: 0.6; }
+
+/* "New activity" flash — brief, mute-aware (console.js maybeFlashActivity()) */
+@keyframes console-strip-flash-kf {
+    0%   { box-shadow: 0 0 0 3px var(--bs-warning); }
+    100% { box-shadow: 0 0 0 0 transparent; }
+}
+.console-strip-flash { animation: console-strip-flash-kf 1.5s ease-out; }
+
+.console-simulselect-ptt.console-simulselect-active {
+    filter: brightness(1.3);
+    box-shadow: 0 0 0 3px var(--bs-danger-border-subtle, var(--bs-danger));
+}
+
+.console-tab-personal-icon { font-size: 0.7em; opacity: 0.8; }

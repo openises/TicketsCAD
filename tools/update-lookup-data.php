@@ -13,18 +13,37 @@
  *   php tools/update-lookup-data.php --amateur --gmrs  # Multiple datasets
  *   php tools/update-lookup-data.php --help          # Show help
  *
- * Data Sources:
- *   Amateur: https://data.fcc.gov/download/pub/uls/complete/l_amat.zip   (~90MB)
- *   GMRS:    https://data.fcc.gov/download/pub/uls/complete/l_gmrs.zip   (~15MB)
- *   Zips:    https://download.geonames.org/export/zip/US.zip             (~2MB)
+ * Data Sources (sizes verified 2026-08-20 against openises/TicketsCAD #93 —
+ * the docblock previously understated these by roughly half):
+ *   Amateur: https://data.fcc.gov/download/pub/uls/complete/l_amat.zip   (~189MB compressed)
+ *   GMRS:    https://data.fcc.gov/download/pub/uls/complete/l_gmrs.zip   (~54MB compressed)
+ *   Zips:    https://download.geonames.org/export/zip/US.zip             (~1MB compressed)
  *
  * Files are downloaded to tools/data/, extracted, imported, then cleaned up.
  * Run monthly or weekly to keep data current.
  *
  * Requirements:
  *   - PHP with curl extension
- *   - unzip command (Git Bash) or PowerShell (Windows)
- *   - ~500MB free disk space during import (cleaned up after)
+ *   - PHP zip extension (ZipArchive) — tried first for extraction, purely in
+ *     -process, so it works even when a hardened host blocks the exec()
+ *     family via `disable_functions`. Falls back to the `unzip` command
+ *     (Git Bash) or PowerShell's Expand-Archive (Windows) ONLY when
+ *     ZipArchive itself is unavailable — and that fallback additionally
+ *     needs exec() to be allowed, which it will say plainly if it is not.
+ *   - PHP with proc_open() enabled — used to run the amateur/GMRS/zip-code
+ *     importer as a subprocess while streaming its live progress to this
+ *     terminal (a multi-minute import with no visible output looks hung).
+ *     proc_open() is a SEPARATE function from popen()/exec() and is not part
+ *     of any commonly-hardened disable_functions preset, but is checked with
+ *     function_exists() and explained plainly if it is ever disabled too,
+ *     rather than crashing with an undefined-function fatal (openises/
+ *     TicketsCAD #93 follow-up — the original report's exact php.ini also
+ *     listed `popen` in disable_functions, which this file used to call
+ *     unconditionally for exactly this streaming step).
+ *   - ~1.2GB free disk space at peak during import (the downloaded archive
+ *     and its extracted .dat files coexist briefly before cleanup; the
+ *     amateur dataset alone extracts to EN.dat ~209MB + HD.dat ~228MB
+ *     alongside its own still-present ~189MB .zip)
  */
 
 // Increase limits for large imports
@@ -96,9 +115,9 @@ USAGE:
   php tools/update-lookup-data.php [OPTIONS]
 
 OPTIONS:
-  --amateur     Download & import FCC Amateur Radio licenses (~90MB)
-  --gmrs        Download & import FCC GMRS licenses (~15MB)
-  --zipcodes    Download & import US zip codes (~2MB)
+  --amateur     Download & import FCC Amateur Radio licenses (~189MB)
+  --gmrs        Download & import FCC GMRS licenses (~54MB)
+  --zipcodes    Download & import US zip codes (~1MB)
   --all         All of the above (default if no flags given)
   --help, -h    Show this help message
 
@@ -199,7 +218,26 @@ function downloadFile($url, $destPath) {
 }
 
 /**
- * Extract a ZIP file
+ * Extract a ZIP file.
+ *
+ * Order matters here (openises/TicketsCAD #93, reported by @rjonesbsink):
+ * PHP's native ZipArchive is tried FIRST, because it runs entirely in-process
+ * — no subprocess, so it is unaffected by a hardened host's `disable_functions`
+ * policy. The old code tried `unzip`/PowerShell via exec() first and only fell
+ * back to ZipArchive as a last resort, so a host that blocks the exec() family
+ * (a common hardening setting, unrelated to whether unzip is installed or the
+ * download is intact) died here with a bare "exit 255" and no explanation —
+ * calling a disabled function is a fatal "Call to undefined function", which
+ * PHP's @ operator does not suppress. See inc/backup.php's
+ * backup_create_zip() / api/map-markups.php's KMZ reader for the sibling
+ * ZipArchive-first-with-graceful-fallback pattern this mirrors, and
+ * tests/test_no_shell_command_execution.php's docblock for the fuller history
+ * of this codebase moving off the exec() family for exactly this reason.
+ *
+ * The shell fallback below still exists for the rare host with no PHP zip
+ * extension compiled in — but function_exists('exec') is checked BEFORE
+ * calling exec(), both to avoid the fatal error above and to report the real
+ * cause plainly instead of "no working extraction method found".
  */
 function extractZip($zipPath, $destDir) {
     step("Extracting " . basename($zipPath) . " ...");
@@ -208,30 +246,7 @@ function extractZip($zipPath, $destDir) {
         mkdir($destDir, 0755, true);
     }
 
-    // Try unzip command first (Git Bash on Windows)
-    $cmd = 'unzip -o ' . escapeshellarg($zipPath) . ' -d ' . escapeshellarg($destDir) . ' 2>&1';
-    $output = [];
-    $returnCode = 0;
-    exec($cmd, $output, $returnCode);
-
-    if ($returnCode === 0) {
-        ok("Extracted with unzip");
-        return true;
-    }
-
-    // Try PowerShell Expand-Archive (Windows native)
-    $psCmd = 'powershell -NoProfile -Command "Expand-Archive -Path ' .
-             escapeshellarg($zipPath) . ' -DestinationPath ' .
-             escapeshellarg($destDir) . ' -Force" 2>&1';
-    $output = [];
-    exec($psCmd, $output, $returnCode);
-
-    if ($returnCode === 0) {
-        ok("Extracted with PowerShell");
-        return true;
-    }
-
-    // Try PHP ZipArchive as last resort
+    // ── 1. PHP ZipArchive — native, in-process, unaffected by disable_functions ──
     if (class_exists('ZipArchive')) {
         $zip = new ZipArchive();
         if ($zip->open($zipPath) === true) {
@@ -270,11 +285,214 @@ function extractZip($zipPath, $destDir) {
             ok("Extracted with PHP ZipArchive (passed " . round($totalSize/1024/1024) . " MB size + compression-ratio checks)");
             return true;
         }
+        warn("PHP ZipArchive could not open the archive (possibly corrupt) — trying a shell extractor");
+    } else {
+        warn("PHP zip extension (ZipArchive) is not available — trying a shell extractor");
     }
 
-    fail("Could not extract ZIP — no working unzip method found");
-    fail("Install unzip or enable PHP zip extension");
+    // ── 2. Shell fallback — only reached when ZipArchive can't do the job ──
+    if (!function_exists('exec')) {
+        fail("PHP cannot run unzip or PowerShell: disable_functions blocks exec()");
+        fail("This host has no working extraction method: the PHP zip extension is " .
+             (class_exists('ZipArchive') ? "available but could not open this archive" : "not installed") .
+             ", and exec() is disabled by this php.ini's disable_functions setting.");
+        fail("Fix: enable the PHP zip extension (extension=zip) so extraction never needs a subprocess, " .
+             "or remove exec from disable_functions.");
+        return false;
+    }
+
+    // Try unzip command (Git Bash on Windows, or native on Linux/macOS)
+    $cmd = 'unzip -o ' . escapeshellarg($zipPath) . ' -d ' . escapeshellarg($destDir) . ' 2>&1';
+    $output = [];
+    $returnCode = 0;
+    exec($cmd, $output, $returnCode);
+
+    if ($returnCode === 0) {
+        ok("Extracted with unzip");
+        return true;
+    }
+
+    // Try PowerShell Expand-Archive (Windows native)
+    $psCmd = 'powershell -NoProfile -Command "Expand-Archive -Path ' .
+             escapeshellarg($zipPath) . ' -DestinationPath ' .
+             escapeshellarg($destDir) . ' -Force" 2>&1';
+    $output = [];
+    exec($psCmd, $output, $returnCode);
+
+    if ($returnCode === 0) {
+        ok("Extracted with PowerShell");
+        return true;
+    }
+
+    fail("Could not extract ZIP — no working extraction method found");
+    fail("Neither unzip nor PowerShell's Expand-Archive succeeded; install unzip, " .
+         "or enable the PHP zip extension for a subprocess-free extractor");
     return false;
+}
+
+/**
+ * Run a program as a list of discrete arguments, streaming its combined
+ * stdout+stderr to OUR OWN stdout AS IT ARRIVES — not just once at the end —
+ * and return its exit code (or null when the subprocess could not be started
+ * at all, e.g. proc_open() itself is disabled).
+ *
+ * ── WHY THIS EXISTS (openises/TicketsCAD #93 follow-up, 2026-08-20) ────────
+ *
+ * The amateur/GMRS/zip-code importers (import-fcc.php / import-zipcodes.php)
+ * used to be run with `popen($cmd, 'r')` + a `while (!feof($handle))
+ * fgets($handle)` loop, purely so a dispatcher/admin watching the terminal
+ * during a multi-minute import sees live progress instead of silence. But
+ * popen() is in the SAME disable_functions family as the exec() this file's
+ * extractZip() was already fixed to avoid — the reporter's own php.ini
+ * listed `disable_functions = shell_exec, exec, system, passthru, popen`
+ * verbatim — so a host that blocks popen() specifically (independent of
+ * exec(), since disable_functions entries are independent settings) got
+ * past the fixed extraction step, downloaded and extracted cleanly, and then
+ * hit the identical "PHP Fatal error: Uncaught Error: Call to undefined
+ * function popen()" crash one step later, at import.
+ *
+ * proc_open() is a DIFFERENT function from popen() and is not part of any
+ * commonly-hardened disable_functions preset — but is still guarded with
+ * function_exists() below and explained plainly if it is ever disabled too,
+ * exactly like extractZip()'s exec() guard, rather than crashing.
+ *
+ * ── LIVE STREAMING WITHOUT stream_set_blocking() ────────────────────────
+ *
+ * CLAUDE.md documents (from the Zello proxy + TTS pipe outages) that
+ * stream_set_blocking() is a NO-OP on a proc_open PIPE on Windows — it
+ * returns false and the stream stays blocking — so a naive `fread()` on a
+ * proc_open pipe can wedge forever waiting for bytes that will never come
+ * while the child fills a DIFFERENT, undrained pipe's buffer. The fix used
+ * throughout this codebase (tts_run_pipe() in inc/tts/engine.php, runPipe()
+ * in proxy/ZelloProxyApp.php) is to make stdout/stderr FILES instead of
+ * pipes, so nothing can ever block reading OR writing them — but both of
+ * those helpers only read the file back ONCE, after the child has fully
+ * exited, which would silently drop this function's whole reason for
+ * existing (live progress on a multi-minute run).
+ *
+ * This function keeps the file-based descriptors (so it is exactly as
+ * deadlock-proof as tts_run_pipe()/runPipe()) but TAILS the output file
+ * while the child is still running: each poll iteration re-opens the file,
+ * seeks to the byte offset already printed, reads whatever new bytes have
+ * landed, and echoes only complete lines (holding back a trailing partial
+ * line until either a newline arrives or the process exits). A 100ms poll
+ * interval is not truly push-based streaming, but is indistinguishable from
+ * it to a human watching a multi-minute import — and, critically, nothing in
+ * this loop can ever block: filesystem reads of a file another process is
+ * appending to do not wait for new data the way a pipe read does.
+ *
+ * No shell is involved — $cmdArgv is an argv-array, handed straight to
+ * execvp()/CreateProcess() by proc_open(), so escapeshellarg() is neither
+ * needed nor present. See tools/check-schema.php's run_via_proc_open() /
+ * tests/test_no_shell_command_execution.php's docblock for the sibling
+ * pattern and the fuller history of this codebase moving off the exec()
+ * family.
+ *
+ * @param array $cmdArgv argv-array: [$binary, $arg1, $arg2, ...]
+ * @return int|null Exit code, or null if the subprocess could not be
+ *                   started (the caller treats this as a failure).
+ */
+function runStreamingImport(array $cmdArgv) {
+    if (!function_exists('proc_open')) {
+        fail("PHP cannot run a subprocess: disable_functions blocks proc_open()");
+        fail("This host's php.ini disables proc_open() — importing needs SOME way to " .
+             "run a child PHP process, and there is no in-process alternative the way " .
+             "ZipArchive is for extraction. Remove proc_open (and popen, if also " .
+             "listed) from this php.ini's disable_functions.");
+        return null;
+    }
+
+    $tag  = 'lookupdata_' . getmypid() . '_' . bin2hex(random_bytes(6));
+    $fOut = rtrim(sys_get_temp_dir(), "/\\") . DIRECTORY_SEPARATOR . $tag . '.out';
+
+    // stdin closed immediately below (these importers read no stdin).
+    //
+    // stdout and stderr must share ONE already-open resource — NOT two
+    // separate ['file', $fOut, 'w'] descriptor specs for the same path. Two
+    // independent specs open two independent file positions, so concurrent
+    // stdout/stderr writes overwrite each other instead of interleaving
+    // (proven the hard way: tests/test_gh93_streaming_import_popen_followup.php's
+    // Test A/B first caught this — a child writing to both streams came back
+    // with corrupted, partially-overwritten lines). Passing ONE open handle
+    // for both descriptor slots makes proc_open dup() that handle for the
+    // child, so both streams share its offset and interleave exactly like a
+    // real `2>&1` — the same technique tools/check-schema.php's
+    // run_via_proc_open() / sql/run_migrations.php's migration_run_argv()
+    // already use (a single tmpfile() sink handed to both slots). This
+    // function uses a NAMED file instead of an anonymous tmpfile() so it can
+    // additionally be tailed from a second, independent read handle while
+    // the child is still running (see $drain() below).
+    $sink = @fopen($fOut, 'wb');
+    if (!$sink) {
+        fail("Could not open a temporary file to capture import output");
+        return null;
+    }
+    $descriptors = [0 => ['pipe', 'r'], 1 => $sink, 2 => $sink];
+    $pipes = [];
+    $proc = @proc_open($cmdArgv, $descriptors, $pipes);
+    if (!is_resource($proc)) {
+        fclose($sink);
+        @unlink($fOut);
+        fail("Could not start the import subprocess");
+        return null;
+    }
+    fclose($pipes[0]); // nothing to write; closing signals EOF to the child at once
+
+    $pos   = 0;
+    $carry = '';
+
+    // $sink itself is never read from — reading through the SAME handle used
+    // for the child's (dup'd) writes would move the shared offset out from
+    // under it. $drain() always opens a FRESH, independent read handle.
+    $drain = function () use (&$pos, &$carry, $fOut) {
+        clearstatcache(true, $fOut);
+        $end = @filesize($fOut);
+        if ($end === false || $end <= $pos) return;
+        $reader = @fopen($fOut, 'rb');
+        if (!$reader) return;
+        fseek($reader, $pos, SEEK_SET);
+        $chunk = fread($reader, $end - $pos);
+        fclose($reader);
+        if ($chunk === false || $chunk === '') return;
+        $pos = $end;
+        $carry .= $chunk;
+        while (($nl = strpos($carry, "\n")) !== false) {
+            echo "    " . substr($carry, 0, $nl + 1);
+            $carry = substr($carry, $nl + 1);
+        }
+        if (function_exists('flush')) flush();
+    };
+
+    // The exit code MUST come from proc_get_status()'s 'exitcode' field, taken
+    // at the exact poll where 'running' first flips false — NOT from
+    // proc_close()'s return value. Per PHP's own documented behaviour (and
+    // confirmed here the hard way — this passed on a Windows PHP-CLI build
+    // but failed CI's Linux runner, returning -1 for a clean exit(0) child):
+    // "exitcode: only the FIRST call [to proc_get_status()] after the
+    // process exits returns the real value; subsequent calls return -1."
+    // Polling proc_get_status() in this loop consumes that one real reading;
+    // by the time proc_close() is called afterward, the value has already
+    // been "spent" and it returns -1 even for a successful child.
+    $exitCode = null;
+    while (true) {
+        $status = proc_get_status($proc);
+        $drain(); // read whatever landed since the last poll, before checking exit
+        if (!$status['running']) {
+            $exitCode = $status['exitcode'];
+            break;
+        }
+        usleep(100000); // 100ms — file-based, so nothing here can ever block
+    }
+    proc_close($proc); // reap the process; its return value is NOT the exit code here (see above)
+    fclose($sink); // safe to close now — the child (and its dup'd fds) has exited
+    $drain(); // final catch-up for bytes written between the last poll and exit
+    if ($carry !== '') {
+        echo "    " . $carry . "\n"; // trailing line with no terminating newline
+        if (function_exists('flush')) flush();
+    }
+    @unlink($fOut);
+
+    return $exitCode;
 }
 
 /**
@@ -323,6 +541,15 @@ function cleanup($zipPath, $extractDir) {
     }
 
     ok("Temporary files removed");
+}
+
+// Library mode: a test harness defines this constant before require()'ing
+// this file, so it gets the functions above (extractZip() in particular, for
+// tests/test_gh93_lookup_data_extraction.php) without triggering an actual
+// download/import run. Same pattern as OT_CONFIG_LIBRARY_ONLY in
+// api/owntracks-config.php.
+if (defined('UPDATE_LOOKUP_DATA_LIBRARY_ONLY')) {
+    return;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -379,24 +606,18 @@ if (in_array('amateur', $tasks)) {
 
             // Run the import
             step("Running amateur import (this may take several minutes) ...");
-            $importCmd = escapeshellarg(PHP_BINARY) . ' ' .
-                         escapeshellarg(__DIR__ . '/import-fcc.php') . ' amateur ' .
-                         escapeshellarg($datDir) . ' 2>&1';
             echo "\n";
 
-            $handle = popen($importCmd, 'r');
-            if ($handle) {
-                while (!feof($handle)) {
-                    $line = fgets($handle);
-                    if ($line !== false) echo "    " . $line;
-                }
-                $exitCode = pclose($handle);
-                if ($exitCode === 0) {
-                    ok("Amateur import complete");
-                } else {
-                    fail("Amateur import exited with code $exitCode");
-                    $ok = false;
-                }
+            $importerPath = __DIR__ . '/import-fcc.php';
+            $exitCode = runStreamingImport([PHP_BINARY, $importerPath, 'amateur', $datDir]);
+            if ($exitCode === 0) {
+                ok("Amateur import complete");
+            } elseif ($exitCode === null) {
+                fail("Amateur import did not run");
+                $ok = false;
+            } else {
+                fail("Amateur import exited with code $exitCode");
+                $ok = false;
             }
         }
     }
@@ -437,24 +658,18 @@ if (in_array('gmrs', $tasks)) {
             ok("Found data files in: $datDir");
 
             step("Running GMRS import ...");
-            $importCmd = escapeshellarg(PHP_BINARY) . ' ' .
-                         escapeshellarg(__DIR__ . '/import-fcc.php') . ' gmrs ' .
-                         escapeshellarg($datDir) . ' 2>&1';
             echo "\n";
 
-            $handle = popen($importCmd, 'r');
-            if ($handle) {
-                while (!feof($handle)) {
-                    $line = fgets($handle);
-                    if ($line !== false) echo "    " . $line;
-                }
-                $exitCode = pclose($handle);
-                if ($exitCode === 0) {
-                    ok("GMRS import complete");
-                } else {
-                    fail("GMRS import exited with code $exitCode");
-                    $ok = false;
-                }
+            $importerPath = __DIR__ . '/import-fcc.php';
+            $exitCode = runStreamingImport([PHP_BINARY, $importerPath, 'gmrs', $datDir]);
+            if ($exitCode === 0) {
+                ok("GMRS import complete");
+            } elseif ($exitCode === null) {
+                fail("GMRS import did not run");
+                $ok = false;
+            } else {
+                fail("GMRS import exited with code $exitCode");
+                $ok = false;
             }
         }
     }
@@ -493,24 +708,18 @@ if (in_array('zipcodes', $tasks)) {
 
             // Run the import — importer auto-detects GeoNames raw format
             step("Running zip code import ...");
-            $importCmd = escapeshellarg(PHP_BINARY) . ' ' .
-                         escapeshellarg(__DIR__ . '/import-zipcodes.php') . ' ' .
-                         escapeshellarg($txtFile) . ' --format=geonames 2>&1';
             echo "\n";
 
-            $handle = popen($importCmd, 'r');
-            if ($handle) {
-                while (!feof($handle)) {
-                    $line = fgets($handle);
-                    if ($line !== false) echo "    " . $line;
-                }
-                $exitCode = pclose($handle);
-                if ($exitCode === 0) {
-                    ok("Zip code import complete");
-                } else {
-                    fail("Zip code import exited with code $exitCode");
-                    $ok = false;
-                }
+            $importerPath = __DIR__ . '/import-zipcodes.php';
+            $exitCode = runStreamingImport([PHP_BINARY, $importerPath, $txtFile, '--format=geonames']);
+            if ($exitCode === 0) {
+                ok("Zip code import complete");
+            } elseif ($exitCode === null) {
+                fail("Zip code import did not run");
+                $ok = false;
+            } else {
+                fail("Zip code import exited with code $exitCode");
+                $ok = false;
             }
         }
     }

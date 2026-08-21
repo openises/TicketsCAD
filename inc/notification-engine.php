@@ -5,6 +5,19 @@
  * Evaluates notification rules against events and delivers messages
  * through the message broker (email, SMS, local chat).
  *
+ * dead_control_audit.php check (c), 2026-08-20: this engine is fully
+ * functional and genuinely reads every `notification_rules` column
+ * (active, event_type, severity_filter, incident_type_filter, channel,
+ * recipients, email_list_id, subject_template, body_template) — but
+ * there is NO admin UI or API to create/edit a rule. Settings ->
+ * Notification Rules is a described-but-unbuilt stub (see
+ * tools/dead_control_settings_baseline.txt's own entry for this exact
+ * feature from the settings-key side of the same audit). Rows can only
+ * be inserted by hand/SQL today — see tests/test_notification_rule_channels.php
+ * for the only current writer. Wiring api/notification-rules.php + a
+ * Settings CRUD panel is the deferred work this comment marks; the
+ * engine itself needs no change when that lands.
+ *
  * USAGE:
  *   require_once __DIR__ . '/notification-engine.php';
  *

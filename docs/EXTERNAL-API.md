@@ -1157,7 +1157,7 @@ Per-token overrides live on the `external_api_tokens` row itself (`rate_limit_pe
 | `webhook_subscriptions`     | `sql/run_phase94_external_api.php` §1.3     | Outbound subscriptions (replaces legacy `webhooks` table)  |
 | `webhook_deliveries`        | extended in §1.5                            | Per-attempt delivery log incl. `dead_letter` status        |
 
-The legacy `webhooks` table is kept in place during the rollout window and read-migrated by `sql/run_phase94_external_api.php`; Stage 6 issues `DROP TABLE webhooks` once the new admin UI is verified.
+The legacy `webhooks` table was read-migrated by `sql/run_phase94_external_api.php` and dropped 2026-08-21 (SPEC-STATUS.md B20, `sql/run_webhooks_legacy_table_drop.php`) after being confirmed empty on every install checked — a fresh install no longer creates it at all.
 
 ### Related RBAC permissions
 

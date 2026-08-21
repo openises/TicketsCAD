@@ -412,6 +412,13 @@ function lookupLocalAmateur($callsign) {
             'grant_date'     => $row['grant_date'] ?? '',
             'expiry_date'    => $row['expiry_date'] ?? '',
             'last_action'    => $row['last_action'] ?? '',
+            // dead_control_audit.php check (c), 2026-08-20: grid_square/lat/lng
+            // are real columns on fcc_amateur, read here, but nothing ever
+            // writes them — tools/import-fcc.php's FCC HD.dat/EN.dat import
+            // has no coordinate data to populate them with. Always null/empty
+            // today; a future geocode-the-license-address step would be
+            // needed to make this a real feature rather than a permanently
+            // empty pair of fields.
             'grid_square'    => $row['grid_square'] ?? '',
             'lat'            => $row['lat'] ?? null,
             'lng'            => $row['lng'] ?? null,

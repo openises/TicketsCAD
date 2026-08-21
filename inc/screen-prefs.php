@@ -236,6 +236,35 @@ function prefs_screen_defaults(): array {
     ];
 }
 
+/**
+ * Raw per-user JSON blob under an arbitrary $screen key — bypasses the
+ * columns/sort/options envelope prefs_get() enforces (which is a poor fit
+ * for a free-form structure like per-channel console-audio state: its
+ * merge step only carries SCALAR 'options' values forward, so a nested
+ * object silently vanishes on the next read through prefs_get()). Reuses
+ * the same user_screen_prefs table/row (one JSON blob per user+screen) —
+ * just without the catalog-based defaults-merge. Callers own their own
+ * shape and validation; this is pure storage.
+ *
+ * Phase 114b3 (console per-channel audio prefs) is the first consumer —
+ * see api/console-audio-prefs.php.
+ */
+function prefs_get_raw(int $userId, string $screen): array {
+    $prefix = $GLOBALS['db_prefix'] ?? '';
+    try {
+        $v = db_fetch_value(
+            "SELECT prefs_json FROM `{$prefix}user_screen_prefs`
+              WHERE user_id = ? AND screen = ? LIMIT 1",
+            [$userId, $screen]
+        );
+        if ($v) {
+            $decoded = json_decode($v, true);
+            if (is_array($decoded)) { return $decoded; }
+        }
+    } catch (Exception $e) {}
+    return [];
+}
+
 function prefs_get(int $userId, string $screen, ?array $defaults = null): array {
     $prefix = $GLOBALS['db_prefix'] ?? '';
     $catalog = prefs_screen_defaults();

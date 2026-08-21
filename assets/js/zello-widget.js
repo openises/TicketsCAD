@@ -131,6 +131,27 @@
         audioMuted = (localStorage.getItem('zello_audio_muted') === '1');
     } catch (e) { /* Safari private mode etc. — ignore */ }
 
+    // Phase 114b3 — Communications Console select/monitor/mute/volume
+    // (console-audio.js). Independent, additive, MULTIPLICATIVE layer on
+    // top of the widget's own audioMuted/liveMonitor controls above —
+    // console-audio.js never touches those, it only scales what actually
+    // reaches the speakers via HTMLAudioElement.volume on every active
+    // stream's real <audio> element. Defaults (gain 1, not muted) mean a
+    // console.php session that never touches the new controls plays audio
+    // exactly as it always has; see console-audio-logic.js's docblock for
+    // why that's a deliberate default, not an oversight.
+    var consoleAudioGain = 1;
+    var consoleAudioMuted = false;
+    function applyConsoleAudioLevel() {
+        var vol = consoleAudioMuted ? 0 : consoleAudioGain;
+        for (var sid in activeAudioStreams) {
+            if (Object.prototype.hasOwnProperty.call(activeAudioStreams, sid)
+                && activeAudioStreams[sid] && activeAudioStreams[sid].audio) {
+                activeAudioStreams[sid].audio.volume = vol;
+            }
+        }
+    }
+
     // GH #55 (Eric 2026-07-04) — Live monitor. When ON, incoming channel
     // audio plays even while the widget is minimized or you have navigated
     // to another page (the connection is kept alive and playback is no
@@ -1429,6 +1450,11 @@
     function initMseStream(streamId) {
         var ms = new MediaSource();
         var audio = document.createElement('audio');
+        // Phase 114b3 — apply the console's current select/monitor/mute
+        // gain to every NEW stream as it's created (existing streams are
+        // updated live by applyConsoleAudioLevel() whenever the console
+        // changes level).
+        audio.volume = consoleAudioMuted ? 0 : consoleAudioGain;
 
         var stream = {
             mediaSource: ms,
@@ -2150,6 +2176,27 @@
                (m < 10 ? '0' : '') + m + ':' +
                (s < 10 ? '0' : '') + s;
     }
+
+    // ── Console audio hook (Phase 114b3) ───────────────────────────
+    // Minimal, additive public surface for assets/js/console-audio.js.
+    // setLevel() scales real playback volume (see applyConsoleAudioLevel()
+    // above); ptt.start()/stop() call the SAME startTransmit()/
+    // stopTransmit() the widget's own PTT button and Spacebar handler
+    // call — this is real momentary PTT through the production transmit
+    // path, not a simulation. isActive() lets the console reflect TX
+    // state without polling.
+    window.ZelloConsoleAudio = {
+        setLevel: function (vol01, muted) {
+            consoleAudioGain = (typeof vol01 === 'number' && isFinite(vol01)) ? Math.max(0, Math.min(1, vol01)) : 1;
+            consoleAudioMuted = !!muted;
+            applyConsoleAudioLevel();
+        },
+        ptt: {
+            start: function () { startTransmit(); },
+            stop: function () { stopTransmit(); },
+            isActive: function () { return pttActive; }
+        }
+    };
 
     // ── Bootstrap ────────────────────────────────────────────────
     if (document.readyState === 'loading') {

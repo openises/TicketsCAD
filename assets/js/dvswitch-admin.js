@@ -152,6 +152,8 @@
         $('dvsSttEngine').value = '';
         $('dvsTtsEngine').value = '';
         $('dvsRouteToBroker').checked = true;
+        $('dvsIdEnforce').value = 'soft';
+        $('dvsIdIntervalSeconds').value = '600';
         $('dvsTokenReveal').classList.add('d-none');
         $('dvsTokenValue').textContent = '';
         $('dvsModalTitle').textContent = 'New DMR Channel';
@@ -190,6 +192,8 @@
                 $('dvsSttEngine').value = c.stt_engine || '';
                 $('dvsTtsEngine').value = c.tts_engine || '';
                 $('dvsRouteToBroker').checked = parseInt(c.route_to_broker, 10) === 1;
+                $('dvsIdEnforce').value = c.id_enforce || 'soft';
+                $('dvsIdIntervalSeconds').value = c.id_interval_seconds || 600;
                 $('dvsModalTitle').textContent = 'Edit DMR Channel — ' + c.label;
                 ensureModals();
                 modal && modal.show();
@@ -211,6 +215,8 @@
             tts_engine: $('dvsTtsEngine').value || null,
             stt_engine: $('dvsSttEngine').value || null,
             route_to_broker: $('dvsRouteToBroker').checked ? 1 : 0,
+            id_enforce: $('dvsIdEnforce').value,
+            id_interval_seconds: parseInt($('dvsIdIntervalSeconds').value, 10) || 600,
         };
         if ($('dvsUsrpListenPort').value) payload.usrp_listen_port = parseInt($('dvsUsrpListenPort').value, 10);
         if ($('dvsUsrpSendPort').value)   payload.usrp_send_port   = parseInt($('dvsUsrpSendPort').value, 10);

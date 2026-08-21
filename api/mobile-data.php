@@ -432,13 +432,38 @@ if ($method === 'POST') {
             // non-fatal
         }
 
+        // GH#96 (2026-08-20) — org_id, same session-derived convention as
+        // inc/responder-write.php's _phase95_record_mileage_log(). Schema-
+        // resilience guard: the column may not exist yet on an install that
+        // hasn't run sql/run_gh96_mileage_log_org_id.php.
+        require_once __DIR__ . '/../inc/org-scope.php';
+        $mobileMileageOrgId = $_SESSION['active_org_id'] ?? null;
+        if ($mobileMileageOrgId === null) {
+            try { $mobileMileageOrgId = org_user_home_id((int) $current_user_id); } catch (Exception $e) { $mobileMileageOrgId = null; }
+        }
+        $hasMileageOrgIdCol = (bool) db_fetch_value(
+            "SELECT 1 FROM information_schema.columns
+              WHERE table_schema = DATABASE()
+                AND table_name = ? AND column_name = 'org_id'",
+            [$prefix . 'mileage_log']
+        );
+
         try {
-            db_query(
-                "INSERT INTO `{$prefix}mileage_log`
-                 (`responder_id`, `user_id`, `ticket_id`, `start_odo`, `started_at`)
-                 VALUES (?, ?, ?, ?, NOW())",
-                [$responderId, $current_user_id, $ticketId, $startOdo]
-            );
+            if ($hasMileageOrgIdCol) {
+                db_query(
+                    "INSERT INTO `{$prefix}mileage_log`
+                     (`responder_id`, `user_id`, `ticket_id`, `start_odo`, `started_at`, `org_id`)
+                     VALUES (?, ?, ?, ?, NOW(), ?)",
+                    [$responderId, $current_user_id, $ticketId, $startOdo, $mobileMileageOrgId]
+                );
+            } else {
+                db_query(
+                    "INSERT INTO `{$prefix}mileage_log`
+                     (`responder_id`, `user_id`, `ticket_id`, `start_odo`, `started_at`)
+                     VALUES (?, ?, ?, ?, NOW())",
+                    [$responderId, $current_user_id, $ticketId, $startOdo]
+                );
+            }
             $id = db_insert_id();
             audit_log('asset', 'create', 'mileage_log', $id,
                 "Mileage trip started by '{$current_user}'");

@@ -144,6 +144,22 @@ function responder_upsert_internal(array $input, int $userId, ?int $existingId =
     $ring_fence = (int) ($input['ring_fence'] ?? 0);
     $excl_zone  = (int) ($input['excl_zone'] ?? 0);
 
+    // dead_control_audit.php check (c), 2026-08-20: org_id was being SET
+    // on $input by api/responder-save.php ("On CREATE ... we'd default
+    // org_id to the user's home_org_id; the upsert helper handles that
+    // next") but this function's INSERT never included it — same gap,
+    // same fix shape, as facility_upsert_internal()'s org_id restoration
+    // in the same change. Every unit ever created landed with org_id
+    // NULL, defeating org_query_filter()'s scoping. Resolved HERE so
+    // both callers benefit: honor a caller-supplied org_id if present
+    // and positive, otherwise default the CREATING user's home org.
+    require_once __DIR__ . '/org-scope.php';
+    ensure_org_id_column('responder');
+    $orgId = (isset($input['org_id']) && (int) $input['org_id'] > 0) ? (int) $input['org_id'] : null;
+    if ($isNew && $orgId === null) {
+        try { $orgId = org_user_home_id($userId); } catch (Exception $e) { $orgId = null; }
+    }
+
     if (!$isNew) {
         // UPDATE — verify existence first
         try {
@@ -243,8 +259,8 @@ function responder_upsert_internal(array $input, int $userId, ?int $existingId =
              `xastir_tracker`, `traccar`, `javaprssrvr`, `locatea`,
              `gtrack`, `glat`, `followmee_tracker`,
              `ring_fence`, `excl_zone`,
-             `un_status_id`, `status_about`, `updated`, `status_updated`)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())",
+             `un_status_id`, `status_about`, `updated`, `status_updated`, `org_id`)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?)",
         [
             $name, $handle, $callsign, $description,
             $street, $city, $state, $lat, $lng, $type,
@@ -259,7 +275,7 @@ function responder_upsert_internal(array $input, int $userId, ?int $existingId =
             $tracking_values['locatea'], $tracking_values['gtrack'],
             $tracking_values['glat'], $tracking_values['followmee_tracker'],
             $ring_fence, $excl_zone,
-            $initial_status, $status_about,
+            $initial_status, $status_about, $orgId,
         ]
     );
     $newId = (int) db_insert_id();
@@ -631,6 +647,45 @@ function responder_set_status_internal(
             $desc .= ' [' . $extraSummary2 . ']';
         }
 
+        // GH#96 (2026-08-20) — Step 0 bug fix. Resolve org_id once for
+        // every mileage_log write this call makes (same session-derived
+        // convention already established for facility/responder/team
+        // org_id resolution -- inc/org-scope.php's org_user_home_id()).
+        // active_org_id is the correct session key for "the caller's own
+        // organization" per the Phase 138 pitfall entry in CLAUDE.md --
+        // $_SESSION['org_id'] does not exist.
+        require_once __DIR__ . '/org-scope.php';
+        $mileageOrgId = $_SESSION['active_org_id'] ?? null;
+        if ($mileageOrgId === null) {
+            try { $mileageOrgId = org_user_home_id($userId); } catch (Exception $e) { $mileageOrgId = null; }
+        }
+        $mileageOrgId = $mileageOrgId !== null ? (int) $mileageOrgId : null;
+
+        // GH#96 — structured mileage capture is now UNIVERSAL regardless of
+        // target (see _phase95_record_mileage_log()'s own docblock): the
+        // 'incident' target still writes one row per open assignment inside
+        // the loop below (unchanged); the other two targets (action_log,
+        // unit) get exactly ONE row here, using the first open assignment's
+        // ticket_id if one exists, else NULL -- a trip with no active
+        // assignment is a legitimate, already-supported shape (see the
+        // mobile start/stop-mileage writer in api/mobile-data.php).
+        $firstOpenTicketId = !empty($openAssigns) ? (int) ($openAssigns[0]['ticket_id'] ?? 0) : 0;
+        if ($extraType === 'mileage' && $extraValue !== null && $extraTarget !== 'incident') {
+            _phase95_record_mileage_log(
+                $prefix, $responderId, $userId,
+                $firstOpenTicketId > 0 ? $firstOpenTicketId : null,
+                $extraValue, $mileageOrgId
+            );
+        }
+        // GH#52 — slot 2, same rule.
+        if ($extraType2 === 'mileage' && $extraValue2 !== null && $extraTarget2 !== 'incident') {
+            _phase95_record_mileage_log(
+                $prefix, $responderId, $userId,
+                $firstOpenTicketId > 0 ? $firstOpenTicketId : null,
+                $extraValue2, $mileageOrgId
+            );
+        }
+
         foreach ($openAssigns as $oa) {
             try {
                 db_query(
@@ -718,7 +773,8 @@ function responder_set_status_internal(
             if ($extraTarget === 'incident' && $extraValue !== null && $extraType !== 'facility') {
                 _phase95_route_to_incident(
                     $prefix, (int) $oa['ticket_id'], $extraType, $extraValue,
-                    (int) $responderId, (int) $userId  // QA #14 — were out of scope
+                    (int) $responderId, (int) $userId,  // QA #14 — were out of scope
+                    $mileageOrgId  // GH#96
                 );
             }
             // GH#52 — slot 2, same rule (facility is never incident-level
@@ -726,7 +782,8 @@ function responder_set_status_internal(
             if ($extraTarget2 === 'incident' && $extraValue2 !== null && $extraType2 !== 'facility') {
                 _phase95_route_to_incident(
                     $prefix, (int) $oa['ticket_id'], $extraType2, $extraValue2,
-                    (int) $responderId, (int) $userId
+                    (int) $responderId, (int) $userId,
+                    $mileageOrgId  // GH#96
                 );
             }
 
@@ -919,11 +976,93 @@ function _phase95_summarize_extra(string $type, $value, string $label): string {
 }
 
 /**
+ * GH#96 (2026-08-20) — Step 0 bug fix. The structured mileage_log INSERT
+ * used to live ONLY inside _phase95_route_to_incident()'s mileage branch,
+ * which only ran when the status's extra_data_target was 'incident'. The
+ * other two UI-offered targets -- action_log (labeled "default" in
+ * Settings) and unit (whose own routing helper's docblock admits "action-
+ * log only for now") -- captured the number in the action-log NOTE TEXT
+ * only, never as a structured row, silently defeating any report built
+ * over mileage_log (including the Mileage Log report this fix ships
+ * alongside) for the majority of installs, since action_log is the
+ * Settings UI's own labeled default. Extracted here so ALL THREE targets
+ * can call the exact same writer -- target now controls ONLY where the
+ * human-readable note text displays, never whether the structured capture
+ * happens.
+ *
+ * $ticketId may be 0/null (mobile's own start_mileage/stop_mileage writer
+ * already produces ticket_id=NULL rows for trips with no active
+ * assignment -- that is a legitimate, already-supported shape, not an
+ * error).
+ */
+function _phase95_record_mileage_log(string $prefix, int $responderId, int $userId, ?int $ticketId, $value, ?int $orgId): void {
+    $miles = (float) $value;
+    if ($miles <= 0) return;
+    try {
+        // QA #14 (kept from the original inline version) — on installs
+        // where soft_delete_mileage.sql made `miles` a GENERATED STORED
+        // column (miles = end_odo - start_odo), writing it directly
+        // throws. Store the value as an odometer delta (start_odo 0 ->
+        // end_odo $miles) so a generated `miles` resolves to $miles, and
+        // set `miles` directly ONLY when it's a plain column -- correct
+        // on every install. Cached per-request (not per-call) since the
+        // schema shape can't change mid-request.
+        static $milesGenerated = null;
+        if ($milesGenerated === null) {
+            $extra = (string) db_fetch_value(
+                "SELECT EXTRA FROM information_schema.columns
+                  WHERE table_schema = DATABASE()
+                    AND table_name = ? AND column_name = 'miles'",
+                [$prefix . 'mileage_log']);
+            $milesGenerated = (stripos($extra, 'GENERATED') !== false);
+        }
+        // GH#96 Step 1's org_id column may not exist yet on an install that
+        // hasn't run sql/run_gh96_mileage_log_org_id.php -- schema-resilience
+        // rule (never assume a column exists): omit org_id from the INSERT
+        // entirely rather than let the whole write fail on a pre-migration
+        // install. Cached per-request, same as $milesGenerated above.
+        static $hasOrgIdCol = null;
+        if ($hasOrgIdCol === null) {
+            $hasOrgIdCol = (bool) db_fetch_value(
+                "SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = DATABASE()
+                    AND table_name = ? AND column_name = 'org_id'",
+                [$prefix . 'mileage_log']);
+        }
+        $ticketIdVal = ($ticketId !== null && $ticketId > 0) ? $ticketId : null;
+        $orgCol  = $hasOrgIdCol ? ', `org_id`' : '';
+        $orgPh   = $hasOrgIdCol ? ', ?' : '';
+        $orgArgs = $hasOrgIdCol ? [$orgId] : [];
+        if ($milesGenerated) {
+            db_query(
+                "INSERT INTO `{$prefix}mileage_log`
+                 (`responder_id`, `user_id`, `ticket_id`,
+                  `start_odo`, `end_odo`, `notes`, `started_at`{$orgCol}, `created_at`)
+                 VALUES (?, ?, ?, 0, ?, ?, NOW(){$orgPh}, NOW())",
+                array_merge([$responderId, $userId, $ticketIdVal, $miles,
+                 'Status extra-data entry'], $orgArgs)
+            );
+        } else {
+            db_query(
+                "INSERT INTO `{$prefix}mileage_log`
+                 (`responder_id`, `user_id`, `ticket_id`,
+                  `start_odo`, `end_odo`, `miles`, `notes`, `started_at`{$orgCol}, `created_at`)
+                 VALUES (?, ?, ?, 0, ?, ?, ?, NOW(){$orgPh}, NOW())",
+                array_merge([$responderId, $userId, $ticketIdVal, $miles, $miles,
+                 'Status extra-data entry'], $orgArgs)
+            );
+        }
+    } catch (Exception $e) {
+        error_log('[responder-write] mileage_log insert failed: ' . $e->getMessage());
+    }
+}
+
+/**
  * Phase 95 helper — stamp extra_data onto the ticket row when
  * target='incident'. Best-effort per-type routing; failures are
  * non-fatal (caught + ignored).
  */
-function _phase95_route_to_incident(string $prefix, int $ticketId, string $type, $value, int $responderId = 0, int $userId = 0): void {
+function _phase95_route_to_incident(string $prefix, int $ticketId, string $type, $value, int $responderId = 0, int $userId = 0, ?int $orgId = null): void {
     if ($ticketId <= 0) return;
     try {
         switch ($type) {
@@ -937,56 +1076,18 @@ function _phase95_route_to_incident(string $prefix, int $ticketId, string $type,
                 }
                 break;
             case 'mileage':
-                $miles = (int) $value;
-                if ($miles > 0) {
-                    // Schema audit 2026-07-07: the old INSERT used columns
-                    // that never existed (start_odometer/logged_at — real
-                    // schema is start_odo/end_odo/miles/started_at) and the
-                    // silent catch meant status-prompted mileage was never
-                    // recorded on ANY install. Keep the catch (table is
-                    // optional on old installs) but LOG failures.
-                    try {
-                        // QA #14 — this INSERT (a) referenced $responderId /
-                        // $userId that were out of scope (now passed in), and
-                        // (b) wrote the `miles` column directly. On installs
-                        // where soft_delete_mileage.sql made `miles` a GENERATED
-                        // STORED column (miles = end_odo - start_odo), writing
-                        // it throws. Store the value as an odometer delta
-                        // (start_odo 0 -> end_odo $miles) so a generated `miles`
-                        // resolves to $miles, and set `miles` directly ONLY when
-                        // it's a plain column — correct on every install.
-                        static $milesGenerated = null;
-                        if ($milesGenerated === null) {
-                            $extra = (string) db_fetch_value(
-                                "SELECT EXTRA FROM information_schema.columns
-                                  WHERE table_schema = DATABASE()
-                                    AND table_name = ? AND column_name = 'miles'",
-                                [$prefix . 'mileage_log']);
-                            $milesGenerated = (stripos($extra, 'GENERATED') !== false);
-                        }
-                        if ($milesGenerated) {
-                            db_query(
-                                "INSERT INTO `{$prefix}mileage_log`
-                                 (`responder_id`, `user_id`, `ticket_id`,
-                                  `start_odo`, `end_odo`, `notes`, `started_at`, `created_at`)
-                                 VALUES (?, ?, ?, 0, ?, ?, NOW(), NOW())",
-                                [$responderId, $userId, $ticketId, $miles,
-                                 'Status extra-data entry']
-                            );
-                        } else {
-                            db_query(
-                                "INSERT INTO `{$prefix}mileage_log`
-                                 (`responder_id`, `user_id`, `ticket_id`,
-                                  `start_odo`, `end_odo`, `miles`, `notes`, `started_at`, `created_at`)
-                                 VALUES (?, ?, ?, 0, ?, ?, ?, NOW(), NOW())",
-                                [$responderId, $userId, $ticketId, $miles, $miles,
-                                 'Status extra-data entry']
-                            );
-                        }
-                    } catch (Exception $e) {
-                        error_log('[responder-write] mileage_log insert failed: ' . $e->getMessage());
-                    }
-                }
+                // GH#96 (2026-08-20) — delegates to the shared writer (see its
+                // own docblock above) so the 'incident' target's per-open-
+                // assignment mileage_log row and the 'action_log'/'unit'
+                // targets' single row (written directly by
+                // responder_set_status_internal, see the call site there) go
+                // through EXACTLY the same INSERT logic, including org_id and
+                // the generated-vs-plain `miles` column detection. Schema
+                // audit 2026-07-07's original fix (real schema is
+                // start_odo/end_odo/miles/started_at, not
+                // start_odometer/logged_at) and QA #14's generated-column
+                // fix are preserved unchanged inside the shared helper.
+                _phase95_record_mileage_log($prefix, $responderId, $userId, $ticketId, $value, $orgId);
                 break;
             case 'location':
                 if (is_array($value) && isset($value[0], $value[1])) {

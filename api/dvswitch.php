@@ -165,6 +165,7 @@ if ($method === 'GET') {
                         stt_engine, stt_partials, route_to_broker,
                         enabled, last_seen_at, last_error,
                         usrp_listen_port, usrp_send_port,
+                        id_interval_seconds, id_enforce,
                         created_at, updated_at,
                         (`bridge_token` IS NOT NULL
                           AND `bridge_token` <> '') AS has_token,
@@ -190,6 +191,7 @@ if ($method === 'GET') {
                         stt_engine, stt_partials, route_to_broker,
                         enabled, last_seen_at, last_error,
                         usrp_listen_port, usrp_send_port,
+                        id_interval_seconds, id_enforce,
                         created_at, updated_at
                  FROM `{$prefix}dmr_channels` WHERE id = ?",
                 [$id]
@@ -388,7 +390,23 @@ if ($method === 'POST') {
             'usrp_listen_port', 'usrp_send_port',
             'link_mode', 'chat_channel', 'tts_engine', 'tts_voice',
             'stt_engine', 'stt_partials', 'route_to_broker',
+            // Phase 148 — FCC 97.119 station-ID enforcement policy. Validated
+            // below, not merely whitelisted: id_interval_seconds must never
+            // exceed the regulatory 10-minute maximum, and id_enforce must be
+            // one of the three modes inc/fcc_station_id.php actually knows
+            // ('off'/'soft'/'hard' -- see that file's own docblock for why
+            // 'hard' is an acknowledgment gate, not a server-side block).
+            'id_interval_seconds', 'id_enforce',
         ];
+        if (array_key_exists('id_interval_seconds', $input)) {
+            $secs = (int) $input['id_interval_seconds'];
+            if ($secs <= 0 || $secs > 600) {
+                json_error('id_interval_seconds must be between 1 and 600 (FCC 97.119\'s 10-minute maximum)');
+            }
+        }
+        if (array_key_exists('id_enforce', $input) && !in_array((string) $input['id_enforce'], ['off', 'soft', 'hard'], true)) {
+            json_error('id_enforce must be one of: off, soft, hard');
+        }
         $set = [];
         $params = [];
         foreach ($editable as $col) {
