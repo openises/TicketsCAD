@@ -2,10 +2,10 @@
     "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
     "bomFormat": "CycloneDX",
     "specVersion": "1.6",
-    "serialNumber": "urn:uuid:006b3401-836e-5c9d-ae2a-af2ffd208a65",
-    "version": 40,
+    "serialNumber": "urn:uuid:2547d1d6-3a12-579b-96d3-afb46ee9838d",
+    "version": 42,
     "metadata": {
-        "timestamp": "2026-08-21T17:22:15Z",
+        "timestamp": "2026-08-22T20:19:25Z",
         "lifecycles": [
             {
                 "phase": "pre-build"
@@ -29,9 +29,9 @@
         ],
         "component": {
             "type": "application",
-            "bom-ref": "pkg:generic/ticketscad-newui@4.2.24",
+            "bom-ref": "pkg:generic/ticketscad-newui@4.2.25",
             "name": "TicketsCAD NewUI",
-            "version": "4.2.24",
+            "version": "4.2.25",
             "publisher": "OpenISES TicketsCAD Project",
             "description": "Computer-aided dispatch for volunteer emergency services, amateur-radio emergency communications groups, CERT teams and small public-safety agencies.",
             "licenses": [
@@ -41,7 +41,7 @@
                     }
                 }
             ],
-            "purl": "pkg:generic/ticketscad-newui@4.2.24",
+            "purl": "pkg:generic/ticketscad-newui@4.2.25",
             "externalReferences": [
                 {
                     "type": "vcs",
@@ -52,7 +52,7 @@
         "properties": [
             {
                 "name": "ticketscad:content-digest",
-                "value": "67b7df2381e0d38a28bca9925f6255e726f20603e864f5a300932c49aedb435b"
+                "value": "79a6211dc167b4834375f392bb94148b0575737c2e2d6e767207de1b643f3d43"
             },
             {
                 "name": "ticketscad:standard",
@@ -3010,7 +3010,7 @@
             "type": "library",
             "bom-ref": "pkg:pypi/requests#python-services",
             "name": "requests",
-            "description": "Used by: assets/js/mesh-console.js, services/meshtastic/bridge.py, services/meshtastic/bridge_v2.py, services/meshtastic/requirements.txt",
+            "description": "Used by: assets/js/mesh-console.js, services/meshtastic/bridge.py, services/meshtastic/bridge_v2.py, services/meshtastic/requirements.txt, services/sip-bridge/bridge.py, services/sip-bridge/requirements.txt",
             "scope": "required",
             "licenses": [
                 {
@@ -3033,7 +3033,7 @@
                 },
                 {
                     "name": "ticketscad:note",
-                    "value": "Declared constraint: >=2.34.2"
+                    "value": "Declared constraint: >=2.32.5"
                 },
                 {
                     "name": "ticketscad:unknown",
@@ -3041,7 +3041,7 @@
                 },
                 {
                     "name": "ticketscad:unknown-reason",
-                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. The declared constraint is \">=2.34.2\", which bounds but does not determine the installed version. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. The declared constraint is \">=2.32.5\", which bounds but does not determine the installed version. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
                 }
             ]
         },
@@ -3731,7 +3731,7 @@
     ],
     "dependencies": [
         {
-            "ref": "pkg:generic/ticketscad-newui@4.2.24",
+            "ref": "pkg:generic/ticketscad-newui@4.2.25",
             "dependsOn": [
                 "pkg:github/actions/checkout@v7#build-tooling",
                 "pkg:npm/ajv-cli@5#build-tooling",

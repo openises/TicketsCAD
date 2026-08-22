@@ -1,0 +1,20 @@
+[Unit]
+Description=TicketsCAD inbound SIP/PBX call bridge (Phase 149)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=youruser
+Group=youruser
+Environment=PYTHONIOENCODING=utf-8
+WorkingDirectory=/home/youruser/sip-bridge
+ExecStart=/home/youruser/sip-bridge-venv/bin/python /home/youruser/sip-bridge/bridge.py --config /home/youruser/sip-bridge/bridge.ini
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

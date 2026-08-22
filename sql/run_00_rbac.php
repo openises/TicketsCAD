@@ -352,6 +352,24 @@ $perms = [
     // there).
     ['screen.facility_portal',      'Facility Portal',             'facility_account'],
     ['action.facility_self_report', 'Facility Self-Report Status', 'facility_account'],
+    // Phase 149 (2026-08-22, inbound SIP/PBX call integration). Category
+    // 'call_queue' (not 'screen'/'action'/'field') deliberately sidesteps
+    // Operator's/Read-Only's category-based broad grants below, the same
+    // technique the facility_account codes just above already use --
+    // Operator holds field.caller_history but NOT field.patient_history
+    // (plan.md §5's one intentional narrowing), so a literal 'field'
+    // category would have handed Operator both. Org Admin gets all five
+    // via the broad NOT-IN exclusion below (deliberately NOT added to
+    // that exclusion list). Dispatcher's mapping in THIS file is a named
+    // ALLOW-list (unlike sql/rbac.sql's broad NOT-IN exclusion), so all
+    // four Dispatcher-held codes are explicitly added to the Dispatcher
+    // allow-list below; action.manage_calls is the one code withheld from
+    // Dispatcher, achieved simply by never naming it there.
+    ['screen.call_queue',      'Inbound Call Queue',            'call_queue'],
+    ['action.claim_call',      'Claim / Release Inbound Call',  'call_queue'],
+    ['action.manage_calls',    'Manage Inbound Calls (Admin)',  'call_queue'],
+    ['field.caller_history',   'View Caller History',           'call_queue'],
+    ['field.patient_history',  'View Caller Patient History',   'call_queue'],
 ];
 
 $pInserted = 0;
@@ -451,8 +469,44 @@ try {
                  OR `code` IN ('action.create_incident', 'action.edit_incident', 'action.close_incident',
                                'action.assign_unit', 'action.add_note', 'action.set_own_zone',
                                'action.net_checkin', 'action.share_incident', 'action.revoke_incident_share',
-                               'action.manage_org_relationships_org', 'action.activate_org_relationship')");
+                               'action.manage_org_relationships_org', 'action.activate_org_relationship',
+                               -- Phase 149 (2026-08-22): action.manage_calls deliberately absent --
+                               -- withheld from Dispatcher (plan.md §5).
+                               'screen.call_queue', 'action.claim_call',
+                               'field.caller_history', 'field.patient_history')");
     echo "[OK] Dispatcher permissions mapped\n";
+} catch (Exception $e) {}
+
+// Repair (2026-08-22, Phase 149 discovery) — confirmed LIVE on the dev
+// database that Dispatcher held the CANONICAL ALIAS (calls.manage) of
+// action.manage_calls even though this ALLOW-list above never names it
+// and never has. This is a THIRD variant of the canonical-alias leak
+// documented in CLAUDE.md: the first two (direct grant predating an
+// exclusion; alias leak through an EXCLUSION list) both assumed the leak
+// path runs through a role's own grant mechanism. This one shows the
+// alias-mirror step in sql/run_rbac_v2.php's A8 can hand a role a grant
+// that NEITHER an allow-list NOR an exclusion-list ever authorized,
+// because A8 mirrors role_permissions from whichever roles hold the OLD
+// code at the moment A8 itself runs -- which is not guaranteed to be
+// AFTER this file's own grant statements have reached their final,
+// intended state (e.g. a tools/install_fresh.php bootstrap pass may
+// interleave a fresh sql/rbac.sql import with the RBAC v2 canonicalization
+// pipeline in an order this file's own top-to-bottom statements cannot
+// control). Never assume an allow-list is immune to this leak just
+// because it never named the code -- verify the LIVE grant, not the
+// mechanism. Self-healing on every run, mirroring the Org Admin repair
+// above.
+try {
+    db_query("DELETE `{$prefix}role_permissions` FROM `{$prefix}role_permissions`
+              JOIN `{$prefix}permissions` p ON p.id = `{$prefix}role_permissions`.`permission_id`
+              WHERE `{$prefix}role_permissions`.`role_id` = 3
+                AND p.`code` IN ('action.manage_calls')");
+    db_query("DELETE rp FROM `{$prefix}role_permissions` rp
+              JOIN `{$prefix}permissions` canon ON canon.id = rp.permission_id
+              JOIN `{$prefix}permissions` old_p ON old_p.deprecated_alias_of = canon.code
+              WHERE rp.role_id = 3
+                AND old_p.code IN ('action.manage_calls')");
+    echo "[OK] Dispatcher canonical-alias privilege leak repaired (if any)\n";
 } catch (Exception $e) {}
 
 // Operator gets view + notes
@@ -460,7 +514,10 @@ try {
     db_query("INSERT IGNORE INTO `{$prefix}role_permissions` (`role_id`, `permission_id`)
               SELECT 4, `id` FROM `{$prefix}permissions`
               WHERE `category` IN ('screen', 'widget')
-                 OR `code` IN ('action.add_note', 'action.set_own_zone')");
+                 OR `code` IN ('action.add_note', 'action.set_own_zone',
+                               -- Phase 149 (2026-08-22): field.patient_history deliberately
+                               -- absent -- the one intentional narrowing in plan.md §5.
+                               'screen.call_queue', 'action.claim_call', 'field.caller_history')");
     echo "[OK] Operator permissions mapped\n";
 } catch (Exception $e) {}
 

@@ -49,10 +49,58 @@ function get_table_config(string $target): array
             ],
             'columns' => [
                 'id'         => ['label' => 'ID',          'type' => 'int',    'required' => false, 'import' => false, 'export' => true],
-                'last_name'  => ['label' => 'Last Name',   'type' => 'string', 'required' => true,  'import' => true,  'export' => true,  'legacy' => 'field1'],
-                'first_name' => ['label' => 'First Name',  'type' => 'string', 'required' => true,  'import' => true,  'export' => true,  'legacy' => 'field2'],
-                'callsign'   => ['label' => 'Callsign',    'type' => 'string', 'required' => false, 'import' => true,  'export' => true,  'legacy' => 'field4'],
-                'email'      => ['label' => 'Email',       'type' => 'string', 'required' => false, 'import' => true,  'export' => true,  'legacy' => 'field6'],
+            // GH#103 (rjonesbsink/cbyrdmo, 2026-08-22) — these four columns
+            // carry 'legacy_remap' => true, which the reader/writer below
+            // treat very differently from every OTHER 'legacy' alias in
+            // this file (facility.phone/contact, in_types.severity,
+            // team.name/description/team_type_id, and this same target's
+            // own 'phone' a few lines down): on those, `legacy` names the
+            // ONE real, always-existing column the rest of the app
+            // actually reads and writes — the named key is purely a
+            // friendlier export label, never independently writable
+            // (confirmed by audit: none of those named columns exist as
+            // real columns on any install checked, or — for team.name/
+            // description — exist but are either a GENERATED mirror of
+            // the legacy column or a plain column nothing internal ever
+            // reads, since api/teams.php always reads `mission AS
+            // description`). For last_name/first_name/callsign/email,
+            // GH#95's own audit established the opposite: on ANY given
+            // install, exactly one of the named/legacy pair is the live
+            // column real writes land in — these four are EITHER a
+            // GENERATED VIRTUAL mirror of field1/field2/field4/field6
+            // (older/legacy-shaped installs), OR independently plain
+            // columns the roster UI writes directly while the field*
+            // columns sit untouched (confirmed live on both GH#95
+            // reporters' installs, and directly read by api/members.php's
+            // roster queries with no fallback of their own). Exporting/
+            // importing via the bare 'legacy' column only, as every other
+            // target correctly does, silently exports/imports NULL names
+            // on the second shape — that was this bug. 'legacy_remap' =>
+            // true tells execute_import()/export_csv() to resolve, per
+            // install, via information_schema
+            // (db_generated_column_map() in inc/functions.php) rather
+            // than assume 'legacy' is always the real column.
+                'last_name'  => ['label' => 'Last Name',   'type' => 'string', 'required' => true,  'import' => true,  'export' => true,  'legacy' => 'field1', 'legacy_remap' => true],
+                'first_name' => ['label' => 'First Name',  'type' => 'string', 'required' => true,  'import' => true,  'export' => true,  'legacy' => 'field2', 'legacy_remap' => true],
+                'callsign'   => ['label' => 'Callsign',    'type' => 'string', 'required' => false, 'import' => true,  'export' => true,  'legacy' => 'field4', 'legacy_remap' => true],
+                'email'      => ['label' => 'Email',       'type' => 'string', 'required' => false, 'import' => true,  'export' => true,  'legacy' => 'field6', 'legacy_remap' => true],
+                // 'phone' deliberately does NOT get 'legacy_remap' (checked,
+                // not assumed): the roster (api/members.php, three SELECTs)
+                // and the external API read `phone_cell`, never bare
+                // `phone` — a THIRD column this pair doesn't reach either
+                // way. Nothing internal reads or writes `member`.`phone`
+                // at all (confirmed by grep); it exists only as a
+                // GENERATED VIRTUAL mirror of field7 on installs where
+                // tools/install_fresh.php's alias step created it, or not
+                // at all on some upgraded installs. Adding legacy_remap
+                // here would resolve cleanly between `phone`/`field7` but
+                // would NOT make an imported phone number visible in the
+                // roster either way, since that reads `phone_cell` — a
+                // column this config has no key for. That is a real,
+                // separate, pre-existing gap (the CSV's "Phone" column
+                // was never wired to the field the roster displays, in
+                // EITHER schema shape), left open rather than silently
+                // "fixed" without actually closing it — see GH#103.
                 'phone'      => ['label' => 'Phone',       'type' => 'string', 'required' => false, 'import' => true,  'export' => true,  'legacy' => 'field7'],
                 'field3'     => ['label' => 'Member Type',  'type' => 'int',   'required' => false, 'import' => true,  'export' => true],
                 'field8'     => ['label' => 'Available',    'type' => 'enum',  'required' => false, 'import' => true,  'export' => true,  'values' => ['Yes', 'No']],
@@ -261,7 +309,29 @@ function get_table_config(string $target): array
             'label'        => 'Teams',
             'id_column'    => 'id',
             'match_columns' => ['name'],
-            'audit_cols'   => [],
+            // GH#103 follow-up (found by this fix's own new test against
+            // CI's genuinely fresh install, 2026-08-22): sql/base_schema.sql's
+            // `teams` table carries three MORE legacy NOT NULL-no-default
+            // columns beyond `team`/`mission`/`ttypes_id` — `by`, `from`,
+            // `on` — that inc/team-write.php's real team_upsert_internal()
+            // already supplies on every INSERT ("`sub-group`, `by`, `from`,
+            // `on` columns are legacy NOT NULL with no default; supply
+            // empty/zero placeholders" — see that file). execute_import()
+            // never supplied them at all, so importing a team via CSV threw
+            // MySQL 1364 on any install that never got an ad-hoc `ALTER ...
+            // SET DEFAULT` — every genuinely fresh install, including CI's
+            // — for every row, regardless of which columns the CSV
+            // included. This dev database's teams.by/from/on all show a
+            // real DEFAULT because SOME earlier untracked fix set one
+            // directly on this long-lived DB; base_schema.sql itself never
+            // gained one. Matching the real writer's own values exactly
+            // ($userId for `by`, '' for `from`, NOW() for `on`) so an
+            // imported team is indistinguishable from a UI-created one.
+            'audit_cols'   => [
+                'by'   => '__USER_ID__',
+                'from' => '',
+                'on'   => '__NOW__',
+            ],
             'columns' => [
                 // History:
                 //   2026-07-31 (Ron Jones, GH TicketsCAD#14): `description` and
@@ -275,8 +345,20 @@ function get_table_config(string $target): array
                 'id'          => ['label' => 'ID',            'type' => 'int',    'required' => false, 'import' => false, 'export' => true],
                 'name'        => ['label' => 'Team Name',     'type' => 'string', 'required' => true,  'import' => true,  'export' => true, 'legacy' => 'team'],
                 'description' => ['label' => 'Description',   'type' => 'string', 'required' => false, 'import' => true,  'export' => true, 'legacy' => 'mission'],
-                'team_type_id'=> ['label' => 'Team Type ID',  'type' => 'int',    'required' => false, 'import' => true,  'export' => true, 'legacy' => 'ttypes_id'],
+                'team_type_id'=> ['label' => 'Team Type ID',  'type' => 'int',    'required' => false, 'import' => true,  'export' => true, 'legacy' => 'ttypes_id', 'default' => 0],
                 'active'      => ['label' => 'Active',        'type' => 'int',    'required' => false, 'import' => true,  'export' => true],
+                // GH#103 follow-up — not user-facing (import/export both
+                // false, so never appears in the CSV column-mapping UI):
+                // `sub-group`/`leader`/`leader_dpty` are legacy NOT NULL
+                // columns with no DB default and no named/UI counterpart
+                // this config otherwise exposes. Values match
+                // team_upsert_internal()'s own placeholders exactly (empty
+                // string / no leader chosen) so a CSV-imported team is
+                // indistinguishable from one created via the Teams UI with
+                // no leader/deputy set.
+                'sub-group'   => ['label' => 'Sub-Group (legacy)',  'type' => 'string', 'required' => false, 'import' => false, 'export' => false, 'default' => ''],
+                'leader'      => ['label' => 'Leader (legacy)',     'type' => 'int',    'required' => false, 'import' => false, 'export' => false, 'default' => 0],
+                'leader_dpty' => ['label' => 'Deputy (legacy)',     'type' => 'int',    'required' => false, 'import' => false, 'export' => false, 'default' => 0],
             ],
         ],
 
@@ -378,6 +460,45 @@ function get_table_config(string $target): array
         return [];
     }
     return $configs[$target];
+}
+
+/**
+ * GH#103 — resolve which physical column a config column definition
+ * should be READ FROM / WRITTEN TO for a given table.
+ *
+ * A column with no 'legacy' key always resolves to itself, unchanged.
+ * A column with 'legacy' but no 'legacy_remap' (every legacy alias in
+ * this file except member's five) always resolves to the legacy column
+ * — exactly the pre-GH#103 behavior, since for those targets `legacy`
+ * IS the one real, always-existing column (see the long comment on
+ * member's column definitions above for why that distinction matters
+ * and can't be made generic from schema alone).
+ *
+ * A column with 'legacy_remap' => true resolves via
+ * db_generated_column_map(): if the NAMED column is a GENERATED mirror
+ * of the legacy one on this install, the legacy column is the real,
+ * writable one; otherwise the named column itself is (either because
+ * it's a plain, independently-writable column with no generated
+ * relationship to 'legacy' at all, or — belt and suspenders — because
+ * it doesn't exist on this install and db_generated_column_map()
+ * quietly returned no entry for it, in which case writing the named
+ * column would fail loudly rather than silently landing on the wrong
+ * one; this shape does not currently occur for any legacy_remap column,
+ * since member's five named columns are added unconditionally by both
+ * tools/install_fresh.php's virtual-alias step and
+ * sql/run_member_columns.php's addCol(), so they always exist as either
+ * generated or plain).
+ */
+function _ie_resolve_write_column(string $dbCol, array $def, string $table): string
+{
+    if (!isset($def['legacy'])) {
+        return $dbCol;
+    }
+    if (empty($def['legacy_remap'])) {
+        return $def['legacy'];
+    }
+    $genMap = db_generated_column_map($table);
+    return isset($genMap[$dbCol]) ? $def['legacy'] : $dbCol;
 }
 
 /**
@@ -614,32 +735,57 @@ function execute_import(array $validRows, array $config, int $userId, string $mo
         }
 
         // For legacy member table, use field names not aliases
+        //
+        // GH#103 fix: this used to unconditionally redirect every
+        // 'legacy'-aliased column to its legacy name, which is correct
+        // for facility/in_types/team (see the long comment on member's
+        // column definitions in get_table_config()) but wrong for
+        // member's five 'legacy_remap' columns on any install where the
+        // named columns are plain and independently writable — the
+        // import silently wrote data to field1/field2/field4/field6/
+        // field7 while the roster (api/members.php) reads
+        // first_name/last_name/callsign/email/phone_cell with no
+        // fallback, so the imported member existed but showed up
+        // completely nameless. _ie_resolve_write_column() now decides
+        // per column, per install (via information_schema), which
+        // physical column is actually writable.
         $insertRow = [];
         $columns = $config['columns'];
         foreach ($row as $dbCol => $val) {
-            // Use legacy column name if applicable
-            if (isset($columns[$dbCol]['legacy'])) {
-                $insertRow[$columns[$dbCol]['legacy']] = $val;
-            } else {
-                $insertRow[$dbCol] = $val;
-            }
+            $actualCol = isset($columns[$dbCol])
+                ? _ie_resolve_write_column($dbCol, $columns[$dbCol], $table)
+                : $dbCol;
+            $insertRow[$actualCol] = $val;
         }
         $insertRow = array_merge($insertRow, $audit);
 
         // Remove null values for optional columns
         $insertRow = array_filter($insertRow, function ($v) { return $v !== null; });
 
-        // Fill in `default` values from config for any importable column
-        // that's missing from the row. Lets table configs declare a safe
-        // default for NOT NULL columns that the source CSV might not
-        // include (e.g. in_types.description is NOT NULL with no DB
-        // default — old CSVs exported before description was added to
-        // the export config simply omit the column). Without this, the
-        // INSERT errors with "Field 'X' doesn't have a default value".
+        // Fill in `default` values from config for any column missing
+        // from the row. Lets table configs declare a safe default for
+        // NOT NULL columns that the source CSV might not include (e.g.
+        // in_types.description is NOT NULL with no DB default — old
+        // CSVs exported before description was added to the export
+        // config simply omit the column). Without this, the INSERT
+        // errors with "Field 'X' doesn't have a default value".
+        //
+        // GH#103 follow-up: this used to additionally require
+        // $def['import'] === true, which is right for a column a CSV
+        // might legitimately omit (in_types.description) but wrong for
+        // a column that ISN'T importable at all and therefore NEVER
+        // appears in $row — team.sub-group/leader/leader_dpty are
+        // exactly that: legacy NOT NULL columns with no UI/CSV
+        // counterpart, so the 'import' === true gate made this fallback
+        // permanently unreachable for them and every fresh-install team
+        // import failed with the same MySQL 1364. A column opts into
+        // this fallback simply by declaring 'default' at all, whether
+        // or not it's importable — no existing importable-with-default
+        // column (only in_types.description before this fix) changes
+        // behavior, since it's already importable.
         foreach ($columns as $dbCol => $def) {
             if (!array_key_exists('default', $def)) continue;
-            if (!$def['import']) continue;
-            $actualCol = isset($def['legacy']) ? $def['legacy'] : $dbCol;
+            $actualCol = _ie_resolve_write_column($dbCol, $def, $table);
             if (!array_key_exists($actualCol, $insertRow)) {
                 $insertRow[$actualCol] = $def['default'];
             }
@@ -667,7 +813,18 @@ function execute_import(array $validRows, array $config, int $userId, string $mo
                 $params = [];
                 $allPresent = true;
                 foreach ($matchCols as $mc) {
-                    $actualCol = isset($columns[$mc]['legacy']) ? $columns[$mc]['legacy'] : $mc;
+                    // GH#103: matches _ie_resolve_write_column()'s decision
+                    // above — a duplicate-detection lookup must check the
+                    // SAME physical column the row was (or will be)
+                    // written to, or re-importing a CSV into a
+                    // plain-column install would never find its own
+                    // previously-imported rows (comparing against an
+                    // always-empty legacy column) and duplicate them
+                    // every time, the GH#54 bug this match lookup exists
+                    // to prevent, reappearing for a different reason.
+                    $actualCol = isset($columns[$mc])
+                        ? _ie_resolve_write_column($mc, $columns[$mc], $table)
+                        : $mc;
                     if (!isset($row[$mc]) || $row[$mc] === null || $row[$mc] === '') {
                         $allPresent = false;
                         break;
@@ -761,6 +918,17 @@ function export_csv(array $config, array $filters = []): string
             // already-qualified SQL expression is the only way to reach
             // one from here.
             $selectCols[] = "{$def['sql']} AS `{$dbCol}`";
+        } elseif (isset($def['legacy']) && !empty($def['legacy_remap'])) {
+            // GH#103 (rjonesbsink/cbyrdmo) — reading the bare legacy
+            // column exported all-NULL names on any install where the
+            // named column is the one actually written (member's plain-
+            // column shape). Both columns are guaranteed to exist for
+            // every 'legacy_remap' column (see the comment on member's
+            // definitions in get_table_config()), so COALESCE is always
+            // safe here — on a generated-column install the named column
+            // already mirrors the legacy one, making this a no-op.
+            $col = ($hasJoins ? "{$table}." : '');
+            $selectCols[] = "COALESCE(NULLIF({$col}`{$dbCol}`, ''), {$col}`{$def['legacy']}`) AS `{$dbCol}`";
         } elseif (isset($def['legacy'])) {
             // A JOIN puts the joined table's columns in scope too, so an
             // unqualified `legacy` reference that used to be unambiguous
@@ -785,6 +953,12 @@ function export_csv(array $config, array $filters = []): string
             if ($def['type'] === 'string' && $def['export']) {
                 if (isset($def['sql'])) {
                     $searchCols[] = "{$def['sql']} LIKE ?";
+                } elseif (isset($def['legacy']) && !empty($def['legacy_remap'])) {
+                    // GH#103 — same reasoning as the SELECT list above: a
+                    // search that only checks the legacy column misses
+                    // rows whose data lives in the named column.
+                    $col = ($hasJoins ? "{$table}." : '');
+                    $searchCols[] = "COALESCE(NULLIF({$col}`{$dbCol}`, ''), {$col}`{$def['legacy']}`) LIKE ?";
                 } else {
                     $actual = isset($def['legacy']) ? $def['legacy'] : $dbCol;
                     $searchCols[] = ($hasJoins ? "{$table}." : '') . "`{$actual}` LIKE ?";

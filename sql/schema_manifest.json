@@ -465,6 +465,36 @@
             "sort",
             "type"
         ],
+        "inbound_call_events": [
+            "actor_name",
+            "actor_user_id",
+            "call_id",
+            "detail_json",
+            "event_type",
+            "reason"
+        ],
+        "inbound_calls": [
+            "called_number",
+            "caller_name",
+            "caller_number",
+            "claim_heartbeat_at",
+            "claimed_at",
+            "claimed_by",
+            "claimed_by_name",
+            "ended_at",
+            "last_event_at",
+            "org_id",
+            "provider_call_id",
+            "reassigned_from",
+            "released_at",
+            "reviewed_at",
+            "reviewed_by",
+            "ringing_at",
+            "stale_since",
+            "state",
+            "ticket_id",
+            "trunk_id"
+        ],
         "inbound_message_dedupe": [
             "channel",
             "external_id"
@@ -930,6 +960,16 @@
             "ticket_id",
             "updated",
             "user"
+        ],
+        "pbx_trunks": [
+            "bearer_token",
+            "enabled",
+            "label",
+            "mute_bypass_enabled",
+            "org_id",
+            "reassign_grace_seconds",
+            "updated_at",
+            "wrapup_seconds"
         ],
         "pending_routed_messages": [
             "body",
@@ -1556,6 +1596,8 @@
         "ics_forms",
         "ics_positions",
         "in_types",
+        "inbound_call_events",
+        "inbound_calls",
         "inbound_message_dedupe",
         "incident_shares",
         "insurance",
@@ -1620,6 +1662,7 @@
         "par_cycles",
         "par_unit_acks",
         "patient",
+        "pbx_trunks",
         "pending_routed_messages",
         "permission_review_dismissals",
         "permissions",
@@ -1687,8 +1730,8 @@
     "_meta": {
         "generated_by": "tools/gen_schema_manifest.php",
         "purpose": "columns this code writes to + tables it references; checked by inc/schema-verify.php",
-        "tables": 150,
-        "columns": 1194,
-        "required_tables": 187
+        "tables": 153,
+        "columns": 1228,
+        "required_tables": 190
     }
 }

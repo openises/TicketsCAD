@@ -30,7 +30,34 @@ ini_set('display_errors', $prevDisplay);
 
 // ── GET handlers ──
 
+/**
+ * Phase 149 (2026-08-22, plan.md §5) — retrofit RBAC onto this
+ * previously wide-open lookup. Every one of these GET paths had NO
+ * permission check beyond being logged in, and this feature turns that
+ * from "a curious user could type a phone number" into "the system
+ * eagerly and automatically pushes that same data onto a screen the
+ * instant a phone rings" (spec.md's Background section). Gated on the
+ * response AS A WHOLE, not per-field: this endpoint's rows carry no
+ * clinical/patient data of their own (that lives in the `patient` table,
+ * gated separately by api/call-history.php's own field.patient_history
+ * retrofit below).
+ *
+ * Default grants (Dispatcher/Operator/Org Admin/Super Admin) mirror
+ * exactly who uses this lookup legitimately today, so those four roles
+ * see NO regression -- only Field Unit/Read-Only, who were never meant
+ * to have it, lose access they were never supposed to have (proven by
+ * tests/test_inbound_calls_rbac.php).
+ */
+function constituents_gate_read(): void
+{
+    if (!rbac_can('field.caller_history')) {
+        json_error('Insufficient permissions: view caller history', 403);
+    }
+}
+
 function handleGet() {
+    constituents_gate_read();
+
     // Single constituent by ID
     if (!empty($_GET['id'])) {
         $id = intval($_GET['id']);

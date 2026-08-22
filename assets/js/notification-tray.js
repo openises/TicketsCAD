@@ -34,7 +34,19 @@
         'geofence:exit':     { icon: 'bi-geo-alt',                   color: 'text-secondary', label: 'Geofence Exit' },
         'unit:assignment':   { icon: 'bi-people',                    color: 'text-info',      label: 'Unit Assignment' },
         'weather:alert':     { icon: 'bi-cloud-lightning-rain-fill', color: 'text-danger',    label: 'Weather Alert' },
-        'system:refresh':    { icon: 'bi-arrow-clockwise',           color: 'text-secondary', label: 'System Refresh' }
+        'system:refresh':    { icon: 'bi-arrow-clockwise',           color: 'text-secondary', label: 'System Refresh' },
+        // Phase 149 (2026-08-22) — inbound SIP/PBX calls. Ringing = distinct
+        // icon/red (loudest tier, alongside message:broadcast); claimed =
+        // neutral/dimming (someone has it, situational awareness only);
+        // stale = warning amber (something looks wrong); abandoned =
+        // muted/gray (a missed-call record, not an active alarm).
+        'call:ringing':      { icon: 'bi-telephone-inbound-fill',    color: 'text-danger',    label: 'Inbound Call' },
+        'call:claimed':      { icon: 'bi-telephone-fill',            color: 'text-secondary', label: 'Call Claimed' },
+        'call:released':     { icon: 'bi-telephone-x',               color: 'text-secondary', label: 'Call Released' },
+        'call:stale':        { icon: 'bi-exclamation-triangle',      color: 'text-warning',   label: 'Call Claim Stale' },
+        'call:wrapup':       { icon: 'bi-telephone',                 color: 'text-secondary', label: 'Call Wrapping Up' },
+        'call:ended':        { icon: 'bi-telephone-minus',           color: 'text-secondary', label: 'Call Ended' },
+        'call:abandoned':    { icon: 'bi-telephone-x-fill',          color: 'text-muted',     label: 'Missed Call' }
     };
 
     function init() {
@@ -56,9 +68,14 @@
                 // Skip events from current user (except geofence, weather, and
                 // system events — always show those; weather has no origin user
                 // and matters to everyone on the board).
+                // Phase 149 (2026-08-22) — call: events are added here so a
+                // user's OWN claim confirmation still renders in their own
+                // tray (unlike an ordinary self-authored event, which is
+                // normally suppressed) — plan.md §6.
                 var alwaysShow = eventType.indexOf('geofence:') === 0 ||
                                  eventType.indexOf('weather:') === 0 ||
-                                 eventType.indexOf('system:') === 0;
+                                 eventType.indexOf('system:') === 0 ||
+                                 eventType.indexOf('call:') === 0;
                 if (!alwaysShow && data && data._origin_user && typeof USER_ID !== 'undefined' && data._origin_user === USER_ID) return;
 
                 addNotification(eventType, data);

@@ -120,3 +120,23 @@ column:webhook_deliveries.response_body
 column:webhook_deliveries.webhook_id
 column:routing_log.dest_message_id
 column:routing_log.payload_summary
+
+# (inbound_calls.reviewed_at/reviewed_by, baselined here through Milestone
+# 5, were resolved by Milestone 6's "Missed Calls" panel -- api/inbound-
+# calls.php's list_missed action already read them; removed from this
+# list 2026-08-22.)
+
+# Same 2026-08-22 Phase 149 Milestone 1 note as above. provider_call_id is
+# written at ingest and used in WHERE clauses (inbound_call_find_by_
+# provider()'s `SELECT * ... WHERE provider_call_id = ?`) but a `SELECT *`
+# never mentions the column name in literal SQL text, so the audit
+# correctly can't see it as "read" by static scan; it becomes visibly read
+# once api/inbound-calls.php's `detail` action (Milestone 5) surfaces the
+# underlying PBX call id for admin/audit review. reassigned_from is
+# written by the claim/reassign/force-reclaim functions so the audit
+# trail can distinguish "claimed fresh" from "corrected via quick
+# reassignment" (plan.md §3) but has no reader until the same Milestone 5
+# detail action (or a later admin audit viewer) surfaces it. Remove both
+# lines once that lands.
+column:inbound_calls.provider_call_id
+column:inbound_calls.reassigned_from

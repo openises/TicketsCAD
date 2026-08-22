@@ -547,6 +547,10 @@ $canLinkMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : fa
 <?php /* Phase 131 — prefills #phone + #description when the operator arrived
          here from a net check-in (?net_entry=N). No-op otherwise. */ ?>
 <script src="assets/js/net-prefill.js?v=<?php echo asset_v('assets/js/net-prefill.js'); ?>"></script>
+<?php /* Phase 149 — prefills #phone when the operator arrived here by
+         claiming/reassigning an inbound SIP/PBX call (?call_id=N).
+         No-op otherwise. See plan.md §7. */ ?>
+<script src="assets/js/call-prefill.js?v=<?php echo asset_v('assets/js/call-prefill.js'); ?>"></script>
 
 </body>
 </html>

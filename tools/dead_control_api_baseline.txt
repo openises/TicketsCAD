@@ -209,3 +209,30 @@ apikey:bridge_body
 #     single instance, but singled out in this comment because "the push
 #     key is unused" would misread as a broken push feature if seen out
 #     of context; it is not.
+
+# 2026-08-22 (Phase 149, Milestone 1 of 9 -- inbound SIP/PBX call
+# integration). TEMPORARY. api/inbound-calls.php's list/detail/claim/
+# reassign/force_reclaim response keys are built ahead of the JS that
+# consumes them, per this phase's own 9-milestone build order (specs/
+# phase-149-inbound-sip-calls/plan.md sec11). Milestone 4's assets/js/
+# call-alert.js (the persistent ringing-call banner) landed in the SAME
+# phase and already resolved called_number/caller_number/claimed_by/
+# claimed_by_name/ringing_at/trunk_id/trunk_label (removed from this
+# list) -- the entries remaining below are read either by Milestone 5's
+# assets/js/call-prefill.js (the New Incident pre-fill: caller_name,
+# provider_call_id, reassign_grace_seconds, reassigned_from) or by a
+# future admin/audit detail view (can_force_reclaim, can_view_history,
+# can_view_patient_history, claimed_at, stale_since, was_stale). Remove
+# each line the moment its consuming JS file lands -- if any are still
+# here after Milestone 5 ships, that is a real regression, not a stale
+# baseline entry to leave alone.
+apikey:caller_name
+apikey:can_force_reclaim
+apikey:can_view_history
+apikey:can_view_patient_history
+apikey:claimed_at
+apikey:provider_call_id
+apikey:reassign_grace_seconds
+apikey:reassigned_from
+apikey:stale_since
+apikey:was_stale

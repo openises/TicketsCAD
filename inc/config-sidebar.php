@@ -275,6 +275,13 @@ $canCfg   = (!function_exists('rbac_can') || rbac_can('action.manage_config'));
               if (!function_exists('rbac_can') || rbac_can('action.manage_public_board') || rbac_can('action.manage_public_board_org')) {
                   _cfg_link('public-board-admin', 'public-board-admin.php', t('sidebar.tab.public_board', 'Public Incident Board'), 'public board embed website lobby display feed'); } ?>
 
+        <?php _cfg_sub(t('sidebar.sub.inbound_calls', 'Inbound Calls')); ?>
+        <?php // Phase 149 — inbound SIP/PBX call integration (standalone page,
+              // matrix-admin.php's own shape). Gated on action.manage_calls,
+              // same code the API endpoint itself enforces.
+              if (!function_exists('rbac_can') || rbac_can('action.manage_calls')) {
+                  _cfg_link('sip-trunks-admin', 'sip-trunks-admin.php', t('sidebar.tab.sip_trunks', 'Inbound Calls (SIP/PBX)'), 'sip pbx phone trunk inbound call queue asterisk freepbx'); } ?>
+
         <?php _cfg_sub(t('sidebar.sub.voice', 'Voice')); ?>
         <?php // Phase 113 — pluggable text-to-speech engines (standalone page).
               if (!function_exists('rbac_can') || rbac_can('action.manage_tts')) {

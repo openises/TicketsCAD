@@ -769,3 +769,74 @@ phantom:mileage_log.org_id
 # 97.119's regulatory maximum; id_enforce restricted to off/soft/hard).
 phantom:dmr_channels.id_enforce
 phantom:dmr_channels.id_interval_seconds
+
+# 2026-08-22 (Phase 149, Milestone 8 of 9) — the six phantom:pbx_trunks.*
+# entries this comment originally baselined (label/org_id/
+# mute_bypass_enabled/wrapup_seconds/reassign_grace_seconds/enabled) are
+# REMOVED as of this commit: api/sip-trunks.php now writes every one of
+# them (trunk_create/trunk_update/trunk_toggle), confirmed by re-running
+# `php tools/dead_control_audit.php --phantom-only --all` and finding zero
+# pbx_trunks matches. Left this note rather than deleting the paragraph
+# outright so a future reader can see the entries were resolved, not
+# silently dropped.
+# 2026-08-22 (Phase 149, discovered while adding api/inbound-calls.php;
+# RE-INVESTIGATED 2026-08-22 -- the "TOOL BUG / file-count sensitivity"
+# diagnosis originally recorded here was WRONG and has been corrected).
+#
+# What was originally claimed: adding a single content-empty file
+# anywhere under api/ or inc/ made the audit newly report
+# beta_tester_applications.reviewed_at/.reviewed_by as phantom, implying
+# a caching/scan-order bug in tools/dead_control_audit.php itself.
+#
+# Disproven by direct reproduction: on an isolated, genuinely clean
+# checkout of main (no Phase 149 files present at all), adding an empty
+# `<?php`-only probe file under api/ or inc/ changes NOTHING -- the
+# finding does not appear. tools/dead_control_audit.php has no cache, no
+# count-keyed state, and no batching of any kind (grep confirms: no
+# file_put_contents()/fopen(...'w'...)/cache: anywhere in that file).
+#
+# The REAL, confirmed mechanism is check (c)'s own already-documented
+# table-blind bareRead ambiguity (see that file's docblock, the
+# "(c) PHANTOM DATABASE COLUMN" section's closing bullet on bareRead
+# being table-blind by construction -- extended in place 2026-08-22 with
+# this exact instance as a concrete, dated example). This phase
+# introduces a genuinely NEW, unrelated table, `inbound_calls`, with its
+# OWN real `reviewed_at`/`reviewed_by` columns that ARE written
+# (inc/inbound-calls.php:691, a literal `UPDATE ... SET reviewed_at =
+# NOW(), reviewed_by = ?`) and read (api/inbound-calls.php:123-124,
+# `$row['reviewed_at']`/`$row['reviewed_by']`). Once that bareRead
+# evidence for the literal column names exists anywhere in the tree, the
+# table-blind secondary candidate check credits the SAME names to every
+# other SQL-touched table that happens to share them -- including this
+# wholly unrelated `beta_tester_applications` table. (The reporting
+# agent's own "controlled" probe was not actually isolated: it ran inside
+# a working tree that already had api/inbound-calls.php and
+# inc/inbound-calls.php present from this same phase's own Milestone-9
+# build, so the empty probe file was never the actual variable -- removing
+# "the probe file (or all of this phase's files)" removed the real
+# inbound-calls.php files too, which is what actually made the finding
+# disappear.)
+#
+# Two natural fixes to make the check less table-blind were prototyped
+# and REJECTED after measuring their cost against this project's real,
+# full-tree ~273-finding baseline: requiring same-FILE co-occurrence of a
+# table's SQL and the bareRead lost 55 of 160 real secondary findings;
+# suppressing a column name with a write on any OTHER table lost 109 of
+# 160. BOTH losses included beta_tester_applications.status itself --
+# this project's own already-confirmed real finding immediately above --
+# so both were rejected as trading a rare, correctly-triageable false
+# positive for silently blinding the tool to the phantom-read class it
+# exists to catch. The detection algorithm is therefore UNCHANGED.
+#
+# What IS real, independently confirmed by reading beta-tester.php
+# directly (not assumed): beta_tester_applications.reviewed_at/
+# .reviewed_by have NO application-level write path anywhere in api/ or
+# inc/ -- beta-tester.php's own INSERT (~line 185) never sets status,
+# reviewed_at, or reviewed_by, and no admin-review endpoint exists
+# anywhere in this codebase. This is the SAME underlying gap as the
+# phantom:beta_tester_applications.status entry immediately above it
+# (no admin review workflow has been built for this table at all) --
+# not a fabricated tool artifact, a genuine documented gap, flagged for
+# Eric the same way .status already is.
+phantom:beta_tester_applications.reviewed_at
+phantom:beta_tester_applications.reviewed_by

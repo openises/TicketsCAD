@@ -132,6 +132,26 @@ if (!function_exists('sse_publish')) {
                 return false;
             }
             $idsStr = implode(',', $clean);
+        } elseif ($scope === 'entitled' && $scopeIds !== null) {
+            // Phase 149 (2026-08-22) — OPTIONAL org-scoping layered on top of
+            // 'entitled' (plan.md §6): a multi-org install's inbound-call
+            // trunk carries an org_id, and a ringing call must not reach
+            // every other agency's screens on a shared install. Unlike the
+            // group/user/org branch above, an entitled event with NO
+            // scopeIds (every existing 'entitled' caller — incident:new,
+            // etc.) must stay a pure broadcast-to-every-entitled-user, so
+            // this branch is OPT-IN only when the caller actually passes an
+            // org id, never a silent no-op like the group/user/org branch's
+            // "empty is a no-op" rule would produce if reused here.
+            $list = is_array($scopeIds) ? $scopeIds : [$scopeIds];
+            $clean = [];
+            foreach ($list as $v) {
+                $v = (int) $v;
+                if ($v > 0) $clean[] = $v;
+            }
+            if (!empty($clean)) {
+                $idsStr = implode(',', $clean);
+            }
         }
 
         _sse_ensure_schema();
@@ -304,6 +324,23 @@ if (!function_exists('sse_publish')) {
     function sse_publish_for_admin(string $eventType, array $payload, $userId = null): bool
     {
         return sse_publish($eventType, $payload, $userId, 'admin');
+    }
+
+    /**
+     * Phase 149 (2026-08-22) — inbound SIP/PBX calls (plan.md §6).
+     * Structurally identical to sse_publish_for_incident(): no allocates
+     * concept exists for a phone call, so this always uses the 'entitled'
+     * scope (screen.call_queue holders — see api/stream.php's
+     * entPermMap). $orgId is OPTIONAL org-scoping layered on top: a
+     * NULL-org (install-wide) trunk is a pure broadcast to every
+     * entitled user — the common single-agency case pays no extra cost;
+     * a non-NULL org id additionally requires the connecting user's
+     * org_visible_ids() to include it (api/stream.php enforces the read
+     * side; this is the write side).
+     */
+    function sse_publish_for_call(int $callId, string $eventType, array $payload, ?int $orgId = null): bool
+    {
+        return sse_publish($eventType, $payload, null, 'entitled', $orgId);
     }
 
     /**

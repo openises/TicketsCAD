@@ -3,6 +3,135 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [4.2.25] — 2026-08-22
+
+### Added
+
+- **Inbound SIP/PBX call integration for incident intake (Phase 149,
+  closes #104).** When an agency's phone system (a SIP trunk or PBX —
+  FreePBX/Asterisk, 3CX, a hosted SIP provider) receives an inbound call,
+  every qualified, logged-in dispatcher now sees a live, hard-to-miss
+  banner beneath the navbar showing the ringing line — never a modal,
+  never a full-screen takeover. The first one to answer claims it with a
+  single click, which opens a New Incident tab pre-filled with the
+  caller's number and, once claimed, their prior-incident history —
+  without disturbing whatever that dispatcher was already doing. This is
+  coordination and screen-pop, not call control: TicketsCAD never
+  answers, holds, transfers, or bridges the call itself. A separate
+  small adapter process per PBX vendor normalizes native PBX events into
+  one canonical webhook contract and posts it to the new
+  `api/sip-ingest.php`, the same "a small bridge process talks to the
+  vendor, PHP never does" pattern already used for the DMR radio bridge
+  and the Meshtastic bridge; a reference adapter ships at
+  `services/sip-bridge/`.
+  - **Quick reassignment ("Take").** Many SIP/PBX deployments let only
+    one physical extension actually answer a call, so the hardware race
+    can resolve differently from the CAD's software claim. Within a
+    configurable grace window (default 20 seconds) any other qualified
+    dispatcher can instantly correct whose name is on a call with one
+    click and no reason required — a self-correction of an honest,
+    mechanical race, not an override. Past the grace window, reassigning
+    an apparently-still-active claim requires the separate
+    supervisor-gated "Manage Inbound Calls" permission and a typed,
+    audited reason.
+  - **Staleness detection.** If a claiming browser goes quiet (crash,
+    lost network, walked away) while the PBX has not reported the call
+    ended, the card turns amber for every other qualified dispatcher, who
+    can reclaim it with one click — the system never silently reassigns
+    a stale claim on its own.
+  - **Full keyboard control** — arrow keys move the highlighted-call
+    cursor among simultaneous calls, `A` claims, `T` takes/reclaims, and
+    `Esc` locally acknowledges a call without touching the server —
+    matching this project's keyboard-first convention elsewhere.
+  - **Missed calls** move to a collapsible panel instead of vanishing,
+    with one-click callback into the same pre-filled New Incident tab.
+  - **Administration.** Settings → Communications & Integrations →
+    Inbound Calls lets an administrator define one or more trunks (label,
+    optional per-organization scope, wrap-up seconds, reassignment grace
+    window, whether the ringing tone bypasses mute), each with its own
+    bearer token for adapter authentication (shown once, rotatable).
+    Five independently grantable RBAC permissions gate the feature at
+    every layer, from seeing the banner at all through claiming, managing
+    trunks, and viewing a claimed caller's identity/incident/patient
+    history — the live ring notification itself never carries anything
+    beyond what a physical caller-ID display would show.
+  - **Ships fully built and completely inert until configured.** An
+    install with zero trunks defined shows no new UI, runs no new
+    background activity, and its scheduled 15-second sweep is a
+    provable no-op — matching this project's standing "off by default"
+    ship discipline for every prior major feature. Verified directly,
+    not assumed: a dedicated regression test drives the real scheduled
+    sweep, the real list/ingest API endpoints, and the real banner
+    render function against a genuinely empty install and confirms
+    nothing fires, nothing leaks, and nothing renders. Also live-verified
+    end to end — ring through claim, reassignment, heartbeat, staleness,
+    reclaim, PBX-reported end, wrap-up fold, and the resulting incident's
+    full audit trail — against real dedicated throwaway sessions on both
+    training.ticketscad.com and bloomington-auxcomm, with independent
+    database-state verification at every step and all fixtures confirmed
+    cleaned up afterward. Full design and setup guide:
+    `docs/INBOUND-SIP-CALLS.md`. Deploying an adapter for a specific PBX
+    is a separate, per-install infrastructure decision, matching how this
+    project already treats the DMR and Meshtastic bridges.
+
+### Fixed
+
+- **GH#103: Import/Export member CSV exported blank names on plain-column
+  installs, and the import side made it worse.** `inc/import-export.php`'s
+  export read ONLY the legacy `field1`/`field2`/`field4`/`field6` columns
+  for Last Name/First Name/Callsign/Email — on any install where members
+  are actually written through the roster (named columns, not the legacy
+  `field*` ones), every exported row came back with blank names. The
+  mirror bug on import: it wrote CSV data to the legacy column
+  unconditionally, while the roster reads the named columns with no
+  fallback, so an imported member showed up completely nameless despite
+  the import reporting success with the correct row count. Same root
+  cause as GH#95 (`api/reports.php`), in a different file, so that fix
+  never reached it. `export_csv()` now reads
+  `COALESCE(NULLIF(named, ''), legacy)` for these four columns (matching
+  GH#95's approach); `execute_import()` resolves the real write target
+  per install via the new `db_generated_column_map()`
+  (`inc/functions.php`) — writing the legacy column when the named one is
+  a GENERATED mirror of it (unchanged behavior), or the named column
+  directly when it's the real, independently-writable one (the fix). The
+  Import/Export screen's search filter got the same fix. `member.phone`
+  deliberately keeps the old legacy-only behavior — the roster actually
+  reads `phone_cell`, a third column this pair doesn't reach either way,
+  so remapping it would not have fixed anything; documented, not silently
+  claimed as fixed. Audited every other `legacy`-aliased target
+  (facility, in_types, team) and confirmed none of them have this
+  bug shape — their named columns either don't exist on any install
+  checked, or are otherwise not the column the rest of the app reads —
+  so they're deliberately left unchanged.
+
+- **GH#103 follow-up: Teams CSV import failed on a genuinely fresh
+  install.** Caught by CI's fresh-install job on the first push of the fix
+  above — this dev database's live `teams` table has real DEFAULTs on
+  `sub-group`/`by`/`from`/`on`/`ttypes_id`/`leader`/`leader_dpty` (an
+  untracked fix set them directly at some point), but
+  `sql/base_schema.sql`'s own CREATE TABLE never gained one for any of
+  them, so importing a team via CSV always threw MySQL 1364 on any
+  genuinely fresh install — for every row, regardless of which columns
+  the CSV included. `inc/team-write.php`'s real Teams-UI writer already
+  supplies placeholders for these; `execute_import()` now does too, via
+  the same `default`-fill mechanism `in_types.description` already used
+  (relaxed to also apply to non-importable columns) plus the existing
+  `audit_cols` mechanism for `by`/`from`/`on`.
+
+- **Internal: corrected a false "tool bug" diagnosis in
+  `dead_control_audit.php`'s phantom-column check.** While building Phase
+  149, a scan-order/file-count sensitivity was suspected in the phantom-
+  column check. Direct reproduction on an isolated clean checkout
+  disproved it — the tool has no cache and no count-keyed state. The real,
+  already-documented mechanism is the check's table-blind ambiguity:
+  Phase 149's genuinely new `inbound_calls` table has real, written, read
+  `reviewed_at`/`reviewed_by` columns, and once that write/read evidence
+  exists anywhere in the tree, the same column names get credited to
+  every other table that happens to share them — including the unrelated
+  `beta_tester_applications` table. No user-facing behavior changed; the
+  baseline comment was corrected to the accurate explanation and a
+  permanent regression test was added.
+
 ## [4.2.24] — 2026-08-21
 
 ### Security

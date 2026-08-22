@@ -1,0 +1,10 @@
+# TicketsCAD Inbound SIP/PBX Call Bridge (Phase 149)
+#
+# Everything else the bridge uses (socket, http.server, configparser,
+# threading, json, argparse) is Python 3 standard library -- deliberately
+# kept to one real dependency, matching this project's existing
+# stdlib-first preference for bridge processes (see
+# services/meshtastic/bridge.py's own optional-import pattern for the
+# heavier SDKs it needs for ITS protocols; this bridge's two protocols,
+# AMI and generic webhook, need nothing beyond an HTTP client).
+requests>=2.32.5

@@ -1,0 +1,39 @@
+[sip-bridge]
+# Connection mode: ami (Asterisk Manager Interface, FreePBX/plain Asterisk)
+# or webhook (a small built-in HTTP server for hosted SIP-trunk providers)
+mode = ami
+
+# TicketsCAD server
+ticketscad_url = http://localhost/newui
+# Mint this in Settings > Communications & Integrations > Inbound Calls
+# (SIP/PBX) > New Trunk -- shown exactly once, so paste it here right away.
+bearer_token =
+
+# ── AMI mode ──
+ami_host = 127.0.0.1
+ami_port = 5038
+# Create a dedicated manager.conf user for this bridge -- do not reuse an
+# interactive admin account. Minimum permissions: read = call,cdr
+ami_user =
+ami_secret =
+ami_reconnect_seconds = 5
+# Optional: restrict to one dialplan context so this bridge only sees the
+# ONE trunk it's configured for, not every line ringing into this PBX.
+# ami_context = from-pstn-mytrunk
+
+# ── Webhook mode ──
+listen_host = 0.0.0.0
+listen_port = 8085
+# Key into PROVIDER_ADAPTERS in bridge.py. "generic" ships built in; add
+# one function per named hosted provider you actually deploy against.
+provider = generic
+# Optional: verify an X-Webhook-Secret header the provider sends, if it
+# supports one. Leave blank if your provider has no such mechanism (most
+# hosted providers instead offer IP allowlisting at the network layer).
+webhook_shared_secret =
+
+# ── Behavior ──
+log_level = INFO
+log_file =
+health_port = 8086
+http_timeout_seconds = 5

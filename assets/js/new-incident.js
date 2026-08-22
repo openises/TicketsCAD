@@ -1182,6 +1182,11 @@
                 // than at keypress time means an abandoned form leaves the
                 // check-in still waiting to be called on.
                 if (window.NetPrefill) window.NetPrefill.markWorked(result.ticket_id);
+                // Phase 149 — the incident now EXISTS, so the inbound call
+                // that started it (via ?call_id=N) is genuinely linked. An
+                // abandoned tab (closed without saving) leaves the call
+                // correctly recorded as still needing follow-up (FR-22).
+                if (window.CallPrefill) window.CallPrefill.markHandled(result.ticket_id);
 
                 showAlert(
                     '<strong>Incident ' + (result.incident_number || ('#' + result.ticket_id)) + ' created successfully!</strong>' +

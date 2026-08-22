@@ -38,6 +38,12 @@ var EventBus = (function () {
         // publishes it — see inc/org-relationships.php's
         // _org_relationship_notify_lifecycle() / api/stream.php's own 'org' scope.
         'org_relationship:activated', 'org_relationship:deactivated',
+        // Phase 149 (2026-08-22) — inbound SIP/PBX calls. An event type
+        // absent from this array is invisible to EVERY consumer no matter
+        // how correctly the backend publishes it — see inc/sse.php's
+        // sse_publish_for_call() / api/stream.php's own 'entitled' scope.
+        'call:ringing', 'call:claimed', 'call:released', 'call:stale',
+        'call:wrapup', 'call:ended', 'call:abandoned',
         'responder:status', 'responder:assign',
         'facility:update',
         'chat:message',

@@ -107,6 +107,38 @@ var AudioAlerts = (function () {
             gap: 40,
             type: 'square'
         },
+        // Phase 149 (2026-08-22) — inbound SIP/PBX calls. Distinct from
+        // BOTH broadcast's siren and every other built-in tone, and from a
+        // physical handset's own ring pattern, so a dispatcher can tell
+        // "the phone is ringing" from "someone needs the emergency
+        // broadcast now" by ear alone (plan.md §6). Does not escalate in
+        // volume over time (spec.md FR-7).
+        callRinging: {
+            // A distinctive repeating two-tone "ring-ring... ring-ring"
+            // pattern, evocative of a phone bell without literally copying
+            // any one real handset's pattern.
+            notes: [
+                { hz: 1200, dur: 150 },
+                { hz: 900,  dur: 150 },
+                { hz: 1200, dur: 150 },
+                { hz: 900,  dur: 150 }
+            ],
+            gap: 60,
+            type: 'sine'
+        },
+        // A separate, deliberately LOWER-urgency, non-siren, non-ringing
+        // pattern for a claim that has gone stale (spec.md's "Claiming &
+        // concurrency" section) -- a single slow, low pulse rather than an
+        // alarm, since nobody needs to answer anything right now; a human
+        // just needs to notice something looks wrong.
+        callStale: {
+            notes: [
+                { hz: 500, dur: 220 },
+                { hz: 400, dur: 220 }
+            ],
+            gap: 150,
+            type: 'triangle'
+        },
         broadcast: {
             // HAS broadcast — long urgent siren, very attention-grabbing
             notes: [
@@ -515,6 +547,22 @@ var AudioAlerts = (function () {
                 }
             }
             return copy;
+        },
+        /**
+         * Phase 149 (2026-08-22) — play a named tone RESPECTING the
+         * user's mute/enabled preference (unlike api.playTone below,
+         * which is deliberately a force-play used for settings' test
+         * buttons). Reuses the same internal playTone() every ordinary
+         * EventBus-driven alert in this file already goes through, so it
+         * honors prefs.enabled/prefs.muted exactly like
+         * newIncident/chatMessage/etc. do. Used by assets/js/call-alert.js
+         * for a trunk whose mute_bypass_enabled is OFF (spec.md FR-6) --
+         * message:broadcast's own unconditional bypass is a hardcoded
+         * property of that one event type; a ringing call needs this to
+         * be an install/per-line configurable CHOICE instead.
+         */
+        playIfUnmuted: function (key) {
+            playTone(key);
         },
         /**
          * Play a named tone (for test buttons in settings).

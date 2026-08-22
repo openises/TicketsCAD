@@ -218,6 +218,30 @@ safe and harmless on any install that has never used a standing
 relationship (0 expired-but-open activations = a genuine no-op sweep, same
 as the channel-poll timer above).
 
+The inbound SIP/PBX call sweep (Phase 149, 2026-08-22) is the same shape
+again — `ticketscad-inbound-calls-tick.service` running
+`/usr/bin/php /var/www/newui/tools/inbound_calls_tick.php`, and
+`ticketscad-inbound-calls-tick.timer` pointing `Unit=` at it — every 15
+seconds, matching the claim-heartbeat cadence (a live claim's heartbeat
+lapsing needs to be noticed promptly, not once a minute):
+
+```ini
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=15s
+AccuracySec=5s
+Persistent=true
+Unit=ticketscad-inbound-calls-tick.service
+```
+
+Two independent sweeps run on every tick: folding a `wrapup` call to
+`ended` once `wrapup_seconds` elapses, and flagging a `claimed` call whose
+heartbeat has gone quiet as `stale_since` (never auto-releasing the
+claim — see `docs/INBOUND-SIP-CALLS.md`). Safe to enable unconditionally
+on any install: zero configured trunks means zero rows either sweep ever
+finds, the same genuine no-op-sweep shape as `channel-receive-tick` and
+`org-relationship-cleanup` above.
+
 #### If you use Web Push, SMS, e-mail, Slack or webhooks: run that one every 15 seconds
 
 Since 2026-07-31 the pending-message sweep also **sends the outbound
@@ -265,6 +289,9 @@ sudo systemctl enable --now ticketscad-message-log-purge.timer
 # a genuine no-op sweep on any install that has never used a standing
 # cross-org relationship:
 sudo systemctl enable --now ticketscad-org-relationship-cleanup.timer
+# Safe to enable unconditionally, same reasoning -- a genuine no-op sweep
+# on any install with zero configured inbound-call trunks:
+sudo systemctl enable --now ticketscad-inbound-calls-tick.timer
 sudo systemctl list-timers --all | grep ticketscad
 sudo journalctl -u ticketscad-par-tick.service -n 20 --no-pager
 

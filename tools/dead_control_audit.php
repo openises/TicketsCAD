@@ -249,6 +249,49 @@
  *         tool is: read the sites, confirm by grep/git history/git log,
  *         then either fix it (the write path really is missing) or
  *         document it in the baseline with a reason.
+ *
+ *         CONFIRMED REAL INSTANCE (2026-08-22, Phase 149 inbound SIP/PBX
+ *         calls): a reporting agent believed this check had a "file-count
+ *         sensitivity" BUG — adding one content-empty file anywhere under
+ *         api/ or inc/ appeared to newly flag
+ *         beta_tester_applications.reviewed_at/.reviewed_by as phantom.
+ *         Investigated end to end (isolated clean-main worktree, A/B
+ *         tested file-by-file): NO caching, count-keyed state, or
+ *         batching exists anywhere in this tool (confirmed by grep — no
+ *         file_put_contents()/fopen(...'w'...)/cache: anywhere in this
+ *         file), and an empty probe file changes NOTHING in a genuinely
+ *         isolated repro. The real trigger is this exact, already-
+ *         documented table-blind ambiguity: Phase 149 introduces a NEW,
+ *         unrelated table (`inbound_calls`) with its OWN genuinely
+ *         written-and-read `reviewed_at`/`reviewed_by` columns
+ *         (inc/inbound-calls.php:691 `UPDATE ... SET reviewed_at = NOW(),
+ *         reviewed_by = ?`; api/inbound-calls.php:123-124
+ *         `$row['reviewed_at']`/`$row['reviewed_by']`). The moment that
+ *         bareRead evidence for the LITERAL column names exists anywhere
+ *         in the tree, this check's table-blind secondary candidate loop
+ *         credits the same names to every OTHER SQL-touched table that
+ *         also happens to have same-named columns — including the
+ *         completely unrelated `beta_tester_applications` table, whose
+ *         own `reviewed_at`/`reviewed_by` columns (created for an admin-
+ *         review workflow that was never actually built — see the
+ *         already-baselined `phantom:beta_tester_applications.status`
+ *         entry immediately below, the SAME underlying gap) have no
+ *         application-level write path of their own. Two natural
+ *         tightenings (require same-FILE co-occurrence of the table's SQL
+ *         and the bareRead; suppress a column name that has ANY write on
+ *         a different table) were prototyped and REJECTED after measuring
+ *         against this project's real ~273-finding baseline: they lost
+ *         55/160 and 109/160 real secondary findings respectively,
+ *         INCLUDING beta_tester_applications.status itself in both cases
+ *         — trading a rare, correctly-triageable false positive for
+ *         silently blinding the tool to the exact phantom-read class it
+ *         exists to catch. No safe general fix exists short of the "much
+ *         larger undertaking" (real call-graph/type tracing) check (d)'s
+ *         own docblock already declines to attempt for its analogous
+ *         ambiguity. Left AS-IS; resolved per this bullet's own
+ *         prescription — investigated, confirmed genuinely no write path,
+ *         documented in the baseline (see
+ *         tools/dead_control_phantom_baseline.txt).
  *       - This check does NOT conclude "drop the column" on its own —
  *         a column with a real reader and no writer almost always means
  *         the WRITE side is the bug (restore/fix it), not the read side.

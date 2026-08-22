@@ -327,6 +327,82 @@ dca_true(strpos($accout, 'phantom:ticket.description') === false,
     'ticket.description is not credited as read just because it shares a name with an alias target', $accout);
 
 // ═══════════════════════════════════════════════════════════════════════
+// (c) Phantom-column check — result independence from an UNRELATED
+// file's presence (2026-08-22, Phase 149 investigation). A reporting
+// agent believed adding one content-empty file anywhere under api/ or
+// inc/ changed the phantom verdict for a COMPLETELY UNRELATED
+// table/column (beta_tester_applications.reviewed_at/.reviewed_by),
+// implying a caching/scan-order bug in the tool itself. Investigated end
+// to end and DISPROVEN by direct reproduction on an isolated, genuinely
+// clean checkout — see tools/dead_control_phantom_baseline.txt's
+// corrected 2026-08-22 comment for the full story and the REAL root
+// cause (an already-documented, table-blind bareRead ambiguity the
+// original "controlled" repro never actually isolated — the reporting
+// agent's own test environment already had this phase's real
+// api/inbound-calls.php / inc/inbound-calls.php present, which is what
+// actually produced the finding). This is the permanent regression guard
+// for the claim that WAS testable: a genuinely unrelated file — one that
+// introduces no new bareRead evidence relevant to the candidate table —
+// must never change another table's phantom verdict, its count, or the
+// overall finding total.
+// ═══════════════════════════════════════════════════════════════════════
+$fileCountBase = $tmp . '/phantom_filecount_base';
+@mkdir($fileCountBase . '/api', 0777, true);
+@mkdir($fileCountBase . '/inc', 0777, true);
+file_put_contents($fileCountBase . '/api/probe.php', <<<'PHP'
+<?php
+$rows = db_fetch_all("SELECT `description` FROM `ticket` WHERE `id` = ?", [1]);
+PHP);
+$summaryRe = '/(\d+) distinct finding\(s\)/';
+
+[$fcbCode, $fcbOut] = dca_run($tool, ['--phantom-only', '--path=' . $fileCountBase]);
+dca_true($fcbCode === 1, 'baseline fixture: ticket.description flagged phantom before any unrelated file is added',
+    "exit $fcbCode; $fcbOut");
+dca_true(strpos($fcbOut, 'phantom:ticket.description') !== false,
+    'baseline fixture names ticket.description', $fcbOut);
+preg_match($summaryRe, $fcbOut, $m1);
+
+// Add the EXACT unrelated-file shape originally reported: one
+// content-empty `<?php` file under api/, zero references to `ticket`,
+// `description`, or anything else this fixture cares about.
+file_put_contents($fileCountBase . '/api/_unrelated_empty_probe.php', '<?php');
+[$fcbCode2, $fcbOut2] = dca_run($tool, ['--phantom-only', '--path=' . $fileCountBase]);
+dca_true($fcbCode2 === 1, 'adding one unrelated content-empty file does not clear the real finding',
+    "exit $fcbCode2; $fcbOut2");
+dca_true(strpos($fcbOut2, 'phantom:ticket.description') !== false,
+    'ticket.description is still flagged after the unrelated empty file is added', $fcbOut2);
+preg_match($summaryRe, $fcbOut2, $m2);
+dca_true(
+    isset($m1[1], $m2[1]) && $m1[1] === $m2[1],
+    'the total finding COUNT is identical before/after the unrelated empty file is added',
+    'before: ' . ($m1[1] ?? '?') . ', after: ' . ($m2[1] ?? '?')
+);
+
+// Add a SECOND unrelated file — non-empty this time, with real (but
+// unrelated) queries against a DIFFERENT real table/column — to rule out
+// any dependency on file COUNT specifically, not just a single-empty-
+// file edge case. member.email is both read and written here so it does
+// not introduce a finding of its own.
+file_put_contents($fileCountBase . '/inc/_unrelated_probe2.php', <<<'PHP'
+<?php
+// Unrelated feature: reads and writes a different real column on a
+// different real table; must not affect ticket.description at all.
+$rows = db_fetch_all("SELECT `email` FROM `member` WHERE `id` = ?", [1]);
+db_query("UPDATE `member` SET `email` = ? WHERE `id` = ?", [$x, $id]);
+PHP);
+[$fcbCode3, $fcbOut3] = dca_run($tool, ['--phantom-only', '--path=' . $fileCountBase]);
+dca_true($fcbCode3 === 1, 'adding a second, non-empty unrelated file still does not clear the real finding',
+    "exit $fcbCode3; $fcbOut3");
+dca_true(strpos($fcbOut3, 'phantom:ticket.description') !== false,
+    'ticket.description is still flagged after a second, non-empty unrelated file is added', $fcbOut3);
+preg_match($summaryRe, $fcbOut3, $m3);
+dca_true(
+    isset($m1[1], $m3[1]) && $m1[1] === $m3[1],
+    'the total finding count is STILL identical after a second, non-empty unrelated file',
+    'before: ' . ($m1[1] ?? '?') . ', after 2 unrelated files: ' . ($m3[1] ?? '?')
+);
+
+// ═══════════════════════════════════════════════════════════════════════
 // (d) Dead API response key check — pure source-text scanning, no live
 // DB dependency (unlike (b)/(c) above).
 // ═══════════════════════════════════════════════════════════════════════

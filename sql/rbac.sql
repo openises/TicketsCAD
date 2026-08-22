@@ -302,6 +302,40 @@ INSERT IGNORE INTO `permissions` (`code`, `name`, `category`, `description`) VAL
     ('field.view_notes',       'View Notes',           'field', 'See incident narrative/notes'),
     ('field.view_medical',     'View Medical Info',    'field', 'See member medical information');
 
+-- Phase 149 (2026-08-22) — inbound SIP/PBX call integration. FIVE
+-- permissions, deliberately NOT a reuse of `screen.constituents` (gates
+-- only the standalone Constituents page) or `action.manage_members`
+-- (gates only writes) -- neither means what this feature's checks need
+-- (plan.md §5). Category 'call_queue' (not 'screen'/'action'/'field')
+-- deliberately sidesteps Operator's `category IN ('screen','widget',
+-- 'field')` broad grant below and Read-Only's `category IN ('screen',
+-- 'widget')` broad grant -- the SAME bespoke-category technique Phase 145
+-- used for screen.facility_portal/action.facility_self_report, because
+-- the per-role grant matrix here is NOT uniform across categories: e.g.
+-- Operator holds field.caller_history but NOT field.patient_history, so a
+-- literal 'field' category would hand Operator both. Every one of these
+-- five is seeded via an ORDINARY, POSITIVE role-inclusive grant (a named
+-- INSERT ... SELECT ... WHERE code IN (...) per role, below), never via
+-- the `WHERE code NOT IN (...)` broad-exclusion mechanism this file also
+-- uses elsewhere -- that mechanism is exactly what produced this
+-- project's four separate documented privilege-leak incidents (direct
+-- grant predating an exclusion, canonical-alias leak, cross-file drift, a
+-- dedicated migration re-granting an excluded code); none of it applies
+-- here since every code below is a subtraction from nothing, not from
+-- "all of them". The ONE exception is action.manage_calls, which IS
+-- added to Dispatcher's existing broad NOT-IN exclusion list further
+-- down (Dispatcher's grant in THIS file is itself a broad exclusion, so
+-- withholding one code from it uses that file's own existing mechanism)
+-- -- see that list's own comment for why no repair-DELETE is needed
+-- (this is a brand-new code, so no prior grant can predate its
+-- exclusion).
+INSERT IGNORE INTO `permissions` (`code`, `name`, `category`, `description`) VALUES
+    ('screen.call_queue',      'Inbound Call Queue',            'call_queue', 'See the live ringing/claimed inbound-call banner and queue'),
+    ('action.claim_call',      'Claim / Release Inbound Call',  'call_queue', 'Claim a ringing call, release a claim, quick-reassign a mis-claim within the grace window, or force-reclaim a STALE claim'),
+    ('action.manage_calls',    'Manage Inbound Calls (Admin)',  'call_queue', 'Force-reclaim an ACTIVE (non-stale) claim with a reason; configure SIP/PBX trunks'),
+    ('field.caller_history',   'View Caller History',           'call_queue', "See a claimed call's matched constituent identity and prior-incident summary"),
+    ('field.patient_history',  'View Caller Patient History',   'call_queue', 'See clinical/patient detail nested inside a caller''s prior-incident history');
+
 -- Phase 145 (2026-08-19, GH#90) — facility-account portal. TWO permissions,
 -- deliberately given category 'facility_account' rather than 'screen'/
 -- 'action' — Operator's grant below sweeps `category IN ('screen','widget',
@@ -471,7 +505,7 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
                                        -- This grant has no category restriction, so both new codes
                                        -- must be named here explicitly.
         'action.facility_self_report',
-        'action.manage_matrix'         -- Phase 114c (sql/run_phase114c_comm_routes.php) — audio-
+        'action.manage_matrix',        -- Phase 114c (sql/run_phase114c_comm_routes.php) — audio-
                                        -- matrix patch management is admin-only (roles 1-2, same tier
                                        -- as console.design/action.intercom_unlock just above). Found
                                        -- missing from this list 2026-08-20 while building the
@@ -479,6 +513,28 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
                                        -- Dispatcher (role 3) had already been swept up by this file's
                                        -- broad NOT-IN grant on a prior re-import, exactly the pattern
                                        -- this file's own repair-DELETE history documents.
+        'action.manage_calls'          -- Phase 149 (2026-08-22) — force-reclaiming an ACTIVE
+                                       -- (non-stale) claim, and trunk configuration, are admin-only
+                                       -- (roles 1-2, same tier as action.manage_config); a Dispatcher
+                                       -- still gets screen.call_queue/action.claim_call/
+                                       -- field.caller_history/field.patient_history via the explicit
+                                       -- positive grants above -- only this one code is withheld.
+                                       -- CORRECTION (same day): "brand new code, so no repair-DELETE
+                                       -- needed" turned out to be false even for a code created in
+                                       -- THIS SAME COMMIT -- confirmed live on the dev database that
+                                       -- Dispatcher held the CANONICAL ALIAS (calls.manage) of this
+                                       -- exact code via sql/run_rbac_v2.php's A8 canonicalization step,
+                                       -- because that step can run (re-deriving resource/verb and
+                                       -- mirroring role_permissions) at a moment that does not
+                                       -- coincide with this file's own grant statements having already
+                                       -- reached their final, correctly-excluded state -- e.g. a
+                                       -- tools/install_fresh.php bootstrap pass that re-imports this
+                                       -- file and re-runs the RBAC v2 canonicalization pipeline is not
+                                       -- guaranteed to interleave in the order a single script's own
+                                       -- top-to-bottom statement order would suggest. The safe
+                                       -- assumption going forward: EVERY exclusion-list addition needs
+                                       -- both repair-DELETEs below, even for a permission created in
+                                       -- the same commit as its own exclusion.
     );
 
 -- Repair (2026-08-16, RBAC canonical-alias privilege-leak fix — same two
@@ -501,7 +557,7 @@ DELETE `role_permissions` FROM `role_permissions`
         'action.manage_org_routing', 'action.manage_org_routing_org',
         'action.manage_org_relationships',
         'screen.facility_portal', 'action.facility_self_report',
-        'action.manage_matrix'
+        'action.manage_matrix', 'action.manage_calls'
       );
 
 DELETE rp FROM `role_permissions` rp
@@ -519,7 +575,7 @@ DELETE rp FROM `role_permissions` rp
         'action.manage_org_routing', 'action.manage_org_routing_org',
         'action.manage_org_relationships',
         'screen.facility_portal', 'action.facility_self_report',
-        'action.manage_matrix'
+        'action.manage_matrix', 'action.manage_calls'
       );
 
 -- Operator gets all screens/widgets/fields + key operational actions (45 permissions)
@@ -530,7 +586,15 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
            'action.add_note', 'action.change_unit_status', 'action.self_signup',
            'action.send_chat', 'action.upload_files', 'action.dispatch_unit',
            'action.link_major', 'action.export_data', 'action.update_capacity',
-           'action.set_own_zone'   -- Phase 115 (#64): report own unit's zone
+           'action.set_own_zone',  -- Phase 115 (#64): report own unit's zone
+           -- Phase 149 (2026-08-22) -- Operator can see/claim inbound calls
+           -- and their caller history, but NOT clinical/patient detail
+           -- (field.patient_history is deliberately withheld -- plan.md
+           -- §5's one intentional narrowing relative to every other
+           -- permission in this table, flagged explicitly for Eric rather
+           -- than silently shipped). Category 'call_queue' is not in the
+           -- `screen,widget,field` sweep above, so these need naming here.
+           'screen.call_queue', 'action.claim_call', 'field.caller_history'
        );
 
 -- Read-Only gets view screens + widgets + basic field visibility (31 permissions)

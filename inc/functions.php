@@ -353,3 +353,93 @@ function get_setting($key, $default = null) {
     }
     return isset($cache[$key]) ? $cache[$key] : $default;
 }
+
+/**
+ * GH#103 — generic, table-parameterized version of the GENERATED-column
+ * discovery logic that already existed twice, both hardcoded to the
+ * `member` table: api/members.php's getGeneratedColumnMap() and
+ * inc/member-write.php's _member_write_remap_generated() (the latter is a
+ * standalone copy because the external-API include chain can't reach
+ * api/members.php). Neither of those is touched by this change — they
+ * keep working exactly as before — this is a THIRD, generalized copy for
+ * inc/import-export.php, which needs the same answer for whichever table
+ * a given import/export target points at (member today; potentially
+ * others later).
+ *
+ * Returns a map of generated_column_name => source_column_name for a
+ * table, e.g. ['first_name' => 'field2', 'last_name' => 'field1', ...].
+ * Empty array (not an error) when the table has no generated columns, or
+ * when the schema can't be read at all — every caller's contract is "an
+ * empty map means treat every column as a normal, directly-writable
+ * column," which is the safe default.
+ *
+ * Cached per table for the lifetime of the request.
+ */
+function db_generated_column_map(string $table): array
+{
+    static $cache = [];
+    $key = trim($table, '` ');
+    if (array_key_exists($key, $cache)) {
+        return $cache[$key];
+    }
+    $map = [];
+    try {
+        $cols = db_fetch_all(
+            "SELECT COLUMN_NAME, GENERATION_EXPRESSION
+             FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = ?
+               AND GENERATION_EXPRESSION IS NOT NULL
+               AND GENERATION_EXPRESSION != ''",
+            [$key]
+        );
+        foreach ($cols as $col) {
+            // GENERATION_EXPRESSION is like `field2` — strip backticks.
+            $source = trim($col['GENERATION_EXPRESSION'], '` ');
+            if ($source !== '') {
+                $map[$col['COLUMN_NAME']] = $source;
+            }
+        }
+    } catch (Exception $e) {
+        // Can't read schema — return empty; callers fall back to treating
+        // every column as directly writable, same as api/members.php's
+        // getGeneratedColumnMap() already does.
+    }
+    $cache[$key] = $map;
+    return $map;
+}
+
+/**
+ * GH#103 — the set of column names that actually EXIST on a table, by
+ * name only (no type/nullability detail needed by any caller so far).
+ * "Never assume a column exists" (CLAUDE.md's Defensive Database
+ * Patterns #2) applies to config-declared column names exactly as much
+ * as to hand-written SQL — a config that names a column absent on some
+ * install must not turn that into a query error.
+ *
+ * Cached per table for the lifetime of the request.
+ */
+function db_table_column_set(string $table): array
+{
+    static $cache = [];
+    $key = trim($table, '` ');
+    if (array_key_exists($key, $cache)) {
+        return $cache[$key];
+    }
+    $set = [];
+    try {
+        $cols = db_fetch_all(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
+            [$key]
+        );
+        foreach ($cols as $col) {
+            $set[$col['COLUMN_NAME']] = true;
+        }
+    } catch (Exception $e) {
+        // Can't read schema — return empty; callers must treat this the
+        // same as "column not found" (fail safe, not fail open).
+    }
+    $cache[$key] = $set;
+    return $set;
+}

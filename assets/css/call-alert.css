@@ -1,0 +1,88 @@
+/**
+ * Phase 149 (2026-08-22) — the persistent ringing-call banner
+ * (assets/js/call-alert.js). Loaded globally from inc/navbar.php,
+ * matching assets/css/radio-widget.css's own load pattern.
+ *
+ * Uses Bootstrap CSS variables for theme-awareness (dark/light) rather
+ * than hardcoded colors — matching this project's CSS convention
+ * (project rule: "Support both light and dark themes — use Bootstrap
+ * CSS variables, not hardcoded colors").
+ */
+
+#callAlertBanner {
+    position: sticky;
+    top: 0;
+    z-index: 1040; /* below Bootstrap modals (1055+), above ordinary page content */
+    background: var(--bs-body-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+}
+
+.call-alert-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+}
+
+.call-alert-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.4rem 0.6rem;
+    border-radius: 0.375rem;
+    border: 1px solid var(--bs-border-color);
+    background: var(--bs-tertiary-bg, var(--bs-body-bg));
+    min-width: 16rem;
+}
+
+.call-alert-card-ringing {
+    border-color: var(--bs-danger);
+    animation: call-alert-pulse 1.4s ease-in-out infinite;
+}
+
+.call-alert-card-stale {
+    border-color: var(--bs-warning);
+}
+
+.call-alert-card-highlighted {
+    outline: 2px solid var(--bs-primary);
+    outline-offset: 1px;
+}
+
+@keyframes call-alert-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(var(--bs-danger-rgb), 0.35); }
+    50%      { box-shadow: 0 0 0 0.35rem rgba(var(--bs-danger-rgb), 0); }
+}
+
+.call-alert-card-body {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.call-alert-card-actions {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.call-alert-missed {
+    border-top: 1px solid var(--bs-border-color);
+    padding: 0.25rem 0.75rem 0.5rem;
+}
+
+.call-alert-missed-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    border-bottom: 1px dashed var(--bs-border-color);
+}
+
+.call-alert-missed-row:last-child {
+    border-bottom: none;
+}

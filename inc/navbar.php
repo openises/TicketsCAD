@@ -564,6 +564,13 @@ if (count($_navbar_langs) >= 2):
             setTimeout(function() {
                 loadGlobal('assets/js/audio-alerts.js?v=<?php echo newui_version(); ?>', '_navbar_audio');
             }, 300);
+            // Phase 149 (2026-08-22) — the ringing-call banner needs
+            // EventBus (for call:* events) and AudioAlerts (for the ring
+            // tone) both available, so it loads after both, same pattern
+            // as audio-alerts.js itself needing EventBus first.
+            setTimeout(function() {
+                loadGlobal('assets/js/call-alert.js?v=<?php echo newui_version(); ?>', '_navbar_callalert');
+            }, 350);
             // Phase 29B (2026-06-12) — PAR-overdue check fires through
             // the existing internal-messaging broadcast pattern (see
             // par_broadcast_overdue() in inc/par.php). Hitting the
@@ -937,6 +944,15 @@ include_once __DIR__ . '/https-enforcement-notice.php';
 ?>
 
 <?php
+// Phase 149 (2026-08-22) — the persistent ringing-call banner (spec.md
+// FR-5). Every logged-in user gets the container; call-alert.js's own
+// initial list fetch (api/inbound-calls.php?action=list) 403s/404s
+// harmlessly for anyone who lacks screen.call_queue or on a zero-trunks
+// install, so nothing new appears for the overwhelming majority of users.
+include_once __DIR__ . '/call-banner.php';
+?>
+
+<?php
 // Phase 13 (2026-06-11): pending-database-migrations banner.
 //   For admins only. Fetches /api/migrations-check.php once per page
 //   load; if pending > 0 OR tracking_table is missing, shows a yellow
@@ -1038,6 +1054,10 @@ if (!preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/', $__pttC
 }
 ?>
 <style>:root { --ptt-color: <?php echo $__pttColor; ?>; }</style>
+
+<!-- Phase 149 — the persistent ringing-call banner's styling, loaded
+     globally (same pattern as radio-widget.css just below). -->
+<link rel="stylesheet" href="assets/css/call-alert.css?v=<?php echo file_exists(__DIR__ . '/../assets/css/call-alert.css') ? filemtime(__DIR__ . '/../assets/css/call-alert.css') : newui_version(); ?>">
 
 <!-- Radio Widget — moved from index.php so it's reachable from every
      page (Eric's 2026-06-16 request: widget should survive page

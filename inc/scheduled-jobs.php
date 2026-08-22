@@ -223,6 +223,22 @@ function sched_job_registry(): array {
             'command'    => $win ? 'php tools\\org_relationship_cleanup_tick.php' : 'php tools/org_relationship_cleanup_tick.php',
             'purpose'    => 'Closes out (deactivated_at) activation windows that have already expired by the read-time predicate, for audit-trail hygiene only',
         ],
+        // Phase 149 (2026-08-22) — inbound SIP/PBX calls. 15s, matching
+        // plan.md §4's own claim-heartbeat cadence (the staleness sweep
+        // Milestone 7 adds to this SAME tick reads claim_heartbeat_at on
+        // that same 15s rhythm) -- not daily/5-minute like the retention/
+        // cleanup jobs above, because a call the wrap-up timer should fold
+        // to 'ended', or a claim that has gone stale, are both things a
+        // dispatcher needs to see promptly, not once a day.
+        'inbound_calls_tick' => [
+            'label'      => 'Inbound call wrap-up / staleness sweep',
+            'interval_s' => 15,
+            'grace_mult' => 15,
+            'unit'       => $win ? 'TicketsCAD Background Jobs' : 'ticketscad-inbound-calls-tick.timer',
+            'unit_kind'  => $win ? 'schtasks' : 'systemd',
+            'command'    => $win ? 'php tools\\inbound_calls_tick.php' : 'php tools/inbound_calls_tick.php',
+            'purpose'    => 'Folds wrapped-up calls to ended once wrapup_seconds elapses, and flags claims whose heartbeat has lapsed as stale',
+        ],
     ];
 }
 
@@ -465,6 +481,26 @@ function sched_job_required(string $jobKey): array {
             }
         } catch (Exception $e) {}
         return ['required' => false, 'why' => 'No standing-relationship activation windows have expired'];
+    }
+
+    if ($jobKey === 'inbound_calls_tick') {
+        // Same "shipped default is not usage" discipline as every other
+        // job above -- required only once an admin has actually
+        // configured at least one enabled trunk (spec.md FR-29's "fully
+        // built, off by default" bar). A zero-trunks install never
+        // reports this job critical just because nothing is scheduling it.
+        try {
+            $n = (int) db_fetch_value("SELECT COUNT(*) FROM `{$prefix}pbx_trunks` WHERE `enabled` = 1");
+            if ($n > 0) {
+                return ['required' => true, 'why' => "{$n} inbound-call trunk(s) configured and enabled"];
+            }
+        } catch (Exception $e) {}
+        // Milestone 8 shipped the admin panel, so the pointer below now
+        // names a real menu item (inc/config-sidebar.php); the arrow is
+        // the literal Unicode glyph tests/test_doc_navigation_labels.php
+        // resolves against the sidebar's own registered labels.
+        return ['required' => false, 'why' => 'No inbound-call trunks are configured. '
+            . "Configure one at Settings \u{2192} Communications & Integrations \u{2192} Inbound Calls (SIP/PBX)."];
     }
 
     return ['required' => false, 'why' => 'Unknown job'];

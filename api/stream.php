@@ -118,6 +118,11 @@ if (!$userIsAdmin) {
             'responder:%' => ['screen.units', 'screen.unit_detail', 'responder.view', 'unit.view', 'widget.units',
                               'screen.incidents', 'screen.incident_detail', 'incident.view', 'widget.incidents'],
             'facility:%'  => ['screen.facilities', 'screen.facility_detail', 'facility.view', 'widget.facilities'],
+            // Phase 149 (2026-08-22) — inbound SIP/PBX calls. No allocates
+            // concept exists for a phone call, so 'entitled' is the ONLY
+            // scope call:* events ever use (see inc/sse.php's
+            // sse_publish_for_call()).
+            'call:%'      => ['screen.call_queue'],
         ];
         foreach ($entPermMap as $pfx => $perms) {
             foreach ($perms as $p) {
@@ -168,6 +173,33 @@ if ($userIsAdmin) {
     // (both group-scoped and the 'entitled' no-allocates fallback), exactly
     // as the read path already lets them view the entity itself.
     foreach ($entitledPrefixes as $pfx) {
+        if ($pfx === 'call:%') {
+            // Phase 149 (2026-08-22) — org-scoping layered on top of
+            // 'entitled' (plan.md §6): a NULL visibility_ids row (an
+            // install-wide, NULL-org trunk) matches unconditionally; a
+            // row carrying an org id additionally requires it to be in
+            // THIS session's own org_visible_ids() snapshot — the exact
+            // same $userOrgIds computed above for the 'org' scope block,
+            // reused here rather than re-queried.
+            if ($userOrgIds === null) {
+                // Unrestricted org visibility (global grant / super-admin-
+                // equivalent, per org_visible_ids()'s own contract) — every
+                // entitled call: event reaches this session, org or not.
+                $visibilityClauses[] = "(`visibility_scope` = 'entitled' AND `event_type` LIKE ?)";
+                $visibilityParams[] = $pfx;
+            } else {
+                $orgOrs = ["`visibility_ids` IS NULL"];
+                $orgParams = [];
+                foreach ($userOrgIds as $oid) {
+                    $orgOrs[] = "FIND_IN_SET(?, `visibility_ids`) > 0";
+                    $orgParams[] = (string) $oid;
+                }
+                $visibilityClauses[] = "(`visibility_scope` = 'entitled' AND `event_type` LIKE ? AND (" . implode(' OR ', $orgOrs) . "))";
+                $visibilityParams[] = $pfx;
+                $visibilityParams = array_merge($visibilityParams, $orgParams);
+            }
+            continue;
+        }
         $visibilityClauses[] = "(`visibility_scope` IN ('group','entitled') AND `event_type` LIKE ?)";
         $visibilityParams[] = $pfx;
     }
