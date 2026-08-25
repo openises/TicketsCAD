@@ -33,6 +33,14 @@
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
 
 require_once __DIR__ . '/../config.php';
+// Same class of gap as api/inbound-calls.php (see that file's comment,
+// found live 2026-08-22): without inc/sse.php loaded here,
+// inbound_calls_wrapup_sweep()'s 'call:ended' publish and
+// inbound_calls_staleness_sweep()'s 'call:stale' publish both silently
+// no-op via _p149_sse()'s function_exists('sse_publish_for_call') guard --
+// the DB columns (state, stale_since) updated correctly, but no logged-in
+// dispatcher ever saw a live stale badge or a live end-of-wrapup update.
+require_once __DIR__ . '/../inc/sse.php';
 require_once __DIR__ . '/../inc/inbound-calls.php';
 require_once __DIR__ . '/../inc/scheduled-jobs.php';
 

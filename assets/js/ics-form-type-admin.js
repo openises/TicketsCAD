@@ -285,6 +285,20 @@
         if (!formTitle) { showSaveError('Form title is required.'); return; }
         if (editorFields.length === 0) { showSaveError('At least one field is required.'); return; }
 
+        // GH#107 -- cleanFieldsForSave() used to be inlined directly in the
+        // payload literal below. A throw in there (e.g. from a field shape
+        // the editor never intended to produce) escaped saveType() entirely
+        // -- before postJson()/its .catch() even existed, so no request was
+        // ever sent and nothing on screen changed. Pulled out + wrapped so a
+        // future defect here is visible instead of a dead click.
+        var cleanedFields;
+        try {
+            cleanedFields = cleanFieldsForSave(editorFields);
+        } catch (err) {
+            showSaveError('Could not prepare fields for save: ' + err.message);
+            return;
+        }
+
         var payload = {
             action: editingId > 0 ? 'update' : 'create',
             csrf_token: csrfToken,
@@ -295,7 +309,7 @@
             icon: document.getElementById('ftIcon').value || 'bi-file-earmark-text',
             badge_color: document.getElementById('ftBadgeColor').value || 'secondary',
             restrict_to_permission: (document.getElementById('ftRestrictTo').value || '').trim() || null,
-            fields: cleanFieldsForSave(editorFields)
+            fields: cleanedFields
         };
         if (editingId > 0) payload.id = editingId;
 
@@ -442,7 +456,23 @@
         if (colProp !== null && colIdx !== null) {
             colIdx = parseInt(colIdx, 10);
             if (!Array.isArray(f.columns) || !f.columns[colIdx]) return;
-            f.columns[colIdx][colProp] = readInputValue(el);
+            if (colProp === 'options') {
+                // GH#107 -- must match the plain-select branch below: an
+                // array, not the raw textarea string, or cleanFieldsForSave()
+                // throws on .filter() and the save silently dies before any
+                // request is even sent.
+                f.columns[colIdx].options = (el.value || '').split('\n');
+            } else {
+                f.columns[colIdx][colProp] = readInputValue(el);
+            }
+            if (colProp === 'type') {
+                // GH#107 -- switching a column to/from "select" changes
+                // whether the options textarea should show at all, and
+                // nothing else in this branch re-renders -- without this the
+                // box only appeared once some unrelated action (e.g. Add
+                // Column) happened to trigger the next renderFieldsEditor().
+                renderFieldsEditor();
+            }
             return;
         }
         if (prop === 'options') {

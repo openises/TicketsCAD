@@ -18,6 +18,7 @@ ini_set('display_errors', '0');
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/rbac_grant.php';
+require_once __DIR__ . '/../inc/rbac_admin_only.php';
 require_once __DIR__ . '/../inc/audit.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
@@ -501,6 +502,30 @@ if ($method === 'POST') {
         $permIds = $input['permission_ids'] ?? [];
         if (!is_array($permIds)) json_error('permission_ids must be an array');
 
+        // 2026-08-22 (admin_only structural fix) — validate the WHOLE
+        // requested set BEFORE touching the database. This is the live,
+        // human-driven grant path (the Roles & Permissions UI); refusing
+        // the whole request and naming exactly which codes are disallowed
+        // is far more useful than silently dropping the bad ones and
+        // saving the rest, and it means a rejected request changes
+        // nothing (no partial DELETE-then-partial-INSERT).
+        $rejected = [];
+        foreach ($permIds as $pid) {
+            $pid = intval($pid);
+            if ($pid <= 0) continue;
+            if (!rbac_grant_permission_allowed($roleId, $pid)) {
+                $code = db_fetch_value("SELECT code FROM " . db_table('permissions') . " WHERE id = ?", [$pid]);
+                $rejected[] = $code ?: "#{$pid}";
+            }
+        }
+        if ($rejected) {
+            json_error(
+                'Refusing to save: ' . implode(', ', $rejected)
+                . ' — reserved for a more senior admin tier and cannot be granted to this role. No changes were made.',
+                403
+            );
+        }
+
         try {
             // Clear existing
             db_query("DELETE FROM " . db_table('role_permissions') . " WHERE role_id = ?", [$roleId]);
@@ -546,6 +571,15 @@ if ($method === 'POST') {
             if ((int) $role['is_super'] === 1) json_error('cannot edit Super Admin grants', 403);
             $perm = db_fetch_one("SELECT code, name FROM `{$prefix}permissions` WHERE id = ?", [$permId]);
             if (!$perm) json_error('permission not found', 404);
+            // 2026-08-22 (admin_only structural fix) — only the GRANT
+            // direction needs the check; revoking never escalates anyone.
+            if ($grant && !rbac_grant_permission_allowed($roleId, $permId)) {
+                json_error(
+                    "Refusing to grant '{$perm['code']}' to role '{$role['name']}': "
+                    . 'reserved for a more senior admin tier.',
+                    403
+                );
+            }
             if ($grant) {
                 db_query("INSERT IGNORE INTO `{$prefix}role_permissions` (role_id, permission_id) VALUES (?, ?)",
                     [$roleId, $permId]);

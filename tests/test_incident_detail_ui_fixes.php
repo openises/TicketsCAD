@@ -117,5 +117,33 @@ if (preg_match('/edit-section-btn[\s\S]{0,300}stopPropagation/', $js)) {
     bad('the .edit-section-btn click handler no longer calls stopPropagation()');
 }
 
+// ── 5. GH#106 (rjonesbsink, 2026-08-24) — the PAR-card poll interval's
+// return value was discarded (`setInterval(function () { refreshPAR(...)
+// }, 10000);`), so nothing could ever stop it. A role without
+// action.manage_par gets a 403 on EVERY poll of api/par.php?action=
+// for_ticket forever, for the life of the page, with no way to cancel.
+// Fixed by assigning the handle and clearing it on the first 403. ──────
+if (preg_match('/parPollInterval\s*=\s*setInterval\s*\(\s*function\s*\(\s*\)\s*\{\s*refreshPAR\(ticketId\)\s*;\s*\}\s*,\s*10000\s*\)\s*;/', $js)) {
+    ok('the PAR poll setInterval() return value is assigned to a variable (parPollInterval), not discarded');
+} else {
+    bad('the PAR poll setInterval() call no longer assigns its handle — GH#106 regression (unstoppable 403 loop)');
+}
+if (preg_match('/setInterval\s*\(\s*function\s*\(\s*\)\s*\{\s*refreshPAR\(ticketId\)\s*;\s*\}\s*,\s*10000\s*\)\s*;(?!\s*\/\/)/', $js)
+    && !preg_match('/parPollInterval\s*=\s*setInterval\s*\(\s*function\s*\(\s*\)\s*\{\s*refreshPAR\(ticketId\)\s*;\s*\}\s*,\s*10000\s*\)\s*;/', $js)) {
+    bad('found a bare, unassigned refreshPAR setInterval() — the exact GH#106 shape');
+} else {
+    ok('no bare/unassigned refreshPAR setInterval() call remains');
+}
+if (preg_match('/r\.status\s*===\s*403[\s\S]{0,200}clearInterval\(parPollInterval\)/', $js)) {
+    ok('refreshPAR() clears parPollInterval specifically on a 403 response — polling stops permanently rather than retrying forever');
+} else {
+    bad('refreshPAR() does not clear parPollInterval on a 403 — GH#106 not actually fixed');
+}
+if (preg_match('/function refreshPAR\(tid\)\s*\{[\s\S]{0,300}\.then\(function\s*\(\s*r\s*\)\s*\{[\s\S]{0,600}r\.status\s*===\s*403/', $js)) {
+    ok('refreshPAR() inspects the raw Response (checks r.status) before parsing JSON, rather than blindly calling r.json()');
+} else {
+    bad('refreshPAR() does not appear to inspect the response status before parsing — cannot distinguish 403 from success');
+}
+
 echo "\n=== $pass passed, $fail failed ===\n";
 exit($fail > 0 ? 1 : 0);

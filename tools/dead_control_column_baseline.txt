@@ -49,10 +49,6 @@ column:audit_log_purges.archive_filename
 column:audit_log_purges.archive_sha256
 column:audit_log_purges.cutoff_date
 column:audit_log_purges.rows_purged
-column:beta_tester_applications.agreed_v
-column:beta_tester_applications.expected_user_count
-column:beta_tester_applications.submitted_ip
-column:beta_tester_applications.submitted_ua
 column:bridge_tokens.last_used_at
 column:console_view_strips.view_id
 column:console_views.owner_user_id

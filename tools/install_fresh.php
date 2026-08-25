@@ -816,13 +816,38 @@ step('cache/web.config present',
 // and (until 2026-05-20) leaked a PHP Warning into the login HTML
 // that broke the page's flex centering. Generating here moves the
 // keygen to a context where the operator can SEE the failure.
+//
+// FIX (found 2026-08-25 running tools/release-snapshot.sh's staged-
+// tree test pass against a brand-new checkout — not reported by any
+// user): this section used to compute its own $keysDir as
+// realpath(__DIR__ . '/../../keys') -- a sibling of the app root on
+// EVERY platform. That is exactly the assumption inc/field-encrypt.php's
+// own header documents as wrong on Windows (GHSA-3jmh-c6f6-64jc) and
+// fixed there via FE_KEYS_DIR/fe_keys_dir_for(), which resolves to
+// %ProgramData%\TicketsCAD\keys on Windows instead. This file was never
+// updated when that fix landed: check() looked in the stale sibling
+// location while apply()'s fe_ensure_keys() correctly wrote to
+// FE_KEYS_DIR -- two different directories on Windows, so check()
+// could never see what apply() had just created, and this step
+// "applied" (regenerating a fresh keypair) on every single run,
+// forever. A brand-new checkout exposes it on the very first re-run;
+// a long-lived dev install masked it because a leftover keys/
+// directory from before the Windows fix happened to already sit at
+// the stale sibling path this check was still reading.
+//
+// Now uses the SAME constants the running application uses to find
+// its own keys, so this check can never disagree with reality again.
+// fe_ensure_keys() already creates FE_KEYS_DIR itself if missing, so
+// the separate "keys/ directory exists" step this section used to
+// have is redundant with it and has been folded in rather than kept
+// as a second source of truth for the same directory.
 // ─────────────────────────────────────────────────────────────────────
-// keys/ lives ONE LEVEL ABOVE the webroot intentionally — the RSA
-// private key must NOT be HTTP-reachable even if Apache config or
-// .htaccess fails. This means the user running install_fresh.php
-// needs write access to the project root's PARENT directory. On a
-// typical /var/www/newui install that's /var/www/ which www-data
-// doesn't own by default. The op fix is to either:
+// keys/ lives ONE LEVEL ABOVE the webroot on POSIX, and at a dedicated
+// %ProgramData% location on Windows -- in both cases specifically so
+// the RSA private key is not HTTP-reachable even if the web server
+// config or .htaccess fails. This means the user running
+// install_fresh.php needs write access to that directory (or its
+// parent, to create it). The op fix is to either:
 //
 //   - mkdir + chown the keys/ dir before running install_fresh.php
 //     (one-time prep, see INSTALLATION-CHECKLIST.md Section 6), OR
@@ -833,36 +858,23 @@ step('cache/web.config present',
 // Treat this as a NOTICE rather than a fail. The rest of the app
 // works fine without these keys; only the optional non-HTTPS
 // field-encryption feature degrades.
-$keysDir = realpath(__DIR__ . '/../../keys') ?: (__DIR__ . '/../../keys');
-$keysDirParent = dirname($keysDir);
-$keysWritable = is_dir($keysDir) || is_writable($keysDirParent);
+require_once __DIR__ . '/../inc/field-encrypt.php';
+$keysDirParent = dirname(FE_KEYS_DIR);
+$keysWritable = is_dir(FE_KEYS_DIR) || is_writable($keysDirParent);
 
 if (!$keysWritable) {
-    echo "  [notice] keys/ directory at {$keysDir} not creatable by this user.\n";
+    echo "  [notice] keys/ directory at " . FE_KEYS_DIR . " not creatable by this user.\n";
     echo "           This is OK for HTTPS deployments (TLS replaces field-encryption).\n";
     echo "           For non-HTTPS deployments, run as a user with write access to "
         . escapeshellarg($keysDirParent) . ":\n";
-    echo "             sudo mkdir -p " . escapeshellarg($keysDir) . "\n";
-    echo "             sudo chown www-data:www-data " . escapeshellarg($keysDir) . "\n";
-    echo "             sudo chmod 770 " . escapeshellarg($keysDir) . "\n";
+    echo "             sudo mkdir -p " . escapeshellarg(FE_KEYS_DIR) . "\n";
+    echo "             sudo chown www-data:www-data " . escapeshellarg(FE_KEYS_DIR) . "\n";
+    echo "             sudo chmod 770 " . escapeshellarg(FE_KEYS_DIR) . "\n";
     echo "           Then re-run install_fresh.php to populate keys/private.pem + public.pem.\n";
 } else {
-    step('keys/ directory exists',
-        fn() => is_dir($keysDir),
-        function () use ($keysDir) {
-            if (!@mkdir($keysDir, 0770, true) && !is_dir($keysDir)) {
-                throw new Exception("Could not create keys directory at {$keysDir}");
-            }
-            @chmod($keysDir, 0770);
-        });
-
     step('keys/private.pem + keys/public.pem exist',
-        function () use ($keysDir) {
-            return file_exists($keysDir . '/private.pem')
-                && file_exists($keysDir . '/public.pem');
-        },
+        fn() => file_exists(FE_PRIVATE_KEY) && file_exists(FE_PUBLIC_KEY),
         function () {
-            require_once __DIR__ . '/../inc/field-encrypt.php';
             if (!function_exists('fe_ensure_keys')) {
                 throw new Exception('fe_ensure_keys() not available — check inc/field-encrypt.php');
             }

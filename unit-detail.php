@@ -103,7 +103,7 @@ $csrf     = csrf_token();
                 if (btn && rid) btn.href = 'unit-history.php?responder_id=' + rid;
             })();
             </script>
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.print()">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setTimeout(function(){ window.print(); }, 0)">
                 <i class="bi bi-printer me-1"></i><?php echo e(t('roster.btn.print', 'Print')); ?>
             </button>
             <div class="btn-group btn-group-sm" role="group">

@@ -48,11 +48,42 @@ try {
         `name`        VARCHAR(128) NOT NULL,
         `category`    VARCHAR(32)  NOT NULL,
         `description` VARCHAR(255) DEFAULT NULL,
+        `admin_only`  TINYINT UNSIGNED NOT NULL DEFAULT 0
+            COMMENT '0=unrestricted, 1=Org Admin or above, 2=Super Admin only. See inc/rbac_admin_only.php.',
         KEY `idx_category` (`category`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     echo "[OK] permissions table ready\n";
 } catch (Exception $e) {
     echo "[WARN] permissions: " . $e->getMessage() . "\n";
+}
+
+// 2b. permissions.admin_only column (existing installs whose `permissions`
+// table predates this fix — the CREATE TABLE above is a no-op once the
+// table already exists, so this ALTER is the only path that reaches them).
+//
+// This is the structural fix for a bug class this project has hit FIVE
+// times (see CLAUDE.md's "RBAC EXCLUSION-LIST MECHANISM LEAKS" entries):
+// "admin-only" used to exist ONLY as a hand-maintained `WHERE code NOT IN
+// (...)` string list below, which a new canonical alias (sql/run_rbac_v2.php
+// A8), a new migration, or a forgotten exclusion-list edit could all bypass
+// invisibly. See inc/rbac_admin_only.php for the full model and the guard
+// functions every grant-writing code path now consults.
+try {
+    $hasAdminOnly = (bool) db_fetch_value(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'admin_only'",
+        [$prefix . 'permissions']
+    );
+    if (!$hasAdminOnly) {
+        db_query("ALTER TABLE `{$prefix}permissions`
+                  ADD COLUMN `admin_only` TINYINT UNSIGNED NOT NULL DEFAULT 0
+                  COMMENT '0=unrestricted, 1=Org Admin or above, 2=Super Admin only. See inc/rbac_admin_only.php.'");
+        echo "[OK] permissions.admin_only column added\n";
+    } else {
+        echo "[OK] permissions.admin_only column already present\n";
+    }
+} catch (Exception $e) {
+    echo "[WARN] permissions.admin_only column: " . $e->getMessage() . "\n";
 }
 
 // 3. Create role_permissions table
@@ -384,6 +415,68 @@ foreach ($perms as $p) {
 }
 echo "[OK] $pInserted permissions seeded\n";
 
+// 6b. Classify admin_only tiers.
+//
+// Cross-referenced against sql/rbac.sql's CURRENT Org Admin and Dispatcher
+// `WHERE code NOT IN (...)` exclusion lists (the authoritative source of
+// "what's admin-only today") and verified against this dev database's own
+// live role_permissions state before writing this. MUST stay in sync with
+// the matching block in sql/rbac.sql — same convention this file already
+// follows for the exclusion lists themselves (see the Org Admin grant's
+// own comment a few lines down).
+//
+// Tier 2 (Super Admin ONLY — excluded from BOTH Org Admin's and
+// Dispatcher's broad grants): granting any of these to a lesser role is a
+// full defeat of the Org-Admin/Super-Admin boundary (action.manage_config
+// and action.manage_roles are the textbook case — either one alone makes
+// is_admin() true for every holder).
+//
+// Tier 1 (Org Admin or above — excluded from Dispatcher's broad grant
+// ONLY; Org Admin legitimately holds these by design): this is exactly
+// the Phase 149 incident's tier — action.manage_calls's canonical alias
+// leaked onto Dispatcher, which never should have held it, while Org
+// Admin's own hold of it was always correct and must not be disturbed.
+//
+// Permissions reserved for a specific bespoke role (screen.facility_portal
+// / action.facility_self_report — Facility role only, hundreds of live
+// non-super Facility rows hold these) are DELIBERATELY left at tier 0 —
+// see inc/rbac_admin_only.php's docblock for why a tier restriction would
+// be wrong for these two.
+try {
+    db_query("UPDATE `{$prefix}permissions` SET admin_only = 2 WHERE code IN (
+        'action.manage_config', 'action.manage_roles', 'action.bulk_delete_members',
+        'action.manage_audit_retention', 'action.manage_dispositions',
+        'action.manage_public_board', 'action.manage_ics_form_types',
+        'action.manage_org_routing', 'action.manage_org_routing_org',
+        'action.manage_org_relationships'
+    )");
+    db_query("UPDATE `{$prefix}permissions` SET admin_only = 1 WHERE code IN (
+        'action.manage_users', 'action.delete_incident', 'action.import_data',
+        'console.design', 'action.intercom_unlock', 'action.view_reports',
+        'action.delete_ics_form', 'action.delete_equipment_log',
+        'action.manage_public_board_org', 'action.manage_ics_form_types_org',
+        'action.manage_matrix', 'action.manage_calls'
+    )");
+    // Propagate onto each code's canonical alias partner in BOTH
+    // directions (sql/run_rbac_v2.php's A8 step may already have created
+    // the canonical <resource>.<verb> row on an install that's run RBAC v2
+    // migrations before today) so a lookup by EITHER name agrees — this is
+    // the actual data-level fix for the Phase 149 mechanism, not just the
+    // runtime symmetric lookup inc/rbac_admin_only.php also does as a
+    // second line of defense.
+    db_query("UPDATE `{$prefix}permissions` canon
+                JOIN `{$prefix}permissions` old_p ON old_p.deprecated_alias_of = canon.code
+                 SET canon.admin_only = old_p.admin_only
+              WHERE old_p.admin_only > canon.admin_only");
+    db_query("UPDATE `{$prefix}permissions` old_p
+                JOIN `{$prefix}permissions` canon ON canon.code = old_p.deprecated_alias_of
+                 SET old_p.admin_only = canon.admin_only
+              WHERE canon.admin_only > old_p.admin_only");
+    echo "[OK] admin_only tiers classified (+ propagated across canonical aliases)\n";
+} catch (Exception $e) {
+    echo "[WARN] admin_only classification: " . $e->getMessage() . "\n";
+}
+
 // 7. Map roles → permissions
 // Super Admin gets everything
 try {
@@ -403,6 +496,13 @@ try {
 // already seeded all permission rows) it silently re-granted the withheld
 // codes to Org Admin. run_bulk_delete_member_perm.php heals the
 // bulk-delete grant on affected installs.
+// 2026-08-22 (admin_only structural fix): `AND admin_only <= 1` is added
+// alongside the exclusion list, not instead of it — Org Admin's own tier
+// is 1 (org_admin_or_above), so this structurally excludes any tier-2
+// (Super Admin only) permission even if a FUTURE tier-2 code is added to
+// `permissions` without also being added to the NOT IN list above. The
+// exclusion list stays for documentation/history and as a secondary check
+// (tools/rbac_exclusion_leak_audit.php cross-references both).
 try {
     db_query("INSERT IGNORE INTO `{$prefix}role_permissions` (`role_id`, `permission_id`)
               SELECT 2, `id` FROM `{$prefix}permissions`
@@ -411,7 +511,8 @@ try {
                                     'action.manage_public_board', 'action.manage_ics_form_types',
                                     'action.manage_org_routing', 'action.manage_org_routing_org',
                                     'screen.facility_portal', 'action.facility_self_report',
-                                    'action.manage_org_relationships')");
+                                    'action.manage_org_relationships')
+                AND `admin_only` <= 1");
     echo "[OK] Org Admin permissions mapped\n";
 } catch (Exception $e) {}
 
@@ -462,10 +563,17 @@ try {
 // sql/rbac.sql's broad NOT-IN exclusion) a code absent from this list is
 // withheld regardless of what the exclusion list in rbac.sql does. Both
 // codes belong to Dispatcher by default per plan.md's RBAC section.
+// 2026-08-22 (admin_only structural fix): `AND admin_only = 0` is
+// defense-in-depth here, not a required fix — this is a POSITIVE allow-list
+// that never names an admin-only code, so it was never the leak vector
+// (the leak came from run_rbac_v2.php's A8 mirror, fixed separately). It's
+// added anyway so every INSERT into role_permissions in this file respects
+// the same invariant uniformly, and so a future edit that accidentally
+// added a restricted code here would be caught structurally too.
 try {
     db_query("INSERT IGNORE INTO `{$prefix}role_permissions` (`role_id`, `permission_id`)
               SELECT 3, `id` FROM `{$prefix}permissions`
-              WHERE `category` IN ('screen', 'widget')
+              WHERE (`category` IN ('screen', 'widget')
                  OR `code` IN ('action.create_incident', 'action.edit_incident', 'action.close_incident',
                                'action.assign_unit', 'action.add_note', 'action.set_own_zone',
                                'action.net_checkin', 'action.share_incident', 'action.revoke_incident_share',
@@ -473,7 +581,8 @@ try {
                                -- Phase 149 (2026-08-22): action.manage_calls deliberately absent --
                                -- withheld from Dispatcher (plan.md §5).
                                'screen.call_queue', 'action.claim_call',
-                               'field.caller_history', 'field.patient_history')");
+                               'field.caller_history', 'field.patient_history'))
+                AND `admin_only` = 0");
     echo "[OK] Dispatcher permissions mapped\n";
 } catch (Exception $e) {}
 
@@ -510,27 +619,37 @@ try {
 } catch (Exception $e) {}
 
 // Operator gets view + notes
+// 2026-08-22 (admin_only structural fix): `AND admin_only = 0` — see the
+// Dispatcher grant's comment above; same defense-in-depth reasoning.
 try {
     db_query("INSERT IGNORE INTO `{$prefix}role_permissions` (`role_id`, `permission_id`)
               SELECT 4, `id` FROM `{$prefix}permissions`
-              WHERE `category` IN ('screen', 'widget')
+              WHERE (`category` IN ('screen', 'widget')
                  OR `code` IN ('action.add_note', 'action.set_own_zone',
                                -- Phase 149 (2026-08-22): field.patient_history deliberately
                                -- absent -- the one intentional narrowing in plan.md §5.
-                               'screen.call_queue', 'action.claim_call', 'field.caller_history')");
+                               'screen.call_queue', 'action.claim_call', 'field.caller_history'))
+                AND `admin_only` = 0");
     echo "[OK] Operator permissions mapped\n";
 } catch (Exception $e) {}
 
 // Read-Only gets view screens + widgets (no settings, no new incident)
+// 2026-08-22 (admin_only structural fix): `AND admin_only = 0` — same
+// defense-in-depth reasoning as above.
 try {
     db_query("INSERT IGNORE INTO `{$prefix}role_permissions` (`role_id`, `permission_id`)
               SELECT 5, `id` FROM `{$prefix}permissions`
               WHERE (`category` IN ('screen', 'widget'))
-                AND `code` NOT IN ('screen.settings', 'screen.new_incident')");
+                AND `code` NOT IN ('screen.settings', 'screen.new_incident')
+                AND `admin_only` = 0");
     echo "[OK] Read-Only permissions mapped\n";
 } catch (Exception $e) {}
 
 // Field Unit gets mobile-appropriate permissions
+// 2026-08-22 (admin_only structural fix): `AND admin_only = 0` — same
+// defense-in-depth reasoning as the Dispatcher/Operator/Read-Only grants
+// above. None of this named list is currently restricted; this just makes
+// the invariant uniform across every grant statement in this file.
 try {
     db_query("INSERT IGNORE INTO `{$prefix}role_permissions` (`role_id`, `permission_id`)
               SELECT 6, `id` FROM `{$prefix}permissions`
@@ -541,7 +660,8 @@ try {
                   'action.self_clock_in',
                   'action.send_chat', 'action.upload_files',
                   'field.view_contact', 'field.view_address', 'field.view_notes'
-              )");
+              )
+                AND `admin_only` = 0");
     echo "[OK] Field Unit permissions mapped\n";
 } catch (Exception $e) {}
 
@@ -551,6 +671,11 @@ try {
 // security boundary, and why it is resolved by NAME (never a hardcoded
 // id — roles.id is a plain AUTO_INCREMENT that a custom role may have
 // already claimed by the time this migration runs).
+// Facility's two permissions are deliberately tier 0 (see
+// inc/rbac_admin_only.php's docblock — reserved for a specific bespoke
+// role, not "admin-only" in the sense this fix protects), so no
+// admin_only filter is needed here; the WHERE already names exactly the
+// two codes this role may ever hold.
 try {
     db_query("INSERT IGNORE INTO `{$prefix}role_permissions` (`role_id`, `permission_id`)
               SELECT r.`id`, p.`id`

@@ -22,8 +22,7 @@ $db_prefix = '';               // Table prefix (empty = legacy default)
 // ── Public URL ──────────────────────────────────────────────────
 // MUST match the hostname your TLS cert covers. Used by:
 //   - HTTPS-only cookies + same-site session enforcement (inc/security.php)
-//   - URLs generated for email notifications, OwnTracks links,
-//     beta-tester sign-up callbacks, etc.
+//   - URLs generated for email notifications, OwnTracks links, etc.
 // Production must be HTTPS. Dev/test installs without TLS can use http://.
 $base_url  = 'https://cad.example.org';
 

@@ -321,14 +321,13 @@ phantom:markup_categories.icon
 phantom:markup_categories.name
 phantom:markup_categories.sort_order
 
-# --- MARK: beta_tester_applications.status -- sql/run_beta_tester_
-#     applications.php documents an approve/decline admin lifecycle;
-#     beta-tester.php's own INSERT never sets it (defaults 'new'); no
-#     admin review endpoint exists anywhere in api/ or inc/. Applications
-#     can be submitted but never processed except via raw SQL -- a real,
-#     complete admin workflow is missing (review queue + approve/decline
-#     action), not a quick fix. Flagged for Eric.
-phantom:beta_tester_applications.status
+# --- MARK: beta_tester_applications.status -- RETIRED 2026-08-23. The whole
+#     feature (a public beta-signup form + this never-built admin review
+#     workflow) was removed at Eric's explicit decision -- it had shipped
+#     publicly by mistake and was never intended to be part of the software.
+#     See sql/run_retire_beta_tester_applications.php. The table no longer
+#     exists on any install, so this finding can never recur; entry removed
+#     rather than left stale.
 
 # --- MARK: message_routes.attach_action -- inc/router.php:234-335 has
 #     real, gated behavior keyed on attach_action === 'add_note' (attach
@@ -828,15 +827,55 @@ phantom:dmr_channels.id_interval_seconds
 # positive for silently blinding the tool to the phantom-read class it
 # exists to catch. The detection algorithm is therefore UNCHANGED.
 #
-# What IS real, independently confirmed by reading beta-tester.php
-# directly (not assumed): beta_tester_applications.reviewed_at/
-# .reviewed_by have NO application-level write path anywhere in api/ or
-# inc/ -- beta-tester.php's own INSERT (~line 185) never sets status,
-# reviewed_at, or reviewed_by, and no admin-review endpoint exists
-# anywhere in this codebase. This is the SAME underlying gap as the
-# phantom:beta_tester_applications.status entry immediately above it
-# (no admin review workflow has been built for this table at all) --
-# not a fabricated tool artifact, a genuine documented gap, flagged for
-# Eric the same way .status already is.
-phantom:beta_tester_applications.reviewed_at
-phantom:beta_tester_applications.reviewed_by
+# What WAS real (confirmed by reading beta-tester.php directly, not
+# assumed): beta_tester_applications.reviewed_at/.reviewed_by had NO
+# application-level write path anywhere in api/ or inc/ -- the same
+# underlying gap as the phantom:beta_tester_applications.status entry
+# this project used to carry a few lines above (no admin review workflow
+# had ever been built for this table). RETIRED 2026-08-23: Eric decided
+# to remove the whole feature rather than build the missing review UI --
+# it had shipped publicly by mistake and was never intended to be part
+# of the software. See sql/run_retire_beta_tester_applications.php. The
+# table no longer exists on any install; both baseline entries removed
+# rather than left permanently stale. The general lesson above (check
+# (c)'s table-blind bareRead ambiguity) remains valid documentation for
+# any FUTURE table that happens to share column names with another.
+
+# --- permissions.admin_only (2026-08-22, RBAC admin_only structural fix) ---
+# UPDATE: an earlier version of this entry (same day) described this as "a
+# pure comment-text false positive" from a concurrently-running effort that
+# hadn't landed yet ("a separate, concurrently-running effort is building a
+# REAL permissions.admin_only column + write path right now -- once that
+# lands, this baseline entry should be revisited"). It has now landed --
+# this entry is that revisit, describing the REAL column's actual write
+# sites and why each is independently invisible to this tool.
+# A genuine tool limitation, not a missing write path -- confirmed live by
+# tests/test_rbac_admin_only.php (93 assertions, including a literal
+# revert-the-guard-and-watch-it-fail drill) that the column IS written and
+# consulted correctly. Three real write sites exist, and each one is
+# independently invisible to check (c)'s SQL-write scanner for a different
+# reason documented in the check's own docblock:
+#   1. sql/rbac.sql's `UPDATE permissions SET admin_only = ... WHERE code
+#      IN (...)` and the alias-propagation `UPDATE permissions canon JOIN
+#      permissions old_p ON ... SET canon.admin_only = old_p.admin_only`
+#      live in a raw .sql file -- the audit's own summary line says
+#      "PHP files scanned for SQL", so sql/*.sql is out of scope entirely
+#      for check (c), independent of the JOIN-aliased-UPDATE issue below.
+#   2. sql/run_00_rbac.php's equivalent statements use this file's
+#      established `{$prefix}permissions` PHP-interpolation convention
+#      (every other line in this file does the same) -- the UPDATE-table
+#      regex `UPDATE\s+`?([a-z0-9_]+)`?\s+SET\b` requires the backtick-
+#      quoted identifier to match `[a-z0-9_]+`, which `{` and `$` are not
+#      part of, so `` `{$prefix}permissions` `` never resolves to a table
+#      name at all.
+#   3. run_rbac_v2.php's A8 mirror-guard reconciliation UPDATE
+#      (`UPDATE permissions canon JOIN permissions old_p ON
+#      old_p.deprecated_alias_of = canon.code SET canon.admin_only = ...`)
+#      has an alias AND a JOIN between the table name and SET -- the same
+#      regex requires SET to appear immediately after the table name.
+# Fixing the parser for all three shapes (scanning .sql files, resolving
+# `{$prefix}` before matching, and multi-table aliased UPDATE ... JOIN ...
+# SET) is real parser work out of scope for this change; the column's
+# actual correctness is proven directly by test_rbac_admin_only.php
+# instead, which is the stronger guarantee for a security-critical column.
+phantom:permissions.admin_only

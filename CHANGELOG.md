@@ -3,6 +3,38 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+
+- **`session_timeout_minutes` (Settings → Login Settings) never reconciled
+  with PHP's own session garbage collection**, which defaults to 24
+  minutes on a stock install with no custom tuning — every desktop
+  session was silently capped at 24 minutes regardless of the configured
+  value (default 8 hours). (#109)
+- **The ICS Form Builder's Table field type could not save a column set to
+  type Select.** A string/array mismatch made the save silently die with
+  no error shown. Also fixed: the options box now appears immediately
+  when a column's type is changed; a save-payload failure now surfaces a
+  message instead of a silent dead click. (#107)
+- **The incident-detail PAR card polled the server every 10 seconds
+  forever, including after a permissions error**, for any role without
+  access to PAR data — the polling interval could never be cancelled.
+  (#106)
+- **The dashboard's "Save Snapshot" dropdown rendered behind widget
+  content** instead of on top of it. (#110)
+- **Print buttons could take 2-3 minutes to open the print dialog in
+  Safari** (Cmd+P was unaffected). Applied a low-risk mitigation
+  (deferring the print call off the click handler); the underlying
+  WebKit behavior has not been independently confirmed. (#105)
+- **The installer's RSA field-encryption keys check used a
+  Windows-incorrect path**, disagreeing with where the running
+  application actually stores its keys — the installer reported the keys
+  as missing and re-verified them on every single run instead of
+  recognizing them as already in place.
+- Cross-org ticket sharing: a destination-facility qualification edge case
+  on tickets received via the origin org's own branch. (follow-up to #99)
+
 ## [4.2.25] — 2026-08-22
 
 ### Added

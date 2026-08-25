@@ -114,8 +114,6 @@ state-store: aprs-map.php :: localStorage.setItem('aprsListColConfig')
 
 # ── control-size (24) ───────────────────────────────────────────────
 control-size: assets/js/mobile.js :: form-control without form-control-sm in class="form-control"
-control-size: beta-tester.php :: form-control without form-control-sm in class="form-control"
-control-size: beta-tester.php :: form-select without form-select-sm in class="form-select"
 control-size: callboard.php :: form-select without form-select-sm in class="form-select"
 control-size: constituents.php :: form-control without form-control-sm in class="form-control d-none phone-type-custom"
 control-size: facility-board.php :: form-select without form-select-sm in class="form-select"
@@ -329,10 +327,6 @@ theme-color: assets/js/roster.js :: style="background:#fff8e1;border:1px solid #
 theme-color: assets/js/roster.js :: style="color:#666;font-size:.85em;word-break:break-all;margin-top:14px"
 theme-color: assets/js/unit-edit.js :: style="background:#e7f3ff;border:1px solid #5aa9e6;border-radius:6px;padding:10px 12px;margin-top:14px"
 theme-color: assets/js/unit-edit.js :: style="color:#666;font-size:.8em;word-break:break-all;margin-top:12px"
-theme-color: beta-tester.php :: style="background:#f6f6f6;font-weight:bold;padding-right:12px;border-bottom:1px solid #ddd;width:35%"
-theme-color: beta-tester.php :: style="font-family:sans-serif;color:#666;margin-top:0"
-theme-color: beta-tester.php :: style="font-family:sans-serif;font-size:13px;background:#fafafa;border-left:3px solid #6610f2;padding:1rem 1.25rem;li...
-theme-color: beta-tester.php :: style="font-family:sans-serif;white-space:pre-wrap;background:#fafafa;padding:.75rem;border-radius:4px"
 theme-color: ics-forms.php :: style="background-color:var(--bs-indigo);color:#fff"
 theme-color: ics-forms.php :: style="background-color:var(--bs-orange);color:#fff"
 theme-color: ics-forms.php :: style="background-color:var(--bs-teal);color:#fff"

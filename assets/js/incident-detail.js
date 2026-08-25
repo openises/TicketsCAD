@@ -395,6 +395,10 @@
         var overrideInput = document.getElementById('parOverrideMin');
         var overrideBtn   = document.getElementById('btnSaveParOverride');
         var historyDiv    = document.getElementById('parHistory');
+        // GH#106 — this handle used to be discarded, so the 10s poll below
+        // could never be stopped: a role without action.manage_par got a
+        // 403 on every single poll, forever, for the life of the page.
+        var parPollInterval = null;
 
         if (initBtn) {
             // Phase 29A (2026-06-12) — inline-Cancel pattern. No browser
@@ -587,7 +591,21 @@
         function refreshPAR(tid) {
             fetch('api/par.php?action=for_ticket&ticket=' + encodeURIComponent(tid),
                   { credentials: 'same-origin' })
-                .then(function (r) { return r.json(); })
+                .then(function (r) {
+                    // GH#106 — a 403 here means this account can never see
+                    // PAR data (no action.manage_par), and that will never
+                    // change mid-page-view. Stop polling permanently rather
+                    // than hammering the server (and the console) every
+                    // 10s for the rest of the visit — the same shape as
+                    // every OTHER interval in this file, all of which have
+                    // a real stop condition.
+                    if (r.status === 403) {
+                        if (parPollInterval) { clearInterval(parPollInterval); parPollInterval = null; }
+                        card.classList.add('d-none');
+                        return null;
+                    }
+                    return r.json();
+                })
                 .then(function (data) {
                     if (!data || data.error) return;
                     // Phase 27B (2026-06-11) — update header badge.
@@ -986,7 +1004,7 @@
         }
 
         refreshPAR(ticketId);
-        setInterval(function () { refreshPAR(ticketId); }, 10000);
+        parPollInterval = setInterval(function () { refreshPAR(ticketId); }, 10000);
     }
 
     function getIncidentId() {

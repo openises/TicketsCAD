@@ -67,7 +67,6 @@ Fully data-driven: `fields_json` on each row defines the per-mode form field sha
 | `audit_log_purges` | [#`audit_log_purges`](#audit_log_purges) |
 | `auto_disp_status` | [#`auto_disp_status`](#auto_disp_status) |
 | `auto_status` | [#`auto_status`](#auto_status) |
-| `beta_tester_applications` | [#`beta_tester_applications`](#beta_tester_applications) |
 | `bridge_tokens` | [#`bridge_tokens`](#bridge_tokens) |
 | `capability_types` | [#`capability_types`](#capability_types) |
 | `capacity_categories` | [#`capacity_categories`](#capacity_categories) |
@@ -577,44 +576,6 @@ Engine: InnoDB · Collation: latin1_swedish_ci
 | `id` | int(3) | NO | PRI |  | auto_increment |
 | `text` | varchar(24) | NO |  |  |  |
 | `status_val` | int(3) | NO |  |  |  |
-
-### `beta_tester_applications`
-
-Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
-
-| Column | Type | Null | Key | Default | Extra |
-|---|---|---|---|---|---|
-| `id` | int(11) | NO | PRI |  | auto_increment |
-| `submitted_at` | datetime | NO | MUL | current_timestamp() |  |
-| `submitted_ip` | varchar(45) | YES |  | NULL |  |
-| `submitted_ua` | varchar(255) | YES |  | NULL |  |
-| `full_name` | varchar(120) | NO |  |  |  |
-| `email` | varchar(180) | NO | MUL |  |  |
-| `phone` | varchar(40) | YES |  | NULL |  |
-| `github_user` | varchar(120) | YES |  | NULL |  |
-| `agency_name` | varchar(200) | NO |  |  |  |
-| `agency_type` | varchar(60) | NO |  |  |  |
-| `agency_type_other` | varchar(120) | YES |  | NULL |  |
-| `expected_user_count` | int(11) | YES |  | NULL |  |
-| `city` | varchar(120) | YES |  | NULL |  |
-| `state_or_region` | varchar(120) | YES |  | NULL |  |
-| `country` | varchar(80) | YES |  | NULL |  |
-| `timezone` | varchar(64) | YES |  | NULL |  |
-| `referral_source` | varchar(255) | YES |  | NULL |  |
-| `planned_scenarios` | text | YES |  | NULL |  |
-| `feature_interests` | text | YES |  | NULL |  |
-| `agreed_v` | varchar(20) | NO |  |  |  |
-| `signed_name` | varchar(120) | NO |  |  |  |
-| `status` | enum('new','reviewing','approved','declined','withdrawn') | NO | MUL | 'new' |  |
-| `reviewed_at` | datetime | YES |  | NULL |  |
-| `reviewed_by` | int(11) | YES |  | NULL |  |
-| `review_notes` | text | YES |  | NULL |  |
-| `github_invited_at` | datetime | YES |  | NULL |  |
-
-Indexes:
-- `KEY idx_bta_email` (email)
-- `KEY idx_bta_status` (status)
-- `KEY idx_bta_submitted` (submitted_at)
 
 ### `bridge_tokens`
 
@@ -3842,6 +3803,7 @@ Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
 | `verb` | varchar(16) | YES |  | NULL |  |
 | `deprecated_alias_of` | varchar(64) | YES |  | NULL |  |
 | `description` | varchar(255) | YES |  | NULL |  |
+| `admin_only` | tinyint(3) unsigned | NO |  | 0 |  |
 
 Indexes:
 - `KEY idx_category` (category)

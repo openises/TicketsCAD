@@ -97,11 +97,16 @@
                 var u = inc.units[k];
                 var enRoute = fmtTime(u.en_route_at);
                 var arrived = fmtTime(u.arrived_at);
+                // GH#99: a unit's facility-leg clock is qualified with its
+                // actual destination when that isn't this facility, so
+                // "arrived 14:32" never misreads as "arrived here" for a
+                // unit that transported somewhere else.
+                var destName = u.destination_elsewhere ? (u.destination_name || 'another facility') : '';
                 var timing = '';
                 if (arrived) {
-                    timing = 'arrived ' + arrived;
+                    timing = destName ? ('transported to ' + destName + ', ' + arrived) : ('arrived ' + arrived);
                 } else if (enRoute) {
-                    timing = 'en route since ' + enRoute;
+                    timing = destName ? ('en route to ' + destName + ' since ' + enRoute) : ('en route since ' + enRoute);
                 }
                 unitsHtml += '<div class="fp-unit-row">' +
                     '<span class="fp-unit-status-dot" style="background-color:' + esc(u.bg_color || '#999') + '"></span>' +

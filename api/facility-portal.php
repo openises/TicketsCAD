@@ -243,15 +243,27 @@ if ($method === 'GET') {
             'updated'         => $row['updated'] ?? null,
             'legs'            => $legs,
             'patient_count'   => (int) $row['patient_count'],
-            'units'           => array_map(function ($u) {
+            // GH#99 follow-up: destination_elsewhere/destination_name let the
+            // frontend qualify a unit's timing string ("transported to
+            // [name]") instead of a bare "arrived HH:MM" that misreads as
+            // "arrived here" when the unit's actual destination is a
+            // different facility than the one viewing this board. Compares
+            // against $facilityId (not the ticket-level rec_facility) since
+            // the unit's OWN effective destination is what matters -- a
+            // multi-unit incident can have units going to different places.
+            'units'           => array_map(function ($u) use ($facilityId) {
+                $destId = (int) ($u['effective_dest_id'] ?? 0);
+                $elsewhere = ($destId !== $facilityId);
                 return [
-                    'responder_name' => $u['responder_name'] ?? '',
-                    'handle'         => $u['handle'] ?? '',
-                    'status_val'     => $u['status_val'] ?? '',
-                    'bg_color'       => $u['bg_color'] ?? null,
-                    'text_color'     => $u['text_color'] ?? null,
-                    'en_route_at'    => (!empty($u['u2fenr']) && substr((string) $u['u2fenr'], 0, 4) !== '0000') ? $u['u2fenr'] : null,
-                    'arrived_at'     => (!empty($u['u2farr']) && substr((string) $u['u2farr'], 0, 4) !== '0000') ? $u['u2farr'] : null,
+                    'responder_name'         => $u['responder_name'] ?? '',
+                    'handle'                 => $u['handle'] ?? '',
+                    'status_val'             => $u['status_val'] ?? '',
+                    'bg_color'               => $u['bg_color'] ?? null,
+                    'text_color'             => $u['text_color'] ?? null,
+                    'en_route_at'            => (!empty($u['u2fenr']) && substr((string) $u['u2fenr'], 0, 4) !== '0000') ? $u['u2fenr'] : null,
+                    'arrived_at'             => (!empty($u['u2farr']) && substr((string) $u['u2farr'], 0, 4) !== '0000') ? $u['u2farr'] : null,
+                    'destination_elsewhere'  => $elsewhere,
+                    'destination_name'       => $elsewhere ? ($u['dest_facility_name'] ?? null) : null,
                 ];
             }, $units),
         ];

@@ -29,6 +29,19 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/org-scope.php';
+// Found live 2026-08-22 (video-production verification, two real logged-in
+// sessions): this file never required inc/sse.php, so every claim/release/
+// reassign/force_reclaim/link_ticket action's _p149_sse() call (inc/
+// inbound-calls.php) silently no-op'd via its own function_exists('sse_
+// publish_for_call') guard -- the claim itself succeeded (inbound_calls row
+// updated correctly, the claimant's own New Incident tab opened correctly)
+// but NO other logged-in dispatcher's screen ever updated: FR-13's "the
+// instant a call is claimed, every other qualified user's banner reflects
+// that... without a page refresh" was silently false for every action this
+// file dispatches. This is the SAME class of gap api/sip-ingest.php's own
+// require list was fixed for on this same date (see that file's comment) --
+// that fix was never mirrored here. See tests/test_inbound_calls_api_sse_wiring.php.
+require_once __DIR__ . '/../inc/sse.php';
 require_once __DIR__ . '/../inc/inbound-calls.php';
 
 $prevDisplay = ini_get('display_errors');

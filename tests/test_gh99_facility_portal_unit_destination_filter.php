@@ -330,19 +330,23 @@ try {
     $ticketOriginId = (int) db_insert_id();
     t('fixture ticket (origin leg at Facility C) created', $ticketOriginId > 0);
 
+    // Both given real facility-leg timestamps (not NULL) so the GH#99
+    // follow-up's destination-qualification fields (Section E below) have
+    // something to qualify — a unit genuinely "arrived"/"en route" to a
+    // facility other than Facility C, the viewer.
     db_query(
         "INSERT INTO {$prefix}assigns (ticket_id, user_id, responder_id, rec_facility_id, clear, u2fenr, u2farr)
-         VALUES (?, 1, ?, ?, NULL, NULL, NULL)",
-        [$ticketOriginId, $respM01, $facAId]
+         VALUES (?, 1, ?, ?, NULL, ?, ?)",
+        [$ticketOriginId, $respM01, $facAId, date('Y-m-d H:i:s', strtotime('-5 minutes')), date('Y-m-d H:i:s', strtotime('-2 minutes'))]
     );
     $assignIds[] = (int) db_insert_id();
     db_query(
         "INSERT INTO {$prefix}assigns (ticket_id, user_id, responder_id, rec_facility_id, clear, u2fenr, u2farr)
-         VALUES (?, 1, ?, ?, NULL, NULL, NULL)",
-        [$ticketOriginId, $respM04, $facBId]
+         VALUES (?, 1, ?, ?, NULL, ?, NULL)",
+        [$ticketOriginId, $respM04, $facBId, date('Y-m-d H:i:s', strtotime('-3 minutes'))]
     );
     $assignIds[] = (int) db_insert_id();
-    t('fixture assigns created for origin-leg control ticket (both units destined elsewhere)', true);
+    t('fixture assigns created for origin-leg control ticket (both units destined elsewhere, real facility-leg timestamps)', true);
 
     // ══════════════════════════════════════════════════════════════════
     // Section D — direct function-level checks (isolate the SQL logic
@@ -373,6 +377,39 @@ try {
     $namesBOnOrigin = array_column($unitsForBOnOriginTicket, 'responder_name');
     t('Facility B (receiving-only leg on a ticket that is someone else\'s origin) sees exactly [MEDIC 04], never MEDIC 01',
         $namesBOnOrigin === ['ZZ99 MEDIC 04']);
+
+    // ══════════════════════════════════════════════════════════════════
+    // Section E — GH#99 follow-up (2026-08-23): origin-branch units'
+    // effective_dest_id/dest_facility_name, direct from
+    // facility_portal_visible_units() itself (the row shape api/
+    // facility-portal.php's array_map consumes to compute
+    // destination_elsewhere/destination_name).
+    // ══════════════════════════════════════════════════════════════════
+    echo "\n--- E. facility_portal_visible_units() resolves each origin-branch unit's OWN effective destination ---\n\n";
+
+    $byName = [];
+    foreach ($unitsForC as $u) { $byName[$u['responder_name']] = $u; }
+    $m01Row = $byName['ZZ99 MEDIC 01'] ?? [];
+    $m04Row = $byName['ZZ99 MEDIC 04'] ?? [];
+
+    t('MEDIC 01 (destined to Facility A) resolves effective_dest_id === Facility A, not Facility C (the viewer)',
+        (int) ($m01Row['effective_dest_id'] ?? 0) === $facAId);
+    t('MEDIC 01\'s dest_facility_name is Facility A\'s real name',
+        ($m01Row['dest_facility_name'] ?? null) === 'ZZ99 MetroHealth (receiving)');
+    t('MEDIC 04 (destined to Facility B) resolves effective_dest_id === Facility B',
+        (int) ($m04Row['effective_dest_id'] ?? 0) === $facBId);
+    t('MEDIC 04\'s dest_facility_name is Facility B\'s real name',
+        ($m04Row['dest_facility_name'] ?? null) === 'ZZ99 Fire Station 1 (diversion)');
+
+    // Control: on the RECEIVING ticket, Facility A viewing MEDIC 01 (which
+    // genuinely IS destined to A) must resolve effective_dest_id === A —
+    // i.e. the SAME facility as the viewer, so the caller's
+    // destination_elsewhere computation comes out false. The fix must
+    // never qualify a unit that is actually coming to the viewing facility.
+    $unitsForAAgain = facility_portal_visible_units($ticketReceivingId, $facAId, 0, $facAId);
+    $m01OnReceiving = $unitsForAAgain[0] ?? [];
+    t('MEDIC 01 on the RECEIVING ticket (viewed by its own destination facility A) resolves effective_dest_id === A itself',
+        (int) ($m01OnReceiving['effective_dest_id'] ?? -1) === $facAId);
 
     // ══════════════════════════════════════════════════════════════════
     // Sections A-C — real HTTP, real login, real endpoint. Section D
@@ -412,6 +449,8 @@ try {
             $m01 = $incident['units'][0] ?? [];
             t('MEDIC 01\'s en_route_at/arrived_at ARE exposed to its own receiving facility',
                 !empty($m01['en_route_at']) && !empty($m01['arrived_at']));
+            t('MEDIC 01, viewed by its OWN destination facility A, is NOT flagged destination_elsewhere over real HTTP',
+                ($m01['destination_elsewhere'] ?? true) === false);
         }
         @unlink($cookieA);
     }
@@ -451,6 +490,22 @@ try {
             sort($unitNames);
             t('Facility C (origin) sees BOTH MEDIC 01 and MEDIC 04 over real HTTP — origin visibility not regressed',
                 $unitNames === ['ZZ99 MEDIC 01', 'ZZ99 MEDIC 04']);
+
+            // GH#99 follow-up: both units are destined elsewhere (A and B
+            // respectively), never Facility C itself — over real HTTP, the
+            // response must flag both and name each unit's real destination,
+            // so the frontend can render "transported to [name]" instead of
+            // a bare "arrived HH:MM" that would misread as "arrived here."
+            $byNameC = [];
+            foreach (($incident['units'] ?? []) as $u) { $byNameC[$u['responder_name'] ?? ''] = $u; }
+            $m01C = $byNameC['ZZ99 MEDIC 01'] ?? [];
+            $m04C = $byNameC['ZZ99 MEDIC 04'] ?? [];
+            t('Facility C sees MEDIC 01 flagged destination_elsewhere with destination_name = Facility A, over real HTTP',
+                ($m01C['destination_elsewhere'] ?? false) === true
+                && ($m01C['destination_name'] ?? null) === 'ZZ99 MetroHealth (receiving)');
+            t('Facility C sees MEDIC 04 flagged destination_elsewhere with destination_name = Facility B, over real HTTP',
+                ($m04C['destination_elsewhere'] ?? false) === true
+                && ($m04C['destination_name'] ?? null) === 'ZZ99 Fire Station 1 (diversion)');
         }
         // Adversarial: Facility C must NOT see the receiving-only ticket
         // it has no leg on at all.

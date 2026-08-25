@@ -1244,7 +1244,11 @@
     // ── Print ─────────────────────────────────────────────────────────────────
 
     function printReport() {
-        window.print();
+        // GH#105 -- deferred off the click's own call stack; avoids a
+        // WebKit quirk where a click-triggered window.print() (unlike
+        // Cmd+P) can take minutes to open the dialog on some
+        // Safari/page combinations.
+        setTimeout(function () { window.print(); }, 0);
     }
 
     // ── Init on DOMContentLoaded ──────────────────────────────────────────────

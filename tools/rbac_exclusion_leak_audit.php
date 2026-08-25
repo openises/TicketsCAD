@@ -61,18 +61,43 @@
  *     and does not prove. It is a defensive, baseline-gated net, not a
  *     guarantee.
  *
- * What this tool does NOT generalize: there is no `permissions.admin_only`
- * column or other first-class registry of "this code must never reach a
- * non-admin role" — "admin-only" is defined ENTIRELY by appearing in one
- * of these two files' exclusion lists. A permission withheld from a role
- * by simply never being listed in that role's ALLOW-list (e.g.
- * sql/run_00_rbac.php's Dispatcher grant, which is a positive
- * `category IN (...) OR code IN (...)` allow-list, not a NOT-IN
- * exclusion) is outside this tool's model — that shape can't leak via
- * mechanism (1)/(2) the same way (a code absent from an allow-list stays
- * absent regardless of when it was added), which is why it was never
- * built as a NOT-IN exclusion for those roles in the first place. See
- * "Remaining gap" at the bottom of this docblock.
+ * ── UPDATE (2026-08-22): the remaining gap named above is now closed ──
+ *
+ * `permissions.admin_only` (see inc/rbac_admin_only.php) is now that real,
+ * first-class registry: 0=unrestricted, 1=Org Admin or above, 2=Super
+ * Admin only. It was added specifically because the Phase 149 incident
+ * (action.manage_calls's canonical alias leaking onto Dispatcher, in the
+ * SAME COMMIT that created the permission and its own exclusion-list
+ * entry) proved even maximal care in the moment isn't enough against a
+ * bug class whose detection depends entirely on a human remembering to
+ * update a string list.
+ *
+ * Part 0 below is now the PRIMARY, most authoritative check: it queries
+ * role_permissions/permissions/roles directly for any row where a role's
+ * tier is lower than the permission's admin_only value — mechanism-
+ * agnostic (it doesn't care whether the leak came from a stale grant, an
+ * alias mirror, a rogue migration, or something not yet imagined), and it
+ * doesn't need special alias-chasing the way Part 1 does, because the
+ * classification is propagated onto BOTH a code and its canonical alias
+ * at data-population time (sql/rbac.sql / sql/run_00_rbac.php), so a
+ * direct join catches a leak under EITHER name automatically.
+ *
+ * Parts 1-3 (the original exclusion-list-text-parsing checks) are KEPT as
+ * a secondary safety net for the transition period and as a genuine
+ * cross-reference: Part 0's NEW "classification drift" check compares
+ * each exclusion-list code's ACTUAL admin_only value in the database
+ * against what its presence in these lists implies, so the two sources of
+ * truth (hand-written exclusion-list text vs. the real column) are
+ * continuously checked against each other rather than one silently
+ * replacing the other.
+ *
+ * Remaining gap, now narrower: a permission kept off a role by a positive
+ * allow-list purely by never being named (e.g. a role that legitimately
+ * holds NOTHING beyond a short explicit list) still has no exclusion-list
+ * text for Parts 1-3 to parse — but Part 0 covers it regardless, since it
+ * checks the LIVE grant against admin_only directly, independent of which
+ * mechanism (NOT-IN exclusion or bare absence from an allow-list) is
+ * supposed to be withholding it.
  *
  * Exit code: 0 = clean/baseline-only, 1 = new findings.
  * Baseline:  tools/rbac_exclusion_leak_audit_baseline.txt
@@ -87,18 +112,6 @@
  *       # app tree (tests only) -- still checks the REAL app's live
  *       # permissions/role_permissions tables for the DB-state check,
  *       # same convention as tools/rbac_permission_audit.php's --path=.
- *
- * Remaining gap (documented for Eric, not solved here): a permission kept
- * off a role by a positive allow-list (Dispatcher in run_00_rbac.php) or
- * by category alone (facility_account) has no exclusion-list text for
- * this tool to parse, so a future leak of THAT shape — a role gains a
- * code because someone widened `category IN (...)` or added it to an
- * allow-list without meaning to broaden it install-wide — is not covered
- * by this tool. Closing that would need either a real
- * `permissions.admin_only`/`min_role_tier` column (a schema change) or a
- * hand-maintained "these codes must NEVER be held by role N" registry —
- * exactly the hand-maintenance burden this tool exists to avoid for the
- * NOT-IN shape. Flagged rather than half-built.
  */
 
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
@@ -283,6 +296,101 @@ function rela_scan_rogue_grants(string $scanDir, array $excludeFiles, array $exc
     return $findings;
 }
 
+/**
+ * Part 0 (2026-08-22, primary/authoritative): every role_permissions row
+ * whose permission has admin_only > the holding role's tier is a genuine,
+ * live privilege leak — regardless of which of the historical mechanisms
+ * produced it. This is a direct DB check against the real, structural
+ * `permissions.admin_only` column (see inc/rbac_admin_only.php), not a
+ * parse of hand-written exclusion-list text, so it needs no alias-chasing
+ * and cannot miss a mechanism nobody has thought of yet.
+ */
+function rela_scan_admin_only_violations(string $prefix): array {
+    $findings = [];
+    try {
+        $hasCol = (bool) db_fetch_value(
+            "SELECT 1 FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'admin_only'",
+            [$prefix . 'permissions']
+        );
+    } catch (Throwable $e) { $hasCol = false; }
+    if (!$hasCol) return $findings;
+
+    try {
+        $rows = db_fetch_all(
+            "SELECT rp.role_id, r.name AS role_name, p.code, p.admin_only,
+                    (CASE WHEN r.is_super = 1 THEN 2
+                          WHEN r.id = 2 OR r.name = 'Org Admin' THEN 1
+                          ELSE 0 END) AS role_tier
+               FROM `{$prefix}role_permissions` rp
+               JOIN `{$prefix}permissions` p ON p.id = rp.permission_id
+               JOIN `{$prefix}roles` r ON r.id = rp.role_id
+              WHERE p.admin_only > 0"
+        );
+    } catch (Throwable $e) { return $findings; }
+
+    foreach ($rows as $row) {
+        $required = (int) $row['admin_only'];
+        $roleTier = (int) $row['role_tier'];
+        if ($roleTier < $required) {
+            $tierName = $required >= 2 ? 'Super Admin only' : 'Org Admin or above';
+            $findings[] = [
+                'kind' => 'admin_only_violation',
+                'role_id' => (int) $row['role_id'],
+                'code' => $row['code'],
+                'detail' => "role {$row['role_id']} ({$row['role_name']}) holds admin_only={$required} "
+                          . "code '{$row['code']}' ($tierName) but its own tier is only {$roleTier}",
+            ];
+        }
+    }
+    return $findings;
+}
+
+/**
+ * Cross-reference check: for every code the exclusion-list text (rbac.sql)
+ * withholds from Dispatcher and/or Org Admin, the DATABASE's admin_only
+ * value should agree with what that exclusion implies -- excluded from
+ * BOTH implies tier 2 (Super Admin only), excluded from Dispatcher ONLY
+ * implies tier >= 1 (Org Admin or above). The two Facility-only codes are
+ * excluded from both lists for an UNRELATED reason (reserved for a
+ * specific bespoke role, not a seniority tier -- see
+ * inc/rbac_admin_only.php's docblock) and are explicitly exempted here,
+ * not flagged as drift.
+ */
+function rela_scan_classification_drift(string $prefix, array $orgAdminExcluded, array $dispatcherExcluded): array {
+    $findings = [];
+    $exempt = ['screen.facility_portal', 'action.facility_self_report'];
+    try {
+        $hasCol = (bool) db_fetch_value(
+            "SELECT 1 FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'admin_only'",
+            [$prefix . 'permissions']
+        );
+    } catch (Throwable $e) { $hasCol = false; }
+    if (!$hasCol) return $findings;
+
+    foreach ($dispatcherExcluded as $code) {
+        if (in_array($code, $exempt, true)) continue;
+        $expectedMin = in_array($code, $orgAdminExcluded, true) ? 2 : 1;
+        try {
+            $actual = db_fetch_value("SELECT admin_only FROM `{$prefix}permissions` WHERE code = ?", [$code]);
+        } catch (Throwable $e) { continue; }
+        if ($actual === false || $actual === null) continue; // not seeded on this database
+        if ((int) $actual < $expectedMin) {
+            $findings[] = [
+                'kind' => 'classification_drift',
+                'role_id' => 0,
+                'code' => $code,
+                'detail' => "'$code' is excluded from Dispatcher's broad grant (and from Org Admin's too: "
+                          . (in_array($code, $orgAdminExcluded, true) ? 'yes' : 'no')
+                          . ") implying admin_only >= {$expectedMin}, but the database has admin_only={$actual} "
+                          . "-- the exclusion-list text and the admin_only column have drifted apart",
+            ];
+        }
+    }
+    return $findings;
+}
+
 echo "=== RBAC exclusion-list privilege-leak audit ===\n";
 echo "Rule: a code that sql/rbac.sql or sql/run_00_rbac.php excludes from a\n";
 echo "      role's broad grant must never actually be held by that role --\n";
@@ -317,13 +425,32 @@ if ($totalRbacSqlCodes < 5) {
 
 $findings = [];
 
-// ── Part 1: DB-state leak check (mechanisms 1 DIRECT + 2 ALIAS), driven
-//    entirely by what was just parsed -- no hand-maintained code list. ──
+// ── Part 0: admin_only column check (PRIMARY/authoritative) + the
+//    classification-drift cross-reference against the exclusion-list
+//    text just parsed. ────────────────────────────────────────────────
 if (!$dbAvailable) {
     echo "connection failed — {$dbError}\n";
     echo "(cannot check live grants without the database — CI will run it)\n";
 } else {
     $prefix = $GLOBALS['db_prefix'] ?? '';
+    $adminOnlyFindings = rela_scan_admin_only_violations($prefix);
+    $findings = array_merge($findings, $adminOnlyFindings);
+    echo "admin_only column check: " . count($adminOnlyFindings) . " violation(s)\n";
+
+    $driftFindings = rela_scan_classification_drift(
+        $prefix,
+        $exclFromRbacSql[2] ?? [],
+        $exclFromRbacSql[3] ?? []
+    );
+    $findings = array_merge($findings, $driftFindings);
+    echo "classification-drift check: " . count($driftFindings) . " drift(s)\n\n";
+}
+
+// ── Part 1: DB-state leak check (mechanisms 1 DIRECT + 2 ALIAS), driven
+//    entirely by what was just parsed -- no hand-maintained code list. ──
+if (!$dbAvailable) {
+    echo "(skipping Part 1 too — no database connection)\n";
+} else {
     $hasAlias = false;
     try {
         $hasAlias = (bool) db_fetch_value(

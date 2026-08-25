@@ -313,19 +313,37 @@ function facility_portal_visible_units(int $ticketId, int $facilityId, int $tick
     $prefix = $GLOBALS['db_prefix'] ?? '';
     $isOrigin = ($ticketFacility > 0 && $ticketFacility === $facilityId) ? 1 : 0;
 
+    // GH#99 follow-up (2026-08-23): the origin branch above is intentionally
+    // unfiltered (see docblock), but its units' u2fenr/u2farr are a UNIT-TO-
+    // FACILITY leg timestamp -- for a unit whose effective destination is a
+    // DIFFERENT facility, an unqualified "arrived 14:32" reads as "arrived
+    // here" when it means "arrived at wherever they actually went." Rather
+    // than hide the timestamp (which would also hide the destination
+    // information a viewing facility legitimately wants for follow-up -- a
+    // group home's own stated need to know which hospital a resident was
+    // taken to), resolve and return the effective destination facility's
+    // name so the caller can qualify the string instead of suppressing it.
+    // effective_dest_id reuses the exact COALESCE inc/bed_auto.php:228
+    // already uses -- never re-derived. A destination of 0 (unknown/not yet
+    // set) still compares unequal to $facilityId below, so an unresolved
+    // destination is treated as "elsewhere," never as "here" by default.
     try {
         return db_fetch_all(
             "SELECT r.`name` AS responder_name, r.`handle`,
                     us.`status_val`, us.`bg_color`, us.`text_color`,
-                    a.`u2fenr`, a.`u2farr`
+                    a.`u2fenr`, a.`u2farr`,
+                    COALESCE(NULLIF(a.`rec_facility_id`, 0), NULLIF(?, 0)) AS effective_dest_id,
+                    df.`name` AS dest_facility_name
              FROM `{$prefix}assigns` a
              LEFT JOIN `{$prefix}responder` r ON a.`responder_id` = r.`id`
              LEFT JOIN `{$prefix}un_status` us ON r.`un_status_id` = us.`id`
+             LEFT JOIN `{$prefix}facilities` df
+                    ON df.`id` = COALESCE(NULLIF(a.`rec_facility_id`, 0), NULLIF(?, 0))
              WHERE a.`ticket_id` = ?
                AND (a.`clear` IS NULL OR DATE_FORMAT(a.`clear`, '%y') = '00')
                AND (? = 1 OR COALESCE(NULLIF(a.`rec_facility_id`, 0), NULLIF(?, 0)) = ?)
              ORDER BY a.`id`",
-            [$ticketId, $isOrigin, $ticketRecFacility, $facilityId]
+            [$ticketRecFacility, $ticketRecFacility, $ticketId, $isOrigin, $ticketRecFacility, $facilityId]
         );
     } catch (Throwable $e) {
         return [];

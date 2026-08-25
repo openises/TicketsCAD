@@ -966,8 +966,12 @@
     // ═══════════════════════════════════════════════════════════
     function printForm() {
         if (!currentFormId) {
-            // If not saved yet, do a client-side print
-            window.print();
+            // If not saved yet, do a client-side print. Deferred off the
+            // click's own call stack (GH#105) -- avoids a WebKit quirk
+            // where a click-triggered window.print() (unlike Cmd+P) can
+            // take minutes to open the dialog on some Safari/page
+            // combinations.
+            setTimeout(function () { window.print(); }, 0);
             return;
         }
 

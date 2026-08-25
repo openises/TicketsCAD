@@ -1788,7 +1788,7 @@ foreach ($help_categories as $catKey => $cat) {
                     <small class="text-body-tertiary"><?php echo e($cat['label']); ?></small>
                     <h5 class="mb-0"><?php echo e($topic['title']); ?></h5>
                 </div>
-                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.print()" title="Print this topic">
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setTimeout(function(){ window.print(); }, 0)" title="Print this topic">
                     <i class="bi bi-printer me-1"></i>Print
                 </button>
             </div>

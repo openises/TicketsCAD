@@ -38,6 +38,17 @@ CREATE TABLE IF NOT EXISTS `roles` (
 -- again. run_rbac_v2.php's own ADD COLUMN step still runs on an existing
 -- install upgrading from before this fix -- it is guarded by an
 -- information-schema existence check either way.
+-- `admin_only` (2026-08-22): the structural fix for a bug class this
+-- project hit FIVE times (see CLAUDE.md's "RBAC EXCLUSION-LIST MECHANISM
+-- LEAKS" entries) -- "admin-only" used to exist ONLY as a hand-maintained
+-- `WHERE code NOT IN (...)` string list further down this file, which a
+-- new canonical alias (sql/run_rbac_v2.php's A8 step), a new migration, or
+-- a forgotten exclusion-list edit could all bypass invisibly. Added to
+-- this CREATE TABLE directly (not left to a later ALTER) for the SAME
+-- reason resource/verb/deprecated_alias_of are here -- see the comment
+-- above the `permissions` table. See inc/rbac_admin_only.php for the full
+-- tier model (0=unrestricted, 1=Org Admin or above, 2=Super Admin only)
+-- and the guard functions every grant-writing code path now consults.
 CREATE TABLE IF NOT EXISTS `permissions` (
     `id`          INT AUTO_INCREMENT PRIMARY KEY,
     `code`        VARCHAR(64)  NOT NULL UNIQUE COMMENT 'Machine-readable key, e.g. screen.search, widget.map',
@@ -47,6 +58,8 @@ CREATE TABLE IF NOT EXISTS `permissions` (
     `verb`        VARCHAR(16)  DEFAULT NULL,
     `deprecated_alias_of` VARCHAR(64) DEFAULT NULL COMMENT 'When set, points at the canonical new code; both work.',
     `description` VARCHAR(255) DEFAULT NULL,
+    `admin_only`  TINYINT UNSIGNED NOT NULL DEFAULT 0
+        COMMENT '0=unrestricted, 1=Org Admin or above, 2=Super Admin only. See inc/rbac_admin_only.php.',
     KEY `idx_category` (`category`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -350,6 +363,60 @@ INSERT IGNORE INTO `permissions` (`code`, `name`, `category`, `description`) VAL
     ('screen.facility_portal',       'Facility Portal',              'facility_account', 'Access the facility self-service portal (own facility only)'),
     ('action.facility_self_report',  'Facility Self-Report Status',  'facility_account', "Update the caller's own linked facility's status/diversion and bed capacity");
 
+-- ── admin_only classification (2026-08-22) ──
+-- MUST stay in sync with the matching block in sql/run_00_rbac.php --
+-- same convention this file already follows for the exclusion lists
+-- themselves. Cross-referenced against THIS file's own Org Admin and
+-- Dispatcher `WHERE code NOT IN (...)` exclusion lists below (the
+-- authoritative source of "what's admin-only today") and verified against
+-- a live database's role_permissions state before writing this.
+--
+-- Tier 2 (Super Admin ONLY -- excluded from BOTH Org Admin's and
+-- Dispatcher's broad grants below): a full defeat of the Org-Admin/
+-- Super-Admin boundary if granted elsewhere (action.manage_config and
+-- action.manage_roles are the textbook case -- either alone makes
+-- is_admin() true for every holder of the role).
+--
+-- Tier 1 (Org Admin or above -- excluded from Dispatcher's broad grant
+-- ONLY; Org Admin legitimately holds these by design): this is exactly
+-- the Phase 149 incident's tier -- action.manage_calls's canonical alias
+-- leaked onto Dispatcher, which never should have held it, while Org
+-- Admin's own hold of it was always correct and must not be disturbed.
+--
+-- screen.facility_portal / action.facility_self_report are DELIBERATELY
+-- left at tier 0 -- see inc/rbac_admin_only.php's docblock for why a tier
+-- restriction would be wrong for a permission reserved for a specific
+-- bespoke role (hundreds of live non-super Facility rows hold these).
+UPDATE `permissions` SET `admin_only` = 2 WHERE `code` IN (
+    'action.manage_config', 'action.manage_roles', 'action.bulk_delete_members',
+    'action.manage_audit_retention', 'action.manage_dispositions',
+    'action.manage_public_board', 'action.manage_ics_form_types',
+    'action.manage_org_routing', 'action.manage_org_routing_org',
+    'action.manage_org_relationships'
+);
+UPDATE `permissions` SET `admin_only` = 1 WHERE `code` IN (
+    'action.manage_users', 'action.delete_incident', 'action.import_data',
+    'console.design', 'action.intercom_unlock', 'action.view_reports',
+    'action.delete_ics_form', 'action.delete_equipment_log',
+    'action.manage_public_board_org', 'action.manage_ics_form_types_org',
+    'action.manage_matrix', 'action.manage_calls'
+);
+-- Propagate onto each code's canonical alias partner in BOTH directions
+-- (sql/run_rbac_v2.php's A8 step may already have created the canonical
+-- <resource>.<verb> row on an install that's run RBAC v2 migrations
+-- before today) so a lookup by EITHER name agrees -- this is the actual
+-- data-level fix for the Phase 149 mechanism, not just the runtime
+-- symmetric lookup inc/rbac_admin_only.php also does as a second line of
+-- defense.
+UPDATE `permissions` canon
+  JOIN `permissions` old_p ON old_p.deprecated_alias_of = canon.code
+   SET canon.admin_only = old_p.admin_only
+ WHERE old_p.admin_only > canon.admin_only;
+UPDATE `permissions` old_p
+  JOIN `permissions` canon ON canon.code = old_p.deprecated_alias_of
+   SET old_p.admin_only = canon.admin_only
+ WHERE canon.admin_only > old_p.admin_only;
+
 -- ── Default Role → Permission Mappings ──
 
 -- Super Admin gets EVERYTHING
@@ -360,6 +427,17 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
 -- Bulk member deletion is deliberately withheld from Org Admin (Eric, 2026-07-04):
 -- it's a bigger hammer than single-member management and should be granted
 -- explicitly per-role via the Roles UI, not handed to every administrator.
+-- 2026-08-22 (admin_only structural fix): `AND admin_only <= 1` is added
+-- AFTER the exclusion list below (not instead of it, and deliberately kept
+-- as a trailing `AND` rather than leading -- tools/rbac_exclusion_leak_audit.php's
+-- parser looks for the literal shape `WHERE code NOT IN (...)` immediately
+-- after WHERE, so the admin_only check must not sit between them) -- Org
+-- Admin's own tier is 1 (org_admin_or_above), so this structurally
+-- excludes any tier-2 (Super Admin only) permission even if a FUTURE
+-- tier-2 code is added to `permissions` without also being added to the
+-- NOT IN list. The exclusion list stays for documentation/history and as
+-- a secondary check (tools/rbac_exclusion_leak_audit.php cross-references
+-- both).
 INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
     SELECT 2, `id` FROM `permissions`
     WHERE `code` NOT IN ('action.manage_config', 'action.manage_roles', 'action.bulk_delete_members',
@@ -391,7 +469,8 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
                           -- and action.activate_org_relationship are deliberately absent from
                           -- this list so they ARE granted below (plan.md's departure from Phase
                           -- 141's precedent; see the permission INSERT block's own comment).
-                          'action.manage_org_relationships');
+                          'action.manage_org_relationships')
+      AND `admin_only` <= 1;
 
 -- Repair (2026-08-16, RBAC canonical-alias privilege-leak fix): the broad
 -- grant above matches this file's exclusion list by LITERAL STRING and is
@@ -452,6 +531,17 @@ DELETE rp FROM `role_permissions` rp
 -- Any permission NOT in this exclusion list therefore gets granted to
 -- Dispatcher on re-import — keep the list in sync with every phase that
 -- introduces an admin-only permission (see the Phase 114 console entries).
+-- 2026-08-22 (admin_only structural fix): `AND admin_only = 0` is added
+-- AFTER the exclusion list below (not instead of it, and deliberately kept
+-- as a trailing `AND` rather than leading -- tools/rbac_exclusion_leak_audit.php's
+-- parser looks for the literal shape `WHERE code NOT IN (...)` immediately
+-- after WHERE) -- Dispatcher's own tier is 0, so this structurally
+-- excludes any tier-1 or tier-2 permission even if a FUTURE restricted
+-- code is added to `permissions` without also being added to the NOT IN
+-- list below (exactly how action.manage_calls's canonical alias leaked
+-- onto Dispatcher via sql/run_rbac_v2.php's A8 mirror step, in the SAME
+-- COMMIT that created the permission and its own exclusion-list entry
+-- here -- see inc/rbac_admin_only.php).
 INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
     SELECT 3, `id` FROM `permissions`
     WHERE `code` NOT IN (
@@ -535,7 +625,8 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
                                        -- assumption going forward: EVERY exclusion-list addition needs
                                        -- both repair-DELETEs below, even for a permission created in
                                        -- the same commit as its own exclusion.
-    );
+    )
+      AND `admin_only` = 0;
 
 -- Repair (2026-08-16, RBAC canonical-alias privilege-leak fix — same two
 -- mechanisms and rationale as the Org Admin repair DELETEs above; see that
@@ -579,9 +670,13 @@ DELETE rp FROM `role_permissions` rp
       );
 
 -- Operator gets all screens/widgets/fields + key operational actions (45 permissions)
+-- 2026-08-22 (admin_only structural fix): `AND admin_only = 0` --
+-- defense-in-depth, not required (none of the named/category-swept codes
+-- are currently restricted) -- makes the invariant uniform across every
+-- grant statement in this file.
 INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
     SELECT 4, `id` FROM `permissions`
-    WHERE `category` IN ('screen', 'widget', 'field')
+    WHERE (`category` IN ('screen', 'widget', 'field')
        OR `code` IN (
            'action.add_note', 'action.change_unit_status', 'action.self_signup',
            'action.send_chat', 'action.upload_files', 'action.dispatch_unit',
@@ -595,19 +690,25 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
            -- than silently shipped). Category 'call_queue' is not in the
            -- `screen,widget,field` sweep above, so these need naming here.
            'screen.call_queue', 'action.claim_call', 'field.caller_history'
-       );
+       ))
+       AND `admin_only` = 0;
 
 -- Read-Only gets view screens + widgets + basic field visibility (31 permissions)
+-- 2026-08-22 (admin_only structural fix): `AND admin_only = 0` -- same
+-- defense-in-depth reasoning as the Operator grant above.
 INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
     SELECT 5, `id` FROM `permissions`
-    WHERE (`category` IN ('screen', 'widget')
+    WHERE ((`category` IN ('screen', 'widget')
        AND `code` NOT IN ('screen.settings', 'screen.new_incident', 'screen.import_export'))
-       OR `code` IN ('field.view_contact', 'field.view_address', 'field.view_notes');
+       OR `code` IN ('field.view_contact', 'field.view_address', 'field.view_notes'))
+       AND `admin_only` = 0;
 
 -- ── Field Unit role (mobile responders) — 18 permissions ──
 INSERT IGNORE INTO `roles` (`id`, `name`, `description`, `is_default`, `sort_order`) VALUES
     (6, 'Field Unit', 'Mobile responder — status updates, notes, photo upload, location sharing', 0, 6);
 
+-- 2026-08-22 (admin_only structural fix): `AND admin_only = 0` -- same
+-- defense-in-depth reasoning as the grants above.
 INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
     SELECT 6, `id` FROM `permissions`
     WHERE `code` IN (
@@ -618,7 +719,8 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
         'action.send_chat', 'action.upload_files',
         'field.view_contact', 'field.view_address', 'field.view_notes',
         'screen.zone_coverage', 'action.set_own_zone'  -- Phase 115 (#64): see zone counts + report own zone
-    );
+    )
+      AND `admin_only` = 0;
 
 -- ── Facility role (external facility accounts) — 2 permissions, GH#90 ──
 -- Phase 145 (2026-08-19). Real confinement v3's LEVEL_FACILITY never had:

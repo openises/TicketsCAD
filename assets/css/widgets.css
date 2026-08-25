@@ -337,9 +337,18 @@
 }
 
 /* Snapshot dropdown */
+/* GH#110 (rjonesbsink) -- this dropdown lives inside a GridStack widget
+   toolbar and rendered BEHIND the widget's own content with no z-index
+   set at all. Matches the same fix already used for two other elements
+   that must clear GridStack widgets: searchable-select.css and
+   radio-widget.css both use z-index: 1055 for exactly this reason (just
+   under Bootstrap's own modal tier, per call-alert.css's own comment
+   "below Bootstrap modals (1055+)" -- 1055 clears ordinary page/widget
+   content without competing with an actual modal). */
 .snapshot-dropdown {
     max-height: 320px;
     overflow-y: auto;
+    z-index: 1055;
 }
 
 .snapshot-item:hover {

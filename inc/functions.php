@@ -355,6 +355,59 @@ function get_setting($key, $default = null) {
 }
 
 /**
+ * GH#109 (rjonesbsink, 2026-08-25) -- the admin-configurable
+ * session_timeout_minutes setting (Settings -> Login Settings, default
+ * 480 min / 8 hours) was never wired to PHP's OWN session lifetime. It
+ * only ever drove inc/session-manager.php's application-level
+ * active_sessions.expires_at check -- but that check can only run if
+ * $_SESSION still exists to be read from in the first place. On a stock
+ * PHP install with no custom tuning, session.gc_maxlifetime defaults to
+ * 1440 seconds (24 minutes), so PHP's OWN garbage collector deleted the
+ * session file out from under every desktop user well before the
+ * configured 480-minute mark -- for every fresh install, out of the box,
+ * regardless of what an admin configured. inc/session-bootstrap.php
+ * already does exactly this reconciliation for the separate MOBILE
+ * session profile (see SESS_MOBILE_LIFETIME_SECS) -- but its own comment
+ * said "Desktop profile is PHP defaults -- nothing to set."
+ *
+ * Deliberately raises gc_maxlifetime to the GLOBAL session_timeout_minutes
+ * value only, not a per-role resolution -- the specific user isn't known
+ * this early (session_start() hasn't run yet). A per-role override can
+ * only ever be SHORTER than the global setting
+ * (inc/session-manager.php's sm_get_timeout() "shortest wins" contract),
+ * so this is safe in both directions: PHP's file-level GC becomes a
+ * generous outer ceiling matching the global default, while
+ * active_sessions.expires_at remains the real enforcement for a shorter
+ * per-role timeout -- which now works correctly because the underlying
+ * session file survives long enough for that check to ever run.
+ *
+ * Guarded exactly like config.php's own existing session ini_set block
+ * (session_status() !== PHP_SESSION_ACTIVE), for the same documented
+ * reason: ini_set() on session.* after session_start() emits a warning
+ * that corrupted SSE streams in api/stream.php (Phase 84s).
+ *
+ * Placed here rather than in config.php on purpose, matching this same
+ * file's own newui_version()/is_https() precedent a few lines up:
+ * config.php is gitignored per-install, so a fix living only there would
+ * never reach an already-deployed site via git pull. Every config.php
+ * ever shipped requires this file, so this is the route that does reach
+ * existing installs.
+ *
+ * A mobile-profile request (login.php / mobile.php / api/auth.php) calls
+ * sess_bootstrap_mobile() AFTER config.php's require cascade (i.e. after
+ * this file, and this block, have already run) -- so mobile's own 30-day
+ * gc_maxlifetime always overrides this desktop default correctly, in the
+ * right order, for real mobile clients.
+ */
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    $_sess_timeout_min = (int) (get_setting('session_timeout_minutes', 480) ?: 480);
+    if ($_sess_timeout_min > 0) {
+        ini_set('session.gc_maxlifetime', (string) ($_sess_timeout_min * 60));
+    }
+    unset($_sess_timeout_min);
+}
+
+/**
  * GH#103 — generic, table-parameterized version of the GENERATED-column
  * discovery logic that already existed twice, both hardcoded to the
  * `member` table: api/members.php's getGeneratedColumnMap() and

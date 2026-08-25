@@ -121,11 +121,3 @@
     RewriteEngine On
     RewriteRule (^|/)cache/zello-audio(/|$) - [F,L]
 </IfModule>
-
-# Phase 90 — pretty URL for the beta-tester registration page.
-# /beta-tester  ->  /beta-tester.php
-# Keep the rule narrow: don't blanket-rewrite the whole site.
-<IfModule mod_rewrite.c>
-    RewriteEngine On
-    RewriteRule ^beta-tester/?$  beta-tester.php  [L]
-</IfModule>

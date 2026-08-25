@@ -31,6 +31,11 @@ if (!function_exists('db_query')) {
     require_once __DIR__ . '/../config.php';
 }
 
+// 2026-08-22 (admin_only structural fix) — the guard functions A8 uses
+// below to keep its canonical-alias mirror step from ever leaking an
+// admin-only permission the way action.manage_calls did (Phase 149).
+require_once __DIR__ . '/../inc/rbac_admin_only.php';
+
 $prefix = $GLOBALS['db_prefix'] ?? '';
 
 // ── Helpers (rrbv2_* prefix to avoid colliding with install_fresh's) ─────
@@ -192,6 +197,14 @@ $pCols = [
     'resource' => "{$ALTER} TABLE `{$prefix}permissions` ADD COLUMN `resource` VARCHAR(48) NULL DEFAULT NULL AFTER `category`",
     'verb'     => "{$ALTER} TABLE `{$prefix}permissions` ADD COLUMN `verb` VARCHAR(16) NULL DEFAULT NULL AFTER `resource`",
     'deprecated_alias_of' => "{$ALTER} TABLE `{$prefix}permissions` ADD COLUMN `deprecated_alias_of` VARCHAR(64) NULL DEFAULT NULL COMMENT 'When set, points at the canonical new code; both work.' AFTER `verb`",
+    // 2026-08-22 (admin_only structural fix) — belt-and-suspenders
+    // alongside sql/run_00_rbac.php's own guarded ALTER: this file's own
+    // A8 step (below) needs the column to exist and be populated before it
+    // mirrors role_permissions onto a newly-created canonical permission
+    // row, so it ensures the column itself here rather than assuming
+    // run_00_rbac.php has already run in this invocation. See
+    // inc/rbac_admin_only.php for the full model.
+    'admin_only' => "{$ALTER} TABLE `{$prefix}permissions` ADD COLUMN `admin_only` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0=unrestricted, 1=Org Admin or above, 2=Super Admin only. See inc/rbac_admin_only.php.' AFTER `deprecated_alias_of`",
 ];
 foreach ($pCols as $col => $sql) {
     rrbv2_step("permissions.$col column",
@@ -366,8 +379,18 @@ rrbv2_step('permissions: seed canonical codes + link aliases',
         } catch (Throwable $e) { return false; }
     },
     function () use ($prefix) {
+        // 2026-08-22 (admin_only structural fix, Phase 149 root cause) --
+        // `admin_only` is selected here so it can be COPIED onto the new
+        // canonical row below, and so the role_permissions mirror can be
+        // filtered by it -- this is the actual fix for the incident where
+        // action.manage_calls's canonical alias (calls.manage) leaked onto
+        // Dispatcher: the mirror step used to copy role_permissions rows
+        // for the OLD code onto the NEW code with NO regard for whether
+        // the target role's tier was sufficient. See inc/rbac_admin_only.php.
+        $hasAdminOnlyCol = rrbv2_col_exists('permissions', 'admin_only');
+        $adminOnlySelect = $hasAdminOnlyCol ? ', admin_only' : '';
         $rows = db_fetch_all(
-            "SELECT id, code, name, category, resource, verb, description
+            "SELECT id, code, name, category, resource, verb, description{$adminOnlySelect}
              FROM `{$prefix}permissions`
              WHERE resource IS NOT NULL AND verb IS NOT NULL
                AND deprecated_alias_of IS NULL"
@@ -410,6 +433,8 @@ rrbv2_step('permissions: seed canonical codes + link aliases',
                 $skipped++;
                 continue;
             }
+            $oldAdminOnly = $hasAdminOnlyCol ? (int) ($r['admin_only'] ?? 0) : 0;
+
             // Insert the canonical row if it doesn't exist.
             $existingRow = db_fetch_one(
                 "SELECT category FROM `{$prefix}permissions` WHERE code = ?",
@@ -431,21 +456,79 @@ rrbv2_step('permissions: seed canonical codes + link aliases',
                 }
             }
             if (!$exists) {
-                db_query(
-                    "INSERT INTO `{$prefix}permissions`
-                     (code, name, category, resource, verb, description)
-                     VALUES (?, ?, ?, ?, ?, ?)",
-                    [$newCode, $r['name'], $r['category'], $r['resource'], $r['verb'], $r['description']]
-                );
-                // Mirror role_permissions: every role that holds the old
-                // code also holds the new one.
+                if ($hasAdminOnlyCol) {
+                    db_query(
+                        "INSERT INTO `{$prefix}permissions`
+                         (code, name, category, resource, verb, description, admin_only)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        [$newCode, $r['name'], $r['category'], $r['resource'], $r['verb'], $r['description'], $oldAdminOnly]
+                    );
+                } else {
+                    db_query(
+                        "INSERT INTO `{$prefix}permissions`
+                         (code, name, category, resource, verb, description)
+                         VALUES (?, ?, ?, ?, ?, ?)",
+                        [$newCode, $r['name'], $r['category'], $r['resource'], $r['verb'], $r['description']]
+                    );
+                }
                 $newId = (int) db_insert_id();
-                db_query(
-                    "INSERT IGNORE INTO `{$prefix}role_permissions` (role_id, permission_id)
-                     SELECT role_id, ? FROM `{$prefix}role_permissions` WHERE permission_id = ?",
-                    [$newId, $r['id']]
-                );
+
+                // Mirror role_permissions: every role that holds the old
+                // code also holds the new one -- EXCEPT where that would
+                // hand an admin-only (tier > 0) permission to a role whose
+                // own tier is too low. This is the actual fix for the
+                // Phase 149 incident (action.manage_calls's canonical alias
+                // leaking onto Dispatcher): the mirror used to copy
+                // role_permissions rows for the OLD code onto the NEW code
+                // completely unconditionally, so a role that (transiently,
+                // incorrectly, or via a stale grant) held the old code at
+                // THIS EXACT MOMENT got the new canonical code too, with no
+                // regard for whether that grant was ever supposed to exist.
+                // Filtering here means the mirror can never itself become a
+                // fresh source of the leak, independent of whatever state
+                // role_permissions happens to be in for the old code when
+                // this step runs.
+                if ($hasAdminOnlyCol && $oldAdminOnly > 0) {
+                    db_query(
+                        "INSERT IGNORE INTO `{$prefix}role_permissions` (role_id, permission_id)
+                         SELECT rp.role_id, ? FROM `{$prefix}role_permissions` rp
+                         JOIN `{$prefix}roles` rr ON rr.id = rp.role_id
+                         WHERE rp.permission_id = ?
+                           AND (CASE WHEN rr.is_super = 1 THEN 2
+                                     WHEN rr.id = 2 OR rr.name = 'Org Admin' THEN 1
+                                     ELSE 0 END) >= ?",
+                        [$newId, $r['id'], $oldAdminOnly]
+                    );
+                } else {
+                    db_query(
+                        "INSERT IGNORE INTO `{$prefix}role_permissions` (role_id, permission_id)
+                         SELECT role_id, ? FROM `{$prefix}role_permissions` WHERE permission_id = ?",
+                        [$newId, $r['id']]
+                    );
+                }
                 $created++;
+            } elseif ($hasAdminOnlyCol) {
+                // 2026-08-22 (admin_only structural fix): the canonical row
+                // already existed (created while processing a DIFFERENT old
+                // code that happened to derive the same resource.verb pair
+                // -- e.g. screen.reports and action.view_reports both
+                // deriving reports.view, the exact collision A8's own
+                // privilege-tier guard above already handles for
+                // view/non-view). Reconcile admin_only to the STRICTER of
+                // the two rather than leaving whatever the FIRST code to
+                // process happened to set -- a second, more-restricted old
+                // code aliasing onto an already-created, less-restricted
+                // canonical row must not silently loosen it.
+                $existingAdminOnly = (int) db_fetch_value(
+                    "SELECT admin_only FROM `{$prefix}permissions` WHERE code = ?",
+                    [$newCode]
+                );
+                if ($oldAdminOnly > $existingAdminOnly) {
+                    db_query(
+                        "UPDATE `{$prefix}permissions` SET admin_only = ? WHERE code = ?",
+                        [$oldAdminOnly, $newCode]
+                    );
+                }
             }
             // Mark the old row as deprecated, pointing at the canonical.
             db_query(
