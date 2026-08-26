@@ -3,37 +3,96 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [4.2.26] — 2026-08-26
+
+### Security
+
+- **RBAC "admin-only" is now a real, structural database column
+  (`permissions.admin_only`), not a hand-maintained exclusion-list string —
+  closing a bug class hit five separate times.** A permission's admin tier
+  (0=unrestricted, 1=Org Admin or above, 2=Super Admin only) is now
+  consulted directly by every grant-writing code path: the live Roles &
+  Permissions UI (`api/rbac.php`), and — the actual fix for the most recent
+  incident — `sql/run_rbac_v2.php`'s canonical-alias mirror step, which
+  previously copied a role's grant onto a newly-created canonical
+  permission code with no regard for whether that role's tier was
+  sufficient. `sql/rbac.sql`'s and `sql/run_00_rbac.php`'s broad
+  "everything except" seed statements also gained a structural
+  `admin_only`-based filter alongside their existing exclusion-list text.
+  `tools/rbac_exclusion_leak_audit.php` gained a new, primary,
+  mechanism-agnostic check against the live column plus a classification-
+  drift cross-reference. See `inc/rbac_admin_only.php` and
+  `tests/test_rbac_admin_only.php`.
+
+### Removed
+
+- **The public beta-tester sign-up form and its database table
+  (`beta-tester.php`, `beta_tester_applications`) have been removed
+  entirely.** This was an internal recruitment tool for the maintainer's
+  own beta program that was never intended to ship as part of the
+  software — it shipped anyway. An install upgrading past this version
+  will have the form, its pretty URL (`/beta-tester`), and the table
+  removed automatically; any existing application data is backed up to a
+  timestamped SQL file under the install's backup directory before the
+  table is dropped. See `sql/run_retire_beta_tester_applications.php`.
 
 ### Fixed
 
-- **`session_timeout_minutes` (Settings → Login Settings) never reconciled
-  with PHP's own session garbage collection**, which defaults to 24
-  minutes on a stock install with no custom tuning — every desktop
-  session was silently capped at 24 minutes regardless of the configured
-  value (default 8 hours). (#109)
-- **The ICS Form Builder's Table field type could not save a column set to
-  type Select.** A string/array mismatch made the save silently die with
-  no error shown. Also fixed: the options box now appears immediately
-  when a column's type is changed; a save-payload failure now surfaces a
-  message instead of a silent dead click. (#107)
-- **The incident-detail PAR card polled the server every 10 seconds
-  forever, including after a permissions error**, for any role without
-  access to PAR data — the polling interval could never be cancelled.
-  (#106)
-- **The dashboard's "Save Snapshot" dropdown rendered behind widget
-  content** instead of on top of it. (#110)
-- **Print buttons could take 2-3 minutes to open the print dialog in
-  Safari** (Cmd+P was unaffected). Applied a low-risk mitigation
-  (deferring the print call off the click handler); the underlying
-  WebKit behavior has not been independently confirmed. (#105)
-- **The installer's RSA field-encryption keys check used a
-  Windows-incorrect path**, disagreeing with where the running
-  application actually stores its keys — the installer reported the keys
-  as missing and re-verified them on every single run instead of
-  recognizing them as already in place.
-- Cross-org ticket sharing: a destination-facility qualification edge case
-  on tickets received via the origin org's own branch. (follow-up to #99)
+- **A print button click could hang for 2-3 minutes in Safari.** Reported
+  and root-caused by a community member: any open real-time event stream
+  (`EventSource`) on the page stalls Safari's *programmatic*
+  `window.print()` for minutes — reproduced with a 4-line minimal test
+  page — while the keyboard shortcut is unaffected. A new shared
+  `window.appPrint()` closes both of the app's SSE streams before
+  printing and reopens them once the dialog closes; every print button
+  and print action in the app now goes through it.
+- **Inbound SIP/PBX calls: claiming, releasing, or reassigning a call
+  didn't update other dispatchers' screens in real time.** The claim
+  itself always worked correctly, but two files were missing a required
+  include, so the real-time notification silently never fired — a second
+  dispatcher had to manually refresh to see a call had been claimed.
+- **Personnel "Members by Type"/"Members by Status" summary panels showed
+  every member as Unassigned**, and the ICS Qualifications list, Time
+  Entries, and the Personnel Compliance dashboard could show members with
+  no name at all. All four read an old, no-longer-written internal
+  column instead of the one the app actually writes to. Two of the fixed
+  queries were delete-safety guards that had never actually been able to
+  block deleting a member type or status still in use — they now do. The
+  Compliance dashboard additionally had an unrelated database error that
+  had it failing outright on every install; fixed in the same pass.
+- **A unit's arrival time could read as ambiguous on a receiving
+  facility's own portal view** when a patient was actually transported
+  to a *different* facility — e.g. showing a bare "arrived 14:32" for a
+  unit that had arrived somewhere else entirely. The timing text now
+  names the actual destination when it isn't the facility currently
+  viewing it.
+- **A Field Unit user who was only linked to a unit through an active
+  crew assignment** (not team or organization membership) couldn't
+  acknowledge a Personnel Accountability Report (PAR) check-in for that
+  unit, even though the mobile app already recognized them as crewing it.
+- **"Last login" on the User Accounts page always showed "never,"**
+  regardless of how recently someone had actually signed in — the column
+  was displayed but never written by any code path. Existing accounts'
+  history is backfilled automatically from the audit log on upgrade.
+- **The Recent Activity dashboard widget didn't populate until manually
+  refreshed**, and its entries showed a raw internal type/id (e.g.
+  "user #3") instead of a readable name.
+- **A configured session timeout longer than the site-wide default could
+  be silently capped at the shorter, site-wide value** — PHP's own
+  session garbage collector wasn't being reconciled with either setting,
+  so a session could be logged out early regardless of which one an
+  administrator had actually configured.
+- **The ICS Form Builder's custom "Table" field type couldn't save a
+  column configured with a dropdown (Select) — the save silently did
+  nothing, with no error shown.**
+- **A widget's "Save Snapshot" dropdown menu could render behind the
+  widget's own content**, making its options unreachable by mouse.
+- **A permission check that had been failing open (403) forever for
+  certain roles kept retrying every 10 seconds, indefinitely**, on the
+  incident detail page's Personnel Accountability Report card.
+- **A Windows install re-running the installer could unnecessarily
+  regenerate its encryption keys** on a second run, due to a path check
+  that didn't account for Windows' key-storage location.
 
 ## [4.2.25] — 2026-08-22
 
@@ -576,7 +635,6 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 - **Documented that `docker compose pull` doesn't work for the
   locally-built app image** — it's never published to a registry, so the
   correct update path is `git pull` + `docker compose up -d --build`.
-
 
 ## [4.2.22] — 2026-08-16
 
