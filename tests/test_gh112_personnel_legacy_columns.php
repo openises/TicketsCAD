@@ -230,16 +230,44 @@ try {
 // verbatim against a fixture member, proving (a) it executes at all —
 // the original bare "m.name" was a hard SQL error, not a silent
 // mismatch — and (b) a modern-only member (member_type_id set, field3
-// left at its column default) resolves through the COALESCE join. ──────
+// left at its column default) resolves through the COALESCE join.
+//
+// first_name/last_name are GENERATED (mirror field2/field1) on THIS dev
+// database but PLAIN, directly-writable columns on a genuinely fresh
+// install (confirmed by CI catching exactly this — a first version of
+// this section always wrote field1/field2 and got NULL back on a fresh
+// install, since nothing there mirrors them). Probe information_schema
+// per tests/test_gh95_personnel_report_named_columns.php's own
+// established pattern and write whichever shape this install actually
+// has. ───────────────────────────────────────────────────────────────
+$compFirstNameGenerated = false;
+try {
+    $genCols = array_column(db_fetch_all(
+        "SELECT COLUMN_NAME FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+            AND COLUMN_NAME = 'first_name'
+            AND GENERATION_EXPRESSION IS NOT NULL AND GENERATION_EXPRESSION != ''",
+        [trim($prefix . 'member', '` ')]
+    ), 'COLUMN_NAME');
+    $compFirstNameGenerated = !empty($genCols);
+} catch (Throwable $e) {}
+
 try {
     // member_types.name is varchar(16) — must stay within that limit.
     db_query("INSERT INTO `{$prefix}member_types` (`name`, `description`, `color`, `_on`, `_by`) VALUES ('GH112CompType', '', '#123456', NOW(), 1)");
     $compTypeId = (int) db_insert_id();
     try {
-        db_query(
-            "INSERT INTO `{$prefix}member` (`field1`, `field2`, `member_type_id`) VALUES ('ComplianceGenLast', 'ComplianceGenFirst', ?)",
-            [$compTypeId]
-        );
+        if ($compFirstNameGenerated) {
+            db_query(
+                "INSERT INTO `{$prefix}member` (`field1`, `field2`, `member_type_id`) VALUES ('ComplianceGenLast', 'ComplianceGenFirst', ?)",
+                [$compTypeId]
+            );
+        } else {
+            db_query(
+                "INSERT INTO `{$prefix}member` (`first_name`, `last_name`, `member_type_id`) VALUES ('ComplianceGenFirst', 'ComplianceGenLast', ?)",
+                [$compTypeId]
+            );
+        }
         $compMemberId = (int) db_insert_id();
         try {
             $row = db_fetch_one(
