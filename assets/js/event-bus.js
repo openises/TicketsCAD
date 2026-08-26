@@ -214,3 +214,31 @@ var EventBus = (function () {
 
     return bus;
 })();
+
+// ── GH#105 (rjonesbsink) — shared print helper ──────────────────────
+// Safari's PROGRAMMATIC window.print() (a click handler; Cmd+P is
+// unaffected) stalls for 2-3 minutes whenever an EventSource is open
+// anywhere on the page — reproduced with a 4-line minimal page (just
+// `new EventSource(...)`, no app CSS/JS at all), including a stream
+// stuck retrying, not just a connected one. A setTimeout(fn, 0)
+// deferral (the original mitigation) does NOT help, and neither does a
+// 'beforeprint' listener — Safari stalls BEFORE dispatching that event,
+// so the stream has to be closed before print() is ever called, not in
+// response to a print lifecycle event. event-bus.js and
+// assets/js/radio-widget.js are both loaded globally via inc/navbar.php
+// (that's why this hits every page), so this is the one place both
+// streams can be reached from. Every window.print() call site in the
+// app should call this instead.
+window.appPrint = function () {
+    EventBus.disconnectSSE();
+    if (window.RadioWidget && typeof window.RadioWidget.disconnectSSE === 'function') {
+        window.RadioWidget.disconnectSSE();
+    }
+    window.print();
+};
+window.addEventListener('afterprint', function () {
+    EventBus.connectSSE();
+    if (window.RadioWidget && typeof window.RadioWidget.connectSSE === 'function') {
+        window.RadioWidget.connectSSE();
+    }
+});

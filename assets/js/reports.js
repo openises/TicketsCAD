@@ -1244,11 +1244,10 @@
     // ── Print ─────────────────────────────────────────────────────────────────
 
     function printReport() {
-        // GH#105 -- deferred off the click's own call stack; avoids a
-        // WebKit quirk where a click-triggered window.print() (unlike
-        // Cmd+P) can take minutes to open the dialog on some
-        // Safari/page combinations.
-        setTimeout(function () { window.print(); }, 0);
+        // GH#105 -- root cause confirmed to be an open EventSource, not
+        // click-vs-keyboard timing; appPrint() (event-bus.js) closes it
+        // before calling print().
+        appPrint();
     }
 
     // ── Init on DOMContentLoaded ──────────────────────────────────────────────

@@ -100,7 +100,7 @@ $canManageTeams = rbac_can('action.manage_teams') ? 1 : 0;
             <a href="index.php" class="btn btn-sm btn-outline-secondary">
                 <i class="bi bi-arrow-left me-1"></i><?php echo e(t('profile.back_to_dashboard', 'Dashboard')); ?>
             </a>
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setTimeout(function(){ window.print(); }, 0)">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="appPrint()">
                 <i class="bi bi-printer me-1"></i><?php echo e(t('roster.btn.print', 'Print')); ?>
             </button>
         </div>

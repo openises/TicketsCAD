@@ -70,7 +70,7 @@ $csrf     = csrf_token();
             <a href="facilities.php" class="btn btn-sm btn-outline-secondary">
                 <i class="bi bi-arrow-left me-1"></i><?php echo e(t('facs.title', 'Facilities')); ?>
             </a>
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setTimeout(function(){ window.print(); }, 0)">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="appPrint()">
                 <i class="bi bi-printer me-1"></i><?php echo e(t('roster.btn.print', 'Print')); ?>
             </button>
         </div>

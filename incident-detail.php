@@ -166,7 +166,7 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
             <a href="index.php" class="btn btn-sm btn-outline-secondary">
                 <i class="bi bi-arrow-left me-1"></i>Dashboard
             </a>
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setTimeout(function(){ window.print(); }, 0)">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="appPrint()">
                 <i class="bi bi-printer me-1"></i>Print
             </button>
         </div>

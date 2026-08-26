@@ -1051,6 +1051,23 @@
         sseReconnectDelayMs = Math.min(sseReconnectDelayMs * 2, 30000);
     }
 
+    // GH#105 (rjonesbsink) — a deliberate, momentary disconnect for
+    // window.print(). Safari's programmatic print stalls for minutes
+    // while ANY EventSource is open on the page (confirmed by a
+    // 4-line minimal repro), and beforeprint fires too late for a
+    // central listener to close the stream in time — the caller has
+    // to close it BEFORE calling print(). Distinct from
+    // scheduleSseReconnect()'s error-driven retry: this is intentional,
+    // silent (no "disconnected" banner), and pairs with reconnectStream().
+    function disconnectStream() {
+        if (sseReconnectTimer) { clearTimeout(sseReconnectTimer); sseReconnectTimer = null; }
+        if (es) { try { es.close(); } catch (e) {} es = null; }
+        setStatus('idle');
+    }
+    function reconnectStream() {
+        ensureStream();
+    }
+
     var _audioFrameCount = 0;
     var _audioByteCount = 0;
     var _audioFrameLogAt = 0;
@@ -2502,6 +2519,15 @@
             stop: function () { pttEnd(); },
             isActive: function () { return pttActive; }
         }
+    };
+
+    // GH#105 — minimal public surface for the shared print helper
+    // (assets/js/event-bus.js's window.appPrint()) to close and
+    // reopen this widget's own EventSource around window.print().
+    // Naming matches EventBus.disconnectSSE()/connectSSE() deliberately.
+    window.RadioWidget = {
+        disconnectSSE: function () { disconnectStream(); },
+        connectSSE: function () { reconnectStream(); }
     };
 
     // ── Boot ────────────────────────────────────────────────────
