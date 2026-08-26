@@ -339,6 +339,15 @@ var AuditLogWidget = (function () {
     function formatTarget(entry) {
         var t = entry.target_table || '';
         var id = entry.target_id || '';
+        // GH#111 — api/dashboard-audit.php now resolves a readable name
+        // for the common target types (user, ticket/incident, responder,
+        // facility, member) instead of always sending back a raw id.
+        // Prefer it when present; a type with no resolver, or a target
+        // row that's since been deleted, falls back to "type #id" exactly
+        // as before.
+        if (entry.target_name) {
+            return t ? (t + ': ' + entry.target_name) : entry.target_name;
+        }
         if (t && id) return t + ' #' + id;
         if (t) return t;
         if (id) return '#' + id;

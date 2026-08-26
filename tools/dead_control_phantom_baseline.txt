@@ -588,7 +588,7 @@ phantom:unit_types._on
 #     matches the real (but genuinely unwritten) `leader_id` column --
 #     actual data flows through `teams.leader`, which IS written;
 #     member.phone / user._from / user.db_prefix / user.dob / user.expires
-#     / user.files / user.ident / user.login / zello_user_config.user --
+#     / user.files / user.ident / zello_user_config.user --
 #     no genuine reader/writer distinct from other tables' identically-
 #     named columns found for any of these (member.dob and phone_p/
 #     phone_home/phone_work/phone_cell ARE the real, correctly-written
@@ -601,6 +601,15 @@ phantom:unit_types._on
 #     list (job-queue claim/complete/error columns identical in shape to
 #     the already-confirmed webhook_deliveries; migration-runner-owned;
 #     token-issuance, a well-trodden area of this codebase).
+#
+# CORRECTION (GH#114, rjonesbsink, 2026-08-25): user.login was wrongly
+# included in the "no genuine reader/writer" group above. It IS a genuine,
+# table-qualified read (`u.`login`` in api/config-admin.php, rendered as
+# "Last login" on Settings -> User Accounts) with no write path anywhere
+# -- exactly the phantom-column shape this check exists to catch. The
+# rest of that paragraph's entries were re-confirmed and are unaffected;
+# only user.login itself was pulled from the list below and fixed
+# (login.php's complete_login() now writes it).
 phantom:member.field22
 phantom:member.field65
 phantom:region_type.description
@@ -615,7 +624,6 @@ phantom:user.dob
 phantom:user.expires
 phantom:user.files
 phantom:user.ident
-phantom:user.login
 phantom:zello_user_config.user
 phantom:responder.zello_username
 phantom:zello_outbox.claimed_at

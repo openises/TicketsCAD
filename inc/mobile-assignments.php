@@ -58,3 +58,47 @@ function mobile_active_assignments(string $prefix, array $responderIds): array {
         return [];
     }
 }
+
+/**
+ * GH#113 (rjonesbsink) — moved here from api/mobile-data.php (unchanged
+ * behavior) so inc/par.php's ack-ownership gate can call the SAME
+ * resolver mobile-data.php itself uses, instead of restating the query a
+ * third time. Extracting into inc/ rather than requiring the whole
+ * api/mobile-data.php endpoint file follows this project's own
+ * established convention (see mobile_active_assignments() above,
+ * GH#82) — an api/*.php file can carry top-level request-dispatch code
+ * that must not run as a side effect of merely wanting one of its
+ * helper functions.
+ *
+ * The units (responder ids) this user actively crews via
+ * unit_personnel_assignments — the Phase 116c / GH#85 query. Factored
+ * out originally (GH#77) so every mobile action that needs "which unit
+ * is this crew member operating from" calls the exact same query
+ * instead of each re-deriving (and drifting from) its own copy; that
+ * drift is exactly what GH#77 was, and re-deriving the query a third
+ * time for PAR would have been the identical mistake one file over.
+ */
+function mobile_crew_unit_ids($prefix, $userId) {
+    $ids = [];
+    try {
+        $crewRows = db_fetch_all(
+            "SELECT DISTINCT upa.`responder_id`
+               FROM `{$prefix}unit_personnel_assignments` upa
+               JOIN `{$prefix}member` m ON m.`id` = upa.`member_id`
+              WHERE m.`user_id` = ?
+                AND upa.`status` IN ('active','standby')
+                AND (upa.`released_at` IS NULL OR DATE_FORMAT(upa.`released_at`,'%y') = '00')",
+            [$userId]
+        );
+        foreach ($crewRows as $cr) {
+            $rid = (int) $cr['responder_id'];
+            if ($rid > 0) $ids[] = $rid;
+        }
+    } catch (Exception $e) {
+        // older install without unit_personnel_assignments, or a schema
+        // mismatch — either way, "this user crews nothing" is the safe
+        // answer, not a fatal.
+        error_log('[mobile-assignments] mobile_crew_unit_ids: ' . $e->getMessage());
+    }
+    return $ids;
+}

@@ -54,13 +54,27 @@ function handleGet() {
         if (empty($pos)) json_error('Position not found', 404);
 
         // Members qualified for this position
+        //
+        // GH#112 (rjonesbsink) — two independent bugs fixed together:
+        // (1) legacy-column read (field1/field2), same disease as #95/#103
+        // — nothing writes those any more, the app writes first_name/
+        // last_name. COALESCE(NULLIF(...)) matches the established
+        // pattern from api/reports.php. This also means a pre-migration
+        // legacy install (real data still in field1/field2) keeps
+        // working, not just modern ones.
+        // (2) field26 for callsign is a SEPARATE, older mistake: every
+        // other file in this tree uses field4 (see api/teams.php's own
+        // comment citing PRE-RELEASE-FIXES #17 for the identical
+        // correction) — field26 was never given the same fix here.
         $qualified = safe_fetch_ics(
-            "SELECT miq.*, m.field1 AS last_name, m.field2 AS first_name,
-                    m.field26 AS callsign
+            "SELECT miq.*,
+                    COALESCE(NULLIF(m.last_name,  ''), m.field1) AS last_name,
+                    COALESCE(NULLIF(m.first_name, ''), m.field2) AS first_name,
+                    COALESCE(NULLIF(m.callsign,   ''), m.field4) AS callsign
              FROM " . db_table('member_ics_qualifications') . " miq
              JOIN " . db_table('member') . " m ON miq.member_id = m.id
              WHERE miq.ics_position_id = ?
-             ORDER BY miq.qualification_level DESC, m.field1",
+             ORDER BY miq.qualification_level DESC, COALESCE(NULLIF(m.last_name, ''), m.field1)",
             [$id]
         );
 

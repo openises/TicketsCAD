@@ -227,8 +227,15 @@ try {
 $src = @file_get_contents(__DIR__ . '/../api/mobile-data.php') ?: '';
 test('production: mobile_resolve_responder_id() is defined',
     (bool) preg_match('/function\s+mobile_resolve_responder_id\s*\(/', $src));
-test('production: mobile_crew_unit_ids() is defined',
-    (bool) preg_match('/function\s+mobile_crew_unit_ids\s*\(/', $src));
+// GH#113 (2026-08-25): mobile_crew_unit_ids() moved to
+// inc/mobile-assignments.php so inc/par.php's PAR ack gate can share it
+// too, instead of re-deriving the query a third time. api/mobile-data.php
+// still CALLS it (checked below via $src) — only the definition moved.
+$mobileAssignmentsSrc = @file_get_contents(__DIR__ . '/../inc/mobile-assignments.php') ?: '';
+test('production: mobile_crew_unit_ids() is defined in inc/mobile-assignments.php',
+    (bool) preg_match('/function\s+mobile_crew_unit_ids\s*\(/', $mobileAssignmentsSrc));
+test('production: mobile_crew_unit_ids() is no longer (re)defined in api/mobile-data.php',
+    !preg_match('/function\s+mobile_crew_unit_ids\s*\(/', $src));
 test('production: the shared resolver itself falls back to crew units (Path 4 present)',
     strpos($src, '$crewIds = mobile_crew_unit_ids($prefix, $userId);') !== false);
 test('production: add_note calls the shared resolver',

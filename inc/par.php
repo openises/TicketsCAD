@@ -1199,12 +1199,26 @@ function par_cycle_summary(int $cycleId): array {
 /**
  * Issue #22 (2026-07-02) — mobile ack authorization helper.
  *
- * Return true if `$userId` "owns" `$responderId` in the same three ways
+ * Return true if `$userId` "owns" `$responderId` in the same FOUR ways
  * api/mobile-data.php resolves the current user's responder:
  *   1. responder.user_id = the caller's user id (direct link)
  *   2. responder.personal_for_member_id = the caller's member id
  *      (Phase 69 personal-resource unit)
  *   3. responder.name or responder.handle matches the caller's username
+ *   4. the caller actively crews the unit via unit_personnel_assignments
+ *      (Phase 116c / GH#85) — GH#113 (rjonesbsink, 2026-08-25).
+ *
+ * GH#113: this docblock always claimed to mirror api/mobile-data.php, but
+ * only ever implemented the three paths that existed when it was written.
+ * mobile-data.php grew a fourth (mobile_crew_unit_ids(), added for GH#77
+ * so a user who only crews a shared unit — no personal responder row —
+ * isn't rejected) and this gate never got the memo: a crew-linked Field
+ * Unit user could work a call from the PWA (mobile-data.php resolves them
+ * fine) but was refused acking PAR for that same unit (this gate didn't
+ * know the crew path existed). Fixed by calling the SAME shared resolver
+ * mobile-data.php uses (inc/mobile-assignments.php, moved there for
+ * exactly this reuse) instead of re-deriving a third, and now inevitably
+ * drifting, copy of the query.
  *
  * Used by api/par.php's ack gate so a Field Unit role responder can
  * acknowledge PAR for their own unit but not for anyone else's.
@@ -1249,6 +1263,12 @@ function par_user_owns_responder(int $userId, int $responderId): bool {
                 [$responderId, $username, $username]
             );
             if ($hit > 0) return true;
+        }
+
+        // Path 4 (GH#113): the caller actively crews this unit.
+        require_once __DIR__ . '/mobile-assignments.php';
+        if (in_array($responderId, mobile_crew_unit_ids($prefix, $userId), true)) {
+            return true;
         }
     } catch (Exception $e) {
         // Soft-fail — a schema mismatch here shouldn't grant ownership.

@@ -45,12 +45,23 @@ if ($action === 'overview') {
 
     try {
         // Get all members with their certifications
+        //
+        // GH#112 (rjonesbsink follow-up sweep) — two independent bugs
+        // fixed together: (1) m.field3 is the same legacy-column disease
+        // as the rest of this issue (nothing writes field3 any more; the
+        // app writes member_type_id) -- COALESCE matches api/teams.php's
+        // own reference fix. (2) the member table has no plain "name"
+        // column at all (first_name/last_name/middle_name are the real
+        // ones) — reading it was a hard SQL error (1054 Unknown column),
+        // so the whole 'overview' action 500'd before this fix,
+        // independent of #1.
         $members = db_fetch_all(
-            "SELECT m.id, m.name, m.callsign, m.field3 AS type_id,
+            "SELECT m.id, CONCAT(m.first_name, ' ', m.last_name) AS name, m.callsign,
+                    COALESCE(m.member_type_id, m.field3) AS type_id,
                     mt.name AS type_name, mt.color AS type_color
              FROM " . db_table('member') . " m
-             LEFT JOIN " . db_table('member_types') . " mt ON m.field3 = mt.id
-             ORDER BY m.name"
+             LEFT JOIN " . db_table('member_types') . " mt ON COALESCE(m.member_type_id, m.field3) = mt.id
+             ORDER BY name"
         );
 
         // Get all member certifications with expiry info
@@ -180,7 +191,7 @@ elseif ($action === 'expiring') {
     try {
         $items = db_fetch_all(
             "SELECT mc.id, mc.member_id, mc.expiry_date,
-                    m.name AS member_name, m.callsign,
+                    CONCAT(m.first_name, ' ', m.last_name) AS member_name, m.callsign,
                     c.name AS cert_name, c.required
              FROM " . db_table('member_certifications') . " mc
              JOIN " . db_table('member') . " m ON mc.member_id = m.id

@@ -98,8 +98,12 @@ function getMemberTypes() {
         // Filter by active org: show global types (org_id IS NULL) + current org types
         $orgId = isset($_SESSION['active_org_id']) ? (int) $_SESSION['active_org_id'] : null;
 
+        // GH#112 (rjonesbsink) — the app writes member.member_type_id;
+        // field3 is the legacy column nothing writes any more. COALESCE
+        // reads whichever is populated, matching api/teams.php's own
+        // already-shipping fix for the identical FK pattern.
         $sql = "SELECT mt.*,
-                    (SELECT COUNT(*) FROM " . db_table('member') . " m WHERE m.field3 = mt.id) AS member_count
+                    (SELECT COUNT(*) FROM " . db_table('member') . " m WHERE COALESCE(m.member_type_id, m.field3) = mt.id) AS member_count
              FROM " . db_table('member_types') . " mt";
 
         $params = [];
@@ -115,7 +119,7 @@ function getMemberTypes() {
             // org_id column may not exist yet — fall back to unfiltered
             $types = db_fetch_all(
                 "SELECT mt.*,
-                        (SELECT COUNT(*) FROM " . db_table('member') . " m WHERE m.field3 = mt.id) AS member_count
+                        (SELECT COUNT(*) FROM " . db_table('member') . " m WHERE COALESCE(m.member_type_id, m.field3) = mt.id) AS member_count
                  FROM " . db_table('member_types') . " mt ORDER BY mt.id"
             );
         }
@@ -128,9 +132,11 @@ function getMemberTypes() {
 
 function getMemberStatuses() {
     try {
+        // GH#112 — same pattern as getMemberTypes() above: member.field21
+        // is the legacy column, member_status_id is what the app writes.
         $statuses = db_fetch_all(
             "SELECT ms.*,
-                    (SELECT COUNT(*) FROM " . db_table('member') . " m WHERE m.field21 = ms.id) AS member_count
+                    (SELECT COUNT(*) FROM " . db_table('member') . " m WHERE COALESCE(m.member_status_id, m.field21) = ms.id) AS member_count
              FROM " . db_table('member_status') . " ms
              ORDER BY ms.id"
         );
@@ -197,11 +203,12 @@ function getMembersSummary() {
         // By type
         $byType = [];
         try {
+            // GH#112 — same COALESCE pattern as getMemberTypes() above.
             $byType = db_fetch_all(
                 "SELECT mt.name, mt.color, COUNT(m.id) AS cnt
                  FROM " . db_table('member') . " m
-                 LEFT JOIN " . db_table('member_types') . " mt ON m.field3 = mt.id
-                 GROUP BY m.field3, mt.name, mt.color
+                 LEFT JOIN " . db_table('member_types') . " mt ON COALESCE(m.member_type_id, m.field3) = mt.id
+                 GROUP BY COALESCE(m.member_type_id, m.field3), mt.name, mt.color
                  ORDER BY cnt DESC"
             );
         } catch (Exception $e) {}
@@ -209,11 +216,12 @@ function getMembersSummary() {
         // By status
         $byStatus = [];
         try {
+            // GH#112 — same COALESCE pattern as getMemberStatuses() above.
             $byStatus = db_fetch_all(
                 "SELECT ms.status_val AS name, ms.color, COUNT(m.id) AS cnt
                  FROM " . db_table('member') . " m
-                 LEFT JOIN " . db_table('member_status') . " ms ON m.field21 = ms.id
-                 GROUP BY m.field21, ms.status_val, ms.color
+                 LEFT JOIN " . db_table('member_status') . " ms ON COALESCE(m.member_status_id, m.field21) = ms.id
+                 GROUP BY COALESCE(m.member_status_id, m.field21), ms.status_val, ms.color
                  ORDER BY cnt DESC"
             );
         } catch (Exception $e) {}
@@ -389,8 +397,12 @@ function deleteMemberType($input) {
     if (!$id) json_error('Missing member type ID');
 
     try {
+        // GH#112 (rjonesbsink) — this guard checked the legacy field3
+        // column, which nothing writes any more, so it always counted 0
+        // and never actually stopped a delete a member was really using.
+        // COALESCE reads whichever column is populated.
         $count = db_fetch_value(
-            "SELECT COUNT(*) FROM " . db_table('member') . " WHERE field3 = ?", [$id]
+            "SELECT COUNT(*) FROM " . db_table('member') . " WHERE COALESCE(member_type_id, field3) = ?", [$id]
         );
         if ($count > 0) {
             json_error('Cannot delete — ' . $count . ' member(s) use this type. Reassign them first.');
@@ -445,8 +457,10 @@ function deleteMemberStatus($input) {
     if (!$id) json_error('Missing member status ID');
 
     try {
+        // GH#112 — same fix as deleteMemberType() above: field21 is the
+        // legacy column nothing writes any more.
         $count = db_fetch_value(
-            "SELECT COUNT(*) FROM " . db_table('member') . " WHERE field21 = ?", [$id]
+            "SELECT COUNT(*) FROM " . db_table('member') . " WHERE COALESCE(member_status_id, field21) = ?", [$id]
         );
         if ($count > 0) {
             json_error('Cannot delete — ' . $count . ' member(s) use this status. Reassign them first.');

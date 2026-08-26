@@ -370,16 +370,28 @@ function get_setting($key, $default = null) {
  * session profile (see SESS_MOBILE_LIFETIME_SECS) -- but its own comment
  * said "Desktop profile is PHP defaults -- nothing to set."
  *
- * Deliberately raises gc_maxlifetime to the GLOBAL session_timeout_minutes
- * value only, not a per-role resolution -- the specific user isn't known
- * this early (session_start() hasn't run yet). A per-role override can
- * only ever be SHORTER than the global setting
- * (inc/session-manager.php's sm_get_timeout() "shortest wins" contract),
- * so this is safe in both directions: PHP's file-level GC becomes a
- * generous outer ceiling matching the global default, while
- * active_sessions.expires_at remains the real enforcement for a shorter
- * per-role timeout -- which now works correctly because the underlying
- * session file survives long enough for that check to ever run.
+ * CORRECTION (rjonesbsink, 2026-08-25, caught before this ever reached a
+ * commit): the first version of this fix raised gc_maxlifetime to the
+ * GLOBAL session_timeout_minutes value only, reasoning that "a per-role
+ * override can only ever be SHORTER than the global setting". That is
+ * wrong -- inc/session-manager.php's sm_get_timeout() takes the shortest
+ * value AMONG A USER'S ROLES, and only falls back to the global setting
+ * when NO role sets one; it never clamps a role's own value against the
+ * global. A role deliberately configured LONGER than the global default
+ * (exactly what the Per-Role Session Timeouts panel exists to allow) hit
+ * this exact bug one level in: PHP would still collect the session file
+ * at the global value, so the longer per-role setting could never take
+ * effect -- active_sessions.expires_at would say the session is still
+ * good, but the file it depends on would already be gone.
+ *
+ * Fixed by using the LARGER of the global setting and the longest
+ * session_timeout_minutes configured on ANY role -- a single extra query,
+ * no user needed (still runs before the specific user is known). PHP's
+ * file-level GC becomes a ceiling generous enough for every configured
+ * timeout in the system, not just the global default; a SHORTER per-role
+ * override is still what active_sessions.expires_at enforces for that
+ * user, which is the same division of labour as before, just no longer
+ * silently defeated by a role that asks for something longer.
  *
  * Guarded exactly like config.php's own existing session ini_set block
  * (session_status() !== PHP_SESSION_ACTIVE), for the same documented
@@ -400,11 +412,21 @@ function get_setting($key, $default = null) {
  * right order, for real mobile clients.
  */
 if (session_status() !== PHP_SESSION_ACTIVE) {
-    $_sess_timeout_min = (int) (get_setting('session_timeout_minutes', 480) ?: 480);
+    $_sess_global_min = (int) (get_setting('session_timeout_minutes', 480) ?: 480);
+    $_sess_role_max_min = 0;
+    try {
+        $_sess_role_max_min = (int) (db_fetch_value(
+            "SELECT MAX(`session_timeout_minutes`) FROM " . db_table('roles')
+        ) ?: 0);
+    } catch (Exception $e) {
+        // roles table / column not present yet (pre-Phase-37 install) --
+        // fall through to the global-only ceiling.
+    }
+    $_sess_timeout_min = max($_sess_global_min, $_sess_role_max_min);
     if ($_sess_timeout_min > 0) {
         ini_set('session.gc_maxlifetime', (string) ($_sess_timeout_min * 60));
     }
-    unset($_sess_timeout_min);
+    unset($_sess_global_min, $_sess_role_max_min, $_sess_timeout_min);
 }
 
 /**

@@ -243,12 +243,18 @@ if ($method === 'GET') {
         if (!rbac_can('time_entry.approve')) {
             json_error('Approve permission required', 403);
         }
+        // GH#112 (rjonesbsink) — legacy-column read, same disease as
+        // #95/#103: nothing writes member.field1/field2 any more.
+        // COALESCE(NULLIF(...)) matches the established pattern from
+        // api/reports.php, and keeps working for a pre-migration legacy
+        // install too (real data still in field1/field2).
         $sel = te_select_list();
         $rows = db_fetch_all(
             "SELECT te.id, te.member_id, te.started_at, te.ended_at,
                     te.activity_type, te.notes, te.status, te.hours,
                     te.approved_by, te.approved_at, te.created_at $sel,
-                    m.field2 AS first_name, m.field1 AS last_name
+                    COALESCE(NULLIF(m.first_name, ''), m.field2) AS first_name,
+                    COALESCE(NULLIF(m.last_name,  ''), m.field1) AS last_name
              FROM `{$prefix}member_time_entries` te
              JOIN `{$prefix}member` m ON te.member_id = m.id
              ORDER BY te.started_at DESC
@@ -262,8 +268,12 @@ if ($method === 'GET') {
         if (!rbac_can('time_entry.approve')) {
             json_error('Approve permission required', 403);
         }
+        // GH#112 — same fix as the list query above.
         $rows = db_fetch_all(
-            "SELECT te.*, m.field2 AS first_name, m.field1 AS last_name, m.field4 AS callsign
+            "SELECT te.*,
+                    COALESCE(NULLIF(m.first_name, ''), m.field2) AS first_name,
+                    COALESCE(NULLIF(m.last_name,  ''), m.field1) AS last_name,
+                    COALESCE(NULLIF(m.callsign,   ''), m.field4) AS callsign
              FROM `{$prefix}member_time_entries` te
              JOIN `{$prefix}member` m ON te.member_id = m.id
              WHERE te.status = 'self_reported'
@@ -275,8 +285,11 @@ if ($method === 'GET') {
     // Single entry
     if (!empty($_GET['id'])) {
         $id = (int) $_GET['id'];
+        // GH#112 — same fix as the list query above.
         $entry = db_fetch_one(
-            "SELECT te.*, m.field2 AS first_name, m.field1 AS last_name
+            "SELECT te.*,
+                    COALESCE(NULLIF(m.first_name, ''), m.field2) AS first_name,
+                    COALESCE(NULLIF(m.last_name,  ''), m.field1) AS last_name
              FROM `{$prefix}member_time_entries` te
              JOIN `{$prefix}member` m ON te.member_id = m.id
              WHERE te.id = ?",

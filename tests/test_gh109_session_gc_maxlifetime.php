@@ -50,12 +50,18 @@ $fn = file_get_contents($root . '/inc/functions.php');
 
 // ── 1. Static contract: the guarded ini_set block exists, reads
 // session_timeout_minutes via get_setting (matching sm_get_timeout()'s
-// own store), and is gated the same way config.php's own session block
-// is (session_status() !== PHP_SESSION_ACTIVE). ───────────────────────────
-if (preg_match('/session_status\(\)\s*!==\s*PHP_SESSION_ACTIVE\)\s*\{[\s\S]{0,400}get_setting\(\s*[\'"]session_timeout_minutes[\'"]\s*,\s*480\s*\)[\s\S]{0,300}ini_set\(\s*[\'"]session\.gc_maxlifetime[\'"]/', $fn)) {
+// own store), ALSO reads the max role-level timeout (the rjonesbsink
+// correction — see below), and is gated the same way config.php's own
+// session block is (session_status() !== PHP_SESSION_ACTIVE). ────────────
+if (preg_match('/session_status\(\)\s*!==\s*PHP_SESSION_ACTIVE\)\s*\{[\s\S]{0,800}get_setting\(\s*[\'"]session_timeout_minutes[\'"]\s*,\s*480\s*\)[\s\S]{0,900}ini_set\(\s*[\'"]session\.gc_maxlifetime[\'"]/', $fn)) {
     ok('inc/functions.php sets session.gc_maxlifetime from get_setting(session_timeout_minutes, 480), guarded by session_status() !== PHP_SESSION_ACTIVE');
 } else {
     bad('the guarded gc_maxlifetime block was not found in the expected shape', 'GH#109 regression — desktop sessions would silently fall back to PHP\'s 24-minute default again');
+}
+if (preg_match('/SELECT\s+MAX\(`session_timeout_minutes`\)\s+FROM/', $fn) && preg_match('/max\(\s*\$_sess_global_min\s*,\s*\$_sess_role_max_min\s*\)/', $fn)) {
+    ok('inc/functions.php takes the MAX of the global setting and the longest configured role timeout — the rjonesbsink correction, not the global value alone');
+} else {
+    bad('inc/functions.php does not take the MAX of the global setting and the longest role timeout', 'a role configured LONGER than the global default would be silently capped at the global value again — exactly the gap rjonesbsink found in the first version of this fix');
 }
 
 $prefix = $GLOBALS['db_prefix'] ?? '';
@@ -133,6 +139,41 @@ try {
 } catch (Throwable $e) {
     echo "SKIP: could not read/write the config table (" . $e->getMessage() . ") — 0 passed, 0 failed\n";
     exit(0);
+}
+
+// ── 3b. CORRECTION (rjonesbsink) — a role configured LONGER than the
+// global setting must raise the ceiling too, not just get silently
+// capped at the global value. sm_get_timeout() takes the shortest value
+// AMONG A USER'S ROLES and only falls back to the global when no role
+// sets one — it never clamps a role's own value against the global, so
+// gc_maxlifetime must cover the LARGER of the two, system-wide, not just
+// the global default. ──────────────────────────────────────────────────
+try {
+    $prefix2 = $GLOBALS['db_prefix'] ?? '';
+    $probeRoleId = (int) db_fetch_value("SELECT id FROM `{$prefix2}roles` WHERE name = 'SpecialRole' LIMIT 1");
+    if ($probeRoleId <= 0) {
+        echo "SKIP: no 'SpecialRole' fixture role found — skipping the role-longer-than-global check\n";
+    } else {
+        $origRoleMinutes = db_fetch_value("SELECT session_timeout_minutes FROM `{$prefix2}roles` WHERE id = ?", [$probeRoleId]);
+        $configuredMinutes2 = (int) (db_fetch_value(
+            "SELECT `value` FROM `{$prefix2}config` WHERE `key` = 'session_timeout_minutes'"
+        ) ?: 480);
+        if ($configuredMinutes2 <= 0) $configuredMinutes2 = 480;
+        $longerMinutes = $configuredMinutes2 + 120; // guaranteed longer than whatever global currently is
+        try {
+            db_query("UPDATE `{$prefix2}roles` SET session_timeout_minutes = ? WHERE id = ?", [$longerMinutes, $probeRoleId]);
+            $roleActual = gh109_probe($root, $php);
+            if ($roleActual === $longerMinutes * 60) {
+                ok("a role configured longer than the global setting ({$longerMinutes} min) raises gc_maxlifetime to match it ({$roleActual}s), not just the global value — the corrected MAX(global, longest role) behavior");
+            } else {
+                bad("with a role at {$longerMinutes} min (longer than global {$configuredMinutes2} min), gc_maxlifetime was " . var_export($roleActual, true) . ", expected " . ($longerMinutes * 60), 'GH#109\'s follow-up gap — a longer per-role timeout would be silently capped at the global value again');
+            }
+        } finally {
+            db_query("UPDATE `{$prefix2}roles` SET session_timeout_minutes = ? WHERE id = ?", [$origRoleMinutes, $probeRoleId]);
+        }
+    }
+} catch (Throwable $e) {
+    echo "SKIP: could not read/write the roles table (" . $e->getMessage() . ") — 0 passed, 0 failed for this section\n";
 }
 
 // ── 4. Mobile's own, much longer, gc_maxlifetime must still win for a

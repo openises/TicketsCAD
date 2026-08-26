@@ -136,3 +136,20 @@ column:routing_log.payload_summary
 # lines once that lands.
 column:inbound_calls.provider_call_id
 column:inbound_calls.reassigned_from
+
+# GH#112 (2026-08-25) — member.field26 became genuinely, fully dead as a
+# DIRECT side effect of this fix. Before GH#112, api/ics-positions.php was
+# the one remaining reader of field26 for callsign (a separate, older
+# mistake — every other file in this tree already uses field4, per
+# api/teams.php's own PRE-RELEASE-FIXES #17 comment). GH#112 corrected
+# ics-positions.php to field4 too, so field26 now has no reader anywhere
+# in the app tree — confirmed by grep, not inferred. Its two remaining
+# write sites (tools/commit_confirmed_callsigns.php:63,
+# tools/install_fresh.php:676-689) exist SOLELY to keep field26 mirrored
+# from field4 for that now-fixed reader; both are therefore pointless
+# work, not a bug in progress. Left in place rather than removed in the
+# same commit, to keep GH#112's diff scoped to the reported bug and its
+# test — genuine follow-up candidate: drop both write sites, then the
+# `field26` column itself in a future schema-cleanup pass (same shape as
+# Phase 147's user-table column drops).
+column:member.field26

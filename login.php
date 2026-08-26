@@ -193,6 +193,22 @@ function complete_login($row, $theme, $clientIp)
     $_SESSION['day_night'] = $theme;
     $_SESSION['login_at']  = date('Y-m-d H:i:s');
 
+    // GH#114 (rjonesbsink) -- user.login is read and displayed on
+    // Settings -> User Accounts ("Last login") but nothing ever wrote it;
+    // $_SESSION['login_at'] above dies with the session, so the column
+    // stayed NULL forever and every account showed "never", regardless of
+    // how many times it had actually signed in. This is the single shared
+    // finalisation every login path (password, and both 2FA call sites)
+    // routes through, so one write here covers all of them.
+    try {
+        db_query(
+            "UPDATE " . db_table('user') . " SET `login` = NOW() WHERE `id` = ?",
+            [(int) $row['id']]
+        );
+    } catch (Exception $e) {
+        // Never block a successful login over a bookkeeping column.
+    }
+
     // Phase 12 (2026-06-11): cache the user's primary active role name
     // (and id) into the session so navbar/current_role_name() can read
     // it without an extra DB hit on every page. Refreshed on next login.

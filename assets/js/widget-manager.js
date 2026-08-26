@@ -146,6 +146,21 @@ var WidgetManager = (function () {
         layout.forEach(function (item) {
             if (hiddenWidgets.indexOf(item.id) === -1 && widgetAllowed(item.id)) {
                 addWidget(item);
+                // GH#111 (rjonesbsink) — applyLayout()/resetLayout() below
+                // both emit 'widget:shown' after (re)rendering a layout,
+                // but this initial-bootstrap path never did. A widget
+                // present and visible from the very first page load (the
+                // ordinary case) never got a 'widget:shown' event AND
+                // never found its own markup in the DOM yet if its own
+                // init ran on DOMContentLoaded — this function itself
+                // runs asynchronously, after api/layout.php's fetch
+                // resolves (see app.js's boot()), which is routinely
+                // later than DOMContentLoaded. A widget whose own
+                // bootstrap relies on 'widget:shown' to cover "my markup
+                // wasn't in the DOM yet at DOMContentLoaded" (e.g.
+                // assets/js/widgets/audit-log-widget.js) got neither
+                // signal and sat empty until manually refreshed.
+                EventBus.emit('widget:shown', { widget: item.id });
             }
         });
 

@@ -36,36 +36,11 @@ function safe_mobile_fetch($sql, $params = []) {
     }
 }
 
-// GH #77 — the units (responder ids) this user actively crews via
-// unit_personnel_assignments. This is the Phase 116c / GH #85 query the
-// GET dashboard header/assignment lookup below already runs to build
-// $crewUnitIds — factored out so every mobile action that needs "which
-// unit is this crew member operating from" calls the exact same query
-// instead of each re-deriving (and drifting from) its own copy. That
-// drift is exactly what GH #77 was: add_note and report_location each
-// had their own narrower resolver that never consulted crew assignments
-// at all, so a user who only crews a unit (no personal responder row)
-// passed the header/assignment lookup and was rejected by the note/
-// location paths in the same request.
-function mobile_crew_unit_ids($prefix, $userId) {
-    $ids = [];
-    try {
-        $crewRows = safe_mobile_fetch(
-            "SELECT DISTINCT upa.`responder_id`
-               FROM `{$prefix}unit_personnel_assignments` upa
-               JOIN `{$prefix}member` m ON m.`id` = upa.`member_id`
-              WHERE m.`user_id` = ?
-                AND upa.`status` IN ('active','standby')
-                AND (upa.`released_at` IS NULL OR DATE_FORMAT(upa.`released_at`,'%y') = '00')",
-            [$userId]
-        );
-        foreach ($crewRows as $cr) {
-            $rid = (int) $cr['responder_id'];
-            if ($rid > 0) $ids[] = $rid;
-        }
-    } catch (Exception $e) { /* older install without unit_personnel_assignments */ }
-    return $ids;
-}
+// GH #77 — mobile_crew_unit_ids() moved to inc/mobile-assignments.php
+// (GH#113, 2026-08-25) so inc/par.php's PAR ack-ownership gate can call
+// the SAME resolver instead of restating the query a third time. Already
+// required above (line 18); this file's own call sites below are
+// unchanged.
 
 // GH #77 — the ONE canonical "which responder is this logged-in user"
 // resolver, shared by add_note and report_location (and mirroring the
