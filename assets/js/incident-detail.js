@@ -2722,24 +2722,49 @@
         var removeBtns = container.querySelectorAll('.assign-remove');
         for (var k = 0; k < removeBtns.length; k++) {
             removeBtns[k].addEventListener('click', function () {
+                var selfRef = this;
+                // GH#118 (2026-08-28) — same defect as GH#98's facility-dropdown
+                // handler above: ticketId must be resolved here, same as every
+                // other handler in this file (getIncidentId() at lines 1707,
+                // 1779, 1892, 1954, 2039, 3378, 3684, 3838). This handler
+                // previously referenced an out-of-scope `ticketId`, which threw
+                // a ReferenceError while building the request body — after
+                // disabling the button but before fetch() ran, so neither
+                // .then() nor .catch() ever fired and the control was silently
+                // bricked with no request sent.
+                var ticketId = getIncidentId();
+                if (!ticketId) return;
                 var assignId = parseInt(this.getAttribute('data-assign-id'), 10);
                 var unit     = this.getAttribute('data-unit') || 'this unit';
                 if (!confirm('Remove ' + unit + ' from this incident? Use this for assignments added in error. For normal completion, set the status to one whose Incident Action is Clear.')) return;
-                this.disabled = true;
-                fetch('api/incident-assign.php', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
+                // Build the request body BEFORE disabling the control, and
+                // guard it with try/catch: a throw here must never leave the
+                // button permanently disabled with no visible error.
+                var body;
+                try {
+                    body = JSON.stringify({
                         action:     'unassign',
                         ticket_id:  ticketId,
                         assign_id:  assignId,
                         csrf_token: getCsrfToken()
-                    })
+                    });
+                } catch (e) {
+                    showAlert('Failed to remove unit.', 'danger');
+                    return;
+                }
+                selfRef.disabled = true;
+                fetch('api/incident-assign.php', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: body
                 }).then(function (r) { return r.json(); }).then(function (data) {
-                    if (data && data.error) { showAlert(data.error, 'danger'); return; }
+                    if (data && data.error) { selfRef.disabled = false; showAlert(data.error, 'danger'); return; }
                     showAlert(data.message || 'Unit removed.', 'info');
                     loadAssignments();
+                }).catch(function () {
+                    selfRef.disabled = false;
+                    showAlert('Failed to remove unit.', 'danger');
                 });
             });
         }

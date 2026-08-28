@@ -443,6 +443,36 @@ echo "[OK] $pInserted permissions seeded\n";
 // see inc/rbac_admin_only.php's docblock for why a tier restriction would
 // be wrong for these two.
 try {
+    // GH#115-adjacent CI finding (2026-08-26) -- run_00_rbac.php sorts
+    // BEFORE run_rbac_v2.php alphabetically (sql/run_migrations.php's
+    // run_*.php glob runs files in ksort() order), but it's
+    // run_rbac_v2.php that ADDS the admin_only column in the first
+    // place. On a genuinely fresh install this UPDATE ran against a
+    // column that didn't exist yet, threw "Unknown column 'admin_only'",
+    // and was silently swallowed by the catch below -- and because
+    // sql/run_migrations.php tracks this script as already-applied after
+    // its first run, it was never retried once run_rbac_v2.php later
+    // created the column in that SAME pass. Every fresh install
+    // therefore left console.design/action.intercom_unlock/
+    // action.manage_matrix (and the rest of the tier-1/tier-2 lists
+    // below) at the column's own DEFAULT 0 forever -- caught live by
+    // tests/test_rbac_exclusion_leak_audit.php's classification-drift
+    // check on a genuinely fresh CI database, never on an
+    // already-migrated one (this dev database's admin_only values were
+    // set correctly, just not by this deterministic path). Same fix
+    // shape as ensure_org_id_column(): create the column here too if
+    // it's still missing, so this script no longer depends on running
+    // after run_rbac_v2.php to do its own job.
+    $hasAdminOnlyCol = (bool) db_fetch_value(
+        "SELECT 1 FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'admin_only'",
+        [$prefix . 'permissions']
+    );
+    if (!$hasAdminOnlyCol) {
+        db_query("ALTER TABLE `{$prefix}permissions`
+            ADD COLUMN `admin_only` TINYINT UNSIGNED NOT NULL DEFAULT 0
+            COMMENT '0=unrestricted, 1=Org Admin or above, 2=Super Admin only. See inc/rbac_admin_only.php.'");
+    }
     db_query("UPDATE `{$prefix}permissions` SET admin_only = 2 WHERE code IN (
         'action.manage_config', 'action.manage_roles', 'action.bulk_delete_members',
         'action.manage_audit_retention', 'action.manage_dispositions',

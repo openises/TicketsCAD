@@ -3,6 +3,43 @@
 All notable changes to TicketsCAD (NewUI v4) are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+
+- **GH#115** — `check-schema.php --repair` could not add `org_id` to
+  `facilities`/`responder`/`teams`/`newui_equipment`/`newui_vehicles` on an
+  install that had never touched one of those entity types. A dedicated
+  migration now adds the column for all five tables during the normal
+  migration pass, with a graceful skip for a table that doesn't exist yet on
+  this install.
+- **GH#117** — the Zello proxy diagnostics and Settings troubleshooting panel
+  gave Linux/Apache-only remedies even on Windows installs, though the
+  Windows launchers (`proxy/start-proxy.bat`, `proxy/start-proxy-service.bat`)
+  ship in the same repo. Diagnostics now names both platforms' real launchers,
+  the WebSocket-closed-before-open message no longer blames a reverse-proxy
+  misconfiguration on a direct (non-`wss://`) connection, and the Settings
+  troubleshooting panel now has a Windows PowerShell equivalent alongside
+  each of its four Linux commands.
+- **GH#118** — clicking the X on an attached unit (Incident Detail →
+  Attached Units) silently did nothing: the click handler referenced an
+  out-of-scope `ticketId`, throwing a `ReferenceError` before the request was
+  ever sent (the same defect class as GH#98, in the neighboring handler).
+  Fixed with the same resolve-first / build-before-disable / added `.catch()`
+  pattern as the GH#98 fix.
+
+### Fixed (CI / self-hosted fresh-install pipeline)
+
+- Three pre-existing migration-ordering gaps in the fresh-install pipeline,
+  found while diagnosing GH#115's own CI run: `sql/run_00_rbac.php`'s
+  `admin_only` classification could run before `sql/run_rbac_v2.php` had
+  created that column; `sql/rbac.sql`'s own classification pass ran before
+  three Phase 114 permission codes existed; and
+  `sql/run_phase148_fcc_station_id.php` could run before
+  `sql/run_phase73i_dvswitch_schema.php` had created `dmr_channels`. All
+  three are silent no-ops on a fresh install (not visible failures), each
+  fixed with a small, idempotent reconciliation migration.
+
 ## [4.2.26] — 2026-08-26
 
 ### Security

@@ -112,8 +112,11 @@ try {
 // ── Radio / Zello proxy (GH task #67 — widget "flapping") ──
 // Two legs must both be healthy or the widget reconnect-loops:
 //   1. the proxy daemon is listening on 127.0.0.1:<port> (server-side, here)
-//   2. the browser can reach it through Apache's mod_proxy_wstunnel at
-//      wss://<host>/zello-ws (client-side — tested by the Diagnostics page JS)
+//   2. the browser can reach it (client-side — tested by the Diagnostics
+//      page JS). On HTTPS this means the web server is reverse-proxying
+//      wss://<host>/zello-ws to the daemon (Apache: mod_proxy_wstunnel).
+//      On plain HTTP the browser connects directly to ws://host:<port>
+//      with no reverse proxy involved at all (GH#117).
 $zelloService = _diag_setting($prefix, 'zello_service');
 $zello = ['configured' => $zelloService !== '', 'service' => $zelloService];
 if ($zello['configured']) {

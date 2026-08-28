@@ -264,7 +264,7 @@
                     + (f.daemon_uptime_s ? ', up ' + Math.round(f.daemon_uptime_s / 60) + ' min.' : '.'))
                 : ('The radio proxy service is NOT listening on port ' + f.proxy_port + '.'),
             f.daemon_listening ? ''
-                : 'Start the Zello proxy (systemd service newui-zello-proxy, or proxy/start-proxy.sh). Until it runs, the widget can never stay connected.');
+                : 'Start the Zello proxy — on Linux: systemd service newui-zello-proxy, or proxy/start-proxy.sh. On Windows: proxy/start-proxy.bat (or proxy/start-proxy-service.bat to run it as a service; see docs/INSTALL-WINDOWS-IIS.md). Until it runs, the widget can never stay connected.');
         put('diagZello', f.creds_present ? 'ok' : 'warn',
             f.creds_present ? 'Zello credentials are configured.'
                 : 'Zello username + password/token not fully set (Settings → Communications & Integrations → Zello).', '');
@@ -294,8 +294,18 @@
         };
         sock.onclose = function (ev) {
             if (done) { return; }
-            finish('bad', 'The radio connection could NOT be established from this browser.',
-                'The WebSocket to ' + url + ' closed (code ' + (ev && ev.code) + ') before it opened. On HTTPS this almost always means the web server is not reverse-proxying ' + wsPath + ' to the proxy. Apache needs mod_proxy_wstunnel enabled and a `<Location ' + wsPath + '>` that ProxyPasses to `ws://127.0.0.1:' + f.proxy_port + '/`. That mismatch is the usual cause of the widget connecting then dropping in a loop while the proxy log stays clean.');
+            // GH#117 (2026-08-28) — this URL is only reverse-proxied at all
+            // when it's wss:// (leg 1 already told us whether the daemon
+            // itself is listening). A direct ws://host:port connection, the
+            // common shape on a plain-HTTP or LAN-only install, has no
+            // reverse proxy in the path — a closed-before-open here just
+            // means nothing answered on that port, which leg 1 already
+            // covers; suggesting a web-server misconfiguration in that case
+            // sends the reader looking for something that cannot exist.
+            var detail = isHttps
+                ? ('The WebSocket to ' + url + ' closed (code ' + (ev && ev.code) + ') before it opened. On HTTPS this almost always means the web server is not reverse-proxying ' + wsPath + ' to the proxy. Apache needs mod_proxy_wstunnel enabled and a `<Location ' + wsPath + '>` that ProxyPasses to `ws://127.0.0.1:' + f.proxy_port + '/`. That mismatch is the usual cause of the widget connecting then dropping in a loop while the proxy log stays clean.')
+                : ('The WebSocket to ' + url + ' closed (code ' + (ev && ev.code) + ') before it opened. This is a direct connection with no reverse proxy in the path, so this almost always means nothing is listening on port ' + f.proxy_port + ' yet, or a firewall is blocking it — see the check above.');
+            finish('bad', 'The radio connection could NOT be established from this browser.', detail);
         };
         setTimeout(function () {
             if (done) { return; }

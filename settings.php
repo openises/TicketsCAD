@@ -5409,14 +5409,20 @@ foreach ($personnelSections as $sec) {
                 <div class="collapse show" id="zelloTroubleshoot">
                     <div class="card-body py-2 small">
                         <p class="mb-2 text-body-secondary">
-                            Every command below has a <i class="bi bi-clipboard"></i> button to copy. Run them on the host where the <code>newui-zello-proxy</code> systemd service is running (usually the same box as the web server).
+                            Every command below has a <i class="bi bi-clipboard"></i> button to copy. Run them on the host where the Zello proxy is running (usually the same box as the web server) — Linux commands assume the <code>newui-zello-proxy</code> systemd service; Windows commands assume the service was registered per <code>docs/INSTALL-WINDOWS-IIS.md</code> (GH#117).
                         </p>
 
                         <div class="mb-3">
                             <div class="fw-semibold mb-1">1. Watch the proxy log in real time</div>
                             <div class="text-body-secondary mb-1">Best command to run BEFORE you click Save — you see the reconnect + auth attempt as it happens.</div>
+                            <div class="text-body-secondary small mb-1">Linux:</div>
                             <div class="d-flex align-items-center bg-body-tertiary rounded p-2">
                                 <code class="flex-grow-1 font-monospace ts-copy-target">sudo tail -f /var/log/newui/zello-proxy.log</code>
+                                <button type="button" class="btn btn-sm btn-outline-secondary ts-copy-btn" title="Copy to clipboard"><i class="bi bi-clipboard"></i></button>
+                            </div>
+                            <div class="text-body-secondary small mb-1 mt-2">Windows (PowerShell, run from the app root — only has content if the proxy was started via <code>start-proxy-service.bat</code>):</div>
+                            <div class="d-flex align-items-center bg-body-tertiary rounded p-2">
+                                <code class="flex-grow-1 font-monospace ts-copy-target">Get-Content -Path cache\job-logs\zello-proxy.log -Wait -Tail 20</code>
                                 <button type="button" class="btn btn-sm btn-outline-secondary ts-copy-btn" title="Copy to clipboard"><i class="bi bi-clipboard"></i></button>
                             </div>
                             <div class="text-body-secondary small mt-1">
@@ -5425,21 +5431,33 @@ foreach ($personnelSections as $sec) {
                         </div>
 
                         <div class="mb-3">
-                            <div class="fw-semibold mb-1">2. Check the proxy service is running</div>
+                            <div class="fw-semibold mb-1">2. Check the proxy is running</div>
+                            <div class="text-body-secondary small mb-1">Linux:</div>
                             <div class="d-flex align-items-center bg-body-tertiary rounded p-2">
                                 <code class="flex-grow-1 font-monospace ts-copy-target">sudo systemctl status newui-zello-proxy.service --no-pager</code>
                                 <button type="button" class="btn btn-sm btn-outline-secondary ts-copy-btn"><i class="bi bi-clipboard"></i></button>
                             </div>
+                            <div class="text-body-secondary small mb-1 mt-2">Windows (PowerShell — checks whether anything is listening on the proxy's port; works regardless of how the proxy was started):</div>
+                            <div class="d-flex align-items-center bg-body-tertiary rounded p-2">
+                                <code class="flex-grow-1 font-monospace ts-copy-target">Get-NetTCPConnection -LocalPort 8090 -State Listen</code>
+                                <button type="button" class="btn btn-sm btn-outline-secondary ts-copy-btn"><i class="bi bi-clipboard"></i></button>
+                            </div>
                             <div class="text-body-secondary small mt-1">
-                                Expect <code>Active: active (running)</code>. If it's <code>failed</code> or <code>inactive</code>, restart it with the next command.
+                                Linux: expect <code>Active: active (running)</code>. Windows: expect one row back (adjust the port number if you changed it from the default 8090). No output/inactive means the proxy is not running — restart it with the next command.
                             </div>
                         </div>
 
                         <div class="mb-3">
                             <div class="fw-semibold mb-1">3. Restart the proxy after a config change</div>
                             <div class="text-body-secondary mb-1">The proxy normally reloads on Save, but a force-restart clears any stuck state.</div>
+                            <div class="text-body-secondary small mb-1">Linux:</div>
                             <div class="d-flex align-items-center bg-body-tertiary rounded p-2">
                                 <code class="flex-grow-1 font-monospace ts-copy-target">sudo systemctl restart newui-zello-proxy.service &amp;&amp; sudo journalctl -u newui-zello-proxy.service -n 30 --no-pager</code>
+                                <button type="button" class="btn btn-sm btn-outline-secondary ts-copy-btn"><i class="bi bi-clipboard"></i></button>
+                            </div>
+                            <div class="text-body-secondary small mb-1 mt-2">Windows (PowerShell, elevated — only works if you registered it as a Scheduled Task named "TicketsCAD Zello Proxy" per <code>docs/INSTALL-WINDOWS-IIS.md</code>):</div>
+                            <div class="d-flex align-items-center bg-body-tertiary rounded p-2">
+                                <code class="flex-grow-1 font-monospace ts-copy-target">schtasks /End /TN "TicketsCAD Zello Proxy"; schtasks /Run /TN "TicketsCAD Zello Proxy"</code>
                                 <button type="button" class="btn btn-sm btn-outline-secondary ts-copy-btn"><i class="bi bi-clipboard"></i></button>
                             </div>
                         </div>
@@ -5447,8 +5465,14 @@ foreach ($personnelSections as $sec) {
                         <div class="mb-3">
                             <div class="fw-semibold mb-1">4. Verify the saved Network Name (slug)</div>
                             <div class="text-body-secondary mb-1">If Work mode connects but the channel never reaches <code>online</code>, your network slug is probably wrong. This shows exactly what got saved.</div>
+                            <div class="text-body-secondary small mb-1">Linux:</div>
                             <div class="d-flex align-items-center bg-body-tertiary rounded p-2">
                                 <code class="flex-grow-1 font-monospace ts-copy-target">cd /var/www/newui &amp;&amp; /usr/bin/php -r 'require_once "config.php"; require_once "inc/db.php"; echo "network=" . db_fetch_value("SELECT value FROM settings WHERE name=\"zello_network\"") . "\nws_url=" . db_fetch_value("SELECT value FROM settings WHERE name=\"zello_ws_url\"") . "\nservice=" . db_fetch_value("SELECT value FROM settings WHERE name=\"zello_service\"") . "\nchannel=" . db_fetch_value("SELECT value FROM settings WHERE name=\"zello_dispatch_channel\"") . "\n";'</code>
+                                <button type="button" class="btn btn-sm btn-outline-secondary ts-copy-btn"><i class="bi bi-clipboard"></i></button>
+                            </div>
+                            <div class="text-body-secondary small mb-1 mt-2">Windows (PowerShell, run from the app root — a plain double-quoted string here would have PowerShell try to expand the <code>$</code> variables itself before php.exe ever sees them, so this uses a literal single-quoted string instead):</div>
+                            <div class="d-flex align-items-center bg-body-tertiary rounded p-2">
+                                <code class="flex-grow-1 font-monospace ts-copy-target">php -r 'require_once ''config.php''; require_once ''inc/db.php''; foreach ([''zello_network'',''zello_ws_url'',''zello_service'',''zello_dispatch_channel''] as $k) { echo $k . ''='' . db_fetch_value(''SELECT value FROM settings WHERE name = ?'', [$k]) . PHP_EOL; }'</code>
                                 <button type="button" class="btn btn-sm btn-outline-secondary ts-copy-btn"><i class="bi bi-clipboard"></i></button>
                             </div>
                             <div class="text-body-secondary small mt-1">
