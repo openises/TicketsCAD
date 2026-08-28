@@ -145,17 +145,26 @@ echo "[OK] $inserted default roles seeded\n";
 // confirmed live on a dev database, where a pre-existing custom role
 // already held id 7 and a literal `(7, 'Facility', ...)` INSERT IGNORE
 // silently no-op'd, leaving the intended row never created.
-// `uk_role_name_org` (name, org_id) is the real uniqueness guard; the
-// role is resolved by NAME everywhere else (api/config-admin.php,
-// assets/js/config.js, this file's own grant block below) — the same
-// lesson run_phase11d_mobile_first.php already learned for Field Unit's
-// id ("Magic id=6 doesn't survive... rename").
+// `uk_role_name_org` (name, org_id) cannot guard global rows: MySQL treats
+// each NULL in a UNIQUE index as distinct, so INSERT IGNORE appended a
+// fresh Facility row on every migration run (GH#122). Resolve by name
+// everywhere else (api/config-admin.php, assets/js/config.js, this file's
+// own grant block below) — the same lesson run_phase11d_mobile_first.php
+// already learned for Field Unit's id ("Magic id=6 doesn't survive... rename").
 try {
-    db_query(
-        "INSERT IGNORE INTO `{$prefix}roles` (`name`, `description`, `is_default`, `sort_order`) VALUES (?, ?, ?, ?)",
-        ['Facility', 'External facility account — confined to the facility portal', 0, 7]
+    $facilityExists = (int) db_fetch_value(
+        "SELECT COUNT(*) FROM `{$prefix}roles` WHERE `name` = ? AND `org_id` IS NULL",
+        ['Facility']
     );
-    echo "[OK] Facility role seeded\n";
+    if ($facilityExists === 0) {
+        db_query(
+            "INSERT INTO `{$prefix}roles` (`name`, `description`, `is_default`, `sort_order`) VALUES (?, ?, ?, ?)",
+            ['Facility', 'External facility account — confined to the facility portal', 0, 7]
+        );
+        echo "[OK] Facility role seeded\n";
+    } else {
+        echo "[OK] Facility role already present — skipped\n";
+    }
 } catch (Exception $e) {
     echo "[WARN] Facility role: " . $e->getMessage() . "\n";
 }
