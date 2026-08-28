@@ -81,11 +81,12 @@ is_true(strpos($diagJs, 'docs/INSTALL-WINDOWS-IIS.md') !== false, 'FIX: points a
 echo "\n-- 2. The REAL onclose isHttps branch, extracted live and driven under node --\n";
 // ─────────────────────────────────────────────────────────────────────────
 
-$node = null;
-foreach (['node', 'node.exe'] as $cand) {
-    $probe = @shell_exec($cand . ' --version 2>&1');
-    if (is_string($probe) && preg_match('/^v\d+/', trim($probe))) { $node = $cand; break; }
-}
+// GH#120 — @shell_exec() alone is not a safe probe: a disabled function
+// throws an uncatchable-by-@ fatal Error, not a suppressible warning, so
+// this used to crash before the SKIP fallback below ever ran. See
+// tests/_test_node_probe.php's own docblock for the full story.
+require_once __DIR__ . '/_test_node_probe.php';
+$node = test_probe_cli(['node', 'node.exe']);
 
 $harness = <<<'JS'
 // Extracts the REAL sock.onclose handler body from the actual
@@ -159,7 +160,7 @@ if ($node === null) {
 } else {
     $h = sys_get_temp_dir() . '/tcad_gh117_harness_' . getmypid() . '.js';
     file_put_contents($h, $harness);
-    $raw = @shell_exec($node . ' ' . escapeshellarg($h) . ' ' . escapeshellarg(str_replace('\\', '/', $diagJsPath)) . ' 2>&1');
+    $raw = test_run_cli([$node, $h, str_replace('\\', '/', $diagJsPath)]);
     @unlink($h);
 
     $results = [];
@@ -258,12 +259,13 @@ try {
     bad('settings table read failed', $e->getMessage());
 }
 
-$phpBin = null;
-foreach (['php', 'php.exe'] as $cand) {
-    $probe = @shell_exec($cand . ' -v 2>&1');
-    if (is_string($probe) && stripos($probe, 'PHP') !== false) { $phpBin = $cand; break; }
-}
-if (PHP_BINARY) { $phpBin = PHP_BINARY; }
+// GH#120 — PHP_BINARY (the currently-running interpreter's own path) is
+// always available and always correct for "run this with the same PHP
+// as this test" — no shell_exec probe needed at all here, which also
+// removes a second disabled-function crash site this test used to have
+// (the probe loop ran BEFORE PHP_BINARY unconditionally overwrote its
+// result on the very next line, so it crashed for nothing).
+$phpBin = PHP_BINARY ?: null;
 
 if ($phpBin === null) {
     echo "SKIP: no php binary resolvable for the live command-execution check\n";
@@ -280,13 +282,17 @@ if ($phpBin === null) {
         . "echo \$k . '=' . db_fetch_value('SELECT value FROM settings WHERE name = ?', [\$k]) . PHP_EOL; }";
     $tmp = sys_get_temp_dir() . '/tcad_gh117_verify_' . getmypid() . '.php';
     file_put_contents($tmp, "<?php\n" . $payload);
-    $out = @shell_exec(escapeshellarg($phpBin) . ' ' . escapeshellarg($tmp) . ' 2>&1');
+    $out = test_run_cli([$phpBin, $tmp]);
     @unlink($tmp);
-    is_true(is_string($out) && strpos($out, 'Fatal error') === false && strpos($out, 'Parse error') === false,
-        'FIX: the network-name-verify PHP payload runs cleanly against the real app/db (the same content as the Windows command)',
-        substr((string) $out, 0, 500));
-    is_true(is_string($out) && strpos($out, 'zello_network=') !== false && strpos($out, 'zello_ws_url=') !== false,
-        'the payload prints all four expected setting names', substr((string) $out, 0, 500));
+    if ($out === null) {
+        echo "SKIP: no execution mechanism available (shell_exec/proc_open both disabled) — the live-run check was not performed\n";
+    } else {
+        is_true(strpos($out, 'Fatal error') === false && strpos($out, 'Parse error') === false,
+            'FIX: the network-name-verify PHP payload runs cleanly against the real app/db (the same content as the Windows command)',
+            substr($out, 0, 500));
+        is_true(strpos($out, 'zello_network=') !== false && strpos($out, 'zello_ws_url=') !== false,
+            'the payload prints all four expected setting names', substr($out, 0, 500));
+    }
 }
 
 echo "\n=== {$pass} passed, {$fail} failed ===\n";

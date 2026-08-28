@@ -139,11 +139,12 @@ is_true(strpos($epSrc, '$result = assign_unassign_internal($assign_id, (int) $cu
 echo "\n-- 2. The REAL JS click handler, extracted live and driven under node --\n";
 // ─────────────────────────────────────────────────────────────────────────
 
-$node = null;
-foreach (['node', 'node.exe'] as $cand) {
-    $probe = @shell_exec($cand . ' --version 2>&1');
-    if (is_string($probe) && preg_match('/^v\d+/', trim($probe))) { $node = $cand; break; }
-}
+// GH#120 — @shell_exec() alone is not a safe probe: a disabled function
+// throws an uncatchable-by-@ fatal Error, not a suppressible warning, so
+// this used to crash before the SKIP fallback below ever ran. See
+// tests/_test_node_probe.php's own docblock for the full story.
+require_once __DIR__ . '/_test_node_probe.php';
+$node = test_probe_cli(['node', 'node.exe']);
 
 $jsPath = $base . '/assets/js/incident-detail.js';
 
@@ -354,9 +355,7 @@ if ($node === null) {
 
     $h = sys_get_temp_dir() . '/tcad_gh118_harness_wrap_' . getmypid() . '.js';
     file_put_contents($h, $harness);
-    $raw = @shell_exec($node . ' ' . escapeshellarg($h) . ' '
-        . escapeshellarg(str_replace('\\', '/', $jsPath)) . ' '
-        . escapeshellarg(str_replace('\\', '/', $oldFixturePath)) . ' 2>&1');
+    $raw = test_run_cli([$node, $h, str_replace('\\', '/', $jsPath), str_replace('\\', '/', $oldFixturePath)]);
     @unlink($h);
     @unlink($oldFixturePath);
 

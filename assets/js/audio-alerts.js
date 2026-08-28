@@ -17,7 +17,35 @@
  *   AudioAlerts.getVolume()    - get current volume 0-100
  *   AudioAlerts.playTone(key)  - play a named tone (for test buttons)
  */
-var AudioAlerts = (function () {
+// GH#119 (2026-08-28) — several pages (index.php, callboard.php,
+// messaging.php, settings.php) carry their OWN direct <script
+// src="assets/js/audio-alerts.js"> tag IN ADDITION TO inc/navbar.php's
+// own loadGlobal(...) injection, which is meant to be the single,
+// global loader (CLAUDE.md: "EventBus + audio-alerts are loaded via
+// navbar.php... don't include them per-page"). navbar.php's loadGlobal
+// dedup check is filename-based and should normally catch this, but on
+// a large page a static tag placed far down the HTML may not have been
+// parsed into the DOM yet when navbar's own delayed (300ms) load runs
+// its dedup check, so BOTH copies can end up executing. Since this file
+// declares `var AudioAlerts = (function(){...})()` — a plain var, which
+// silently REASSIGNS on a second execution with no error — a second
+// load created a whole SEPARATE module instance with its OWN eventOverrides/
+// TONES/prefs, and window.AudioAlerts ended up pointing at whichever
+// instance's script tag happened to finish executing last. Any code that
+// captured a reference earlier (or called AudioAlerts.reloadCustomTones()
+// on one instance while playTone() calls resolved through the other) saw
+// inconsistent, instance-dependent results — this is why a custom tone's
+// per-event override worked "most of the time" and not others: it wasn't
+// a data bug (the DB round-trip was always correct), it was two live
+// copies of this module intermittently disagreeing about which one
+// window.AudioAlerts currently was.
+//
+// Fix: make the module idempotent regardless of how many times its
+// script tag loads, rather than trying to guarantee exactly one tag
+// ever exists across every page (fragile, and the failure mode is
+// silent). If window.AudioAlerts already exists, reuse it — the IIFE
+// body (and its own init()) never runs a second time.
+var AudioAlerts = window.AudioAlerts || (function () {
     'use strict';
 
     // ── Preference keys in localStorage ──────────────────────────────

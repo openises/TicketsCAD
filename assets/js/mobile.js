@@ -143,6 +143,28 @@
 
     // ── Load Statuses ───────────────────────────────────────────
 
+    // GH#116 (2026-08-28, Eric's specified UX) — a single-assignment unit's
+    // status grid is UNCHANGED: one flat list of status buttons, no
+    // assign_id sent (fully backward compatible — the same request shape
+    // as before this fix). A unit holding MORE than one open assignment
+    // instead gets the SAME status list repeated once per assignment,
+    // grouped under a header naming that assignment, each button carrying
+    // that assignment's assign_id — so a status pick can never be
+    // ambiguous about which call it's for. Renders one button PER
+    // (assignment, status) pair, exactly Eric's "3 assignments x 5
+    // statuses = 15 options, grouped by assignment" spec.
+    function _statusButtonHtml(s, isActive, assignId) {
+        var color = s.color || '#6c757d';
+        return '<button type="button" class="status-btn' + (isActive ? ' active' : '') + '"'
+            + ' data-status-id="' + s.id + '"'
+            + ' data-dispatch="' + (s.dispatch || '0') + '"'
+            + (assignId ? ' data-assign-id="' + assignId + '"' : '')
+            + ' style="--status-color:' + escHtml(color) + '">'
+            + '<span class="status-dot" style="background:' + escHtml(color) + '"></span>'
+            + escHtml(s.status_val || s.description)
+            + '</button>';
+    }
+
     function loadStatuses() {
         fetch('api/mobile-data.php?action=statuses', { credentials: 'same-origin' })
             .then(function (r) { return r.json(); })
@@ -151,23 +173,33 @@
                     statusGrid.innerHTML = '<div class="text-body-secondary text-center p-3">No statuses configured</div>';
                     return;
                 }
-                var html = '';
-                for (var i = 0; i < data.statuses.length; i++) {
-                    var s = data.statuses[i];
-                    var color = s.color || '#6c757d';
-                    var isActive = parseInt(s.id, 10) === currentStatusId;
-                    html += '<button type="button" class="status-btn' + (isActive ? ' active' : '') + '"'
-                        + ' data-status-id="' + s.id + '"'
-                        + ' data-dispatch="' + (s.dispatch || '0') + '"'
-                        + ' style="--status-color:' + escHtml(color) + '">'
-                        + '<span class="status-dot" style="background:' + escHtml(color) + '"></span>'
-                        + escHtml(s.status_val || s.description)
-                        + '</button>';
-                }
-                statusGrid.innerHTML = html;
 
                 // Phase 95: cache the statuses for later extra_data lookup
                 allMobileStatuses = data.statuses;
+
+                var html = '';
+                if (allAssignments.length > 1) {
+                    for (var g = 0; g < allAssignments.length; g++) {
+                        var a = allAssignments[g];
+                        var label = (a.incident_number || ('#' + a.ticket_id)) + ' — ' + (a.nature || a.description || 'incident');
+                        html += '<div class="status-group-header" style="grid-column:1/-1;">'
+                            + '<span class="badge" style="background:' + escHtml(a.type_color || '#0d6efd') + '">' + escHtml(a.incident_number || ('#' + a.ticket_id)) + '</span>'
+                            + ' <span class="small text-body-secondary">' + escHtml(a.nature || a.description || 'incident') + '</span>'
+                            + '</div>';
+                        for (var i = 0; i < data.statuses.length; i++) {
+                            var s = data.statuses[i];
+                            var isActive = parseInt(s.id, 10) === currentStatusId;
+                            html += _statusButtonHtml(s, isActive, a.assign_id);
+                        }
+                    }
+                } else {
+                    for (var k = 0; k < data.statuses.length; k++) {
+                        var s2 = data.statuses[k];
+                        var isActive2 = parseInt(s2.id, 10) === currentStatusId;
+                        html += _statusButtonHtml(s2, isActive2, null);
+                    }
+                }
+                statusGrid.innerHTML = html;
 
                 // Bind click handlers
                 var btns = statusGrid.querySelectorAll('.status-btn');
@@ -355,7 +387,17 @@
             return;
         }
         var statusId = parseInt(this.getAttribute('data-status-id'), 10);
-        if (statusId === currentStatusId) return;
+        // GH#116 — this "already there, ignore" guard compares against
+        // currentStatusId, which reflects the UNIT's one overall status —
+        // correct for the flat single-assignment list, but WRONG the
+        // moment a status is grouped by assignment: the same status
+        // clicked under a DIFFERENT assignment's group is a legitimate,
+        // distinct action (e.g. the unit's overall status already reads
+        // "En Route" from assignment 1, and the dispatcher/unit now wants
+        // to mark assignment 2 En Route too). Only apply the guard when
+        // this button has no assign_id (the unscoped, single-assignment
+        // shape this guard was written for).
+        if (!this.getAttribute('data-assign-id') && statusId === currentStatusId) return;
 
         // Phase 95: slot 1.
         var status = findMobileStatus(statusId);
@@ -388,6 +430,12 @@
         };
         if (extraData) body.extra_data = extraData;
         if (extraData2) body.extra_data_2 = extraData2;
+        // GH#116 — present only on a button rendered inside a
+        // per-assignment group (allAssignments.length > 1); absent for the
+        // single-assignment flat list, preserving the exact pre-fix
+        // request shape in that case.
+        var assignIdAttr = btn.getAttribute('data-assign-id');
+        if (assignIdAttr) body.assign_id = parseInt(assignIdAttr, 10);
 
         fetch('api/responder-status.php', {
             method: 'POST',
@@ -470,10 +518,27 @@
             if (data && data.error) {
                 showToast(data.error, 'error');
             } else {
-                currentStatusId = statusId;
-                showToast('Status: ' + ((data && data.status_name) || 'Updated'), 'success');
+                // GH#116 — data.unit_status_updated is false only when this
+                // request cleared ONE of several open assignments and the
+                // unit's overall status genuinely did not change (another
+                // assignment is still active). In that case the unit's
+                // "current status" badge/currentStatusId must keep showing
+                // its real, unchanged status (data.prior_status_id/_name),
+                // not the just-applied per-assignment one — otherwise the
+                // badge would falsely read e.g. "Available" while the unit
+                // is still actively working a different call.
+                var unitUpdated = !data || data.unit_status_updated !== false;
+                if (unitUpdated) {
+                    currentStatusId = statusId;
+                    showToast('Status: ' + ((data && data.status_name) || 'Updated'), 'success');
+                    updateStatusBadge(data && data.status_name, btn.style.getPropertyValue('--status-color'));
+                } else {
+                    if (data.prior_status_id != null) currentStatusId = parseInt(data.prior_status_id, 10);
+                    showToast((data.status_name || 'Status') + ' set for that assignment — unit remains '
+                        + (data.prior_status_name || 'on its other active assignment'), 'success');
+                }
                 highlightActiveStatus();
-                updateStatusBadge(data && data.status_name, btn.style.getPropertyValue('--status-color'));
+                loadDashboard();
             }
         })
         .catch(function () {

@@ -382,6 +382,27 @@ function responder_soft_delete_internal(int $id, int $userId): array {
  * assigns timestamp column (responding/on_scene/clear) on each open
  * assignment based on the new status's `incident_action`.
  *
+ * GH#116 (Ron Jones, 2026-08-28) — $assignId (optional, default 0 =
+ * unscoped, unchanged pre-existing behavior). A unit holding more than one
+ * open assignment previously had ANY self-initiated status change stamp
+ * (and, for a clear-mapped status, genuinely CLOSE) every one of its open
+ * assignments, not just the one it was actually working — the same
+ * "no scoping, no other-active gate" asymmetry GH#82/#83 already closed
+ * for assign_create_internal(), left over on this THIRD status-changing
+ * path (inc/assignment-write.php's own assign_update_status_internal(),
+ * the dispatcher/GH#59 per-assignment path, already scopes correctly).
+ * When $assignId > 0: the assignment must belong to $responderId and be
+ * open, the assigns-timestamp stamping below is scoped to that ONE row
+ * (which also scopes every side effect that iterates $openAssigns — the
+ * action-log insert, SSE publish, auto-close scheduling), and — mirroring
+ * assign_update_status_internal()'s own 'clear' branch exactly — the
+ * responder-level un_status_id is only advanced to a clear-mapped status
+ * when no OTHER open assignment remains; for every other incident_action
+ * it is still advanced unconditionally (matching that same function's
+ * unconditional update for responding/on_scene/facility_enroute/
+ * facility_arrived), since a unit's single "current status" badge is
+ * expected to reflect whichever of its assignments it just acted on.
+ *
  * @return array ['updated' => bool, 'status_name' => string,
  *                'incidents_logged' => int, 'timestamps_set' => int,
  *                'errors' => string[]]
@@ -392,7 +413,8 @@ function responder_set_status_internal(
     int $userId,
     string $statusAbout = '',
     $extraData = null,
-    $extraData2 = null
+    $extraData2 = null,
+    int $assignId = 0
 ): array {
     // $extraData (Phase 95, 2026-06-28) — optional payload collected
     // by the UI when the status has un_status.extra_data_type !=
@@ -441,6 +463,24 @@ function responder_set_status_internal(
         return ['updated' => false, 'status_name' => '',
                 'incidents_logged' => 0, 'timestamps_set' => 0,
                 'errors' => ['responder_not_found']];
+    }
+
+    // GH#116 — when a specific assignment is targeted, it must belong to
+    // this responder and still be open. Fail fast rather than silently
+    // falling back to the unscoped (every-open-assignment) behavior on a
+    // stale/wrong id.
+    if ($assignId > 0) {
+        $targetAssign = db_fetch_one(
+            "SELECT `id` FROM `{$prefix}assigns`
+              WHERE `id` = ? AND `responder_id` = ?
+                AND (`clear` IS NULL OR `clear` = '0000-00-00 00:00:00')",
+            [$assignId, $responderId]
+        );
+        if (!$targetAssign) {
+            return ['updated' => false, 'status_name' => '',
+                    'incidents_logged' => 0, 'timestamps_set' => 0,
+                    'errors' => ['invalid_assignment']];
+        }
     }
 
     // Phase 90-pre: pull incident_action so we can stamp the matching
@@ -583,15 +623,37 @@ function responder_set_status_internal(
         error_log('[responder-write] status-workflow gate exception: ' . $e->getMessage());
     }
 
-    db_query(
-        "UPDATE `{$prefix}responder` SET
-            `un_status_id` = ?,
-            `status_about` = ?,
-            `status_updated` = NOW(),
-            `updated` = NOW()
-         WHERE `id` = ?",
-        [$statusId, $statusAbout, $responderId]
-    );
+    // GH#116 — moved up from below the assigns-stamping block (which used
+    // to compute it fresh) so the gate right below can consult it before
+    // deciding whether to touch un_status_id.
+    $incidentAction = trim((string) ($status['incident_action'] ?? ''));
+
+    // GH#116 — when a SPECIFIC assignment was targeted and the new status
+    // maps to 'clear', only advance the responder's own overall status if
+    // this was its LAST open assignment — mirrors
+    // assign_update_status_internal()'s own 'clear' branch
+    // (_assign_has_other_active()) exactly. Every other incident_action
+    // (or an unscoped, $assignId===0 call — every existing caller before
+    // this fix) advances it unconditionally, unchanged from prior behavior.
+    $skipUnitStatusUpdate = false;
+    if ($assignId > 0 && $incidentAction === 'clear') {
+        require_once __DIR__ . '/assignment-write.php';
+        if (_assign_has_other_active($responderId, $assignId)) {
+            $skipUnitStatusUpdate = true;
+        }
+    }
+
+    if (!$skipUnitStatusUpdate) {
+        db_query(
+            "UPDATE `{$prefix}responder` SET
+                `un_status_id` = ?,
+                `status_about` = ?,
+                `status_updated` = NOW(),
+                `updated` = NOW()
+             WHERE `id` = ?",
+            [$statusId, $statusAbout, $responderId]
+        );
+    }
 
     try {
         db_query(
@@ -607,27 +669,43 @@ function responder_set_status_internal(
     } catch (Exception $e) { /* non-fatal */ }
 
     // Phase 72 + Phase 90-pre: action row + assigns timestamp stamping
-    // for every open assignment.
+    // for every open assignment (or, GH#116, the ONE targeted assignment
+    // when $assignId was supplied — see below).
     // GH#64 (Ron Jones, 2026-08-15) — facility_enroute/facility_arrived
     // give the facility leg of a transport its own write-once slots
     // (assigns.u2fenr/u2farr) instead of forcing admins to overload
     // on_scene a second time, which silently no-opped once on_scene was
     // already stamped from the original dispatch.
-    $incidentAction  = trim((string) ($status['incident_action'] ?? ''));
+    // ($incidentAction itself is now computed earlier, above the GH#116
+    // un_status_id gate — kept here as a single source, not recomputed.)
     $stampableActions = ['dispatched', 'responding', 'on_scene', 'facility_enroute', 'facility_arrived', 'clear'];
     $shouldStamp = in_array($incidentAction, $stampableActions, true);
 
     $actionLogged  = 0;
     $timestampsSet = 0;
     try {
-        $openAssigns = db_fetch_all(
-            "SELECT a.id, a.ticket_id, a.responding, a.on_scene, a.clear, a.u2fenr, a.u2farr
-             FROM `{$prefix}assigns` a
-             WHERE a.responder_id = ?
-               AND (a.clear IS NULL
-                    OR a.clear = '0000-00-00 00:00:00')",
-            [$responderId]
-        );
+        // GH#116 — scoping this SELECT to the one targeted assignment is
+        // what scopes every downstream side effect below (the action-log
+        // insert, the timestamp stamp, the SSE publish, auto-close
+        // scheduling) to that assignment alone, since all of them iterate
+        // $openAssigns rather than re-querying per effect.
+        $openAssigns = ($assignId > 0)
+            ? db_fetch_all(
+                "SELECT a.id, a.ticket_id, a.responding, a.on_scene, a.clear, a.u2fenr, a.u2farr
+                 FROM `{$prefix}assigns` a
+                 WHERE a.id = ? AND a.responder_id = ?
+                   AND (a.clear IS NULL
+                        OR a.clear = '0000-00-00 00:00:00')",
+                [$assignId, $responderId]
+            )
+            : db_fetch_all(
+                "SELECT a.id, a.ticket_id, a.responding, a.on_scene, a.clear, a.u2fenr, a.u2farr
+                 FROM `{$prefix}assigns` a
+                 WHERE a.responder_id = ?
+                   AND (a.clear IS NULL
+                        OR a.clear = '0000-00-00 00:00:00')",
+                [$responderId]
+            );
         $statusLabel = trim((string) $status['status_val']);
         $unitLabel   = trim((string) ($responder['handle'] ?: $responder['name']));
         $desc        = $unitLabel . ': ' . $statusLabel
@@ -929,6 +1007,13 @@ function responder_set_status_internal(
         'extra_data_2_type'   => $extraType2,
         'extra_data_2_logged' => $extraValue2 !== null,
         'bed_auto'         => $bedAutoSummary,
+        // GH#116 — false only when a specific assignment was cleared but
+        // the unit's OTHER open assignment(s) kept its overall un_status_id
+        // from advancing to the clear-mapped status (see $skipUnitStatusUpdate
+        // above). Callers must not update a "current status" badge from
+        // new_status_id/status_name when this is false — the responder row
+        // genuinely still holds its PREVIOUS status.
+        'unit_status_updated' => !$skipUnitStatusUpdate,
         'errors'           => [],
     ];
     // Phase 105 — 'warn' mode: the change was applied above, but the

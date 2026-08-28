@@ -7,6 +7,32 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **GH#116** — a unit's own status change (mobile self-status-change flow)
+  applied to EVERY open assignment it held, not just the one it was working —
+  clearing the others when the new status meant "Available", and bleeding a
+  timestamp (e.g. En Route) onto assignments it wasn't actually working. A
+  unit with more than one open assignment now sees the status list grouped
+  per assignment, and picking a status only affects that one assignment.
+  Note: this fix covers the mobile self-status-change flow specifically —
+  the dashboard's "change unit's overall status" widget, the unit-actions
+  quick-status control, and the unit-detail page still have the original
+  behavior and were not changed in this pass.
+- **GH#119** — two independent bugs in Settings → Sound / Alerts: (1) "Save
+  Sound Settings" always failed with "No settings provided" (a stale,
+  pre-rewrite handler in `config.js` was double-submitting against the
+  correct, current localStorage-based save path); (2) a per-event custom
+  tone override didn't reliably play (the audio-alerts module could load
+  twice on some pages — once via the global navbar loader, once via a
+  redundant page-level `<script>` tag — creating two independent module
+  instances that raced for which one `window.AudioAlerts` pointed to). Both
+  fixed; the module is now idempotent regardless of how many times its
+  script tag loads.
+- **GH#120** — two of this release's own test files (`test_gh117_*`,
+  `test_gh118_*`) crashed with exit 255 on a host where `shell_exec` is a
+  disabled PHP function (a real, documented hardening posture) — `@` cannot
+  suppress a disabled-function error. Added a shared, hardening-safe CLI
+  probe/runner (preferring `proc_open` when available) and switched both
+  files to use it.
 - **GH#115** — `check-schema.php --repair` could not add `org_id` to
   `facilities`/`responder`/`teams`/`newui_equipment`/`newui_vehicles` on an
   install that had never touched one of those entity types. A dedicated

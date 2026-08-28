@@ -83,7 +83,6 @@
         bindDisplaySettingsPanel();
         bindFacilityTypesPanel();
         bindUnitTypesPanel();
-        bindSoundAlertsPanel();
         bindFacilitiesPanel();
         bindSettingsPanel();
         bindApiKeysPanel();
@@ -338,7 +337,7 @@
         else if (tab === 'facility-types')    loadFacilityTypes();
         else if (tab === 'unit-types')        loadUnitTypes();
         else if (tab === 'facility-statuses') loadFacilityStatuses();
-        else if (tab === 'sound-alerts')      { loadSoundAlerts(); loadCustomTonesPanel(); }
+        else if (tab === 'sound-alerts')      loadCustomTonesPanel();
         else if (tab === 'facilities')        loadFacilities();
         else if (tab === 'system-settings')   loadSettings();
         else if (tab === 'api-keys')          loadApiKeys();
@@ -371,8 +370,6 @@
         else if (tab === 'email-lists')      loadEmailLists();
         else if (tab === 'places')           loadPlaces();
         else if (tab === 'map-overlay-categories') loadMapOverlayCategories();
-        // (sound-alerts is handled above — combined with loadSoundAlerts.
-        //  Left here as a no-op marker so a search still finds the pair.)
         else if (tab === 'sms-config')       loadSmsConfig();
         else if (tab === 'telegram')         loadTelegramConfig();
         else if (tab === 'incident-numbers') loadIncidentNumbers();
@@ -5443,103 +5440,24 @@
     // ═══════════════════════════════════════════════════════════════
     //  SOUND / ALERTS (uses settings API)
     // ═══════════════════════════════════════════════════════════════
-    function bindSoundAlertsPanel() {
-        var form = document.getElementById('soundAlertsForm');
-        if (!form) return;
-
-        // Volume slider labels
-        var newVolSlider = document.getElementById('setSoundNewVolume');
-        var newVolLabel = document.getElementById('soundNewVolumeLabel');
-        var highVolSlider = document.getElementById('setSoundHighVolume');
-        var highVolLabel = document.getElementById('soundHighVolumeLabel');
-
-        if (newVolSlider && newVolLabel) {
-            newVolSlider.addEventListener('input', function () {
-                newVolLabel.textContent = newVolSlider.value + '%';
-            });
-        }
-        if (highVolSlider && highVolLabel) {
-            highVolSlider.addEventListener('input', function () {
-                highVolLabel.textContent = highVolSlider.value + '%';
-            });
-        }
-
-        // Test sound button
-        var testBtn = document.getElementById('btnTestSound');
-        if (testBtn) {
-            testBtn.addEventListener('click', function () {
-                // Play a simple beep using Web Audio API
-                try {
-                    var ctx = new (window.AudioContext || window.webkitAudioContext)();
-                    var osc = ctx.createOscillator();
-                    var gain = ctx.createGain();
-                    osc.connect(gain);
-                    gain.connect(ctx.destination);
-                    osc.frequency.value = 880;
-                    osc.type = 'sine';
-                    var vol = parseInt(newVolSlider ? newVolSlider.value : 70, 10) / 100;
-                    gain.gain.value = vol * 0.5;
-                    osc.start();
-                    osc.stop(ctx.currentTime + 0.3);
-                    setTimeout(function () {
-                        var osc2 = ctx.createOscillator();
-                        var gain2 = ctx.createGain();
-                        osc2.connect(gain2);
-                        gain2.connect(ctx.destination);
-                        osc2.frequency.value = 1100;
-                        osc2.type = 'sine';
-                        gain2.gain.value = vol * 0.5;
-                        osc2.start();
-                        osc2.stop(ctx.currentTime + 0.3);
-                    }, 350);
-                } catch (ex) {
-                    showAlert('Could not play test sound: ' + ex.message, 'warning');
-                }
-            });
-        }
-
-        form.addEventListener('submit', function (e) {
-            e.preventDefault();
-            var pairs = collectSettingsFromForm(form);
-            // Handle checkboxes explicitly
-            var checkboxes = form.querySelectorAll('input[type="checkbox"][data-key]');
-            for (var i = 0; i < checkboxes.length; i++) {
-                var key = checkboxes[i].getAttribute('data-key');
-                pairs[key] = checkboxes[i].checked ? '1' : '0';
-            }
-            apiPost('settings', { settings: pairs }).then(function (data) {
-                showAlert('Sound settings saved (' + data.saved + ' updated)');
-            }).catch(function (err) {
-                showAlert(err.message, 'danger');
-            });
-        });
-    }
-
-    function loadSoundAlerts() {
-        apiGet('settings').then(function (data) {
-            var settings = data.settings || {};
-            var form = document.getElementById('soundAlertsForm');
-            applySettingsToForm(form, settings);
-
-            // Sync volume labels
-            var newVol = document.getElementById('setSoundNewVolume');
-            var newLabel = document.getElementById('soundNewVolumeLabel');
-            if (newVol && newLabel) newLabel.textContent = (newVol.value || 70) + '%';
-
-            var highVol = document.getElementById('setSoundHighVolume');
-            var highLabel = document.getElementById('soundHighVolumeLabel');
-            if (highVol && highLabel) highLabel.textContent = (highVol.value || 90) + '%';
-
-            // Sync checkboxes
-            var checkboxes = form.querySelectorAll('input[type="checkbox"][data-key]');
-            for (var i = 0; i < checkboxes.length; i++) {
-                var key = checkboxes[i].getAttribute('data-key');
-                checkboxes[i].checked = (settings[key] === '1');
-            }
-        }).catch(function (err) {
-            showAlert('Failed to load sound settings: ' + err.message, 'danger');
-        });
-    }
+    // GH#119 (2026-08-28) — bindSoundAlertsPanel()/loadSoundAlerts() used
+    // to live here: a pre-AudioAlerts-rewrite implementation targeting
+    // element ids (setSoundNewVolume, setSoundHighVolume, btnTestSound)
+    // that no longer exist in settings.php's current Sound/Alerts panel,
+    // and driving collectSettingsFromForm()/applySettingsToForm() against
+    // a form with zero [data-key] attributes by design — this panel's
+    // prefs are stored client-side via AudioAlerts.setPrefs()/getPrefs()
+    // (localStorage), not the server-side generic settings API, and
+    // settings.php's own inline <script> already binds this form's real
+    // submit handler correctly. bindSoundAlertsPanel() was STILL called
+    // from init() and attached a SECOND submit listener to the same
+    // #soundAlertsForm, so every Save click ALSO ran the dead
+    // collectSettingsFromForm() path, got an empty payload, and the
+    // generic settings-save endpoint correctly rejected it with "No
+    // settings provided" — visible right alongside the real handler's
+    // own (correct) "Sound settings saved" toast. Removed both dead
+    // functions and their three call sites entirely rather than leaving
+    // an unreachable definition behind.
 
     // ═══════════════════════════════════════════════════════════════
     //  WEB PUSH NOTIFICATIONS (Phase 96 admin, 2026-06-28)

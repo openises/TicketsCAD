@@ -4,9 +4,19 @@
  *
  * POST /api/responder-status.php
  *   Update a responder's status.
- *   JSON body: { responder_id, status_id, status_about, csrf_token }
+ *   JSON body: { responder_id, status_id, status_about, csrf_token,
+ *                assign_id (optional, GH#116) }
  *   Updates un_status_id and status_updated on responder table.
  *   Logs the status change.
+ *
+ *   assign_id (optional, GH#116, 2026-08-28): when the responder holds
+ *   more than one open assignment, pass the specific assignment this
+ *   status change is FOR so it doesn't stamp (or clear) every other open
+ *   assignment the unit also holds. See
+ *   inc/responder-write.php::responder_set_status_internal()'s own
+ *   docblock for the full scoping rules. Omitting it preserves the exact
+ *   pre-existing (unscoped) behavior — required for every caller that
+ *   hasn't been updated to supply it yet.
  *
  * 2026-06-28 — Refactored to delegate to inc/responder-write.php::
  * responder_set_status_internal(). Auth/CSRF/RBAC stay here; the helper
@@ -59,6 +69,9 @@ if ($extra_data !== null && !is_array($extra_data)) $extra_data = null;
 $extra_data_2 = $input['extra_data_2'] ?? null;
 if ($extra_data_2 !== null && !is_array($extra_data_2)) $extra_data_2 = null;
 
+// GH#116 (2026-08-28) — optional, see the docblock above.
+$assign_id = (int) ($input['assign_id'] ?? 0);
+
 if ($responder_id <= 0) {
     json_error('Invalid responder ID');
 }
@@ -73,7 +86,8 @@ try {
         (int) $current_user_id,
         $status_about,
         $extra_data,
-        $extra_data_2
+        $extra_data_2,
+        $assign_id
     );
 } catch (Exception $e) {
     json_error('Database error: ' . $e->getMessage(), 500);
@@ -86,6 +100,9 @@ if (!empty($result['errors'])) {
     }
     if (in_array('status_not_found', $errs, true)) {
         json_error('Status not found', 404);
+    }
+    if (in_array('invalid_assignment', $errs, true)) {
+        json_error('That assignment is no longer active for this unit', 404);
     }
     // Phase 95: surface the required-extra-data error with the label
     // the admin configured so the UI can prompt the operator.
@@ -172,12 +189,35 @@ if (!empty($result['workflow_warning'])) {
     );
 }
 
+// GH#116 — status_id/status_name keep their pre-existing meaning (the
+// status just applied to the targeted assignment/request) for every
+// caller's backward compatibility. unit_status_updated is a NEW, separate
+// field: false only when a specific assignment (assign_id) was cleared
+// but the unit's OTHER open assignment(s) kept its overall un_status_id
+// from advancing — a caller updating a persistent "current status" badge
+// from this response must check this flag first and, when it's false,
+// leave the badge showing prior_status_name (the unit's genuinely-current
+// status) instead.
+$unitStatusUpdated = $result['unit_status_updated'] ?? true;
+$priorStatusId = null; $priorStatusName = null;
+if (!$unitStatusUpdated) {
+    $priorStatusId = (int) ($result['old_status_id'] ?? 0);
+    try {
+        $prefix = $GLOBALS['db_prefix'] ?? '';
+        $priorStatusName = db_fetch_value(
+            "SELECT status_val FROM `{$prefix}un_status` WHERE id = ?", [$priorStatusId]);
+    } catch (Exception $e) { /* leave null — caller falls back to not updating the badge at all */ }
+}
+
 $response = [
-    'message'          => 'Status updated to ' . $result['status_name'],
-    'status_id'        => $status_id,
-    'status_name'      => $result['status_name'],
-    'incidents_logged' => $result['incidents_logged'] ?? 0,
-    'timestamps_set'   => $result['timestamps_set'] ?? 0,
+    'message'              => 'Status updated to ' . $result['status_name'],
+    'status_id'            => $status_id,
+    'status_name'          => $result['status_name'],
+    'incidents_logged'     => $result['incidents_logged'] ?? 0,
+    'timestamps_set'       => $result['timestamps_set'] ?? 0,
+    'unit_status_updated'  => $unitStatusUpdated,
+    'prior_status_id'      => $priorStatusId,
+    'prior_status_name'    => $priorStatusName,
 ];
 if (!empty($result['workflow_warning'])) {
     $response['workflow_warning'] = $result['workflow_warning'];
