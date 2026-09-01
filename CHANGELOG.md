@@ -15,9 +15,9 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
   independently wrong too, so even the intended values would have landed
   somewhere nothing reads. Found while writing the upgrade path's missing
   regression test suite. Every real v3.44-to-v4 upgrade that had SMTP
-  configured is affected — if you've already upgraded, check Settings →
-  Email/SMTP after updating to this version and re-enter your mail server
-  details if the fields are blank.
+  configured is affected — if you've already upgraded, check the Email
+  Configuration panel under Settings after updating to this version and
+  re-enter your mail server details if the fields are blank.
 - **GH#116** — a unit's own status change (mobile self-status-change flow)
   applied to EVERY open assignment it held, not just the one it was working —
   clearing the others when the new status meant "Available", and bleeding a
