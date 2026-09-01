@@ -306,6 +306,7 @@
         "facilities": [
             "_by",
             "_on",
+            "access_rules",
             "bed_auto_mode",
             "beds_a",
             "beds_info",
@@ -319,11 +320,14 @@
             "deleted_at",
             "deleted_by",
             "description",
+            "direcs",
             "handle",
             "lat",
             "lng",
             "name",
+            "opening_hours",
             "org_id",
+            "security_reqs",
             "state",
             "status_about",
             "status_id",
@@ -1731,7 +1735,7 @@
         "generated_by": "tools/gen_schema_manifest.php",
         "purpose": "columns this code writes to + tables it references; checked by inc/schema-verify.php",
         "tables": 153,
-        "columns": 1228,
+        "columns": 1232,
         "required_tables": 190
     }
 }

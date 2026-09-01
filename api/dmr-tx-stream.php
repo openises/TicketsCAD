@@ -33,6 +33,23 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
+// Security review (2026-08-29) — this endpoint forwards the raw request
+// body to a live amateur-radio transmitter with only an RBAC check, no
+// CSRF verification at all. The body is a raw application/octet-stream
+// PCM byte stream (no room for a form field or a JSON key), so the token
+// travels in a request header instead — assets/js/radio-widget.js sends
+// X-CSRF-Token alongside the stream. A custom header can't be attached by
+// a plain cross-site <form> submission, and a cross-origin fetch/XHR that
+// tries to set one triggers a CORS preflight this server never approves
+// for a foreign origin, so this is a real, enforceable control here (not
+// just a body field a same-site attacker could still forge without one).
+$csrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+if (!csrf_verify((string) $csrfToken)) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Invalid CSRF token']);
+    exit;
+}
+
 $rbacOk = function_exists('rbac_can') && rbac_can('action.dmr_transmit');
 if (!is_admin() && !$rbacOk) {
     http_response_code(403);

@@ -30,7 +30,13 @@ function tnd_assert($cond, $label, &$pass, &$fail, &$failures, $detail = '') {
 }
 
 // Collect PHP files, skipping vendor/lib/tests/node_modules.
-$skip = '#[\\\\/](vendor|lib|node_modules|tests|tools|sql)[\\\\/]#';
+// \.claude added 2026-08-31: a background Agent's isolated worktree lives at
+// .claude/worktrees/<agent-id>/ — a full nested copy of this same tree while
+// that agent is active. Without this exclusion, a file this scan is looking
+// for that also happens to exist unmodified in a concurrently-running
+// agent's worktree copy reads as a real hit, even though it has nothing to
+// do with anything this test file itself touches.
+$skip = '#[\\\\/](vendor|lib|node_modules|tests|tools|sql|\\.claude)[\\\\/]#';
 $files = [];
 $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
 foreach ($it as $f) {

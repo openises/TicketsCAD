@@ -40,16 +40,43 @@ $mds = [];
 $rii = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
 foreach ($rii as $f) {
     $p = str_replace('\\', '/', $f->getPathname());
-    if (preg_match('#/(node_modules|vendor|\.git)/#', $p)) continue;
+    // .claude/ excluded 2026-08-31 (GH#130): a background Agent's isolated
+    // worktree lives at .claude/worktrees/<agent-id>/ -- a full nested copy
+    // of this same tree while that agent is active. Without this exclusion
+    // every doc problem this checker finds is reported once per
+    // concurrently-running agent worktree in addition to the real file.
+    if (preg_match('#/(node_modules|vendor|\.git|\.claude)/#', $p)) continue;
     if (strtolower($f->getExtension()) === 'md') $mds[] = $p;
 }
 sort($mds);
+
+/**
+ * Strip fenced code blocks and inline code spans before link-scanning, so a
+ * literal `[text](url)` shown as an EXAMPLE of markdown syntax inside a code
+ * span (GH#130) is not mistaken for a real link. A code span's backtick
+ * delimiter can appear as `` ` `` inside prose too, so this deliberately
+ * only strips content actually fenced/backtick-delimited, never bare text.
+ */
+function strip_code_spans(string $txt): string {
+    // Fenced blocks first (``` ... ``` or ~~~ ... ~~~), multi-line.
+    // [\s\S]*? (not a bare `s` modifier applied to the WHOLE pattern) is
+    // deliberate: an `s`-modified `.*$` on the closing-fence line would
+    // itself match newlines and silently consume the rest of the FILE
+    // past the closing fence, not just that line -- caught live: it
+    // swallowed a real broken link that appeared after a fenced example
+    // earlier in the same file.
+    $txt = preg_replace('/^(```|~~~)[\s\S]*?^\1.*$/m', '', $txt) ?? $txt;
+    // Inline code spans: `...` (not spanning a blank line, matching
+    // CommonMark's own inline-code-span scope).
+    $txt = preg_replace('/`[^`\n]*`/', '', $txt) ?? $txt;
+    return $txt;
+}
 
 $problems = [];
 foreach ($mds as $file) {
     $relFile = ltrim(substr($file, strlen($root)), '/');
     $relDir  = (strpos($relFile, '/') === false) ? '' : dirname($relFile);
-    $txt = file_get_contents($file);
+    $txt = strip_code_spans((string) file_get_contents($file));
     // inline links [text](target ...) and reference definitions [id]: target
     preg_match_all('/\]\(\s*([^)\s]+)/', $txt, $a);
     preg_match_all('/^\s*\[[^\]]+\]:\s*(\S+)/m', $txt, $b);

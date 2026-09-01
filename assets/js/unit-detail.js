@@ -779,9 +779,34 @@
     }
 
     // ── Map ──
+    // GH#121-pattern (2026-08-31) — same Leaflet container-stamping
+    // mechanism documented at assets/js/incident-detail.js's
+    // _teardownDetailMap(): Leaflet stamps the container DOM node itself
+    // (an internal _leaflet_id) the first time L.map() runs on it, so a
+    // second L.map('unitMap', ...) call on the SAME node throws "Map
+    // container is already initialized." regardless of what this file's
+    // `map` variable holds. initMap() is re-run every time loadUnit()
+    // re-runs — which happens after every status change, dispatch-level
+    // update, note add, personnel assign/release, location-binding
+    // add/remove, etc. (see the many loadUnit(...) call sites in this
+    // file) — so any of those actions after the first page load threw
+    // here. Tear down any existing instance first, same idiom as
+    // incident-detail.js (`try { map.remove(); } catch (e) {} map = null;`).
+    // map.remove() is what clears the container's _leaflet_id stamp;
+    // merely reassigning the JS variable does not.
+    function _teardownUnitMap() {
+        if (map) {
+            try { map.remove(); } catch (e) {}
+            map = null;
+        }
+        marker = null;
+    }
+
     function initMap(resp, resolved) {
         var container = document.getElementById('unitMap');
         if (!container || typeof L === 'undefined') return;
+
+        _teardownUnitMap();
 
         // Phase 67: prefer the resolved (live) position from
         // unit_location_bindings; fall back to the responder row's
@@ -813,6 +838,12 @@
             fetch('api/map-config.php')
                 .then(function (r) { return r.json(); })
                 .then(function (cfg) {
+                    // A second initMap() call can race ahead of this
+                    // fetch resolving (e.g. two rapid mutations before
+                    // the first map-config response lands) — tear down
+                    // again right before creating, not just at function
+                    // entry.
+                    _teardownUnitMap();
                     map = L.map('unitMap', { zoomControl: true })
                         .setView([cfg.def_lat || 39.8283, cfg.def_lng || -98.5795], cfg.def_zoom || 5);
                     var bl = null;

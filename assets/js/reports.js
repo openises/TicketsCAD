@@ -982,7 +982,9 @@
             { label: 'Problem Start', value: summary.problem_start || '' },
             { label: 'Problem End', value: summary.problem_end || '' },
             { label: 'Units Assigned', value: summary.units_assigned || 0 },
-            { label: 'Actions', value: summary.actions_count || 0 }
+            { label: 'Actions', value: summary.actions_count || 0 },
+            // GH#128 -- how the call actually ended, not just how it ran.
+            { label: 'Disposition', value: summary.disposition || 'No Disposition' }
         ];
 
         var row = document.createElement('div');

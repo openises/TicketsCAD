@@ -778,35 +778,66 @@ function responder_set_status_internal(
 
             if ($shouldStamp) {
                 try {
+                    // GH#116 follow-up (rjonesbsink) -- assigns.status_id
+                    // used to be written once at creation (Dispatched) and
+                    // never touched again by this path, so a client trying
+                    // to highlight "this assignment's OWN current status"
+                    // (rather than the responder's single overall status)
+                    // had no reliable column to read. Kept in sync with
+                    // every status change this loop makes, mirroring the
+                    // same fix in inc/assignment-write.php's
+                    // assign_update_status_internal() (the dispatcher-side
+                    // sibling of this mobile-side path).
                     if ($incidentAction === 'responding') {
                         if (empty($oa['responding']) || substr((string) $oa['responding'], 0, 4) === '0000') {
                             db_query(
-                                "UPDATE `{$prefix}assigns` SET `responding` = NOW() WHERE `id` = ?",
-                                [(int) $oa['id']]
+                                "UPDATE `{$prefix}assigns` SET `responding` = NOW(), `status_id` = ? WHERE `id` = ?",
+                                [$statusId, (int) $oa['id']]
                             );
                             $timestampsSet++;
+                        } else {
+                            // Already responding -- e.g. switching between
+                            // two DIFFERENT statuses that both map to the
+                            // 'responding' action. Timestamp stays put but
+                            // status_id must still track which specific one
+                            // is now current, or it goes stale exactly the
+                            // way GH#116 reported.
+                            db_query(
+                                "UPDATE `{$prefix}assigns` SET `status_id` = ? WHERE `id` = ?",
+                                [$statusId, (int) $oa['id']]
+                            );
                         }
                     } elseif ($incidentAction === 'on_scene') {
                         $needResp = empty($oa['responding']) || substr((string) $oa['responding'], 0, 4) === '0000';
                         if ($needResp && (empty($oa['on_scene']) || substr((string) $oa['on_scene'], 0, 4) === '0000')) {
                             db_query(
-                                "UPDATE `{$prefix}assigns` SET `responding` = NOW(), `on_scene` = NOW() WHERE `id` = ?",
-                                [(int) $oa['id']]
+                                "UPDATE `{$prefix}assigns` SET `responding` = NOW(), `on_scene` = NOW(), `status_id` = ? WHERE `id` = ?",
+                                [$statusId, (int) $oa['id']]
                             );
                         } elseif (empty($oa['on_scene']) || substr((string) $oa['on_scene'], 0, 4) === '0000') {
                             db_query(
-                                "UPDATE `{$prefix}assigns` SET `on_scene` = NOW() WHERE `id` = ?",
-                                [(int) $oa['id']]
+                                "UPDATE `{$prefix}assigns` SET `on_scene` = NOW(), `status_id` = ? WHERE `id` = ?",
+                                [$statusId, (int) $oa['id']]
+                            );
+                        } else {
+                            db_query(
+                                "UPDATE `{$prefix}assigns` SET `status_id` = ? WHERE `id` = ?",
+                                [$statusId, (int) $oa['id']]
                             );
                         }
                         $timestampsSet++;
                     } elseif ($incidentAction === 'facility_enroute') {
                         if (empty($oa['u2fenr']) || substr((string) $oa['u2fenr'], 0, 4) === '0000') {
                             db_query(
-                                "UPDATE `{$prefix}assigns` SET `u2fenr` = NOW() WHERE `id` = ?",
-                                [(int) $oa['id']]
+                                "UPDATE `{$prefix}assigns` SET `u2fenr` = NOW(), `status_id` = ? WHERE `id` = ?",
+                                [$statusId, (int) $oa['id']]
                             );
                             $timestampsSet++;
+                        } else {
+                            db_query(
+                                "UPDATE `{$prefix}assigns` SET `status_id` = ? WHERE `id` = ?",
+                                [$statusId, (int) $oa['id']]
+                            );
                         }
                     } elseif ($incidentAction === 'facility_arrived') {
                         // Same backstamp shape as on_scene/responding above:
@@ -818,24 +849,34 @@ function responder_set_status_internal(
                         $needEnroute = empty($oa['u2fenr']) || substr((string) $oa['u2fenr'], 0, 4) === '0000';
                         if ($needEnroute && (empty($oa['u2farr']) || substr((string) $oa['u2farr'], 0, 4) === '0000')) {
                             db_query(
-                                "UPDATE `{$prefix}assigns` SET `u2fenr` = NOW(), `u2farr` = NOW() WHERE `id` = ?",
-                                [(int) $oa['id']]
+                                "UPDATE `{$prefix}assigns` SET `u2fenr` = NOW(), `u2farr` = NOW(), `status_id` = ? WHERE `id` = ?",
+                                [$statusId, (int) $oa['id']]
                             );
                             $timestampsSet++;
                         } elseif (empty($oa['u2farr']) || substr((string) $oa['u2farr'], 0, 4) === '0000') {
                             db_query(
-                                "UPDATE `{$prefix}assigns` SET `u2farr` = NOW() WHERE `id` = ?",
-                                [(int) $oa['id']]
+                                "UPDATE `{$prefix}assigns` SET `u2farr` = NOW(), `status_id` = ? WHERE `id` = ?",
+                                [$statusId, (int) $oa['id']]
                             );
                             $timestampsSet++;
+                        } else {
+                            db_query(
+                                "UPDATE `{$prefix}assigns` SET `status_id` = ? WHERE `id` = ?",
+                                [$statusId, (int) $oa['id']]
+                            );
                         }
                     } elseif ($incidentAction === 'clear') {
                         if (empty($oa['clear']) || substr((string) $oa['clear'], 0, 4) === '0000') {
                             db_query(
-                                "UPDATE `{$prefix}assigns` SET `clear` = NOW() WHERE `id` = ?",
-                                [(int) $oa['id']]
+                                "UPDATE `{$prefix}assigns` SET `clear` = NOW(), `status_id` = ? WHERE `id` = ?",
+                                [$statusId, (int) $oa['id']]
                             );
                             $timestampsSet++;
+                        } else {
+                            db_query(
+                                "UPDATE `{$prefix}assigns` SET `status_id` = ? WHERE `id` = ?",
+                                [$statusId, (int) $oa['id']]
+                            );
                         }
                     }
                     // 'dispatched' is auto-set at initial assign time;

@@ -22,13 +22,26 @@ require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/audit.php';
 require_once __DIR__ . '/../inc/dmr_token.php';
 require_once __DIR__ . '/../inc/fcc_station_id.php';
-// csrf_verify lives in inc/functions.php, already loaded via config.php.
 ini_set('display_errors', '0');
 header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['error' => 'POST required']);
+    exit;
+}
+
+// Security review (2026-08-29) — a comment here previously claimed
+// "csrf_verify lives in inc/functions.php, already loaded via config.php"
+// but nothing on this file ever actually CALLED it: this endpoint forwards
+// the POSTed audio to a live amateur-radio transmitter with only an RBAC
+// check, no CSRF token verification at all. multipart/form-data carries
+// the token the same way api/upload.php already does (a plain $_POST
+// field alongside the file), so the fix costs nothing on the wire.
+$csrfToken = $_POST['csrf_token'] ?? '';
+if (!csrf_verify((string) $csrfToken)) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Invalid CSRF token']);
     exit;
 }
 

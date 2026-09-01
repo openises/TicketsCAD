@@ -897,7 +897,12 @@ switch ($report) {
     // ── INCIDENT REPORT ───────────────────────────────────────────────────
     case 'incident_report':
         $report_title = 'Incident Report';
-        $columns = ['ID', 'Scope', 'Type', 'Severity', 'Status', 'Location', 'Created', 'Closed', 'Units Assigned', 'Actions'];
+        // GH#128 (rjonesbsink, 2026-08-31) -- Phase 132 Step 5 added a
+        // disposition BREAKDOWN to the Incident Summary report, but the one
+        // report listing individual incidents never showed each one's own
+        // disposition. Added as the last column, matching the breakdown
+        // query's own COALESCE(...,'No Disposition') pattern below.
+        $columns = ['ID', 'Scope', 'Type', 'Severity', 'Status', 'Location', 'Created', 'Closed', 'Units Assigned', 'Actions', 'Disposition'];
 
         // Soft-delete sweep (issue #25 follow-up) — see 'unit_log' above.
         $where_parts = [
@@ -949,9 +954,11 @@ switch ($report) {
                 `t`.`date` AS `created`,
                 `t`.`problemend` AS `closed`,
                 (SELECT COUNT(*) FROM `{$prefix}assigns` WHERE `ticket_id` = `t`.`id`) AS `units_assigned`,
-                (SELECT COUNT(*) FROM `{$prefix}action` WHERE `ticket_id` = `t`.`id`) AS `actions_count`
+                (SELECT COUNT(*) FROM `{$prefix}action` WHERE `ticket_id` = `t`.`id`) AS `actions_count`,
+                COALESCE(`td`.`status_val`, 'No Disposition') AS `disposition_label`
             FROM `{$prefix}ticket` `t`
             LEFT JOIN `{$prefix}in_types` `it` ON `t`.`in_types_id` = `it`.`id`
+            LEFT JOIN `{$prefix}ticket_disposition` `td` ON `t`.`disposition_id` = `td`.`id`
             WHERE {$where}
             ORDER BY `t`.`date` DESC",
             $params
@@ -975,7 +982,8 @@ switch ($report) {
                 $row['created'] ?? '',
                 $row['closed'] ?? '',
                 (int) $row['units_assigned'],
-                (int) $row['actions_count']
+                (int) $row['actions_count'],
+                $row['disposition_label'] ?? 'No Disposition'
             ];
             $row_ticket_ids[] = (int) ($row['id'] ?? 0);
         }
@@ -1506,6 +1514,25 @@ switch ($report) {
         $sev_labels  = severity_label_map();
         $stat_labels = [1 => 'Closed', 2 => 'Open', 3 => 'Scheduled'];
 
+        // GH#128 (rjonesbsink, 2026-08-31) -- $ticket['disposition_id'] was
+        // already selected above (SELECT t.*) but never surfaced. Of every
+        // report on this page, After Action is the one built specifically
+        // to summarize how a call went, and it never showed what it
+        // actually ended as. No new query needed -- just the lookup, same
+        // COALESCE(...,'No Disposition') pattern the Incident Summary
+        // breakdown and Incident Report column above both use.
+        $disposition_label = 'No Disposition';
+        $dispId = (int) ($ticket['disposition_id'] ?? 0);
+        if ($dispId > 0) {
+            try {
+                $dispVal = db_fetch_value(
+                    "SELECT `status_val` FROM `{$prefix}ticket_disposition` WHERE `id` = ?",
+                    [$dispId]
+                );
+                if (!empty($dispVal)) { $disposition_label = (string) $dispVal; }
+            } catch (Exception $e) { /* leave at 'No Disposition' */ }
+        }
+
         // Assignments
         $columns = ['Time', 'Event', 'Unit / User', 'Details'];
 
@@ -1594,7 +1621,8 @@ switch ($report) {
             'problem_start'  => $ticket['problemstart'] ?? '',
             'problem_end'    => $ticket['problemend'] ?? '',
             'units_assigned' => count($assigns_data),
-            'actions_count'  => count($actions_data)
+            'actions_count'  => count($actions_data),
+            'disposition'    => $disposition_label
         ];
 
         // GH#57 — the internal id is never the number an operator recognizes.

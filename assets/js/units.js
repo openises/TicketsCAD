@@ -551,9 +551,36 @@
     }
 
     // ── Map ──
+    // GH#121-pattern (2026-08-31) — same Leaflet container-stamping
+    // mechanism documented at assets/js/incident-detail.js's
+    // _teardownDetailMap(): Leaflet stamps the container DOM node itself
+    // (an internal _leaflet_id) the first time L.map() runs on it, so a
+    // second L.map('unitsMap', ...) call on the SAME node throws "Map
+    // container is already initialized." regardless of what this file's
+    // `map` variable holds. initMap() is re-run every time loadUnits()
+    // re-runs — and units.php's UnitActions.onMutate handler calls
+    // window.loadUnits() (this file exposes it) after EVERY unit mutation
+    // (status change, dispatch, note, assignment, etc. via the quick-action
+    // modal) — so any mutation made from the units list page after the
+    // first load threw here. Tear down any existing instance first, same
+    // idiom as incident-detail.js/unit-detail.js
+    // (`try { map.remove(); } catch (e) {} map = null;`). map.remove() is
+    // what clears the container's _leaflet_id stamp; merely reassigning
+    // the JS variable does not.
+    function _teardownUnitsMap() {
+        if (map) {
+            try { map.remove(); } catch (e) {}
+            map = null;
+        }
+        markerGroup = null;
+        markers = [];
+    }
+
     function initMap() {
         var container = document.getElementById('unitsMap');
         if (!container || typeof L === 'undefined') return;
+
+        _teardownUnitsMap();
 
         // Fetch map config for default center
         fetch('api/map-config.php')
@@ -563,6 +590,11 @@
                 var defLng = cfg.def_lng || -98.5795;
                 var defZoom = cfg.def_zoom || 5;
 
+                // A second initMap() call can race ahead of this fetch
+                // resolving (e.g. two rapid mutations before the first
+                // map-config response lands) — tear down again right
+                // before creating, not just at function entry.
+                _teardownUnitsMap();
                 map = L.map('unitsMap', { zoomControl: true }).setView([defLat, defLng], defZoom);
                 if (window.TypeIcons && TypeIcons.bindLabelZoom) { TypeIcons.bindLabelZoom(map); }  // GH #76
 
@@ -574,6 +606,7 @@
                 setTimeout(function () { map.invalidateSize(); }, 200);
             })
             .catch(function () {
+                _teardownUnitsMap();
                 map = L.map('unitsMap', { zoomControl: true }).setView([39.8283, -98.5795], 5);
                 if (window.TypeIcons && TypeIcons.bindLabelZoom) { TypeIcons.bindLabelZoom(map); }  // GH #76
                 addMapLayers(map);

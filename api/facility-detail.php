@@ -11,6 +11,7 @@
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/access.php';
+require_once __DIR__ . '/../inc/facility-hours.php';
 
 ini_set('display_errors', '0');
 
@@ -103,6 +104,13 @@ $result_facility = [
     'status_about'  => $facility['status_about'] ?? '',
     'hours_today'   => $hours_text,
     'is_open'       => $is_open,
+    // GH#125 — the editable weekly schedule (all 7 days), distinct from
+    // hours_today/is_open above which stay exactly as they were (today's
+    // status only, unchanged read path).
+    'hours_week'    => facility_decode_hours($facility['opening_hours'] ?? null),
+    'access_rules'  => $facility['access_rules'] ?? '',
+    'security_reqs' => $facility['security_reqs'] ?? '',
+    'direcs'        => (int) ($facility['direcs'] ?? 1),
     'updated'       => $facility['updated'] ?? '',
     '_by'           => $facility['_by'] ?? '',
     '_on'           => $facility['_on'] ?? '',

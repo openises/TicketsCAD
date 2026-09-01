@@ -20,6 +20,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/facility-hours.php';
+
 /**
  * Upsert a facility. If $existingId > 0 (or $input['id']), updates that
  * row; otherwise creates a new facility.
@@ -63,6 +65,26 @@ function facility_upsert_internal(array $input, int $userId, ?int $existingId = 
     $bed_auto_mode = strtolower(trim((string) ($input['bed_auto_mode'] ?? 'manual')));
     if (!in_array($bed_auto_mode, ['manual', 'auto'], true)) $bed_auto_mode = 'manual';
     $status_about  = trim((string) ($input['status_about'] ?? ''));
+
+    // GH#125 (rjonesbsink, 2026-08-31) — opening_hours/access_rules/
+    // security_reqs/direcs existed in the schema and (for opening_hours)
+    // were already read/displayed, but nothing anywhere wrote any of the
+    // four. All optional: omitting them entirely (an integrator posting
+    // the pre-GH#125 field set) leaves them untouched from whatever the
+    // row already held, matching every other optional field's convention
+    // in this function -- see the null-coalesce shape below.
+    $access_rules  = array_key_exists('access_rules', $input) ? trim((string) $input['access_rules']) : null;
+    $security_reqs = array_key_exists('security_reqs', $input) ? trim((string) $input['security_reqs']) : null;
+    $direcs        = array_key_exists('direcs', $input) ? ((int) $input['direcs'] > 0 ? 1 : 0) : null;
+    // hours_week: an array of up to 7 {enabled, open, close} entries (see
+    // facility_decode_hours()'s own return shape) -- NEVER a pre-encoded
+    // blob from the client. facility_encode_hours() builds and serializes
+    // the value itself; this function never calls unserialize() on
+    // anything the client sent.
+    $opening_hours = null;
+    if (array_key_exists('hours_week', $input) && is_array($input['hours_week'])) {
+        $opening_hours = facility_encode_hours($input['hours_week']);
+    }
 
     $lat = (isset($input['lat']) && $input['lat'] !== '') ? (float) $input['lat'] : null;
     $lng = (isset($input['lng']) && $input['lng'] !== '') ? (float) $input['lng'] : null;
@@ -113,6 +135,10 @@ function facility_upsert_internal(array $input, int $userId, ?int $existingId = 
                 `contact_name` = ?, `contact_email` = ?, `contact_phone` = ?,
                 `capab` = ?, `beds_a` = ?, `beds_o` = ?, `beds_info` = ?,
                 `bed_auto_mode` = ?, `status_about` = ?,
+                `access_rules` = COALESCE(?, `access_rules`),
+                `security_reqs` = COALESCE(?, `security_reqs`),
+                `direcs` = COALESCE(?, `direcs`),
+                `opening_hours` = COALESCE(?, `opening_hours`),
                 `updated` = ?, `_by` = ?, `_on` = ?
              WHERE `id` = ?",
             [
@@ -122,6 +148,7 @@ function facility_upsert_internal(array $input, int $userId, ?int $existingId = 
                 $contact_name, $contact_email, $contact_phone,
                 $capab, $beds_a, $beds_o, $beds_info,
                 $bed_auto_mode, $status_about,
+                $access_rules, $security_reqs, $direcs, $opening_hours,
                 $now, $userId, $now,
                 $id,
             ]
@@ -130,7 +157,9 @@ function facility_upsert_internal(array $input, int $userId, ?int $existingId = 
         return ['id' => $id, 'errors' => [], 'is_new' => false];
     }
 
-    // INSERT
+    // INSERT — GH#125's four fields are optional even on create; a NULL
+    // input leaves them at the schema's own default (NULL for the three
+    // text/blob columns, 1 for direcs) rather than forcing a value.
     db_query(
         "INSERT INTO `{$prefix}facilities`
             (`name`, `handle`, `callsign`, `description`,
@@ -139,8 +168,11 @@ function facility_upsert_internal(array $input, int $userId, ?int $existingId = 
              `contact_name`, `contact_email`, `contact_phone`,
              `capab`, `beds_a`, `beds_o`, `beds_info`,
              `bed_auto_mode`, `status_about`,
+             `access_rules`, `security_reqs`, `direcs`, `opening_hours`,
              `updated`, `_by`, `_on`, `org_id`)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                 ?, ?, COALESCE(?, 1), ?,
+                 ?, ?, ?, ?)",
         [
             $name, $handle, $callsign, $description,
             $street, $city, $state, $lat, $lng,
@@ -148,6 +180,7 @@ function facility_upsert_internal(array $input, int $userId, ?int $existingId = 
             $contact_name, $contact_email, $contact_phone,
             $capab, $beds_a, $beds_o, $beds_info,
             $bed_auto_mode, $status_about,
+            $access_rules, $security_reqs, $direcs, $opening_hours,
             $now, $userId, $now, $orgId,
         ]
     );

@@ -524,9 +524,20 @@ function assign_update_status_internal(int $assignId, $newStatusInput, int $user
 
     try {
         if ($newStatus === 'responding') {
+            // GH#116 follow-up (rjonesbsink) -- assigns.status_id used to be
+            // written once at creation (Dispatched) and never touched again
+            // by this function, so a mobile/dashboard client trying to
+            // highlight "this assignment's OWN current status" (rather than
+            // the responder's single overall status) had no reliable column
+            // to read -- exactly the "phantom column nothing meaningfully
+            // writes" pattern this project's own root-cause discipline
+            // warns about. Now kept in sync with every status change this
+            // function makes, using the SAME effective status id already
+            // resolved for _assign_set_responder_status() below.
+            $effStatusId = $newStatusId > 0 ? $newStatusId : _assign_status_id_by_action('responding');
             db_query(
-                "UPDATE `{$prefix}assigns` SET `responding` = ? WHERE `id` = ?",
-                [$now, $assignId]
+                "UPDATE `{$prefix}assigns` SET `responding` = ?, `status_id` = ? WHERE `id` = ?",
+                [$now, $effStatusId, $assignId]
             );
             _assign_log_action($ticketId, $respName . ' responding', 21, $userId);
             // GH#59: prefer the SPECIFIC status the caller picked (mirrors
@@ -534,20 +545,20 @@ function assign_update_status_internal(int $assignId, $newStatusInput, int $user
             // _assign_status_id_by_action() discards which of possibly
             // several statuses mapped to this action was actually chosen,
             // collapsing every one of them to "whichever sorts first".
-            _assign_set_responder_status($responderId, $newStatusId > 0
-                ? $newStatusId : _assign_status_id_by_action('responding'));
+            _assign_set_responder_status($responderId, $effStatusId);
 
         } elseif ($newStatus === 'on_scene') {
+            $effStatusId = $newStatusId > 0 ? $newStatusId : _assign_status_id_by_action('on_scene');
             // Auto-back-fill responding if it wasn't set
             if (empty($assign['responding']) || substr($assign['responding'], 0, 4) === '0000') {
                 db_query(
-                    "UPDATE `{$prefix}assigns` SET `responding` = ?, `on_scene` = ? WHERE `id` = ?",
-                    [$now, $now, $assignId]
+                    "UPDATE `{$prefix}assigns` SET `responding` = ?, `on_scene` = ?, `status_id` = ? WHERE `id` = ?",
+                    [$now, $now, $effStatusId, $assignId]
                 );
             } else {
                 db_query(
-                    "UPDATE `{$prefix}assigns` SET `on_scene` = ? WHERE `id` = ?",
-                    [$now, $assignId]
+                    "UPDATE `{$prefix}assigns` SET `on_scene` = ?, `status_id` = ? WHERE `id` = ?",
+                    [$now, $effStatusId, $assignId]
                 );
             }
             _assign_log_action($ticketId, $respName . ' on scene', 22, $userId);
@@ -556,49 +567,59 @@ function assign_update_status_internal(int $assignId, $newStatusInput, int $user
             // 'on_scene' always collapsed to whichever sorted first
             // (reported: always reverted to "In Area"), no matter which
             // one the dispatcher picked on the Incident page.
-            _assign_set_responder_status($responderId, $newStatusId > 0
-                ? $newStatusId : _assign_status_id_by_action('on_scene'));
+            _assign_set_responder_status($responderId, $effStatusId);
 
         } elseif ($newStatus === 'facility_enroute') {
+            $effStatusId = $newStatusId > 0 ? $newStatusId : _assign_status_id_by_action('facility_enroute');
             if (empty($assign['u2fenr']) || substr((string) $assign['u2fenr'], 0, 4) === '0000') {
                 db_query(
-                    "UPDATE `{$prefix}assigns` SET `u2fenr` = ? WHERE `id` = ?",
-                    [$now, $assignId]
+                    "UPDATE `{$prefix}assigns` SET `u2fenr` = ?, `status_id` = ? WHERE `id` = ?",
+                    [$now, $effStatusId, $assignId]
+                );
+            } else {
+                db_query(
+                    "UPDATE `{$prefix}assigns` SET `status_id` = ? WHERE `id` = ?",
+                    [$effStatusId, $assignId]
                 );
             }
             _assign_log_action($ticketId, $respName . ' en route to facility', 25, $userId);
-            _assign_set_responder_status($responderId, $newStatusId > 0
-                ? $newStatusId : _assign_status_id_by_action('facility_enroute'));
+            _assign_set_responder_status($responderId, $effStatusId);
 
         } elseif ($newStatus === 'facility_arrived') {
+            $effStatusId = $newStatusId > 0 ? $newStatusId : _assign_status_id_by_action('facility_arrived');
             // Same backstamp shape as on_scene above -- "arrived at
             // facility" implies "was en route to facility".
             if (empty($assign['u2fenr']) || substr((string) $assign['u2fenr'], 0, 4) === '0000') {
                 db_query(
-                    "UPDATE `{$prefix}assigns` SET `u2fenr` = ?, `u2farr` = ? WHERE `id` = ?",
-                    [$now, $now, $assignId]
+                    "UPDATE `{$prefix}assigns` SET `u2fenr` = ?, `u2farr` = ?, `status_id` = ? WHERE `id` = ?",
+                    [$now, $now, $effStatusId, $assignId]
                 );
             } else {
                 db_query(
-                    "UPDATE `{$prefix}assigns` SET `u2farr` = ? WHERE `id` = ?",
-                    [$now, $assignId]
+                    "UPDATE `{$prefix}assigns` SET `u2farr` = ?, `status_id` = ? WHERE `id` = ?",
+                    [$now, $effStatusId, $assignId]
                 );
             }
             _assign_log_action($ticketId, $respName . ' arrived at facility', 26, $userId);
-            _assign_set_responder_status($responderId, $newStatusId > 0
-                ? $newStatusId : _assign_status_id_by_action('facility_arrived'));
+            _assign_set_responder_status($responderId, $effStatusId);
 
         } elseif ($newStatus === 'clear') {
+            // Phase 25: prefer picked status; else mapped clear; else
+            // Available -- computed here (not just inside the "revert"
+            // branch below) so assigns.status_id records what the
+            // assignment was actually cleared AS, even when the responder's
+            // own overall status doesn't change because another assignment
+            // is still active.
+            $clearStatus = $newStatusId > 0 ? $newStatusId
+                : (_assign_status_id_by_action('clear') ?: _assign_available_status_id());
             db_query(
-                "UPDATE `{$prefix}assigns` SET `clear` = ? WHERE `id` = ?",
-                [$now, $assignId]
+                "UPDATE `{$prefix}assigns` SET `clear` = ?, `status_id` = ? WHERE `id` = ?",
+                [$now, $clearStatus, $assignId]
             );
             _assign_log_action($ticketId, $respName . ' cleared', 23, $userId);
-            // Phase 25: prefer picked status; else mapped clear; else
-            // Available. ONLY revert if no other active assignments.
+            // ONLY revert the responder's own overall status if no other
+            // active assignments.
             if (!_assign_has_other_active($responderId, $assignId)) {
-                $clearStatus = $newStatusId > 0 ? $newStatusId
-                    : (_assign_status_id_by_action('clear') ?: _assign_available_status_id());
                 _assign_set_responder_status($responderId, $clearStatus);
             }
             // Phase 104d (a beta tester GH #11) — if this was the last active

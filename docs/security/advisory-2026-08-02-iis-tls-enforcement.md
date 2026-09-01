@@ -212,4 +212,4 @@ call on both counts, and the reason this document exists.
 ## Reporting security issues
 
 Please report suspected security issues privately rather than in a public issue.
-See [`SECURITY.md`](../../../SECURITY.md).
+See [`SECURITY.md`](../../SECURITY.md).

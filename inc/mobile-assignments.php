@@ -32,7 +32,7 @@ function mobile_active_assignments(string $prefix, array $responderIds): array {
     $ph = implode(',', array_fill(0, count($responderIds), '?'));
     try {
         return db_fetch_all(
-            "SELECT a.`id` AS assign_id, a.`ticket_id`,
+            "SELECT a.`id` AS assign_id, a.`ticket_id`, a.`status_id` AS `assign_status_id`,
                     t.`street` AS `address`, t.`city`, t.`state`,
                     t.`scope` AS `nature`, t.`description`,
                     t.`lat`, t.`lng` AS `lon`,

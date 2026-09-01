@@ -186,9 +186,24 @@
                             + '<span class="badge" style="background:' + escHtml(a.type_color || '#0d6efd') + '">' + escHtml(a.incident_number || ('#' + a.ticket_id)) + '</span>'
                             + ' <span class="small text-body-secondary">' + escHtml(a.nature || a.description || 'incident') + '</span>'
                             + '</div>';
+                        // GH#116 follow-up (rjonesbsink) — currentStatusId is
+                        // the UNIT's single overall status; comparing every
+                        // card against it made all cards highlight the same
+                        // status the moment ANY one call advanced the unit's
+                        // overall status (every non-clear incident_action
+                        // does, unconditionally). Each assignment now carries
+                        // its OWN assign_status_id (inc/mobile-assignments.php,
+                        // kept in sync by every write path — see
+                        // inc/assignment-write.php / inc/responder-write.php);
+                        // fall back to currentStatusId only if it's missing
+                        // (an assignment from before this fix shipped, or one
+                        // whose status was never explicitly set past
+                        // creation).
+                        var cardStatusId = (a.assign_status_id !== undefined && a.assign_status_id !== null)
+                            ? parseInt(a.assign_status_id, 10) : currentStatusId;
                         for (var i = 0; i < data.statuses.length; i++) {
                             var s = data.statuses[i];
-                            var isActive = parseInt(s.id, 10) === currentStatusId;
+                            var isActive = parseInt(s.id, 10) === cardStatusId;
                             html += _statusButtonHtml(s, isActive, a.assign_id);
                         }
                     }

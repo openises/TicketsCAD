@@ -15,12 +15,16 @@
     var facTypes = [];       // Loaded from API
     var facStatuses = [];    // Loaded from API
 
+    // GH#125 — Sun-Sat, matching facility_decode_hours()'s 0-6 indexing.
+    var HOURS_DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
     // ── Initialise on DOM ready ──
     document.addEventListener('DOMContentLoaded', function () {
         initTheme();
         editId = getEditId();
         initMap();
         loadDropdowns();
+        buildHoursTable();
         bindEvents();
 
         if (editId) {
@@ -293,6 +297,54 @@
     }
 
     // ── Load existing facility for editing ──
+    // GH#125 — build the 7 static rows once (day name + enabled checkbox +
+    // two time inputs). loadFacility()/saveFacility() only ever read/write
+    // the row's own inputs — this never rebuilds the table.
+    function buildHoursTable() {
+        var tbody = document.getElementById('hoursTableBody');
+        if (!tbody) return;
+        var html = '';
+        for (var i = 0; i < 7; i++) {
+            html += '<tr>'
+                + '<td><input type="checkbox" class="form-check-input hours-enabled" data-day="' + i + '" tabindex="19"></td>'
+                + '<td>' + HOURS_DAY_LABELS[i] + '</td>'
+                + '<td><input type="time" class="form-control form-control-sm hours-open" data-day="' + i + '" value="09:00" tabindex="19"></td>'
+                + '<td><input type="time" class="form-control form-control-sm hours-close" data-day="' + i + '" value="17:00" tabindex="19"></td>'
+                + '</tr>';
+        }
+        tbody.innerHTML = html;
+    }
+
+    // hoursWeek: array of 7 {enabled, open, close} — facility_decode_hours()'s
+    // own return shape, so the server and client agree on indexing (0=Sun).
+    function populateHoursTable(hoursWeek) {
+        if (!Array.isArray(hoursWeek)) return;
+        for (var i = 0; i < 7 && i < hoursWeek.length; i++) {
+            var day = hoursWeek[i] || {};
+            var enabledEl = document.querySelector('.hours-enabled[data-day="' + i + '"]');
+            var openEl = document.querySelector('.hours-open[data-day="' + i + '"]');
+            var closeEl = document.querySelector('.hours-close[data-day="' + i + '"]');
+            if (enabledEl) enabledEl.checked = !!day.enabled;
+            if (openEl) openEl.value = day.open || '09:00';
+            if (closeEl) closeEl.value = day.close || '17:00';
+        }
+    }
+
+    function collectHoursWeek() {
+        var week = [];
+        for (var i = 0; i < 7; i++) {
+            var enabledEl = document.querySelector('.hours-enabled[data-day="' + i + '"]');
+            var openEl = document.querySelector('.hours-open[data-day="' + i + '"]');
+            var closeEl = document.querySelector('.hours-close[data-day="' + i + '"]');
+            week.push({
+                enabled: !!(enabledEl && enabledEl.checked),
+                open: (openEl && openEl.value) || '09:00',
+                close: (closeEl && closeEl.value) || '17:00'
+            });
+        }
+        return week;
+    }
+
     function loadFacility(id) {
         fetch('api/facility-detail.php?id=' + id)
             .then(function (r) {
@@ -326,6 +378,13 @@
                 setVal('status_about', f.status_about);
                 setVal('lat', f.lat != null ? f.lat.toFixed(6) : '');
                 setVal('lng', f.lng != null ? f.lng.toFixed(6) : '');
+
+                // GH#125
+                setVal('access_rules', f.access_rules);
+                setVal('security_reqs', f.security_reqs);
+                var direcsEl = document.getElementById('direcs');
+                if (direcsEl) direcsEl.checked = (f.direcs === undefined || f.direcs === null) ? true : !!f.direcs;
+                populateHoursTable(f.hours_week);
 
                 // Select dropdowns (wait a tick for options to load)
                 setTimeout(function () {
@@ -423,7 +482,12 @@
             beds_o: parseInt(document.getElementById('beds_o').value, 10) || 0,
             beds_info: document.getElementById('beds_info').value.trim(),
             bed_auto_mode: (document.getElementById('bed_auto_mode') || {value:'manual'}).value,
-            status_about: document.getElementById('status_about').value.trim()
+            status_about: document.getElementById('status_about').value.trim(),
+            // GH#125
+            access_rules: document.getElementById('access_rules').value.trim(),
+            security_reqs: document.getElementById('security_reqs').value.trim(),
+            direcs: document.getElementById('direcs').checked ? 1 : 0,
+            hours_week: collectHoursWeek()
         };
 
         // Include id if editing

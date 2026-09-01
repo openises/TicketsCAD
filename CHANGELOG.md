@@ -17,6 +17,67 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
   the dashboard's "change unit's overall status" widget, the unit-actions
   quick-status control, and the unit-detail page still have the original
   behavior and were not changed in this pass.
+  **Follow-up:** the per-card highlight in that same grouped view had its
+  own separate bug — every card highlighted whichever status the unit's
+  overall status last advanced to, because `assigns.status_id` was written
+  once at assignment creation and never updated again. It's now kept current
+  on every status change from both the mobile and dispatcher write paths,
+  including when two different statuses map to the same action. A one-time
+  migration backfills the correct status for any assignment that was
+  already open before this update.
+- **GH#126** — Unit Detail's Active Assignments list never advanced past
+  "On Scene" for a unit that had gone Transporting or Trans Arrived, even
+  though the underlying record was stamped correctly — the facility-leg
+  timestamps (added for GH#64) were never wired into this list's display
+  logic. Community-submitted fix from rjonesbsink.
+- **GH#121** — saving an inline edit on Incident Detail could throw "Map
+  container is already initialized" and abort the rest of the page load.
+  The same defect (Leaflet's container stamp surviving a JS variable reset)
+  was also found and fixed on the Unit Detail and Units list pages.
+- **GH#122** — every run of the RBAC seed migration created another
+  duplicate "Facility" role, because the uniqueness check on `roles` can't
+  fire for global (organization-less) roles — the same class of MySQL
+  NULL-in-a-unique-index gap fixed elsewhere in this project. The migration
+  now cleans up any duplicates it finds and prevents new ones.
+- **GH#125** — facility opening hours, access rules, and security
+  requirements were read and displayed but had no editor anywhere — a
+  fresh install could never populate them, though an install upgraded from
+  the legacy version could display real historical hours. Facility editing
+  now has a day-by-day hours table plus the two text fields, using the same
+  storage format the display already expected.
+- **GH#127** — a region's default state was seeded as the literal text
+  "10" instead of being left blank, visible in Settings → Regions. Also
+  corrected documentation that described a dispatcher-region-filtering
+  feature that doesn't currently exist.
+- **GH#128** — the Incident Report and After Action Report now show each
+  incident's disposition, matching what the Incident Summary report's
+  breakdown already counted in aggregate.
+- **GH#130** — four bugs in this project's own internal code-quality
+  tooling (not the application itself), found and precisely diagnosed by a
+  community bug hunt: a UI-convention checker flagged Node.js developer
+  scripts as if they were browser code; a dead-code checker didn't
+  recognize one valid table-creation pattern as a real write; a diagnostic
+  tool's built-in test case referenced a query shape the application had
+  already moved away from; and the documentation-link checker mistook a
+  markdown syntax example for a real link.
+- **GH#131** — two documentation links pointed above the repository root
+  or at a renamed file.
+- **GH#132** — an inbound audio-transmission endpoint (push-to-talk over
+  DMR) had a comment claiming CSRF protection was already active when it
+  wasn't. Independently found by both an internal security review and a
+  community report; fixed once.
+- **GH#124** — test fixtures could leak into a live database as real-looking
+  open incidents if a test crashed partway through, before its own cleanup
+  ran. Test cleanup is now guaranteed even on a crash. Also fixed, found
+  while investigating: permanently deleting an incident from the
+  wastebasket didn't clean up its linked units, notes, and attachments.
+- Four endpoints were missing a request-forgery (CSRF) check their own
+  code comments claimed was already in place.
+- A database column used to link uploaded files to incidents/units/
+  facilities was sized too small for the number of incidents on a large,
+  long-running install, risking a failed upload once an install passed
+  roughly 8.3 million incidents. Widened, along with two related columns
+  found by the same review.
 - **GH#119** — two independent bugs in Settings → Sound / Alerts: (1) "Save
   Sound Settings" always failed with "No settings provided" (a stale,
   pre-rewrite handler in `config.js` was double-submitting against the

@@ -1931,7 +1931,13 @@
             pttStreamPromise = fetch(TX_STREAM_URL, {
                 method: 'POST',
                 credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/octet-stream' },
+                headers: {
+                    'Content-Type': 'application/octet-stream',
+                    // Security review (2026-08-29) — api/dmr-tx-stream.php
+                    // now verifies this; the raw body has no room for a
+                    // form/JSON field so the token travels in a header.
+                    'X-CSRF-Token': fccCsrf()
+                },
                 body: bodyStream,
                 duplex: 'half',
             }).then(function (r) {
@@ -2060,6 +2066,10 @@
         var fd = new FormData();
         fd.append('audio', blob, 'ptt.webm');
         fd.append('mime', blob.type);
+        // Security review (2026-08-29) — api/dmr-tx-audio.php now verifies
+        // this the same way api/upload.php already does (a plain $_POST
+        // field alongside the file).
+        fd.append('csrf_token', fccCsrf());
         console.info('[radio] tx-audio POST', blob.size, 'bytes', blob.type);
         fetch(TX_AUDIO_URL, {
             method: 'POST',

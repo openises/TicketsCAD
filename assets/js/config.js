@@ -15689,13 +15689,15 @@
 
                     fetch('api/router-test-send.php', {
                         method: 'POST',
+                        credentials: 'same-origin',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             predicate:     pred,
                             dest_channel:  dest,
                             sample_payload: _recipSamplePayload(),
                             route_name:    routeName,
-                            route_id:      routeId || null
+                            route_id:      routeId || null,
+                            csrf_token:    getCsrfToken()
                         })
                     }).then(function (r) { return r.json(); }).then(function (data) {
                         if (data.error || data.ok === false) {

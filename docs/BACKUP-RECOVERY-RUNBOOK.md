@@ -74,8 +74,7 @@ back, and prunes old copies. **On by default**, every 24 h, keeping 7 copies in
 `<app>/backups`.
 
 Configure at **Settings → Backup / Maintenance → Automatic Backups**; monitor at
-**Status → System Health → Backups**. Full setting reference:
-[INSTALL-ADMIN-GUIDE.md](../../../docs/INSTALL-ADMIN-GUIDE.md) → Part 8 → Automatic Backups.
+**Status → System Health → Backups**.
 
 **It will not fill the disk.** Before writing, it checks free space on both the backup
 directory and the temp directory and **refuses** if the write would drop free space below

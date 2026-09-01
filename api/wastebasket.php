@@ -16,6 +16,10 @@ require_once __DIR__ . '/../inc/audit.php';
 // ics_form_label() — one definition of how an ICS form is named, shared with
 // the delete path so the wastebasket row and the audit entry read alike.
 require_once __DIR__ . '/../inc/ics-forms-write.php';
+// wb_purge_ticket_children() — GH#124's ticket-purge cascade (assigns/
+// action/patient/files). Extracted to inc/ so it's directly testable
+// without booting this file's own HTTP request dispatch below.
+require_once __DIR__ . '/../inc/wastebasket-write.php';
 
 ini_set('display_errors', '0');
 
@@ -357,6 +361,8 @@ if ($method === 'POST') {
                 try { db_query("UPDATE `{$prefix}newui_vehicles` SET `member_id` = NULL WHERE `member_id` = ?", [$id]); } catch (Exception $e) {}
             } elseif ($type === 'responder') {
                 try { db_query("DELETE FROM `{$prefix}allocates` WHERE `resource_id` = ? AND `type` = 2", [$id]); } catch (Exception $e) {}
+            } elseif ($type === 'ticket') {
+                wb_purge_ticket_children([$id]);
             }
 
             db_query("DELETE FROM `{$cfg['table']}` WHERE `id` = ?", [$id]);
@@ -430,6 +436,22 @@ if ($method === 'POST') {
                                    AND m.`deleted_at` < DATE_SUB(NOW(), INTERVAL ? DAY)",
                                 [$days]
                             );
+                        } catch (Exception $e) {}
+                    } elseif ($type === 'ticket') {
+                        // GH#124 — same cascade the single-record purge below
+                        // gets, applied to every ticket this bulk sweep is
+                        // about to permanently remove. Resolve the eligible
+                        // ids first since wb_purge_ticket_children() needs
+                        // them individually (it also unlinks each ticket's
+                        // attached files on disk).
+                        try {
+                            $eligibleTicketIds = array_column(db_fetch_all(
+                                "SELECT id FROM `{$cfg['table']}`
+                                  WHERE `deleted_at` IS NOT NULL
+                                    AND `deleted_at` < DATE_SUB(NOW(), INTERVAL ? DAY)",
+                                [$days]
+                            ), 'id');
+                            wb_purge_ticket_children($eligibleTicketIds);
                         } catch (Exception $e) {}
                     }
 

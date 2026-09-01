@@ -418,6 +418,21 @@ function _p142_scan_for(string $base, string $needle, array $skipFiles): array {
         if (strpos($rel, 'specs/') === 0) continue;
         if (strpos($rel, 'docs/') === 0) continue;
         if (strpos($rel, 'vendor/') !== false) continue;
+        if (strpos($rel, 'node_modules/') !== false) continue;
+        // GH-adjacent (found 2026-08-31 while chasing a false failure caused
+        // by two concurrently-running worktree-isolated background agents):
+        // .claude/worktrees/<agent-id>/ is a full nested copy of this same
+        // tree that a background Agent's isolated worktree creates INSIDE
+        // the main checkout while it's active. This scanner had no
+        // exclusion for it, so any file this scan is looking for that
+        // happens to also exist in a concurrently-running agent's isolated
+        // copy (e.g. an unrelated feature that agent is building) reads as
+        // "an existing file outside this phase's own additions references
+        // it" — a false failure with nothing to do with THIS phase's own
+        // code. Matches the established exclusion convention already used
+        // by ui_extract.php and several sibling tests (test_https_
+        // detection.php, test_outbound_timeouts.php, etc).
+        if (strpos($rel, '.claude/') === 0) continue;
         if (in_array($rel, $skipFiles, true)) continue;
         $contents = file_get_contents($file->getPathname());
         if ($contents !== false && strpos($contents, $needle) !== false) {

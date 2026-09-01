@@ -148,6 +148,8 @@ try {
             `a`.`dispatched`,
             `a`.`responding`,
             `a`.`on_scene`,
+            `a`.`u2fenr`,
+            `a`.`u2farr`,
             `a`.`status_id`
          FROM `{$prefix}assigns` `a`
          LEFT JOIN `{$prefix}ticket` `t` ON `a`.`ticket_id` = `t`.`id`
@@ -160,8 +162,24 @@ try {
     );
 
     foreach ($rows as $row) {
+        // GH#126 (rjonesbsink, community patch) -- GH#64 gave the facility
+        // leg its own write-once slots (u2fenr/u2farr) rather than
+        // overloading on_scene a second time. This ladder stopped at On
+        // Scene, so a unit that had gone Transporting or Trans Arrived
+        // still read "On Scene" on unit-detail while the assigns row was
+        // correctly stamped. Ordered latest-milestone-first; labels match
+        // the sequence api/reports.php's interval report uses ('To
+        // Facility', 'At Facility') and api/log.php's action names. The
+        // '0000' prefix check matches how inc/assignment-write.php and
+        // inc/par.php test these same columns -- a zero date is not NULL
+        // here, so !empty() alone would report a never-stamped row as
+        // reached.
         $currentState = 'Dispatched';
-        if ($row['on_scene']) {
+        if (!empty($row['u2farr']) && substr((string) $row['u2farr'], 0, 4) !== '0000') {
+            $currentState = 'At Facility';
+        } elseif (!empty($row['u2fenr']) && substr((string) $row['u2fenr'], 0, 4) !== '0000') {
+            $currentState = 'To Facility';
+        } elseif ($row['on_scene']) {
             $currentState = 'On Scene';
         } elseif ($row['responding']) {
             $currentState = 'Responding';

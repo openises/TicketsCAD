@@ -275,6 +275,61 @@ $csrf     = csrf_token();
                     </div>
                 </div>
 
+                <!-- ── Section 5: Hours & Access (GH#125) ── -->
+                <div class="card mb-3 form-section">
+                    <div class="card-header d-flex align-items-center" data-bs-toggle="collapse" data-bs-target="#secHours" role="button">
+                        <i class="bi bi-clock-history me-2 text-secondary"></i>
+                        <span class="fw-semibold">Hours &amp; Access</span>
+                        <i class="bi bi-chevron-down ms-2 ms-auto collapse-icon"></i>
+                    </div>
+                    <div class="collapse" id="secHours">
+                        <div class="card-body">
+                            <div class="mb-2">
+                                <label class="form-label mb-1">Opening Hours</label>
+                                <div class="form-text small mb-2">
+                                    Sets when this facility is scheduled to be open, used for the
+                                    dashboard's "open now" indicator. This is a fixed weekly schedule,
+                                    not live status — for real-time bed/capacity state, see the
+                                    Capacity section above and the Facility Board.
+                                </div>
+                                <div class="table-responsive">
+                                    <table class="table table-sm align-middle mb-0" id="hoursTable">
+                                        <thead>
+                                            <tr>
+                                                <th style="width:2.5rem"></th>
+                                                <th>Day</th>
+                                                <th>Open</th>
+                                                <th>Close</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="hoursTableBody">
+                                            <!-- 7 rows built by assets/js/facility-edit.js -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="row g-2 mt-1">
+                                <div class="col-12">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="direcs" name="direcs" tabindex="19" checked>
+                                        <label class="form-check-label" for="direcs">Show Directions</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="access_rules" class="form-label">Access Rules</label>
+                                    <textarea class="form-control form-control-sm" id="access_rules" name="access_rules" rows="2"
+                                              tabindex="20" placeholder="e.g., Sign in at front desk, badge required after hours..."></textarea>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="security_reqs" class="form-label">Security Requirements</label>
+                                    <textarea class="form-control form-control-sm" id="security_reqs" name="security_reqs" rows="2"
+                                              tabindex="21" placeholder="e.g., Background check on file, escort required..."></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </form>
         </div>
 

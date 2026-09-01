@@ -1572,14 +1572,14 @@ DROP TABLE IF EXISTS `files`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `files` (
-  `id` mediumint(5) NOT NULL AUTO_INCREMENT,
+  `id` int(11) NOT NULL AUTO_INCREMENT,
   `title` varchar(128) NOT NULL,
   `filename` varchar(512) NOT NULL,
   `orig_filename` varchar(512) NOT NULL,
-  `ticket_id` mediumint(6) NOT NULL DEFAULT 0,
-  `responder_id` mediumint(6) NOT NULL DEFAULT 0,
-  `facility_id` mediumint(6) NOT NULL DEFAULT 0,
-  `mi_id` mediumint(6) NOT NULL DEFAULT 0,
+  `ticket_id` bigint(8) NOT NULL DEFAULT 0,
+  `responder_id` bigint(8) NOT NULL DEFAULT 0,
+  `facility_id` bigint(8) NOT NULL DEFAULT 0,
+  `mi_id` bigint(8) NOT NULL DEFAULT 0,
   `type` int(2) DEFAULT 0,
   `filetype` varchar(128) NOT NULL,
   `_by` int(7) NOT NULL,
@@ -1608,8 +1608,8 @@ DROP TABLE IF EXISTS `files_x`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `files_x` (
-  `id` mediumint(6) NOT NULL AUTO_INCREMENT,
-  `file_id` mediumint(6) NOT NULL,
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `file_id` int(11) NOT NULL,
   `user_id` int(4) NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
@@ -2867,7 +2867,7 @@ LOCK TABLES `region` WRITE;
 /*!40000 ALTER TABLE `region` DISABLE KEYS */;
 set autocommit=0;
 INSERT INTO `region` VALUES
-(1,'General',4,'General - group 0',1,'','',NULL,NULL,'10',10,0);
+(1,'General',4,'General - group 0',1,'','',NULL,NULL,NULL,10,0);
 /*!40000 ALTER TABLE `region` ENABLE KEYS */;
 UNLOCK TABLES;
 commit;

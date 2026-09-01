@@ -1065,7 +1065,26 @@
                 renderProtocol(data.incident);
                 renderAssignments(data.assignments);
                 renderActions(data.actions);
-                initMap(data.incident);
+                // GH#121 — defensive ordering, matching GH#98/GH#118's
+                // fix for the same class of defect: a throw inside
+                // initMap() must never take out initEditButtons() /
+                // setInitialFocus() / loadDispositionOptions() below,
+                // which is exactly what happened when initMap() re-ran
+                // on an already-initialized Leaflet container and threw
+                // uncaught into this .then(), skipping everything after
+                // it and surfacing a misleading "Failed to load
+                // incident" alert even though the save/load had already
+                // succeeded. A real map failure is still worth knowing
+                // about — surface it via console.error rather than
+                // silently swallowing it — just not at the cost of
+                // breaking the rest of the page.
+                try {
+                    initMap(data.incident);
+                } catch (mapErr) {
+                    if (window.console && console.error) {
+                        console.error('initMap() failed:', mapErr);
+                    }
+                }
 
                 // Show content, hide spinner
                 document.getElementById('loadingSpinner').classList.add('d-none');
@@ -2944,9 +2963,31 @@
     }
 
     // ── Map ──
+    // GH#121 (2026-08-29) — Leaflet stamps the container DOM node itself
+    // (an internal _leaflet_id) the first time L.map() runs on it; a
+    // second L.map('detailMap', ...) call on the SAME node throws "Map
+    // container is already initialized" regardless of what the module-
+    // level `map` variable holds. initMap() is re-run every time
+    // loadIncident() re-runs — which happens after every inline-edit
+    // save (see the update_fields success handler) — so every save
+    // after the first threw here. Tear down any existing instance
+    // first, same idiom as assets/js/app.js's widgets:destroying
+    // handler (`try { map.remove(); } catch (e) {} map = null;`).
+    // map.remove() is what clears the container's _leaflet_id stamp;
+    // merely reassigning the JS variable does not.
+    function _teardownDetailMap() {
+        if (map) {
+            try { map.remove(); } catch (e) {}
+            map = null;
+        }
+        marker = null;
+    }
+
     function initMap(inc) {
         var container = document.getElementById('detailMap');
         if (!container || typeof L === 'undefined') return;
+
+        _teardownDetailMap();
 
         var hasCoords = inc.lat && inc.lng && (inc.lat !== 0 || inc.lng !== 0);
 
@@ -2957,6 +2998,11 @@
             fetch('api/map-config.php')
                 .then(function (r) { return r.json(); })
                 .then(function (cfg) {
+                    // A second initMap() call can race ahead of this
+                    // fetch resolving (e.g. two rapid saves before the
+                    // first map-config response lands) — tear down again
+                    // right before creating, not just at function entry.
+                    _teardownDetailMap();
                     map = L.map('detailMap', { zoomControl: true })
                         .setView([cfg.def_lat || 39.8283, cfg.def_lng || -98.5795], cfg.def_zoom || 5);
                     var bl = null;

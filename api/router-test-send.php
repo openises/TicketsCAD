@@ -55,6 +55,15 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $input = json_decode(file_get_contents('php://input'), true) ?: [];
+
+// Security review (2026-08-29): this endpoint fires a REAL notification
+// (push/Slack/etc.) to whoever the predicate resolves to, but never
+// verified a CSRF token. Matches the standard shape used by every other
+// JSON-body write endpoint in this codebase (see api/responder-status.php).
+if (empty($input['csrf_token']) || !csrf_verify($input['csrf_token'])) {
+    json_error('Invalid CSRF token', 403);
+}
+
 $predicate    = $input['predicate']      ?? null;
 $destChannel  = trim((string) ($input['dest_channel'] ?? ''));
 $samplePayload = is_array($input['sample_payload'] ?? null) ? $input['sample_payload'] : [];

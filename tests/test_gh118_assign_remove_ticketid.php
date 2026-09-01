@@ -68,6 +68,12 @@ require __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/db.php';
 require_once __DIR__ . '/../inc/assignment-write.php';
 require_once __DIR__ . '/_test_admin.php';
+// GH#124 — this test's own trailing teardown (bottom of this file) only
+// runs on a normal finish. Registering each fixture here too means a mid-
+// test fatal (this file's own reason for existing: GH#120's disabled-
+// shell_exec() fatal killed this exact test before its old teardown ever
+// ran) still gets cleaned up, via a shutdown handler that fires either way.
+require_once __DIR__ . '/_test_fixture_guard.php';
 
 $prefix = $GLOBALS['db_prefix'] ?? '';
 $base   = realpath(__DIR__ . '/..');
@@ -89,21 +95,30 @@ try {
     db_query("INSERT INTO `{$prefix}responder` (name, handle, description, un_status_id, status_updated, updated)
               VALUES ('gh118_unit_A', 'GH118A', 'test', 1, NOW(), NOW())");
     $ridA = (int) db_insert_id();
+    test_fixture_guard_track('responder', $ridA);
     db_query("INSERT INTO `{$prefix}responder` (name, handle, description, un_status_id, status_updated, updated)
               VALUES ('gh118_unit_B', 'GH118B', 'test', 1, NOW(), NOW())");
     $ridB = (int) db_insert_id();
+    test_fixture_guard_track('responder', $ridB);
 
     $typeId = (int) db_fetch_value("SELECT id FROM `{$prefix}in_types` ORDER BY id LIMIT 1");
     db_query("INSERT INTO `{$prefix}ticket` (in_types_id, status, severity, scope, description, date, problemstart, _by)
               VALUES (?, 2, 0, 'gh118_ticket', 'GH118 Assign-remove fixture', NOW(), NOW(), 1)",
               [$typeId]);
     $tid = (int) db_insert_id();
+    test_fixture_guard_track('ticket', $tid);
+    // assign_create_internal()/assign_unassign_internal() stamp `action` log
+    // rows for this ticket_id as a side effect with no id ever handed back
+    // to this test — track the whole ticket_id-scoped set, not one row.
+    test_fixture_guard_track_where('action', 'ticket_id = ?', [$tid]);
 
     $ra = assign_create_internal($tid, $ridA, '', $userId);
     $rb = assign_create_internal($tid, $ridB, '', $userId);
     is_true((int) ($ra['id'] ?? 0) > 0 && (int) ($rb['id'] ?? 0) > 0, 'both units assigned via the real writer');
     $aidA = (int) $ra['id'];
     $aidB = (int) $rb['id'];
+    test_fixture_guard_track('assigns', $aidA);
+    test_fixture_guard_track('assigns', $aidB);
 
     // This is exactly what the FIXED JS handler now sends: a correctly
     // resolved ticket_id used to find and remove unit B's assignment.

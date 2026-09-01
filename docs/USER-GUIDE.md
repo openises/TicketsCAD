@@ -1053,7 +1053,12 @@ Regions define geographic territories for your organization. Each region can hav
 - A default area code, city, and state
 - A boundary polygon (linked to map markups)
 
-Regions can be used to filter data so dispatchers only see incidents in their assigned region.
+Today, a region is descriptive metadata only — a name, a default map center/zoom, and a
+boundary you can draw on the map. It is not currently wired into any access control or
+view filtering: every dispatcher sees every incident regardless of region, and there is
+no per-user region assignment. Restricting or defaulting a dispatcher's view to a
+specific region is a possible future enhancement, not a shipped feature — see
+[GH#127](https://github.com/openises/TicketsCAD/issues/127) for the current status.
 
 Configure regions in **Config > Locations > Regions**.
 

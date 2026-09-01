@@ -28,6 +28,17 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $input = json_decode(file_get_contents('php://input'), true);
 if (!$input) json_error('Invalid JSON body');
 
+// Security review (2026-08-29): this endpoint mutates schedule state
+// (assign/signup/cancel/swap/update_status/delete) but never verified a
+// CSRF token, even though every caller (assets/js/scheduling.js's shared
+// apiPost() helper) already sends one in the JSON body — the client side
+// was correct, the server just never checked it. Matches the standard
+// shape used by every other JSON-body write endpoint in this codebase
+// (see api/responder-status.php).
+if (empty($input['csrf_token']) || !csrf_verify($input['csrf_token'])) {
+    json_error('Invalid CSRF token', 403);
+}
+
 $action = $input['action'] ?? '';
 
 switch ($action) {

@@ -288,19 +288,17 @@ phantom:log.responder_id
 #     call, not this audit's to make unilaterally).
 phantom:user.phone_m
 
-# --- MARK: facilities.boundary / opening_hours / direcs -- actively read
-#     and output (api/facilities.php:114,118,141-144,174;
-#     api/facility-detail.php:57) but facility_upsert_internal()'s
-#     INSERT/UPDATE column lists (both static, non-dynamic -- confirmed
-#     by reading the full function) never include any of the three.
-#     `direcs` here is facilities-specific; do not confuse with
-#     responder.direcs, which IS written. Needs new UI form fields
-#     (service-area boundary drawing, structured per-day hours editor) --
-#     real feature work, not a quick whitelist fix like the org_id
-#     restoration in the same change. Flagged for Eric.
+# --- MARK: facilities.boundary -- actively read and output
+#     (api/facilities.php:114,118,174) but facility_upsert_internal()'s
+#     INSERT/UPDATE column lists never include it. Its two former
+#     siblings in this same finding, opening_hours and direcs, were
+#     fixed by GH#125 (2026-08-31, inc/facility-hours.php +
+#     inc/facility-write.php's hours_week/direcs acceptance) -- removed
+#     from this baseline since they now have a real write path. boundary
+#     remains open: it needs service-area polygon-drawing UI (a map-
+#     editor feature, not a form field), genuinely separate work from
+#     GH#125's day-by-day hours table. Flagged for Eric.
 phantom:facilities.boundary
-phantom:facilities.opening_hours
-phantom:facilities.direcs
 
 # --- MARK: markup_categories.color / description / icon / name /
 #     sort_order -- a SECOND, previously-undocumented instance of this
