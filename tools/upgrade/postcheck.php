@@ -96,9 +96,20 @@ try {
 // Settings snapshot
 $rbacSettings = [];
 try {
+    // FIX: this used to search for a 'smtp.%' PREFIX -- but
+    // tools/upgrade/settings_migrate.php never actually produces a
+    // smtp.-prefixed key (inc/channels/smtp.php's _smtp_get_config()
+    // reads smtp_host/smtp_port/etc, underscore-separated, no dot), so
+    // this report always silently omitted the one setting group most
+    // worth confirming after an upgrade. Named explicitly rather than a
+    // LIKE pattern, since 'smtp_%' as a LIKE pattern would itself need
+    // escaping ('_' is a single-character wildcard) for no real benefit
+    // over listing the fixed, known key set.
     $rows = db_fetch_all(
         "SELECT name, value FROM `{$prefix}settings`
-         WHERE name LIKE 'rbac.%' OR name = 'tile_mode' OR name LIKE 'smtp.%'"
+         WHERE name LIKE 'rbac.%' OR name IN ('tile_mode', 'tile_server_url',
+             'email_mode', 'smtp_host', 'smtp_port', 'smtp_encryption',
+             'smtp_user', 'smtp_pass', 'email_from', 'email_from_name')"
     );
     foreach ($rows as $r) {
         $rbacSettings[$r['name']] = preg_match('/pass|key|secret/i', $r['name']) ? '(set)' : $r['value'];

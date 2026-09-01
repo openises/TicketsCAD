@@ -7,6 +7,17 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- The legacy v3.44 upgrade path silently dropped SMTP email configuration
+  instead of migrating it, because the settings translator was built
+  against a set of legacy key names that don't exist in v3.44 at all — the
+  real v3.44 stores SMTP config as a single combined field in a fixed
+  order, which the translator never parsed. The destination naming was
+  independently wrong too, so even the intended values would have landed
+  somewhere nothing reads. Found while writing the upgrade path's missing
+  regression test suite. Every real v3.44-to-v4 upgrade that had SMTP
+  configured is affected — if you've already upgraded, check Settings →
+  Email/SMTP after updating to this version and re-enter your mail server
+  details if the fields are blank.
 - **GH#116** — a unit's own status change (mobile self-status-change flow)
   applied to EVERY open assignment it held, not just the one it was working —
   clearing the others when the new status meant "Available", and bleeding a

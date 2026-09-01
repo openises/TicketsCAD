@@ -124,7 +124,8 @@ The orchestrator continues:
   done in 1200ms
 [09:45:31] Step 5/8 — settings translator
   Settings migration:
-    [ren]  email_host -> smtp.host
+    [smtp] smtp_acct parsed -> smtp_host/smtp_port/smtp_encryption/smtp_user/smtp_pass, email_mode=smtp
+    [ren]  tile_url -> tile_server_url
     [seed] rbac.require_separate_approver = 0
     ...
   done in 600ms
@@ -190,8 +191,9 @@ Key settings:
   rbac.require_separate_approver  = 0
   rbac.delegation_max_depth       = 1
   rbac.time_entry_auto_approve    = off
-  smtp.host                       = mail.example.com
-  smtp.from                       = (set)
+  email_mode                      = smtp
+  smtp_host                       = mail.example.com
+  smtp_pass                       = (set)
 
 OVERALL: HEALTHY — upgrade looks complete.
 ```
