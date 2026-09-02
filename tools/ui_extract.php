@@ -50,10 +50,18 @@ if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
  * entire second copy of this repository, and a tree-walking tool that forgets
  * it silently triples its own findings. generate-sbom.php was broken exactly
  * this way (fixed in 269d79b); .gitignore carries the same warning.
+ *
+ * GH#130 (rjonesbsink) -- `/tools/` added for the same reason `(d)` (the
+ * emitted-JSON-key scan in tools/dead_control_audit.php) already excludes
+ * itself from browser-emission scanning: this whole file collects PRODUCT
+ * source for browser/UI-convention checks, and tools/ holds Node.js CLI
+ * scripts (require('fs'), process.argv) and PHP maintenance scripts that
+ * are never served to a browser and were never meant to follow the
+ * ES5-no-build-step convention this audit enforces on assets/js/.
  */
 function ui_is_excluded(string $path): bool
 {
-    foreach (['/vendor/', '/node_modules/', '/.claude/', '/.git/', '/coverage/'] as $frag) {
+    foreach (['/vendor/', '/node_modules/', '/.claude/', '/.git/', '/coverage/', '/tools/'] as $frag) {
         if (strpos($path, $frag) !== false) { return true; }
     }
     return (bool) preg_match('/\.min\.(js|css)$/', $path);

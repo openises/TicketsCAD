@@ -7,6 +7,23 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **GH#130** — three internal maintenance-tool gaps reported by rjonesbsink,
+  fixed for real this time after an earlier comment on the issue incorrectly
+  claimed all four were already done when only one had shipped:
+  1. The UI-consistency checker's ES5 rule scanned `tools/*.js` (Node.js CLI
+     scripts) as if they were browser-served JavaScript. `tools/` is now
+     excluded, matching how the codebase already excludes it from a sibling
+     check.
+  2. The dead-code checker had no way to recognize
+     `CREATE TABLE new_table AS SELECT ... FROM old_table` as a real write —
+     a table populated this way showed every column as unwritten even when
+     the write was real and three lines away. It now credits both a bare
+     `SELECT *` and an explicit, aliased column list.
+  3. A maintenance probe's facilities-table check still tested for a `hide`
+     column that a much earlier fix had already removed in favor of
+     `deleted_at IS NULL` — updated to match the current query.
+  None of these affect end users directly; they are development-tooling
+  fixes that keep the project's own automated checks accurate.
 - The legacy v3.44 upgrade path silently dropped SMTP email configuration
   instead of migrating it, because the settings translator was built
   against a set of legacy key names that don't exist in v3.44 at all — the

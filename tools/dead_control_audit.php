@@ -732,6 +732,27 @@ if ($runColumnsB || $runPhantomC) {
                 $deleteTable = strtolower($md0[1]);
             }
 
+            // GH#130 (rjonesbsink): CREATE TABLE new_tbl AS SELECT ... FROM
+            // old_tbl is a real, deliberate write into new_tbl's columns --
+            // nothing above (UPDATE/INSERT/DELETE-only) ever recognised it,
+            // so a fork-only backup/rollback tool built this way showed
+            // every column of the new table as "read somewhere, but has NO
+            // write path anywhere" even though the write is real, static,
+            // and sitting three lines away in the same file. $ctasTable is
+            // resolved here (alongside update/insert/delete) so it joins
+            // the SAME $sqlTouchedTables bookkeeping below; the SELECT
+            // list itself is walked further down, after the bare-SELECT
+            // reader it deliberately mirrors.
+            $ctasTable = null;
+            $ctasSelectList = null;
+            if (preg_match(
+                '/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?([a-z0-9_]+)`?\s+AS\s+SELECT\s+(?:DISTINCT\s+)?(.*?)\s+FROM\s+`?([a-z0-9_]+)`?/is',
+                $norm, $mctas
+            )) {
+                $ctasTable = strtolower($mctas[1]);
+                $ctasSelectList = $mctas[2];
+            }
+
             // Check (c)'s own bookkeeping: every table this statement
             // touches in ANY capacity, for scoping the bareRead-driven
             // phantom-column candidate search below to tables the app's
@@ -740,6 +761,7 @@ if ($runColumnsB || $runPhantomC) {
             if ($updateTable !== null) { $sqlTouchedTables[$updateTable] = true; }
             if ($insertTable !== null) { $sqlTouchedTables[$insertTable] = true; }
             if ($deleteTable !== null) { $sqlTouchedTables[$deleteTable] = true; }
+            if ($ctasTable !== null) { $sqlTouchedTables[$ctasTable] = true; }
 
             // Write-target spans: the SET clause's bare `col = ` list, and
             // the INSERT column-list parens. Bare (no alias) — collected
@@ -789,6 +811,50 @@ if ($runColumnsB || $runPhantomC) {
                         if (isset($schema[$insertTable][$col])) {
                             $writeCols["$insertTable.$col"][] = [$file, $line];
                         }
+                    }
+                }
+            }
+
+            // CREATE TABLE new_tbl AS SELECT ... -- every column the SELECT
+            // projects into new_tbl is a write of new_tbl. `SELECT *`
+            // (a whole-table copy) can't be resolved to individual source
+            // columns from the SQL text alone, so it credits EVERY known
+            // column of new_tbl directly -- unambiguous for a full copy,
+            // and the safe (false-negative-avoiding) direction for this
+            // audit. An explicit projection list is walked the same way
+            // the bare-SELECT reader above does: alias.col stripped first,
+            // then the text after each `AS name` is dropped (the alias IS
+            // the new table's real column name, not the source expression),
+            // leaving the bare identifiers that survive as write targets.
+            if ($ctasTable !== null) {
+                if (trim($ctasSelectList) === '*') {
+                    if (isset($schema[$ctasTable])) {
+                        foreach (array_keys($schema[$ctasTable]) as $col) {
+                            $writeCols["$ctasTable.$col"][] = [$file, $line];
+                        }
+                    } else {
+                        $dynamicWriteSites[$file][$ctasTable] = true;
+                    }
+                } else {
+                    $ctasList = preg_replace('/\b[a-z0-9_]+\s*\.\s*`?([a-z0-9_]+)`?/i', '$1', $ctasSelectList);
+                    $foundAny = false;
+                    foreach (explode(',', $ctasList) as $proj) {
+                        $proj = trim($proj);
+                        if ($proj === '') continue;
+                        // "expr AS alias" -> the alias is the new column's
+                        // real name; otherwise the whole (bare) projection
+                        // text is itself the identifier.
+                        $col = preg_match('/\bAS\s+`?([a-z0-9_]+)`?\s*$/i', $proj, $mas)
+                            ? strtolower($mas[1])
+                            : strtolower(trim($proj, '` '));
+                        if ($col !== '' && preg_match('/^[a-z0-9_]+$/', $col)
+                            && isset($schema[$ctasTable][$col])) {
+                            $writeCols["$ctasTable.$col"][] = [$file, $line];
+                            $foundAny = true;
+                        }
+                    }
+                    if (!$foundAny) {
+                        $dynamicWriteSites[$file][$ctasTable] = true;
                     }
                 }
             }

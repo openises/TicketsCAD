@@ -56,10 +56,18 @@ probe($pdo, 'api/incident-types.php', 32, "incident types list",
      FROM `{$prefix}in_types`
      ORDER BY `sort`, `type`");
 
-probe($pdo, 'api/incident-types.php', 39, "facilities with hide column",
+// GH#130 (rjonesbsink): this fixture was a stale hand-copy of the
+// facilities query -- GH#40 had already dropped the `hide` column
+// reference (never made it into the v4.0 schema) in favor of
+// `deleted_at IS NULL`, but nobody updated this probe to match, so it
+// "confirmed" a SQL error (Unknown column 'hide') against a query the
+// app no longer runs. Kept in sync with api/incident-types.php:56-61's
+// real primary query by copy, same as every other probe in this file --
+// re-verify against the live file if that query ever moves again.
+probe($pdo, 'api/incident-types.php', 56, "facilities (soft-delete filtered)",
     "SELECT `id`, `name`, `type`, `lat`, `lng`
      FROM `{$prefix}facilities`
-     WHERE `hide` = 0 OR `hide` IS NULL
+     WHERE `deleted_at` IS NULL
      ORDER BY `name`");
 
 // api/layout.php — cleanup query

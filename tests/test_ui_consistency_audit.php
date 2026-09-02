@@ -62,6 +62,7 @@ foreach ([$bad, $good] as $d) {
     @mkdir($d . '/assets/js', 0777, true);
     @mkdir($d . '/assets/css', 0777, true);
     @mkdir($d . '/inc', 0777, true);
+    @mkdir($d . '/tools', 0777, true);
 }
 register_shutdown_function(static function () use ($tmp) {
     $rii = @scandir($tmp);
@@ -164,6 +165,18 @@ file_put_contents($bad . '/assets/js/panel.js', <<<'JS'
 })();
 JS);
 
+// GH#130 (rjonesbsink): tools/ holds Node.js CLI scripts (require('fs'),
+// process.argv) that are never served to a browser and were never meant
+// to follow the ES5-no-build-step convention this audit enforces on
+// assets/js/. A real arrow function + template literal here must NOT be
+// flagged, the same way vendor/ and node_modules/ already aren't.
+file_put_contents($bad . '/tools/gh130_probe.js', <<<'JS'
+const fs = require('fs');
+const grow = (n) => n + 1;
+const msg = `count is ${grow(1)}`;
+console.log(msg);
+JS);
+
 // A theme-blind stylesheet. The value inside the [data-bs-theme] block is the
 // dark half of a correct pair and must stay silent.
 file_put_contents($bad . '/assets/css/panel.css', <<<'CSS'
@@ -217,6 +230,9 @@ is_true(preg_match('/es5: assets\/js\/panel\.js :: \d+ x template literal/', $ou
 is_true(strpos($out, '2 x arrow function') === false && strpos($out, '1 x arrow function') !== false,
     'the arrow rule ignores "==>" inside a string literal',
     'a string literal was scanned as code');
+is_true(strpos($out, 'gh130_probe') === false,
+    'GH#130: tools/*.js is excluded from the es5 rule (CLI scripts, never browser-served)',
+    'a tools/ Node.js script was scanned as browser JavaScript');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // KNOWN-GOOD tree: the same constructs, done the way the product does them.

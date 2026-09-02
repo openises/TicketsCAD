@@ -327,6 +327,65 @@ dca_true(strpos($accout, 'phantom:ticket.description') === false,
     'ticket.description is not credited as read just because it shares a name with an alias target', $accout);
 
 // ═══════════════════════════════════════════════════════════════════════
+// (c) GH#130 (rjonesbsink) — CREATE TABLE ... AS SELECT is a real write.
+// A table populated this way (a fork-only backup/rollback tool's own
+// shape, per the report) used to show every column as read-with-no-write
+// even though the write is real and sits three lines away. Reproduced
+// live during the fix against a scratch table on the dev database
+// (zz_gh130_ctas_test) before this permanent fixture was written; the
+// pre-fix error text matched the issue's own wording verbatim: "column
+// ... is read somewhere, but has NO write path anywhere." `ticket` (a
+// real table, so `$schema['ticket']` resolves) stands in as the CTAS
+// target here — the tool only ever statically scans this fixture's SQL
+// text, it is never actually executed, so naming the real live `ticket`
+// table costs nothing and keeps this test on the same "real schema,
+// throwaway --path tree" convention every fixture above already uses.
+// ═══════════════════════════════════════════════════════════════════════
+
+// SELECT * form — the exact shape from the issue's own example. Every
+// known column of the CTAS target must be credited as written.
+$ctasStar = $tmp . '/ctas_star'; @mkdir($ctasStar . '/api', 0777, true);
+file_put_contents($ctasStar . '/api/probe.php', <<<'PHP'
+<?php
+db_query("CREATE TABLE `ticket` AS SELECT * FROM `member`");
+$rows = db_fetch_all("SELECT `description` FROM `ticket` WHERE `id` = ?", [1]);
+PHP);
+[$csCode, $csOut] = dca_run($tool, ['--phantom-only', '--path=' . $ctasStar]);
+dca_true($csCode === 0,
+    'CREATE TABLE ... AS SELECT * credits every column of the target as written', $csOut);
+dca_true(strpos($csOut, 'phantom:ticket.description') === false,
+    'ticket.description is not flagged when populated via a SELECT * CTAS', $csOut);
+
+// Explicit projection list with an AS-alias — the new column's real name
+// is the ALIAS, not the source expression before it.
+$ctasList = $tmp . '/ctas_list'; @mkdir($ctasList . '/api', 0777, true);
+file_put_contents($ctasList . '/api/probe.php', <<<'PHP'
+<?php
+db_query("CREATE TABLE `ticket` AS SELECT `id`, `email` AS `description` FROM `member`");
+$rows = db_fetch_all("SELECT `description` FROM `ticket` WHERE `id` = ?", [1]);
+PHP);
+[$clCode, $clOut] = dca_run($tool, ['--phantom-only', '--path=' . $ctasList]);
+dca_true($clCode === 0,
+    'CREATE TABLE ... AS SELECT with an explicit AS-aliased column list credits the alias name', $clOut);
+dca_true(strpos($clOut, 'phantom:ticket.description') === false,
+    'ticket.description is not flagged when populated via an AS-aliased CTAS projection', $clOut);
+
+// Negative control: an ordinary CREATE TABLE (no AS SELECT at all) must
+// not be mistaken for a CTAS write — ticket.description stays phantom
+// when nothing actually populates it.
+$ctasNone = $tmp . '/ctas_none'; @mkdir($ctasNone . '/api', 0777, true);
+file_put_contents($ctasNone . '/api/probe.php', <<<'PHP'
+<?php
+db_query("CREATE TABLE `ticket` (`id` INT, `description` TEXT)");
+$rows = db_fetch_all("SELECT `description` FROM `ticket` WHERE `id` = ?", [1]);
+PHP);
+[$cnCode, $cnOut] = dca_run($tool, ['--phantom-only', '--path=' . $ctasNone]);
+dca_true($cnCode === 1,
+    'a plain CREATE TABLE with no AS SELECT is not mistaken for a write (still flags)', $cnOut);
+dca_true(strpos($cnOut, 'phantom:ticket.description') !== false,
+    'ticket.description is still flagged when nothing actually populates it', $cnOut);
+
+// ═══════════════════════════════════════════════════════════════════════
 // (c) Phantom-column check — result independence from an UNRELATED
 // file's presence (2026-08-22, Phase 149 investigation). A reporting
 // agent believed adding one content-empty file anywhere under api/ or
