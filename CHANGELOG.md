@@ -5,8 +5,67 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [4.2.27] — 2026-09-02
+
+### Added
+
+- **Major Events.** An incident can now carry an event type and a
+  mutual-aid flag, and can be escalated to a Major Event with one click
+  from its own Incident Detail page. A Major Event gets a real unified
+  command roster — multiple agencies and roles on one incident, not a
+  single "who's in charge" field — plus a live rollup of the resources
+  linked to it. Permissions are split three ways (create/escalate,
+  link/unlink other incidents, close/manage command) instead of the
+  single broad permission the feature had before, closing a real gap
+  where anyone who could touch a Major Event at all could also close it
+  or reassign command.
+- **Command Bar quick-jump commands.** `/major`, `/road`, and `/radio`
+  jump straight to Major Events, Road Conditions, and the Radio widget;
+  seven more commands deep-link directly into specific Settings panels
+  instead of leaving you to find them in the sidebar.
+
+### Security
+
+- **A full internal and external security review.** Static analysis
+  (SonarQube) now reports the top rating with zero open vulnerabilities
+  and zero open hotspots — every flagged item was either fixed or
+  reviewed and documented with its reasoning (several are calls to an
+  administrator-configured local radio-bridge daemon, not an internet
+  endpoint, and are recorded as such). This project's own public source
+  history was independently re-scanned end to end for anything sensitive
+  that shouldn't be there; nothing current was found.
+- **A real RBAC privilege leak, caught by this release's own deployment
+  process rather than a report.** A full database-migration replay
+  could leave an Org Admin account holding several Super-Admin-only
+  permissions, because the safeguard that normally prevents this only
+  ran early in the migration order. A new reconciliation step
+  (`sql/run_zzz_rbac_grant_reconcile.php`) runs last and closes this
+  generically for any current or future admin-only permission, on every
+  install's next database migration.
+
 ### Fixed
 
+- **GH#133** — creating a new incident and marking it as being at a
+  known facility never plotted a location on the map, even though the
+  facility's coordinates were already being sent to the browser —
+  nothing on the page ever used them. Selecting a facility now drops
+  the map pin at that facility's location, the way typing and geocoding
+  an address already did. "Receiving Facility" (a transport
+  destination, not the incident's own location) deliberately does not
+  do this. Reported by rgoss02, confirmed by rjonesbsink.
+- **GH#130 follow-up** — the earlier fix for the internal dead-code
+  checker's `CREATE TABLE ... AS SELECT` detection didn't actually work
+  on the real case a community member (rjonesbsink) tested it against:
+  a table name built from PHP variables rather than typed directly into
+  the SQL text. He diagnosed this precisely down to the exact mechanism
+  before reporting it. Fixed at the real root — the shared code that
+  extracts SQL text from PHP source now resolves a variable to its
+  value when it was assigned a plain string a few lines earlier, the
+  same way it already understood a `db_table()` call. This isn't just
+  a tooling nicety: it had been silently hiding real, working writes to
+  several tables in the app itself, which now correctly appear in the
+  schema-safety manifest that protects against a database drifting out
+  of sync with the code.
 - The v3.44-to-v4 upgrade tool could abort partway through on a fresh
   legacy install run by a non-admin account: one internal security fix
   (moving old Zello voice-message recordings to a locked-down folder)
