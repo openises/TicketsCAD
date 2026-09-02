@@ -7,6 +7,14 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **GH#127 follow-up** — the earlier fix for the region seed's garbage
+  `def_st` value only corrected the seed used on a brand-new install.
+  Any install that had already run the buggy seed kept the bad value
+  forever, because the seed statement only runs once and a normal
+  update never re-touches an existing row. Added a one-time backfill
+  that clears `def_st` on any region row where it still exactly matches
+  that row's own default zoom level (the bug's exact signature) — this
+  runs automatically the next time you apply database migrations.
 - **GH#130** — three internal maintenance-tool gaps reported by rjonesbsink,
   fixed for real this time after an earlier comment on the issue incorrectly
   claimed all four were already done when only one had shipped:

@@ -59,11 +59,13 @@ foreach (['sql/base_schema.sql', 'sql/base_schema_RESET_DESTRUCTIVE.sql'] as $re
     }
 }
 
-// Live check: if this dev database's region table still carries the old
-// garbage value (seeded before this fix), that's a pre-existing-install
-// migration gap worth knowing about, not something this narrow fix
-// silently glosses over — report it, don't fail the suite on it, since a
-// live install's existing data is out of scope for a schema-file fix.
+// Live check: this used to just NOTE (not fail on) a pre-existing install
+// still carrying the garbage value, since a schema-file fix cannot
+// retroactively correct already-seeded data. rjonesbsink hit exactly that
+// gap on 2026-09-02 -- confirmed live on THIS dev database too, which
+// still carried def_st='10' == def_zoom=10 on region #1 until the
+// sql/run_gh127_def_st_backfill.php migration below was written to close
+// it. Now asserted for real, not merely noted.
 try {
     $prefix = $GLOBALS['db_prefix'] ?? '';
     $haveTable = (int) db_fetch_value(
@@ -72,14 +74,68 @@ try {
     if ($haveTable) {
         $row = db_fetch_one("SELECT def_st, def_zoom FROM `{$prefix}region` WHERE id = 1");
         if ($row !== null) {
-            if ($row['def_st'] === $row['def_zoom'] && $row['def_st'] !== null) {
-                echo "  NOTE: this live database's region #1 still carries the pre-fix value (def_st='{$row['def_st']}') -- schema-file fixes don't retroactively correct already-seeded installs; not treated as a test failure.\n";
-            } else {
-                ok('live database region #1 does not carry the pre-fix garbage value');
-            }
+            is_ok(
+                !($row['def_st'] !== null && $row['def_st'] === (string) $row['def_zoom']),
+                'live database region #1 does not carry the pre-fix garbage value (backfilled)'
+            );
         }
     }
 } catch (Throwable $e) { /* no database available — schema-file checks above still ran */ }
+
+// ═══════════════════════════════════════════════════════════════════════
+// GH#127 follow-up (rjonesbsink, 2026-09-02) — sql/run_gh127_def_st_backfill.php
+// closes the gap the live check above used to only note: an install where
+// the buggy seed already ran keeps def_st='10' forever, since
+// `INSERT IGNORE INTO region VALUES (1, ...)` skips a row that already
+// exists and a normal `git pull` + run_migrations.php never touches it.
+// Drives the REAL migration script (not a re-implementation of its SQL)
+// against a throwaway fixture row so this doesn't depend on -- or
+// disturb -- region #1's own real state.
+// ═══════════════════════════════════════════════════════════════════════
+try {
+    $prefix = $GLOBALS['db_prefix'] ?? '';
+    $migrationPath = $base . '/sql/run_gh127_def_st_backfill.php';
+    is_ok(file_exists($migrationPath), 'sql/run_gh127_def_st_backfill.php exists');
+
+    if (file_exists($migrationPath)) {
+        // A throwaway region row carrying the EXACT bug signature
+        // (def_st == def_zoom, both '7') -- picked away from the real
+        // def_zoom default (10) so it can't be confused with region #1.
+        db_query(
+            "INSERT INTO `{$prefix}region` (group_name, category, description, owner, def_st, def_zoom)
+             VALUES ('gh127_backfill_fixture', 4, 'temporary test fixture', 1, '7', 7)"
+        );
+        $fixtureId = (int) db_fetch_value('SELECT LAST_INSERT_ID()');
+        register_shutdown_function(static function () use ($prefix, $fixtureId) {
+            try { db_query("DELETE FROM `{$prefix}region` WHERE id = ?", [$fixtureId]); } catch (Throwable $e) {}
+        });
+
+        $before = db_fetch_one("SELECT def_st, def_zoom FROM `{$prefix}region` WHERE id = ?", [$fixtureId]);
+        is_ok($before['def_st'] === '7' && (int) $before['def_zoom'] === 7,
+            'fixture row was created with the bug signature (def_st == def_zoom)');
+
+        $cmd = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($migrationPath);
+        $out = []; $code = 0;
+        exec($cmd . ' 2>&1', $out, $code);
+        $outStr = implode("\n", $out);
+        is_ok($code === 0, "the migration exits 0 (exit $code; output: $outStr)");
+        is_ok(strpos($outStr, "region.id={$fixtureId}:") !== false,
+            "the migration reports the fixture row by id (output: $outStr)");
+
+        $after = db_fetch_one("SELECT def_st FROM `{$prefix}region` WHERE id = ?", [$fixtureId]);
+        is_ok($after['def_st'] === null, 'the fixture row\'s def_st is nulled by the migration');
+
+        // Idempotency: a second run must find nothing left to fix.
+        $out2 = []; $code2 = 0;
+        exec($cmd . ' 2>&1', $out2, $code2);
+        $out2Str = implode("\n", $out2);
+        is_ok($code2 === 0, "a second run also exits 0 (exit $code2; output: $out2Str)");
+        is_ok(strpos($out2Str, 'nothing to do') !== false,
+            "a second run reports nothing left to fix (idempotent) (output: $out2Str)");
+    }
+} catch (Throwable $e) {
+    bad('backfill migration test threw: ' . $e->getMessage());
+}
 
 echo "\n=== $pass passed, $fail failed ===\n";
 exit($fail > 0 ? 1 : 0);
