@@ -7,6 +7,15 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- The v3.44-to-v4 upgrade tool could abort partway through on a fresh
+  legacy install run by a non-admin account: one internal security fix
+  (moving old Zello voice-message recordings to a locked-down folder)
+  refused to continue when it could not create that folder, even when
+  there were no recordings anywhere yet to protect. It now recognizes
+  that case and continues the upgrade, printing the folder-permission
+  fix as a note instead of stopping. Found by actually running the full
+  upgrade against a real legacy database end to end rather than assuming
+  it worked.
 - **GH#127 follow-up** — the earlier fix for the region seed's garbage
   `def_st` value only corrected the seed used on a brand-new install.
   Any install that had already run the buggy seed kept the bad value

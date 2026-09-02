@@ -293,6 +293,98 @@ if (isset($expectedDest) && isset($roundOneClip) && isset($roundTwoClip)) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+echo "\n-- 6. The migration must not abort the whole upgrade when there is\n"
+   . "      nothing to protect yet (found via a real dry-run against a fresh\n"
+   . "      v3.44 install as an unprivileged user, 2026-09-02) --\n";
+// zello_audio_dir() resolves to a FIXED, machine-global path on Windows
+// (%ProgramData%\TicketsCAD\zello-audio, ignoring $appRoot entirely -- see
+// its own docblock) -- and on the machine this suite runs on, that real
+// directory already holds real recordings from real prior use. Forcing its
+// own mkdir() to fail by renaming/replacing it would risk that real data,
+// so the mkdir-fails BRANCH is proven two different, safe ways instead of
+// one unsafe end-to-end run against a real global path:
+//
+//   (i)  zar_has_recordings() -- the new decision function -- is unit
+//        tested directly against synthetic sandbox directories (zero risk,
+//        exercises the REAL function via an isolated include, not a
+//        reimplementation of its logic).
+//   (ii) the branching AROUND that decision (notice+exit(0) when nothing
+//        exists anywhere vs. the original hard exit(1) when a legacy
+//        recording is genuinely waiting) is proven by source-code
+//        structure -- checking the exact conditions and exit calls exist
+//        in the right relationship -- the same technique this codebase
+//        already uses elsewhere for a branch that is real but unsafe or
+//        impractical to trigger literally in a shared test environment.
+
+// (i) zar_has_recordings() in isolation. Extracted via include-once so this
+// drives the REAL function body, not a copy of it.
+$funcSrc = $realScript;
+// Strip everything except the function definition itself, so including it
+// doesn't also re-run the whole script's top-level side effects.
+preg_match('/function zar_has_recordings\([^)]*\): bool\s*\{.*?\n\}/s', $funcSrc, $fm);
+if (isset($fm[0])) {
+    eval($fm[0]);
+}
+
+if (function_exists('zar_has_recordings')) {
+    $emptyDir = $sandbox . '/zar-empty';
+    @mkdir($emptyDir, 0777, true);
+    test('zar_has_recordings() is false for a directory with no audio files',
+        zar_has_recordings($emptyDir) === false);
+
+    $missingDir = $sandbox . '/zar-does-not-exist';
+    test('zar_has_recordings() is false for a directory that does not exist at all',
+        zar_has_recordings($missingDir) === false);
+
+    $withOgg = $sandbox . '/zar-with-ogg';
+    @mkdir($withOgg, 0777, true);
+    @file_put_contents($withOgg . '/clip.ogg', 'bytes');
+    test('zar_has_recordings() is true when a real .ogg file is present',
+        zar_has_recordings($withOgg) === true);
+
+    $withWebm = $sandbox . '/zar-with-webm';
+    @mkdir($withWebm, 0777, true);
+    @file_put_contents($withWebm . '/clip.webm', 'bytes');
+    test('zar_has_recordings() is true when a real .webm file is present',
+        zar_has_recordings($withWebm) === true);
+
+    $withOtherFile = $sandbox . '/zar-with-other';
+    @mkdir($withOtherFile, 0777, true);
+    @file_put_contents($withOtherFile . '/web.config', 'not audio');
+    @mkdir($withOtherFile . '/subdir', 0777, true);
+    test('zar_has_recordings() ignores non-audio files and subdirectories (never mistakes web.config for a recording)',
+        zar_has_recordings($withOtherFile) === false);
+} else {
+    test('could not extract zar_has_recordings() from the real script for direct testing', false, $realScript);
+}
+
+// (ii) The branching structure around the mkdir failure.
+test('an uncreatable destination with nothing at either legacy location degrades to a notice and exit(0)',
+    (bool) preg_match('/if\s*\(\s*!\$hasLegacyContent\s*\)\s*\{.*?exit\(0\);/s', $realScript), $realScript);
+test('that notice explicitly says nothing needs protecting',
+    strpos($realScript, 'nothing to protect') !== false);
+test('the decision is made from BOTH legacy locations, not just one',
+    (bool) preg_match(
+        '/\$hasLegacyContent\s*=\s*zar_has_recordings\(zello_audio_dir_sibling_legacy\(\)\)\s*\n?\s*\|\|\s*zar_has_recordings\(zello_audio_dir_legacy\(\)\);/',
+        $realScript
+    ), $realScript);
+test('an uncreatable destination WITH legacy content still hard-fails with exit(1), unchanged from before this fix',
+    (bool) preg_match('/could not create \{\$destination\}, and existing recordings.*?exit\(1\);/s', $realScript), $realScript);
+test('the exit(0) notice branch is reached ONLY when the exit(1) branch was not -- structurally exclusive, not two independent ifs that could both fire',
+    strpos($realScript, "if (!\$hasLegacyContent) {") !== false
+    && strpos($realScript, "fwrite(STDERR, \"ERROR: could not create {\$destination}, and existing recordings\\n\");") !== false
+    && strpos($realScript, "fwrite(STDERR, \"ERROR: could not create {\$destination}\\n\");") === false, // the OLD unconditional message must be gone
+    $realScript);
+
+// (iii) The already-working case (destination genuinely exists, e.g. this
+// real dev machine's own populated %ProgramData%\TicketsCAD\zello-audio) is
+// completely unaffected — proven by driving the section-5 E2E run above,
+// which exercises the real is_dir($destination)===true path end to end and
+// already asserts 0 failures. No separate run needed here; noted for the
+// next reader so the coverage story for all three states (missing+empty,
+// missing+dirty, and already-exists) is visible in one place.
+
+// ─────────────────────────────────────────────────────────────────────
 // Cleanup
 $rrmdir = function (string $dir) use (&$rrmdir) {
     if (!is_dir($dir)) { return; }

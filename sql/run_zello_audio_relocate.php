@@ -29,10 +29,73 @@ require __DIR__ . '/../inc/zello_audio_dir.php';
 echo "Zello audio relocation (GHSA-x9x6-w4fg-pmcc)\n";
 echo "==============================================\n\n";
 
+/**
+ * Does this legacy location actually hold anything worth relocating?
+ * Cheap existence + one-entry check, not a full scan — this only needs
+ * to distinguish "nothing to protect yet" from "there are real
+ * recordings sitting here" before deciding how hard to fail below.
+ */
+function zar_has_recordings(string $dir): bool
+{
+    if (!is_dir($dir)) {
+        return false;
+    }
+    $entries = @scandir($dir);
+    if (!is_array($entries)) {
+        return false;
+    }
+    foreach ($entries as $name) {
+        $ext = strtolower((string) pathinfo($name, PATHINFO_EXTENSION));
+        if (in_array($ext, ['ogg', 'webm'], true) && is_file($dir . '/' . $name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 $destination = zello_audio_dir();
 if (!is_dir($destination)) {
     if (!@mkdir($destination, 0775, true)) {
-        fwrite(STDERR, "ERROR: could not create {$destination}\n");
+        // Found running the real upgrade path end-to-end against a fresh
+        // v3.44 install as an unprivileged, non-root/non-www-data user (the
+        // documented "the tree stays with whoever runs git" deployment
+        // model) -- this migration used to hard-exit(1) here regardless of
+        // whether there was anything to protect, which aborted the ENTIRE
+        // upgrade orchestrator at step 4 of 8 before settings_migrate.php,
+        // smoke_test.php, or postcheck.php ever ran. zello_audio_write_dir()
+        // (inc/zello_audio_dir.php) already tolerates this exact situation
+        // at runtime with a graceful fallback to the legacy in-tree
+        // directory -- this migration should not be stricter than the
+        // feature it's protecting. A fresh v3.44 install has never had
+        // Zello recordings anywhere, so there is nothing to expose; treat
+        // that case as a notice (matching install_fresh.php's identical
+        // keys/-directory precedent) and let the app create the directory
+        // lazily once Zello is actually configured. Only remain fatal when
+        // real recordings are sitting at a legacy location RIGHT NOW and
+        // cannot be moved to safety -- that is a genuine exposure risk.
+        $hasLegacyContent = zar_has_recordings(zello_audio_dir_sibling_legacy())
+            || zar_has_recordings(zello_audio_dir_legacy());
+
+        if (!$hasLegacyContent) {
+            echo "[notice] {$destination} not creatable by this user, but no Zello\n";
+            echo "         recordings exist anywhere on this install yet -- nothing to\n";
+            echo "         protect. The directory will be created automatically the\n";
+            echo "         first time the Zello proxy writes a recording.\n";
+            echo "         If Zello is already in use, run as a user with write access\n";
+            echo "         to " . escapeshellarg(dirname($destination)) . ", or:\n";
+            echo "           sudo mkdir -p " . escapeshellarg($destination) . "\n";
+            echo "           sudo chown www-data:www-data " . escapeshellarg($destination) . "\n";
+            echo "           sudo chmod 770 " . escapeshellarg($destination) . "\n";
+            exit(0);
+        }
+
+        fwrite(STDERR, "ERROR: could not create {$destination}, and existing recordings\n");
+        fwrite(STDERR, "       were found at a legacy, less-safe location. Run as a user\n");
+        fwrite(STDERR, "       with write access to " . escapeshellarg(dirname($destination)) . ", or:\n");
+        fwrite(STDERR, "         sudo mkdir -p " . escapeshellarg($destination) . "\n");
+        fwrite(STDERR, "         sudo chown www-data:www-data " . escapeshellarg($destination) . "\n");
+        fwrite(STDERR, "         sudo chmod 770 " . escapeshellarg($destination) . "\n");
+        fwrite(STDERR, "       Then re-run this script to finish relocating them.\n");
         exit(1);
     }
     echo "Created {$destination}\n";
