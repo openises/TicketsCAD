@@ -426,12 +426,17 @@
     }
 
     function populateFacilities(facilities) {
-        var sels = [document.getElementById('facility'), document.getElementById('rec_facility')];
+        var facSel = document.getElementById('facility');
+        var sels = [facSel, document.getElementById('rec_facility')];
         sels.forEach(function (sel) {
             facilities.forEach(function (f) {
                 var opt = document.createElement('option');
                 opt.value = f.id;
                 opt.textContent = f.name + (f.type ? ' (' + f.type + ')' : '');
+                if (f.lat !== null && f.lat !== '' && f.lng !== null && f.lng !== '') {
+                    opt.dataset.lat = f.lat;
+                    opt.dataset.lng = f.lng;
+                }
                 sel.appendChild(opt);
             });
         });
@@ -441,9 +446,28 @@
         try {
             var params = new URLSearchParams(window.location.search);
             var facId = params.get('facility');
-            var facSel = document.getElementById('facility');
             if (facId && facSel) facSel.value = facId;
         } catch (e) { /* URLSearchParams unsupported — non-fatal */ }
+
+        // GH #133 — choosing "Incident at Facility" never plotted the
+        // facility's own location. Only the "at" facility drives the map;
+        // "Receiving Facility" is a transport destination, not the
+        // incident's location, and must not move the marker.
+        if (facSel) {
+            facSel.addEventListener('change', function () {
+                var selectedOpt = facSel.options[facSel.selectedIndex];
+                if (!selectedOpt) return;
+                var lat = parseFloat(selectedOpt.dataset.lat);
+                var lng = parseFloat(selectedOpt.dataset.lng);
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    setMarker(lat, lng);
+                }
+            });
+            // Honor a ?facility=<id> preselect the same way a manual pick would.
+            if (facSel.value && facSel.value !== '0') {
+                facSel.dispatchEvent(new Event('change'));
+            }
+        }
     }
 
     function populateResponders(responders) {
