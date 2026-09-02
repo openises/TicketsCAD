@@ -249,15 +249,18 @@ $canManageCommand = function_exists('rbac_can') ? rbac_can('action.manage_major_
                             <div class="row g-1">
                                 <div class="col-4">
                                     <input type="text" class="form-control form-control-sm" id="commandAgency"
-                                           placeholder="<?php echo e(t('major.command.agency_ph', 'Agency')); ?>">
+                                           placeholder="<?php echo e(t('major.command.agency_ph', 'Agency')); ?>"
+                                           aria-label="<?php echo e(t('major.command.agency_ph', 'Agency')); ?>">
                                 </div>
                                 <div class="col-4">
                                     <input type="text" class="form-control form-control-sm" id="commandName"
-                                           placeholder="<?php echo e(t('major.command.name_ph', 'Name (if no TicketsCAD account)')); ?>">
+                                           placeholder="<?php echo e(t('major.command.name_ph', 'Name (if no TicketsCAD account)')); ?>"
+                                           aria-label="<?php echo e(t('major.command.name_ph', 'Name (if no TicketsCAD account)')); ?>">
                                 </div>
                                 <div class="col-3">
                                     <input type="text" class="form-control form-control-sm" id="commandRole"
-                                           placeholder="<?php echo e(t('major.command.role_ph', 'Role')); ?>" value="incident_commander">
+                                           placeholder="<?php echo e(t('major.command.role_ph', 'Role')); ?>" value="incident_commander"
+                                           aria-label="<?php echo e(t('major.command.role_ph', 'Role')); ?>">
                                 </div>
                                 <div class="col-1">
                                     <button type="button" class="btn btn-sm btn-outline-primary w-100" id="btnAddCommand" title="<?php echo e(t('major.btn.add_command', 'Add')); ?>">

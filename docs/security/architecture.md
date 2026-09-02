@@ -550,6 +550,28 @@ adding a new admin-only permission must follow to avoid reintroducing this.
   relationship-visible ticket, the same reach a same-org co-dispatcher
   already has. Both remain named, accepted limitations across all three
   phases, not oversights.
+- **Bridge-daemon calls (DMR/DVSwitch/weather-radio) use plain HTTP, by
+  design.** `api/dmr-audio.php`, `api/dmr-stream.php`, `api/dmr-tx-audio.php`,
+  `api/dmr-tx-stream.php`, `api/dvswitch.php`, `inc/weather_radio.php`, and
+  `inc/fcc_station_id.php` all build a request URL from an admin-configured
+  `bridge_host`/`bridge_port` pair (SonarQube `php:S5332`, reviewed
+  2026-09-02). These calls never leave the operator's own LAN — the bridge
+  host is a VM the admin provisions and points TicketsCAD at (see
+  `docs/DMR-*` and `docs/RADIO-DMR-DOCKER.md`), the same trust tier as the
+  MariaDB connection itself, not an arbitrary internet endpoint. Requiring
+  TLS there would add self-signed-certificate management for a boundary
+  that is already inside the operator's own network perimeter, for no
+  attacker who cannot already reach the LAN. Accepted; not planned to change.
+- **`services/dvswitch/echo_bot.py`'s WAV-write fallback path uses
+  `/tmp` directly** (`f"/tmp/rx-{sid.hex()}.wav"`, SonarQube `python:S5443`,
+  reviewed 2026-09-02) when its primary write location fails. The DVSwitch
+  bridge VM this script runs on is single-purpose with no other local
+  users, so the
+  shared-temp-directory symlink-attack class this rule warns about has no
+  realistic actor on this deployment shape — but the finding is accepted as
+  a documented residual risk, not silently dismissed, since a future
+  multi-tenant deployment of this script would need to revisit it (e.g.
+  `tempfile.NamedTemporaryFile` instead of a hand-built path).
 
 ---
 

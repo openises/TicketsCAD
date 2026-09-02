@@ -220,6 +220,7 @@ Append-only. One line per completed activity from the cadence table above.
 | 2026-07-16 | SonarQube scan + dependency scan (pre-release) | 0 vulnerabilities, security rating A, 2 Symfony components patched. See `specs/security/audit-2026-07-16.md`. |
 | 2026-08-14 | Full SonarQube re-scan, first since 2026-07-16 | 23 findings surfaced (rating dropped to D over 4 weeks with no scan in between — the exact gap this cadence table exists to close). Triaged: real fixes applied (SQL bound-parameter conversion, Dockerfile non-root user + build-context secrets fix), false positives documented inline + resolved. See `specs/security/audit-2026-08-14.md`. |
 | 2026-08-14 | This runbook created | First time a maintenance cadence existed in writing for this project. |
+| 2026-09-02 | Full SonarQube re-scan (18-day gap, within cadence); full-history secret/PII scan of both public repos (`openises/TicketsCAD` + newly-discovered `openises/ticketscad-meshbridge`), including all refs (tags + PR heads) not just HEAD | 0 open BLOCKER/CRITICAL bugs/vulnerabilities; 3 real findings from this session's own new code fixed (accessibility labels); all 13 open security hotspots reviewed and resolved SAFE (0 remaining); both public repos confirmed to carry no live credential across their full history — one historical, already-fixed, low-severity hostname disclosure documented for transparency (no action needed). See `specs/security/audit-2026-09-02.md`. |
 
 ---
 

@@ -13,6 +13,37 @@ A *bridge* is a Linux host (Proxmox VM, Raspberry Pi, NUC, etc.) with one or two
 
 The CAD instance itself never talks to a radio directly — that's the bridge's job. This lets you deploy as many bridges as you need across geographic coverage.
 
+## Windows bridge (one-click installer)
+
+Most volunteers running a mesh bridge from a dispatch laptop or desktop are on
+Windows, not Linux — the rest of this guide (systemd, `bluetoothctl`, `/etc/…`)
+assumes a Linux host, which isn't what most responders have on hand.
+
+For Windows, use the **TicketsCAD Mesh Bridge installer**, a separate,
+dedicated repository:
+
+**[github.com/openises/ticketscad-meshbridge](https://github.com/openises/ticketscad-meshbridge)**
+
+It ships a single `TicketsCAD-MeshBridge-Setup-v<version>.exe` from that
+repo's **Releases** page — no Python, pip, or command line required. The
+installer bundles a self-contained Python 3.12 runtime, `bridge_v2.py` (the
+same bridge daemon this guide documents — that repo is its canonical home
+going forward), the [NSSM](https://nssm.cc/) service wrapper, and the Silicon
+Labs CP210x USB driver. It registers an autostarting Windows service and
+includes a **Verify Bridge** tool that plain-language self-diagnoses a failed
+connection. See that repo's own `README.md` and `TROUBLESHOOTING.md` for the
+full install walkthrough and common fixes (COM port discovery, the
+one-program-per-port rule, driver/firmware mismatches).
+
+A companion training video walks through the whole installer end to end:
+*"Installing the TicketsCAD Mesh Bridge on Windows (Meshtastic)"* (module
+m06B, on the TicketsCAD NewUI v4 training playlist).
+
+Everything below this section — connection methods beyond USB, channels,
+direct messages, the Nodes/Map tabs, MeshCore — applies identically whether
+the bridge is running via the Windows installer or the Linux daemon directly;
+only how you install and manage the bridge PROCESS differs.
+
 ## Connection methods (Phase 39D)
 
 | Transport | bridge_v2 `--port` value | When to use |
@@ -70,7 +101,7 @@ If you're flashing a new Heltec for the bridge, leave it in **Companion** mode u
 
 ## Operations
 
-- **Mint a new bridge token** — Overview tab → "Mint Bridge Token". Tokens are shown ONCE; copy immediately into `/etc/ticketscad/meshbridge.env` on the bridge host as `CAD_TOKEN=…`.
+- **Mint a new bridge token** — Overview tab → "Mint Bridge Token". Tokens are shown ONCE; copy immediately into `/etc/ticketscad/meshbridge.env` on the bridge host as `CAD_TOKEN=…` (Linux daemon), or paste it directly into the **Bearer Token** field of the Windows installer's Bridge Configuration page.
 - **Revoke a token** — coming next (revoke endpoint exists, UI button to add).
 - **Restart a bridge** — `sudo systemctl restart meshbridge` on the bridge host. Within seconds the radio's full nodedb gets re-pushed to TicketsCAD.
 

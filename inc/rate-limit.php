@@ -35,7 +35,7 @@ if (!function_exists('rate_limit_ok')) {
     function rate_limit_ok(string $bucket, int $limit, int $windowSeconds): bool
     {
         $now = time();
-        $key = 'tcad:rl:' . sha1($bucket);
+        $key = 'tcad:rl:' . sha1($bucket); // NOSONAR S4790: cache-bucket key only, not a security context — no secret or auth material is hashed here
 
         if (function_exists('apcu_enabled') && apcu_enabled()) {
             $entry = apcu_fetch($key);
@@ -52,7 +52,7 @@ if (!function_exists('rate_limit_ok')) {
         // File-based fallback. Acceptable for low-volume installs.
         $dir = sys_get_temp_dir() . '/ticketscad-rate-limit';
         if (!is_dir($dir)) @mkdir($dir, 0700, true);
-        $path = $dir . '/' . sha1($bucket) . '.bin';
+        $path = $dir . '/' . sha1($bucket) . '.bin'; // NOSONAR S4790: rate-limit bucket filename only, not a security context — the directory (0700) is private to the process owner
         $entry = ['t' => $now, 'n' => 0];
         $fh = @fopen($path, 'c+b');
         if (!$fh) return true;  // can't open the bucket — fail open rather than block legit traffic

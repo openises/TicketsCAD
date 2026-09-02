@@ -343,7 +343,7 @@ if (!function_exists('fcc_fire_station_tts')) {
         if ($bridgeHost === '' || $bridgePort <= 0) {
             return ['ok' => false, 'detail' => 'Channel missing bridge_host / bridge_port'];
         }
-        $url = 'http://' . $bridgeHost . ':' . $bridgePort . '/tx/text';
+        $url = 'http://' . $bridgeHost . ':' . $bridgePort . '/tx/text'; // NOSONAR S5332: admin-configured LAN bridge daemon, not an internet endpoint -- see docs/security/architecture.md sec8
         $payload = [
             'text'      => $text,
             'talkgroup' => (int) ($channel['talkgroup'] ?? 0),
