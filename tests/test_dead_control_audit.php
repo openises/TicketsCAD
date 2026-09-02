@@ -386,6 +386,54 @@ dca_true(strpos($cnOut, 'phantom:ticket.description') !== false,
     'ticket.description is still flagged when nothing actually populates it', $cnOut);
 
 // ═══════════════════════════════════════════════════════════════════════
+// (c) GH#130 item #2 follow-up (rjonesbsink, 2026-09-02) — a table name
+// built from plain PHP variables, not literal backtick-quoted names, is
+// how a fork-only backup tool the reporter tested against actually wrote
+// its CTAS statement: `$bk = '`ticket`'; $t = db_table('member');
+// db_query("CREATE TABLE $bk AS SELECT * FROM $t");`. This shape used to
+// vanish entirely during extraction — interpolated variables inside a
+// double-quoted string were dropped with nothing substituted, so the
+// regex above never saw a table name at all and the write was invisible.
+// This is also, per the reporter's own note, how most of this codebase
+// names its OWN tables (via db_table() or a locally-assigned variable),
+// so it is not a narrow one-off case. Reproduced against the same
+// throwaway --path convention, targeting the same real `ticket` table.
+// ═══════════════════════════════════════════════════════════════════════
+
+$ctasVar = $tmp . '/ctas_var'; @mkdir($ctasVar . '/api', 0777, true);
+file_put_contents($ctasVar . '/api/probe.php', <<<'PHP'
+<?php
+$bk = '`ticket`';
+$t  = db_table('member');
+db_query("CREATE TABLE $bk AS SELECT * FROM $t");
+$rows = db_fetch_all("SELECT `description` FROM `ticket` WHERE `id` = ?", [1]);
+PHP);
+[$cvCode, $cvOut] = dca_run($tool, ['--phantom-only', '--path=' . $ctasVar]);
+dca_true($cvCode === 0,
+    'CTAS built from $var = \'literal\' / $var = db_table(...) resolves and credits the write', $cvOut);
+dca_true(strpos($cvOut, 'phantom:ticket.description') === false,
+    'ticket.description is not flagged when the CTAS table names come from plain variables', $cvOut);
+
+// Negative control: a variable assigned from anything OTHER than a bare
+// string literal or a single db_table() call — a concatenation, here —
+// must stay unresolved, per this fix's own deliberately narrow scope.
+// Without this the fix could over-reach into guessing at arbitrary
+// expressions and start crediting writes that were never actually made.
+$ctasVarUnresolved = $tmp . '/ctas_var_unresolved'; @mkdir($ctasVarUnresolved . '/api', 0777, true);
+file_put_contents($ctasVarUnresolved . '/api/probe.php', <<<'PHP'
+<?php
+$prefix = 'tic';
+$bk = $prefix . 'ket';
+db_query("CREATE TABLE $bk AS SELECT * FROM `member`");
+$rows = db_fetch_all("SELECT `description` FROM `ticket` WHERE `id` = ?", [1]);
+PHP);
+[$cvuCode, $cvuOut] = dca_run($tool, ['--phantom-only', '--path=' . $ctasVarUnresolved]);
+dca_true($cvuCode === 1,
+    'a variable built from concatenation (not a bare literal) is left unresolved, not guessed at', $cvuOut);
+dca_true(strpos($cvuOut, 'phantom:ticket.description') !== false,
+    'ticket.description still flags when the CTAS write cannot actually be traced', $cvuOut);
+
+// ═══════════════════════════════════════════════════════════════════════
 // (c) Phantom-column check — result independence from an UNRELATED
 // file's presence (2026-08-22, Phase 149 investigation). A reporting
 // agent believed adding one content-empty file anywhere under api/ or

@@ -2,9 +2,12 @@
     "tables": {
         "action": [
             "action_type",
+            "author_member_id",
             "date",
             "description",
             "responder",
+            "source_channel",
+            "source_message_id",
             "ticket_id",
             "updated",
             "user"
@@ -114,6 +117,18 @@
             "nims_credential_type",
             "refresh_months",
             "required"
+        ],
+        "chat_messages": [
+            "body",
+            "channel",
+            "created_at",
+            "msg_type",
+            "priority",
+            "recipient",
+            "signal_id",
+            "ticket_id",
+            "user_id",
+            "user_name"
         ],
         "codes": [
             "code",
@@ -720,6 +735,23 @@
             "target_protocol",
             "thread_key"
         ],
+        "mesh_packet_log": [
+            "bridge_id",
+            "display_name",
+            "dst_node",
+            "hops",
+            "lat",
+            "lng",
+            "packet_id",
+            "payload_json",
+            "payload_text",
+            "port_kind",
+            "protocol",
+            "received_at",
+            "rssi",
+            "snr",
+            "src_node"
+        ],
         "message_recipients": [
             "message_id",
             "to_user_id"
@@ -781,8 +813,14 @@
             "sort_order"
         ],
         "net_checkins": [
+            "created_at",
+            "identifier",
+            "note",
             "priority",
-            "updated_at"
+            "seq",
+            "status",
+            "updated_at",
+            "user_id"
         ],
         "newui_audit_log": [
             "activity",
@@ -851,6 +889,20 @@
             "severity",
             "status",
             "updated_at"
+        ],
+        "newui_service_events": [
+            "details",
+            "detected_at",
+            "event_type",
+            "service",
+            "uptime_seconds"
+        ],
+        "newui_service_state": [
+            "consecutive_failures",
+            "last_checked",
+            "last_status",
+            "last_uptime_sec",
+            "service"
         ],
         "newui_shift_assignments": [
             "assigned_by",
@@ -1748,8 +1800,8 @@
     "_meta": {
         "generated_by": "tools/gen_schema_manifest.php",
         "purpose": "columns this code writes to + tables it references; checked by inc/schema-verify.php",
-        "tables": 154,
-        "columns": 1243,
+        "tables": 158,
+        "columns": 1287,
         "required_tables": 191
     }
 }

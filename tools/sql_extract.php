@@ -23,7 +23,23 @@
  * list arrive together.
  *
  * Interpolated variables inside double-quoted strings and heredocs are dropped
- * (same as before); callers normalize the leftover `{$prefix}table` shapes.
+ * (same as before) UNLESS the variable was assigned a plain string literal or
+ * a single db_table('x') call earlier in the SAME file (GH#130 follow-up,
+ * rjonesbsink 2026-09-02): a table name built as
+ *
+ *     $bk = '`in_types_backup_apco`';
+ *     $t  = db_table('in_types');
+ *     db_query("CREATE TABLE $bk AS SELECT * FROM $t");
+ *
+ * used to vanish entirely at extraction — $bk/$t are dropped with nothing put
+ * in their place, so the CTAS regex in dead_control_audit.php never even sees
+ * a table name to match, and the write is invisible. This is the SAME
+ * db_table()-style resolution the writer-INSERT case above already relies
+ * on, just one assignment hop earlier; anything more complex on the
+ * right-hand side (concatenation, a different function call, another
+ * variable) is deliberately left unresolved, matching this file's existing
+ * false-negative-avoiding posture rather than guessing.
+ * Callers normalize the leftover `{$prefix}table` shapes.
  */
 
 declare(strict_types=1);
@@ -61,6 +77,52 @@ function sql_extract_strings(string $src): array
         if ($buf === null) { $buf = ''; $bufLine = $line; }
     };
 
+    // GH#130 follow-up: $name => resolved literal string, updated as
+    // assignments are scanned forward so a reassignment naturally overrides
+    // an earlier one (a whole-file pre-pass could not tell those apart).
+    // Cleared at every `function` keyword: PHP functions do not share local
+    // scope, and this codebase reuses common names ($prefix, $result, ...)
+    // constantly across different functions in the same file. A flat,
+    // whole-file map found this the hard way -- inc/chat-bridge.php has an
+    // unrelated `$prefix = 'System-managed by...'` (a message description
+    // prefix) inside chat_bridge_definitions(), and without this reset its
+    // value leaked into a LATER function's `{$prefix}` DB-table-prefix
+    // interpolation, corrupting an unrelated, previously-correct extraction.
+    // Resetting per function is conservative in the safe direction: at worst
+    // it leaves a genuinely resolvable cross-function case unresolved, which
+    // is the existing (safe) fallback behavior, never a wrong substitution.
+    $varMap = [];
+    $ws = function (int $j) use ($tokens, $n): int {
+        while ($j < $n && is_array($tokens[$j]) && $tokens[$j][0] === T_WHITESPACE) { $j++; }
+        return $j;
+    };
+    // $var = 'literal'; or $var = db_table('literal');  ->  $varMap[$var]
+    $tryResolveAssignment = function (int $i) use ($tokens, $n, $ws, &$varMap) {
+        $j = $ws($i + 1);
+        if (!($j < $n && $tokens[$j] === '=')) { return; }
+        $k = $ws($j + 1);
+        if ($k < $n && is_array($tokens[$k]) && $tokens[$k][0] === T_CONSTANT_ENCAPSED_STRING) {
+            $end = $ws($k + 1);
+            if ($end < $n && $tokens[$end] === ';') {
+                $varMap[$tokens[$i][1]] = stripcslashes(substr($tokens[$k][1], 1, -1));
+            }
+            return;
+        }
+        if ($k < $n && is_array($tokens[$k]) && $tokens[$k][0] === T_STRING
+            && strtolower($tokens[$k][1]) === 'db_table') {
+            $p = $ws($k + 1);
+            if (!($p < $n && $tokens[$p] === '(')) { return; }
+            $q = $ws($p + 1);
+            if (!($q < $n && is_array($tokens[$q]) && $tokens[$q][0] === T_CONSTANT_ENCAPSED_STRING)) { return; }
+            $r = $ws($q + 1);
+            if (!($r < $n && $tokens[$r] === ')')) { return; }
+            $end = $ws($r + 1);
+            if ($end < $n && $tokens[$end] === ';') {
+                $varMap[$tokens[$i][1]] = substr($tokens[$q][1], 1, -1);
+            }
+        }
+    };
+
     for ($i = 0; $i < $n; $i++) {
         $tk = $tokens[$i];
 
@@ -69,6 +131,13 @@ function sql_extract_strings(string $src): array
             $curLine = $ln;
 
             switch ($id) {
+                case T_FUNCTION:
+                    // New local scope starting -- see the $varMap comment
+                    // above for why this reset exists.
+                    $varMap = [];
+                    if (!$inDq && !$inHd) { $flush(); }
+                    continue 2;
+
                 case T_WHITESPACE:
                 case T_COMMENT:
                 case T_DOC_COMMENT:
@@ -98,9 +167,19 @@ function sql_extract_strings(string $src): array
                 case T_STRING_VARNAME:
                 case T_OBJECT_OPERATOR:
                 case T_NUM_STRING:
-                    // Interpolation innards: dropped, but do not break the chain
-                    // when we are inside a quoted string / heredoc.
-                    if ($inDq || $inHd) { continue 2; }
+                    // Interpolation innards: dropped, but do not break the
+                    // chain when we are inside a quoted string / heredoc --
+                    // UNLESS this exact variable was resolved to a literal
+                    // table name earlier in the file (GH#130 follow-up; see
+                    // $varMap above), in which case substitute it instead of
+                    // dropping it.
+                    if ($inDq || $inHd) {
+                        if ($id === T_VARIABLE && isset($varMap[$text])) {
+                            $buf .= $varMap[$text];
+                        }
+                        continue 2;
+                    }
+                    if ($id === T_VARIABLE) { $tryResolveAssignment($i); }
                     $flush();
                     continue 2;
 
