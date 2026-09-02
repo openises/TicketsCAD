@@ -10,12 +10,18 @@
  * This page only renders the shell + static modals; all fetch/CSRF/render
  * logic lives in assets/js/major-incidents.js.
  *
- * Gating:
+ * Gating (Phase 86, 2026-09-02 revision — three tiers, not one):
  *   - Whole page requires a logged-in user (mirrors incident-list.php).
- *   - Create / link / unlink / close / update are additionally gated on
- *     rbac_can('action.link_major'). The API enforces this server-side;
- *     here we hide/disable the controls so a read-only user never sees a
- *     button that would 403. $canManage is also surfaced to JS.
+ *   - link / unlink / update are gated on rbac_can('action.link_major')
+ *     ($canManage) — routine dispatch work.
+ *   - create / escalate are gated on rbac_can('action.create_major_event')
+ *     ($canCreate) — supervisor-tier by default.
+ *   - close / unified-command roster edits are gated on
+ *     rbac_can('action.manage_major_event_command') ($canManageCommand) —
+ *     command-tier by default.
+ *   The API enforces all three server-side; here we hide/disable the
+ *   controls so a user never sees a button that would 403. All three
+ *   booleans are surfaced to JS via data attributes.
  */
 
 require_once __DIR__ . '/config.php';
@@ -43,6 +49,8 @@ $theme     = $_SESSION['day_night'] ?? 'Day';
 $bs_theme  = ($theme === 'Night') ? 'dark' : 'light';
 $csrf      = csrf_token();
 $canManage = function_exists('rbac_can') ? rbac_can('action.link_major') : false;
+$canCreate = function_exists('rbac_can') ? rbac_can('action.create_major_event') : false;
+$canManageCommand = function_exists('rbac_can') ? rbac_can('action.manage_major_event_command') : false;
 ?>
 <!DOCTYPE html>
 <html lang="<?php echo e(i18n_lang()); ?>" data-bs-theme="<?php echo $bs_theme; ?>">
@@ -59,7 +67,9 @@ $canManage = function_exists('rbac_can') ? rbac_can('action.link_major') : false
     <!-- App CSS -->
     <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo newui_version(); ?>">
 </head>
-<body data-can-manage-major="<?php echo $canManage ? '1' : '0'; ?>">
+<body data-can-manage-major="<?php echo $canManage ? '1' : '0'; ?>"
+      data-can-create-major="<?php echo $canCreate ? '1' : '0'; ?>"
+      data-can-manage-command="<?php echo $canManageCommand ? '1' : '0'; ?>">
 
 <?php include_once NEWUI_ROOT . '/inc/navbar.php'; ?>
 </header>
@@ -74,7 +84,7 @@ $canManage = function_exists('rbac_can') ? rbac_can('action.link_major') : false
                 <i class="bi bi-diagram-3 text-danger me-2"></i><?php echo e(t('major.title', 'Major Incidents')); ?>
             </h5>
             <div class="d-flex gap-2 align-items-center">
-<?php if ($canManage): ?>
+<?php if ($canCreate): ?>
                 <button type="button" class="btn btn-sm btn-danger" id="btnNewMajorIncident"
                         data-bs-toggle="modal" data-bs-target="#newMajorModal">
                     <i class="bi bi-plus-lg me-1"></i><?php echo e(t('major.btn.new', 'New Major Incident')); ?>
@@ -129,6 +139,8 @@ $canManage = function_exists('rbac_can') ? rbac_can('action.link_major') : false
                 <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="btnEditMajor">
                     <i class="bi bi-pencil me-1"></i><?php echo e(t('major.btn.edit', 'Edit')); ?>
                 </button>
+<?php endif; ?>
+<?php if ($canManageCommand): ?>
                 <button type="button" class="btn btn-sm btn-danger d-none" id="btnCloseMajor">
                     <i class="bi bi-x-octagon me-1"></i><?php echo e(t('major.btn.close', 'Close Major Incident')); ?>
                 </button>
@@ -169,6 +181,15 @@ $canManage = function_exists('rbac_can') ? rbac_can('action.link_major') : false
 
                             <dt class="col-5 text-body-secondary"><?php echo e(t('major.label.linked', 'Linked')); ?></dt>
                             <dd class="col-7" id="majorLinkedCount">0</dd>
+
+                            <dt class="col-5 text-body-secondary"><?php echo e(t('major.label.event_type', 'Event Type')); ?></dt>
+                            <dd class="col-7" id="majorEventType">—</dd>
+
+                            <dt class="col-5 text-body-secondary d-none" id="majorParentLabel"><?php echo e(t('major.label.escalated_from', 'Escalated From')); ?></dt>
+                            <dd class="col-7 d-none" id="majorParentRow">—</dd>
+
+                            <dt class="col-5 text-body-secondary"><?php echo e(t('major.label.units', 'Units (active/assigned)')); ?></dt>
+                            <dd class="col-7" id="majorRollup">0 / 0</dd>
                         </dl>
                         <div class="mt-3 small" id="majorDescriptionWrap">
                             <div class="text-body-secondary"><?php echo e(t('major.label.description', 'Description')); ?></div>
@@ -210,6 +231,47 @@ $canManage = function_exists('rbac_can') ? rbac_can('action.link_major') : false
                         </div>
                     </div>
                 </div>
+
+                <!-- Unified Command roster (Phase 86, 2026-09-02) — a real
+                     table, not a JSON blob (see specs/phase-86-major-events/
+                     changes.md). External-agency members (no TicketsCAD
+                     account) are shown with a distinct badge so the roster
+                     never implies more completeness than it has. -->
+                <div class="card mb-3">
+                    <div class="card-header d-flex align-items-center py-1">
+                        <i class="bi bi-people me-2"></i>
+                        <span class="fw-semibold small"><?php echo e(t('major.section.command', 'Unified Command')); ?></span>
+                        <span class="badge bg-secondary ms-auto" id="commandBadge">0</span>
+                    </div>
+                    <div class="card-body p-0">
+<?php if ($canManageCommand): ?>
+                        <div class="border-bottom px-2 py-2" id="commandAddControl">
+                            <div class="row g-1">
+                                <div class="col-4">
+                                    <input type="text" class="form-control form-control-sm" id="commandAgency"
+                                           placeholder="<?php echo e(t('major.command.agency_ph', 'Agency')); ?>">
+                                </div>
+                                <div class="col-4">
+                                    <input type="text" class="form-control form-control-sm" id="commandName"
+                                           placeholder="<?php echo e(t('major.command.name_ph', 'Name (if no TicketsCAD account)')); ?>">
+                                </div>
+                                <div class="col-3">
+                                    <input type="text" class="form-control form-control-sm" id="commandRole"
+                                           placeholder="<?php echo e(t('major.command.role_ph', 'Role')); ?>" value="incident_commander">
+                                </div>
+                                <div class="col-1">
+                                    <button type="button" class="btn btn-sm btn-outline-primary w-100" id="btnAddCommand" title="<?php echo e(t('major.btn.add_command', 'Add')); ?>">
+                                        <i class="bi bi-plus-lg"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+<?php endif; ?>
+                        <div id="commandList">
+                            <div class="text-center text-body-secondary py-3 small"><?php echo e(t('major.command.none', 'No unified command roster recorded.')); ?></div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -217,7 +279,7 @@ $canManage = function_exists('rbac_can') ? rbac_can('action.link_major') : false
 </main>
 
 <!-- New Major Incident modal -->
-<?php if ($canManage): ?>
+<?php if ($canCreate): ?>
 <div class="modal fade" id="newMajorModal" tabindex="-1" aria-labelledby="newMajorModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -246,6 +308,22 @@ $canManage = function_exists('rbac_can') ? rbac_can('action.link_major') : false
                         <option value=""><?php echo e(t('major.field.no_commander', '— None —')); ?></option>
                     </select>
                 </div>
+                <div class="mb-2">
+                    <label for="newMajorEventType" class="form-label form-label-sm"><?php echo e(t('major.field.event_type', 'Event Type')); ?></label>
+                    <select class="form-select form-select-sm" id="newMajorEventType">
+                        <option value=""><?php echo e(t('major.event_type.none', '— Unspecified —')); ?></option>
+                        <option value="structure-fire"><?php echo e(t('major.event_type.structure_fire', 'Structure Fire')); ?></option>
+                        <option value="mci"><?php echo e(t('major.event_type.mci', 'Mass-Casualty Incident')); ?></option>
+                        <option value="hazmat"><?php echo e(t('major.event_type.hazmat', 'Hazmat')); ?></option>
+                        <option value="severe-weather"><?php echo e(t('major.event_type.severe_weather', 'Severe Weather')); ?></option>
+                        <option value="planned-event"><?php echo e(t('major.event_type.planned_event', 'Planned Event')); ?></option>
+                        <option value="other"><?php echo e(t('major.event_type.other', 'Other')); ?></option>
+                    </select>
+                </div>
+                <div class="mb-2 form-check">
+                    <input type="checkbox" class="form-check-input" id="newMajorMutualAid">
+                    <label class="form-check-label small" for="newMajorMutualAid"><?php echo e(t('major.field.mutual_aid', 'Mutual aid requested')); ?></label>
+                </div>
                 <div class="mb-0">
                     <label for="newMajorDescription" class="form-label form-label-sm"><?php echo e(t('major.field.description', 'Description')); ?></label>
                     <textarea class="form-control form-control-sm" id="newMajorDescription" rows="3"></textarea>
@@ -260,8 +338,10 @@ $canManage = function_exists('rbac_can') ? rbac_can('action.link_major') : false
         </div>
     </div>
 </div>
+<?php endif; ?>
 
 <!-- Edit Major Incident modal -->
+<?php if ($canManage): ?>
 <div class="modal fade" id="editMajorModal" tabindex="-1" aria-labelledby="editMajorModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -289,6 +369,22 @@ $canManage = function_exists('rbac_can') ? rbac_can('action.link_major') : false
                     <select class="form-select form-select-sm" id="editMajorCommander">
                         <option value=""><?php echo e(t('major.field.no_commander', '— None —')); ?></option>
                     </select>
+                </div>
+                <div class="mb-2">
+                    <label for="editMajorEventType" class="form-label form-label-sm"><?php echo e(t('major.field.event_type', 'Event Type')); ?></label>
+                    <select class="form-select form-select-sm" id="editMajorEventType">
+                        <option value=""><?php echo e(t('major.event_type.none', '— Unspecified —')); ?></option>
+                        <option value="structure-fire"><?php echo e(t('major.event_type.structure_fire', 'Structure Fire')); ?></option>
+                        <option value="mci"><?php echo e(t('major.event_type.mci', 'Mass-Casualty Incident')); ?></option>
+                        <option value="hazmat"><?php echo e(t('major.event_type.hazmat', 'Hazmat')); ?></option>
+                        <option value="severe-weather"><?php echo e(t('major.event_type.severe_weather', 'Severe Weather')); ?></option>
+                        <option value="planned-event"><?php echo e(t('major.event_type.planned_event', 'Planned Event')); ?></option>
+                        <option value="other"><?php echo e(t('major.event_type.other', 'Other')); ?></option>
+                    </select>
+                </div>
+                <div class="mb-2 form-check">
+                    <input type="checkbox" class="form-check-input" id="editMajorMutualAid">
+                    <label class="form-check-label small" for="editMajorMutualAid"><?php echo e(t('major.field.mutual_aid', 'Mutual aid requested')); ?></label>
                 </div>
                 <div class="mb-0">
                     <label for="editMajorDescription" class="form-label form-label-sm"><?php echo e(t('major.field.description', 'Description')); ?></label>

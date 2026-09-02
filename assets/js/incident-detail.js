@@ -61,6 +61,11 @@
         var select = document.getElementById('majorLinkSelect');
         var linkBtn = document.getElementById('btnLinkMajor');
         var newWrap = document.getElementById('majorNewWrap');
+        // Phase 86 (2026-09-02) — escalateBtn only exists in the DOM when
+        // the server rendered it (action.create_major_event); the "+ Create
+        // new" dropdown option is likewise server-omitted for the same
+        // permission, so no client-side gating duplicate is needed here.
+        var escalateBtn = document.getElementById('btnEscalateMajor');
 
         function refresh() {
             fetch('api/major-incidents.php', { credentials: 'same-origin' })
@@ -210,6 +215,20 @@
                 });
             }
         });
+
+        if (escalateBtn) {
+            escalateBtn.addEventListener('click', function () {
+                if (!confirm('Escalate this incident to a new Major Event?\n\n' +
+                    'This creates a new Major Event with this incident as the ' +
+                    'originating call, and links it in the same step.')) return;
+                escalateBtn.disabled = true;
+                majorPost({ action: 'escalate', incident_id: ticketId }, function (data) {
+                    showAlert(escHtml(data.message || 'Incident escalated to a major event.'), 'success');
+                    refresh();
+                });
+                setTimeout(function () { escalateBtn.disabled = false; }, 1500);
+            });
+        }
 
         refresh();
     }

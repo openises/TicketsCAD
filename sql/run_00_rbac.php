@@ -203,6 +203,8 @@ $perms = [
     ['action.assign_unit',     'Assign Unit',          'action'],
     ['action.add_note',        'Add Notes',            'action'],
     ['action.link_major',      'Link Major Incident',  'action'],
+    ['action.create_major_event', 'Create/Escalate Major Event', 'action'],
+    ['action.manage_major_event_command', 'Manage Major Event Command', 'action'],
     // Personnel Actions
     ['action.manage_members',  'Manage Members',       'action'],
     ['action.manage_teams',    'Manage Teams',         'action'],
@@ -485,7 +487,8 @@ try {
         'console.design', 'action.intercom_unlock', 'action.view_reports',
         'action.delete_ics_form', 'action.delete_equipment_log',
         'action.manage_public_board_org', 'action.manage_ics_form_types_org',
-        'action.manage_matrix', 'action.manage_calls'
+        'action.manage_matrix', 'action.manage_calls',
+        'action.create_major_event', 'action.manage_major_event_command'
     )");
     // Propagate onto each code's canonical alias partner in BOTH
     // directions (sql/run_rbac_v2.php's A8 step may already have created

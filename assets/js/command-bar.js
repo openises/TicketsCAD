@@ -83,6 +83,32 @@
         { name: 'messages',    aliases: ['messaging'],            description: 'Open internal messaging',                       handler: function () { go('messaging.php'); } },
         { name: 'links',       aliases: [],                       description: 'Open the external links page',                  handler: function () { go('links.php'); } },
         { name: 'ics',         aliases: ['forms'],                description: 'Open the ICS forms page',                       handler: function () { go('ics-forms.php'); } },
+        // Phase 86b revision (2026-09-02, post 5-persona review — see
+        // specs/phase-86b-command-bar/changes.md). /who and /find are
+        // DEFERRED, not built here: neither current-logins.php nor a
+        // cross-entity find.php exists yet, and inventing them without
+        // a design pass (storage, RBAC scope, what "online" means for
+        // an SSE-based app) is out of scope for a command-bar wiring
+        // pass. /assign and /memo are deferred for the same reason
+        // (see changes.md). Only commands wired to a page/control that
+        // was VERIFIED to exist are added below.
+        { name: 'major',       aliases: ['events'],               description: 'Open the Major Events list',                    handler: function () { go('major-incidents.php'); } },
+        { name: 'road',        aliases: [],                       description: 'Toggle the road-conditions overlay on the dashboard map', handler: doToggleRoadConditions },
+        { name: 'radio',       aliases: [],                       description: 'Open the radio (DMR) widget',                   handler: doToggleRadio },
+
+        // Settings deep links. Hashes are the bare `data-tab` slug from
+        // inc/config-sidebar.php's _cfg_tab() calls, NOT the `panel-`
+        // element id — assets/js/config.js's activateTab(tab) does
+        // getElementById('panel-' + tab) itself, so a hash that already
+        // includes the "panel-" prefix would double it and silently miss.
+        // Verified against the real _cfg_tab() call sites before wiring.
+        { name: 'users',        aliases: [],  description: 'Settings → User Accounts',              handler: function () { go('settings.php#user-accounts'); } },
+        { name: 'audit',        aliases: [],  description: 'Settings → Audit Log',                  handler: function () { go('settings.php#audit-log'); } },
+        { name: 'types',        aliases: [],  description: 'Settings → Incident Types',             handler: function () { go('settings.php#incident-types'); } },
+        { name: 'organizations',aliases: ['orgs'], description: 'Settings → Organizations',          handler: function () { go('settings.php#organizations'); } },
+        { name: 'password',     aliases: [],  description: 'Change your password',                  handler: function () { go('profile.php#password'); } },
+        { name: 'training',     aliases: [],  description: 'Settings → Training',                   handler: function () { go('settings.php#training'); } },
+        { name: 'zones',        aliases: [],  description: 'Settings → Alert Zones',                handler: function () { go('settings.php#alert-zones'); } },
 
         // Phase 99r (a beta tester beta 2026-06-29) — unit status changes
         // from the command bar. Syntax:
@@ -472,6 +498,30 @@
         }
         if (window.KeyboardNav) {
             window.KeyboardNav.focusResponders();
+        }
+    }
+
+    // Phase 86b: the dashboard's own control button, not a new mechanism.
+    // On pages with no dashboard map (no data-action="road-conditions"
+    // button in the DOM) this is a silent no-op, matching every other
+    // handler's graceful-degradation convention in this file.
+    function doToggleRoadConditions() {
+        var btn = document.querySelector('.ctrl-btn[data-action="road-conditions"]');
+        if (btn) {
+            btn.click();
+        }
+    }
+
+    // Phase 86b: radio-widget.js installs ONE document-level delegated
+    // click listener that handles every [data-action="radio"] click on
+    // every page (see radio-widget.js's own Phase 84-followup-9 comment
+    // — EventBus.emit('radio:toggle') is deliberately dead, do not use
+    // it here). The navbar's own button (inc/navbar.php) is present
+    // globally, so this works from any page, not just the dashboard.
+    function doToggleRadio() {
+        var btn = document.querySelector('[data-action="radio"]');
+        if (btn) {
+            btn.click();
         }
     }
 

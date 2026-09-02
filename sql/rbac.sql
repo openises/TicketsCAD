@@ -138,6 +138,8 @@ INSERT IGNORE INTO `permissions` (`code`, `name`, `category`, `description`) VAL
     ('action.assign_unit',     'Assign Unit',          'action', 'Assign/unassign responders to incidents'),
     ('action.add_note',        'Add Notes',            'action', 'Add activity notes to incidents'),
     ('action.link_major',      'Link Major Incident',  'action', 'Link incidents to major incidents'),
+    ('action.create_major_event', 'Create/Escalate Major Event', 'action', 'Create a new major event or escalate an incident into one'),
+    ('action.manage_major_event_command', 'Manage Major Event Command', 'action', 'Add/remove unified-command members and close major events'),
     -- Personnel Actions
     ('action.manage_members',  'Manage Members',       'action', 'Create/edit/delete member records'),
     ('action.bulk_delete_members', 'Bulk Delete Members', 'action', 'Remove multiple member records at once (roster bulk actions)'),
@@ -399,7 +401,14 @@ UPDATE `permissions` SET `admin_only` = 1 WHERE `code` IN (
     'console.design', 'action.intercom_unlock', 'action.view_reports',
     'action.delete_ics_form', 'action.delete_equipment_log',
     'action.manage_public_board_org', 'action.manage_ics_form_types_org',
-    'action.manage_matrix', 'action.manage_calls'
+    'action.manage_matrix', 'action.manage_calls',
+    -- Phase 86 (2026-09-02, 5-persona design review) -- creating/escalating
+    -- a major event and managing its unified-command roster are
+    -- supervisor-tier actions by design (a part-time/junior dispatcher must
+    -- not be able to unilaterally declare a major event on an ordinary
+    -- night); routine link/unlink of an incident to an EXISTING major event
+    -- stays on the original, broadly-granted action.link_major.
+    'action.create_major_event', 'action.manage_major_event_command'
 );
 -- Propagate onto each code's canonical alias partner in BOTH directions
 -- (sql/run_rbac_v2.php's A8 step may already have created the canonical

@@ -51,6 +51,11 @@ $theme    = $_SESSION['day_night'] ?? 'Day';
 $bs_theme = ($theme === 'Night') ? 'dark' : 'light';
 $csrf     = csrf_token();
 $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : false;
+// Phase 86 (2026-09-02) — escalating to a NEW major event is
+// supervisor-tier by default (action.create_major_event), separate from
+// routine link-to-an-existing-event (action.link_major). See
+// specs/phase-86-major-events/changes.md.
+$canCreateMajorEvent = function_exists('rbac_can') ? rbac_can('action.create_major_event') : false;
 ?>
 <!DOCTYPE html>
 <html lang="<?php echo e(i18n_lang()); ?>" data-bs-theme="<?php echo $bs_theme; ?>">
@@ -833,7 +838,7 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
                      from new-incident.php?major=1 which is the separate
                      parent-ticket creation flow. Gated on action.link_major. -->
 <?php if ($canManageMajor): ?>
-                <div class="card mb-3" id="majorLinkCard">
+                <div class="card mb-3" id="majorLinkCard" data-can-create-major-event="<?php echo $canCreateMajorEvent ? '1' : '0'; ?>">
                     <div class="card-header d-flex align-items-center py-1">
                         <i class="bi bi-diagram-3 me-2"></i>
                         <span class="fw-semibold small"><?php echo e(t('incdetail.section.major', 'Major Incident')); ?></span>
@@ -851,7 +856,9 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
                             <div class="input-group input-group-sm">
                                 <select class="form-select form-select-sm" id="majorLinkSelect">
                                     <option value=""><?php echo e(t('incdetail.major.select_ph', '— Select a major incident —')); ?></option>
+<?php if ($canCreateMajorEvent): ?>
                                     <option value="__new__"><?php echo e(t('incdetail.major.create_new', '+ Create new major incident…')); ?></option>
+<?php endif; ?>
                                 </select>
                                 <button type="button" class="btn btn-sm btn-danger" id="btnLinkMajor" disabled>
                                     <i class="bi bi-link-45deg me-1"></i><?php echo e(t('incdetail.major.btn_link', 'Link')); ?>
@@ -868,6 +875,17 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
                                     <option value="2"><?php echo e(t('major.sev.2', 'Critical')); ?></option>
                                 </select>
                             </div>
+<?php if ($canCreateMajorEvent): ?>
+                            <!-- Escalate (Phase 86, 2026-09-02) — the one-click path Dana's
+                                 review wanted: "the moment I request mutual aid, this becomes
+                                 a major event." Distinct from the dropdown above: escalate
+                                 always creates a NEW major event with parent_incident_id set
+                                 to THIS incident, via api/major-incidents.php's single
+                                 `escalate` action (not a manual create+link). -->
+                            <button type="button" class="btn btn-sm btn-outline-danger w-100 mt-2" id="btnEscalateMajor">
+                                <i class="bi bi-arrow-up-circle me-1"></i><?php echo e(t('incdetail.major.btn_escalate', 'Escalate to Major Event')); ?>
+                            </button>
+<?php endif; ?>
                         </div>
                     </div>
                 </div>

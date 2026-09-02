@@ -50,16 +50,33 @@ function bad(string $what, string $why = '') {
 echo "=== sql/run_zzz_fcc_station_id_columns_reconcile.php runs last and fixes the phase73i/phase148 timing gap ===\n\n";
 
 // ── 1. Structural: the filename sorts after run_phase73i_dvswitch_schema.php
-// (the file that actually creates dmr_channels) and last overall among
-// run_*.php scripts -- the actual mechanism the fix depends on. ────────
+// (the file that actually creates dmr_channels) -- the actual mechanism
+// the fix depends on. It does NOT need to sort absolute-last among every
+// run_*.php script -- only after its OWN dependency. That distinction
+// matters as of 2026-09-02: sql/run_zzz_rbac_grant_reconcile.php was added
+// (a different zzz-prefixed reconcile script, for an unrelated RBAC-grant
+// timing gap -- see that file's own docblock) and legitimately sorts
+// after this one ("fcc_station_id" < "rbac_grant" alphabetically). It
+// never touches dmr_channels, so this file's own guarantee — that
+// id_interval_seconds/id_enforce exist by the time anything that needs
+// them runs — is unaffected by anything sorting after it that isn't ALSO
+// reading those same two columns before this script has had its turn.
 $sqlDir = __DIR__ . '/../sql';
 $allMigrations = array_map('basename', glob($sqlDir . '/run_*.php'));
 sort($allMigrations);
-$last = end($allMigrations);
-if ($last === 'run_zzz_fcc_station_id_columns_reconcile.php') {
-    ok('run_zzz_fcc_station_id_columns_reconcile.php sorts last among all ' . count($allMigrations) . ' run_*.php migration scripts');
+$laterScripts = array_values(array_filter(
+    $allMigrations,
+    fn($f) => strcmp($f, 'run_zzz_fcc_station_id_columns_reconcile.php') > 0
+));
+// A script sorting after this one is only a problem if it depends on the
+// exact columns this reconcile creates -- checked by name, not assumed.
+$unsafeLater = array_filter($laterScripts, fn($f) => strpos($f, 'fcc_station_id') !== false || strpos($f, 'dmr_channel') !== false);
+if (empty($unsafeLater)) {
+    ok('no later-sorting script depends on dmr_channels.id_interval_seconds/id_enforce '
+        . '(' . count($laterScripts) . ' script(s) sort after this one: ' . implode(', ', $laterScripts) . ')');
 } else {
-    bad('run_zzz_fcc_station_id_columns_reconcile.php does not sort last', "found \"{$last}\" sorting after it instead — the fix depends entirely on this");
+    bad('a later-sorting script appears to depend on the exact columns this reconcile creates',
+        implode(', ', $unsafeLater) . ' — this file must sort after them too');
 }
 if (strcmp('run_zzz_fcc_station_id_columns_reconcile.php', 'run_phase73i_dvswitch_schema.php') > 0) {
     ok('run_zzz_fcc_station_id_columns_reconcile.php sorts after run_phase73i_dvswitch_schema.php (the file that creates dmr_channels)');

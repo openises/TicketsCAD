@@ -20,11 +20,23 @@
     var SEV_LABELS = ['Minor', 'Major', 'Critical'];
     var SEV_CLASSES = ['bg-secondary', 'bg-warning text-dark', 'bg-danger'];
     var STATUS_TEXT = { 1: 'Closed', 2: 'Open', 3: 'Scheduled' };
+    var EVENT_TYPE_LABELS = {
+        'structure-fire': 'Structure Fire',
+        'mci': 'Mass-Casualty Incident',
+        'hazmat': 'Hazmat',
+        'severe-weather': 'Severe Weather',
+        'planned-event': 'Planned Event',
+        'other': 'Other'
+    };
 
     var canManage = false;
+    var canCreate = false;
+    var canManageCommand = false;
 
     function init() {
         canManage = document.body.getAttribute('data-can-manage-major') === '1';
+        canCreate = document.body.getAttribute('data-can-create-major') === '1';
+        canManageCommand = document.body.getAttribute('data-can-manage-command') === '1';
 
         var id = getQueryId();
         if (id) {
@@ -139,7 +151,7 @@
         document.getElementById('listMode').classList.remove('d-none');
         loadList();
 
-        if (canManage) {
+        if (canCreate) {
             loadUsersInto('newMajorCommander', null);
             var createBtn = document.getElementById('btnCreateMajorSubmit');
             if (createBtn) createBtn.addEventListener('click', submitCreate);
@@ -210,7 +222,9 @@
             name: name,
             description: document.getElementById('newMajorDescription').value.trim(),
             severity: parseInt(document.getElementById('newMajorSeverity').value, 10) || 0,
-            commander: document.getElementById('newMajorCommander').value
+            commander: document.getElementById('newMajorCommander').value,
+            event_type: document.getElementById('newMajorEventType').value,
+            mutual_aid_requested: document.getElementById('newMajorMutualAid').checked
         };
         postAction(payload, function (data) {
             // Redirect straight to the new major's detail view.
@@ -234,9 +248,13 @@
             if (editBtn) editBtn.addEventListener('click', openEditModal);
             var updateBtn = document.getElementById('btnUpdateMajorSubmit');
             if (updateBtn) updateBtn.addEventListener('click', submitUpdate);
+            initLinkControl(id);
+        }
+        if (canManageCommand) {
             var closeBtn = document.getElementById('btnCloseMajor');
             if (closeBtn) closeBtn.addEventListener('click', confirmClose);
-            initLinkControl(id);
+            var addCommandBtn = document.getElementById('btnAddCommand');
+            if (addCommandBtn) addCommandBtn.addEventListener('click', function () { submitAddCommand(id); });
         }
     }
 
@@ -276,6 +294,20 @@
         document.getElementById('majorStarted').textContent = formatDateTime(m.created_at);
         document.getElementById('majorLinkedCount').textContent =
             (m.linked_incidents ? m.linked_incidents.length : 0);
+        document.getElementById('majorEventType').textContent = EVENT_TYPE_LABELS[m.event_type] || '—';
+        var rollup = m.resource_rollup || { units_assigned: 0, units_active: 0 };
+        document.getElementById('majorRollup').textContent = rollup.units_active + ' / ' + rollup.units_assigned;
+
+        // Phase 86 (2026-09-02) — parent_incident_id is set by the
+        // `escalate` action; surface it so the originating call is never
+        // a write-only field (dead_control_audit.php's own check (b)).
+        if (m.parent_incident_id) {
+            document.getElementById('majorParentLabel').classList.remove('d-none');
+            var parentRow = document.getElementById('majorParentRow');
+            parentRow.classList.remove('d-none');
+            parentRow.innerHTML = '<a href="incident-detail.php?id=' + encodeURIComponent(m.parent_incident_id) + '">#' +
+                esc(m.parent_incident_id) + '</a>';
+        }
 
         var desc = document.getElementById('majorDescription');
         desc.textContent = (m.description && m.description.trim()) ? m.description : '—';
@@ -307,6 +339,100 @@
         }
 
         renderLinkedIncidents(m.linked_incidents || [], isOpen);
+        renderCommand(m.command || []);
+    }
+
+    // ── Unified Command roster (Phase 86, 2026-09-02) ──
+    function renderCommand(rows) {
+        var container = document.getElementById('commandList');
+        var badge = document.getElementById('commandBadge');
+        if (badge) badge.textContent = rows.length;
+        if (!container) return;
+
+        if (!rows.length) {
+            container.innerHTML = '<div class="text-center text-body-secondary py-3 small">' +
+                '<i class="bi bi-people me-1"></i>No unified command roster recorded.</div>';
+            return;
+        }
+
+        var html = '<div class="table-responsive"><table class="table table-sm table-hover mb-0 small">' +
+            '<thead><tr><th class="ps-2">Agency</th><th>Name</th><th>Role</th><th>Joined</th>' +
+            (canManageCommand ? '<th class="text-end pe-2"></th>' : '') +
+            '</tr></thead><tbody>';
+
+        for (var i = 0; i < rows.length; i++) {
+            var c = rows[i];
+            // A NULL member_id means an external commander with no
+            // TicketsCAD account — flagged explicitly (Aisha's review
+            // point: the roster must never imply more completeness than
+            // it has when other agencies aren't using this software).
+            var isExternal = c.member_id === null || c.member_id === undefined;
+            var name = isExternal
+                ? (esc(c.external_name || '—') + ' <span class="badge bg-info-subtle text-info-emphasis">external</span>')
+                : esc(c.member_name || ('#' + c.member_id));
+            html += '<tr>' +
+                '<td class="ps-2 fw-semibold">' + esc(c.agency) + '</td>' +
+                '<td>' + name + '</td>' +
+                '<td>' + esc(c.role) + '</td>' +
+                '<td>' + esc(formatDateTime(c.joined_at)) + '</td>' +
+                (canManageCommand
+                    ? '<td class="text-end pe-2"><button type="button" class="btn btn-sm btn-outline-danger py-0 remove-command-btn" ' +
+                      'data-command-id="' + esc(c.id) + '" data-agency="' + esc(c.agency) + '" ' +
+                      'title="Remove from unified command"><i class="bi bi-x-lg"></i></button></td>'
+                    : '') +
+                '</tr>';
+        }
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+
+        if (canManageCommand) {
+            var btns = container.querySelectorAll('.remove-command-btn');
+            for (var k = 0; k < btns.length; k++) {
+                btns[k].addEventListener('click', function () {
+                    var commandId = parseInt(this.getAttribute('data-command-id'), 10);
+                    var agency = this.getAttribute('data-agency');
+                    if (!confirm('Remove "' + agency + '" from unified command?')) return;
+                    removeCommand(commandId);
+                });
+            }
+        }
+    }
+
+    function submitAddCommand(majorId) {
+        var agencyEl = document.getElementById('commandAgency');
+        var nameEl = document.getElementById('commandName');
+        var roleEl = document.getElementById('commandRole');
+        var agency = agencyEl.value.trim();
+        var name = nameEl.value.trim();
+        if (agency === '') {
+            showAlert('detailAlertArea', 'Agency is required.', 'warning');
+            return;
+        }
+        if (name === '') {
+            showAlert('detailAlertArea', 'A name is required (the commander\'s TicketsCAD account is not looked up here — enter their name).', 'warning');
+            return;
+        }
+        postAction({
+            action: 'add_command',
+            major_id: majorId,
+            agency: agency,
+            external_name: name,
+            role: roleEl.value.trim() || 'incident_commander'
+        }, function (data) {
+            agencyEl.value = '';
+            nameEl.value = '';
+            roleEl.value = 'incident_commander';
+            showAlert('detailAlertArea', data.message || 'Added to unified command.', 'success');
+            loadDetail(majorId);
+        }, 'detailAlertArea');
+    }
+
+    function removeCommand(commandId) {
+        var id = getQueryId();
+        postAction({ action: 'remove_command', command_id: commandId }, function (data) {
+            showAlert('detailAlertArea', data.message || 'Removed from unified command.', 'info');
+            loadDetail(id);
+        }, 'detailAlertArea');
     }
 
     function renderLinkedIncidents(links, isOpen) {
@@ -382,6 +508,8 @@
         document.getElementById('editMajorName').value = currentMajor.name || '';
         document.getElementById('editMajorDescription').value = currentMajor.description || '';
         document.getElementById('editMajorSeverity').value = String(parseInt(currentMajor.severity, 10) || 0);
+        document.getElementById('editMajorEventType').value = currentMajor.event_type || '';
+        document.getElementById('editMajorMutualAid').checked = !!parseInt(currentMajor.mutual_aid_requested, 10);
 
         // Reset commander dropdown to just the placeholder, then repopulate
         // with the current commander preselected.
@@ -406,7 +534,9 @@
             name: name,
             description: document.getElementById('editMajorDescription').value.trim(),
             severity: parseInt(document.getElementById('editMajorSeverity').value, 10) || 0,
-            commander: document.getElementById('editMajorCommander').value
+            commander: document.getElementById('editMajorCommander').value,
+            event_type: document.getElementById('editMajorEventType').value,
+            mutual_aid_requested: document.getElementById('editMajorMutualAid').checked
         };
         postAction(payload, function (data) {
             bootstrap.Modal.getInstance(document.getElementById('editMajorModal')).hide();

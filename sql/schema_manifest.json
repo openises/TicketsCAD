@@ -821,6 +821,15 @@
             "self_signup",
             "status"
         ],
+        "newui_major_incident_command": [
+            "agency",
+            "external_name",
+            "joined_at",
+            "left_at",
+            "major_incident_id",
+            "member_id",
+            "role"
+        ],
         "newui_major_incident_links": [
             "linked_at",
             "linked_by",
@@ -828,13 +837,17 @@
             "ticket_id"
         ],
         "newui_major_incidents": [
+            "boundary_id",
             "closed_at",
             "commander",
             "created_at",
             "description",
+            "event_type",
             "lat",
             "lng",
+            "mutual_aid_requested",
             "name",
+            "parent_incident_id",
             "severity",
             "status",
             "updated_at"
@@ -1643,6 +1656,7 @@
         "newui_equipment_types",
         "newui_event_participants",
         "newui_events",
+        "newui_major_incident_command",
         "newui_major_incident_links",
         "newui_major_incidents",
         "newui_service_events",
@@ -1734,8 +1748,8 @@
     "_meta": {
         "generated_by": "tools/gen_schema_manifest.php",
         "purpose": "columns this code writes to + tables it references; checked by inc/schema-verify.php",
-        "tables": 153,
-        "columns": 1232,
-        "required_tables": 190
+        "tables": 154,
+        "columns": 1243,
+        "required_tables": 191
     }
 }
