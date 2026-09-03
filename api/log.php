@@ -10,12 +10,65 @@
  */
 
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/../inc/org-scope.php';
+require_once __DIR__ . '/../inc/security-labels.php';
 
 $prevDisplay = ini_get('display_errors');
 ini_set('display_errors', '0');
 
 $prefix = $GLOBALS['db_prefix'] ?? '';
 $days = max(1, min(365, (int) ($_GET['days'] ?? 7)));
+
+// Follow-up to Phase 150 (GH #135) — this endpoint had no org-scoping or
+// security-label redaction anywhere in the file (auth.php's session check
+// was the only gate), so any authenticated user could see free-text notes
+// and activity for every ticket across every org, including tickets tagged
+// Restricted/Confidential. Fixed here for the base log query and all three
+// note merges, following the precedents that already exist elsewhere in
+// this project rather than inventing a new mechanism:
+//   - org visibility: org_ticket_query_filter() (inc/org-scope.php, built
+//     for exactly this — ticket-bearing rows) for ticket-scoped reads;
+//     org_query_filter() (the generic column form) for responder/facility
+//     notes, which aren't ticket-scoped.
+//   - security-label redaction: seclabel_resolve() + routing_allow_broadcast,
+//     the exact per-row gate api/feed.php already uses (Phase 138) to drop a
+//     Restricted/Confidential incident from a feed entirely.
+// responder.org_id / facilities.org_id are LAZILY added columns (Phase
+// 99j-6 — not in the base schema, added by ensure_org_id_column() on first
+// write) — same schema-resilience discipline as everywhere else in this
+// codebase: check existence first, degrade to unscoped (today's behavior)
+// on an install that hasn't written either table since that column existed,
+// rather than fail closed and silently hide every note.
+function _log_column_exists(string $table, string $column): bool {
+    try {
+        return (bool) db_fetch_value(
+            "SELECT 1 FROM information_schema.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1",
+            [$table, $column]
+        );
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+// Per-request memoization — several log rows commonly share the same
+// ticket_id (a busy incident generates many entries), and seclabel_resolve()
+// runs its own queries against `ticket`/`in_types` each time it's called;
+// without this a 1000-row feed could re-resolve the same handful of
+// tickets' labels hundreds of times.
+$secLabelCache = [];
+function _log_seclabel_allows_broadcast(int $ticketId, array &$cache): bool {
+    if ($ticketId <= 0) return true; // not ticket-scoped, nothing to redact
+    if (!array_key_exists($ticketId, $cache)) {
+        try {
+            $sec = seclabel_resolve($ticketId);
+            $cache[$ticketId] = (int) ($sec['routing_allow_broadcast'] ?? 1) !== 0;
+        } catch (Throwable $e) {
+            $cache[$ticketId] = true; // fail open on a resolver error — matches feed.php's own default (routing_allow_broadcast ?? 1)
+        }
+    }
+    return $cache[$ticketId];
+}
 
 // ── Code type descriptions (matching legacy LOG_* constants) ──
 $code_types = [
@@ -59,6 +112,16 @@ $code_types = [
 ];
 
 // ── Fetch log entries with user + responder + ticket joins ──
+// Org-scoping: applies ONLY to rows that actually reference a ticket
+// (`t`.`id` IS NULL for sign-in/out and every other non-incident log code,
+// since ticket_id is 0/absent for those — nothing to scope). Super Admin
+// (org_ticket_query_filter() returns an empty fragment) sees everything,
+// same as before this fix.
+[$orgFrag, $orgVars] = org_ticket_query_filter(null, 't');
+$orgWhere = $orgFrag !== ''
+    ? ' AND (`t`.`id` IS NULL OR (1=1' . $orgFrag . '))'
+    : '';
+
 $sql = "SELECT
     `l`.*,
     `u`.`user`    AS `user_name`,
@@ -72,11 +135,12 @@ LEFT JOIN `{$prefix}responder` `r` ON `l`.`responder_id` = `r`.`id`
 LEFT JOIN `{$prefix}ticket` `t` ON `l`.`ticket_id` = `t`.`id`
 WHERE `l`.`code` NOT IN (90, 127, 5000)
   AND `l`.`when` >= CURRENT_DATE - INTERVAL ? DAY
+  {$orgWhere}
 ORDER BY `l`.`id` DESC
 LIMIT 1000";
 
 try {
-    $rows = db_fetch_all($sql, [$days]);
+    $rows = db_fetch_all($sql, array_merge([$days], $orgVars));
 } catch (Exception $e) {
     // Fallback without joins if table schema differs
     try {
@@ -91,11 +155,27 @@ try {
         ini_set('display_errors', $prevDisplay);
         json_error('Database error: ' . $e2->getMessage(), 500);
     }
+    // NOTE: this fallback path (schema drift severe enough that the joined
+    // query itself fails) has no `t` join at all, so org-scoping cannot be
+    // applied to it here — same residual limitation the fallback already
+    // had for ticket_scope/incident_number before this fix. Expected to be
+    // effectively unreachable on a current schema; not worth restructuring
+    // for a compatibility path this narrow.
 }
 
 $entries = [];
 foreach ($rows as $row) {
     $code = (int) ($row['code'] ?? 0);
+    $ticketIdForRow = (int) ($row['ticket_id'] ?? 0);
+
+    // Security-label gate — same rule api/feed.php already applies (Phase
+    // 138): a ticket whose resolved label sets routing_allow_broadcast = 0
+    // (Restricted / Confidential) is dropped entirely, no count/hint that
+    // anything was withheld.
+    if (!_log_seclabel_allows_broadcast($ticketIdForRow, $secLabelCache)) {
+        continue;
+    }
+
     $code_type = $code_types[$code] ?? "Code {$code}";
     $user_name = $row['user_name'] ?? '';
 
@@ -133,7 +213,17 @@ foreach ($rows as $row) {
 // renderer), so it is not an XSS vector here.
 
 // Unit notes (responder_notes). Soft-deleted rows (deleted_at) are excluded.
+// Org-scoped on r.org_id (the RESPONDER's org, not a ticket -- this note
+// isn't incident-scoped) via the generic org_query_filter(), guarded by a
+// column-existence check since responder.org_id is lazily added (Phase
+// 99j-6) and degrades to today's unscoped behavior when absent, rather
+// than fail closed and hide every note on an install that hasn't written
+// that column yet.
 try {
+    $unitOrgFrag = ''; $unitOrgVars = [];
+    if (_log_column_exists($prefix . 'responder', 'org_id')) {
+        [$unitOrgFrag, $unitOrgVars] = org_query_filter('r.org_id');
+    }
     $unitNotes = db_fetch_all(
         "SELECT `n`.`note`, `n`.`by_username`, `n`.`created_at`, `n`.`responder_id`,
                 `r`.`handle`, `r`.`name`
@@ -141,9 +231,10 @@ try {
            LEFT JOIN `{$prefix}responder` `r` ON `n`.`responder_id` = `r`.`id`
           WHERE `n`.`deleted_at` IS NULL
             AND `n`.`created_at` >= CURRENT_DATE - INTERVAL ? DAY
+            {$unitOrgFrag}
           ORDER BY `n`.`created_at` DESC
           LIMIT 500",
-        [$days]
+        array_merge([$days], $unitOrgVars)
     );
     foreach ($unitNotes as $n) {
         $unit = $n['handle'] ?: ($n['name'] ?: ('unit #' . (int) $n['responder_id']));
@@ -166,16 +257,23 @@ try {
 }
 
 // Facility notes (facility_notes). No soft-delete column on this table.
+// Org-scoped on f.org_id (the FACILITY's org, not a ticket), same
+// guarded-degrade discipline as the unit-notes block above.
 try {
+    $facOrgFrag = ''; $facOrgVars = [];
+    if (_log_column_exists($prefix . 'facilities', 'org_id')) {
+        [$facOrgFrag, $facOrgVars] = org_query_filter('f.org_id');
+    }
     $facNotes = db_fetch_all(
         "SELECT `n`.`note`, `n`.`username`, `n`.`created_at`, `n`.`facility_id`,
                 `f`.`name` AS `facility_name`
            FROM `{$prefix}facility_notes` `n`
            LEFT JOIN `{$prefix}facilities` `f` ON `n`.`facility_id` = `f`.`id`
           WHERE `n`.`created_at` >= CURRENT_DATE - INTERVAL ? DAY
+            {$facOrgFrag}
           ORDER BY `n`.`created_at` DESC
           LIMIT 500",
-        [$days]
+        array_merge([$days], $facOrgVars)
     );
     foreach ($facNotes as $n) {
         $fac = $n['facility_name'] ?: ('facility #' . (int) $n['facility_id']);
@@ -203,19 +301,19 @@ try {
 // `log` table's own rows above already surface; merging every action_type
 // would double-list the same underlying event under two different labels.
 //
-// Phase 150 (GH #135) security note, deliberately not fixed here: this
-// endpoint has no org-scoping or security-label redaction anywhere in the
-// file (verified — auth.php is the only gate). This merge inherits that
-// same lack of protection, matching the two merges above rather than
-// fixing or worsening it further. Tracked as a separate follow-up task.
+// Org-scoped on t.org_id (SQL-level, `t` is already joined) plus the same
+// per-row security-label gate the base log query uses above — this merge
+// is ticket-scoped, unlike the two note merges above it. Follow-up to
+// Phase 150 (GH #135), which shipped this merge without either.
 //
 // No deleted_at exclusion on the `ticket` join, deliberately (see
-// tools/soft_delete_audit_exceptions.txt's api/log.php:212 entry) — this
+// tools/soft_delete_audit_exceptions.txt's api/log.php entry) — this
 // is an audit/history feed, same as the base `log` query above (line 62's
 // exception): a note recorded before an incident was later soft-deleted is
 // still part of that incident's history and should keep resolving its
 // scope/case-number, not blank out.
 try {
+    [$incOrgFrag, $incOrgVars] = org_ticket_query_filter(null, 't');
     $incNotes = db_fetch_all(
         "SELECT `a`.`date` AS `created_at`, `a`.`description`, `a`.`ticket_id`,
                 `u`.`user` AS `by_username`, `t`.`incident_number`, `t`.`scope`
@@ -224,11 +322,15 @@ try {
            LEFT JOIN `{$prefix}ticket` `t` ON `a`.`ticket_id` = `t`.`id`
           WHERE `a`.`action_type` = 0
             AND `a`.`date` >= CURRENT_DATE - INTERVAL ? DAY
+            {$incOrgFrag}
           ORDER BY `a`.`date` DESC
           LIMIT 500",
-        [$days]
+        array_merge([$days], $incOrgVars)
     );
     foreach ($incNotes as $n) {
+        if (!_log_seclabel_allows_broadcast((int) $n['ticket_id'], $secLabelCache)) {
+            continue;
+        }
         $incNum = (isset($n['incident_number']) && trim((string) $n['incident_number']) !== '')
             ? trim((string) $n['incident_number']) : ('#' . (int) $n['ticket_id']);
         $entries[] = [

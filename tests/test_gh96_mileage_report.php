@@ -64,8 +64,20 @@ function gh96mr_rows_for_vehicle(array $payload, string $vehicleLabel): array {
     return $out;
 }
 
+// Found 2026-09-03 (org/security-label scoping follow-up to Phase 150):
+// $ticketId was captured BY VALUE here, at its line-43 placeholder value
+// (900019831) -- the real fixture ticket below (line ~130) is inserted
+// WITHOUT an explicit id and only gets its real auto-increment id via
+// db_insert_id() AFTERWARD, so this closure's own $ticketId never saw it.
+// Every run's cleanup therefore deleted a ticket id that was never
+// created, leaking the REAL one forever -- confirmed live: 145 leaked
+// "GH96 mileage report fixture incident" tickets accumulated from
+// 2026-08-21 through today across many test runs, none ever removed.
+// Fixed the same way tests/test_facility_responder_org_id_write.php's own
+// identical bug was fixed (CLAUDE.md's own documented precedent): capture
+// by REFERENCE so the closure sees the id as it actually ends up.
 $cleanup = function () use ($prefix, $orgAId, $orgBId, $vehicleAId, $vehicleBId,
-    $driverAId, $driverBId, $noPermUserId, $scopedUserId, $ticketId, &$mlIds) {
+    $driverAId, $driverBId, $noPermUserId, $scopedUserId, &$ticketId, &$mlIds) {
     try {
         if (!empty($mlIds)) {
             $ph = implode(',', array_fill(0, count($mlIds), '?'));

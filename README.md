@@ -123,7 +123,7 @@ hardening steps the Quick start above only sketches.
 | `proxy/` | Zello WebSocket proxy. Linux deploy notes in `proxy/INSTALL-LINUX.md` plus a hardened systemd unit example. |
 | `services/meshtastic/` | Python bridge for Meshtastic mesh-radio messaging. |
 | `tools/` | Operator scripts: `install_fresh.php`, `import-fcc.php` (ULS dump importer), `test_all.php` (test runner), `security_audit_inventory.php`, etc. |
-| `tests/` | ~4,500 self-tests across ~200 files (`tests/` plus `tools/test_*.php`; `tools/test_all.php` runs both). Mix of unit + integration; a full run takes about five minutes on a workstation. Six files need a running web server — skip those with `NEWUI_TEST_NO_HTTP=1`. |
+| `tests/` | 13,000+ self-tests across 500+ files (`tests/` plus `tools/test_*.php`; `tools/test_all.php` runs both). Mix of unit + integration; a full run takes several minutes on a workstation. A handful of files need a running web server — skip those with `NEWUI_TEST_NO_HTTP=1`. |
 | `sql/` | `base_schema.sql` (~110 tables, auto-imported by `tools/install_fresh.php`) plus per-feature migration scripts. |
 | `docs/` | Operator + admin guides. Start with [`INSTALLATION-CHECKLIST.md`](docs/INSTALLATION-CHECKLIST.md) for production installs; [`INSTALL.md`](docs/INSTALL.md) is a leaner walkthrough. |
 
