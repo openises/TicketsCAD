@@ -826,6 +826,12 @@ $canCreateMajorEvent = function_exists('rbac_can') ? rbac_can('action.create_maj
                             </div>
                         </div>
 
+                        <!-- Phase 151 (GH#138) — primary/responsible unit banner.
+                             Hidden entirely when primary_unit_mode is 'off' (the
+                             default on every install, fresh or upgraded) — see
+                             renderPrimaryUnitBanner() in assets/js/incident-detail.js. -->
+                        <div id="primaryUnitBanner" class="px-2 pt-2 d-none"></div>
+
                         <div id="assignmentsList">
                             <div class="text-center text-body-secondary py-3 small">Loading...</div>
                         </div>

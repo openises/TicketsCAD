@@ -137,6 +137,10 @@ INSERT IGNORE INTO `permissions` (`code`, `name`, `category`, `description`) VAL
     ('action.delete_incident', 'Delete Incident',      'action', 'Permanently delete incidents'),
     ('action.assign_unit',     'Assign Unit',          'action', 'Assign/unassign responders to incidents'),
     ('action.add_note',        'Add Notes',            'action', 'Add activity notes to incidents'),
+    -- Phase 151 (GH#138) — tier 0 (unrestricted), deliberately not added to
+    -- either exclusion list below: an install that wants this restricted to
+    -- supervisors can revoke it from Dispatcher in the Roles & Permissions UI.
+    ('action.set_primary_unit', 'Set Primary Unit',    'action', 'Designate (or clear) the primary/responsible unit on an incident'),
     ('action.link_major',      'Link Major Incident',  'action', 'Link incidents to major incidents'),
     ('action.create_major_event', 'Create/Escalate Major Event', 'action', 'Create a new major event or escalate an incident into one'),
     ('action.manage_major_event_command', 'Manage Major Event Command', 'action', 'Add/remove unified-command members and close major events'),

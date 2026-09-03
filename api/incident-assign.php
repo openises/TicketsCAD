@@ -23,6 +23,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/audit.php';
 require_once __DIR__ . '/../inc/assignment-write.php';
+require_once __DIR__ . '/../inc/incident-write.php';
 
 $prevDisplay = ini_get('display_errors');
 ini_set('display_errors', '0');
@@ -471,8 +472,64 @@ elseif ($action === 'set_rec_facility') {
     ]);
 }
 
+// ══════════════════════════════════════════════════════════════
+// ACTION: set_primary  (Phase 151, GH#138 — primary/responsible unit)
+// { ticket_id, responder_id }  (responder_id 0/absent clears it)
+// Requires action.set_primary_unit IN ADDITION to this file's base
+// action.assign_unit gate above — a role could hold one without the
+// other on a customized install (plan.md §3). incident_set_primary_internal()
+// itself no-ops when primary_unit_mode is 'off', so this action is safe
+// to leave reachable regardless of the setting.
+// ══════════════════════════════════════════════════════════════
+elseif ($action === 'set_primary') {
+    if (!rbac_can('action.set_primary_unit')) {
+        ini_set('display_errors', $prevDisplay);
+        json_error('Insufficient permissions: set primary unit', 403);
+    }
+
+    $responder_id = (int) ($input['responder_id'] ?? 0);
+    $result = incident_set_primary_internal($ticket_id, $responder_id > 0 ? $responder_id : null,
+        (int) $current_user_id, 'manual');
+
+    if (($result['noop_reason'] ?? '') === 'mode_off') {
+        ini_set('display_errors', $prevDisplay);
+        json_error('Primary unit tracking is not enabled on this install', 409);
+    }
+    if (!empty($result['errors'])) {
+        ini_set('display_errors', $prevDisplay);
+        json_error(implode(' ', $result['errors']));
+    }
+
+    $newId = $result['primary_responder_id'] ?? null;
+    $newName = '';
+    if ($newId) {
+        try {
+            $newName = (string) db_fetch_value(
+                "SELECT COALESCE(`handle`, `name`) FROM `{$prefix}responder` WHERE `id` = ?", [$newId]);
+        } catch (Exception $e) { /* non-fatal */ }
+    }
+
+    try {
+        require_once __DIR__ . '/../inc/sse.php';
+        sse_publish_for_incident('incident:primary_changed',
+            ['ticket_id' => $ticket_id, 'primary_responder_id' => $newId, 'primary_responder_name' => $newName],
+            $ticket_id);
+    } catch (Throwable $e) { /* non-fatal */ }
+
+    ini_set('display_errors', $prevDisplay);
+    json_response([
+        'success'               => true,
+        'ticket_id'             => $ticket_id,
+        'primary_responder_id'  => $newId,
+        'primary_responder_name'=> $newName,
+        'message'               => $newId
+            ? 'Primary unit set to ' . $newName
+            : 'Primary unit cleared',
+    ]);
+}
+
 // ── Unknown action ──
 else {
     ini_set('display_errors', $prevDisplay);
-    json_error('Unknown action: ' . $action . '. Valid actions: assign, update_status, unassign, set_rec_facility');
+    json_error('Unknown action: ' . $action . '. Valid actions: assign, update_status, unassign, set_rec_facility, set_primary');
 }

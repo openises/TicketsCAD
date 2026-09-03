@@ -2189,6 +2189,20 @@
         }
         var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
         modal.show();
+        if (mode === 'note') {
+            // Bootstrap's own focus trap lands focus on the modal <div> itself
+            // once shown, not on our textarea — which meant keyboard-nav.js's
+            // hotkey guard (which only stands down when e.target is actually an
+            // INPUT/TEXTAREA/SELECT) never got a chance to apply, and typing
+            // e/x/d while this modal was open fired the dashboard widget's own
+            // hotkeys instead. Must focus AFTER 'shown.bs.modal', not before —
+            // focusing earlier gets stolen back by the trap.
+            modalEl.addEventListener('shown.bs.modal', function _focusNoteText() {
+                modalEl.removeEventListener('shown.bs.modal', _focusNoteText);
+                var ta = document.getElementById('respNoteText');
+                if (ta) ta.focus();
+            });
+        }
     }
 
     function _renderNoteModalBody(resp, bodyEl) {
@@ -2280,6 +2294,73 @@
                 })
                 .catch(function () { alert('Network error adding note'); });
             });
+        });
+    }
+
+    // Phase 150 (GH #135) — quick incident-note capture. Reuses the
+    // Responder/Facility widgets' shared #responderActionModal shell:
+    // it's a generic title+body+submit shell with nothing responder-
+    // specific baked into its markup, so a second widget can reuse it
+    // directly instead of adding a new modal element.
+    function _openIncidentNoteModal(ticketId) {
+        var modalEl = document.getElementById('responderActionModal');
+        var titleEl = document.getElementById('responderActionModalTitle');
+        var bodyEl = document.getElementById('responderActionModalBody');
+        if (!modalEl || !bodyEl || !titleEl) return;
+        var row = document.querySelector('tr[data-id="' + ticketId + '"]');
+        var caseNum = (row && row.getAttribute('data-case-num')) || ('#' + ticketId);
+        titleEl.textContent = 'Note — ' + caseNum;
+        // No incident picker (the selected incident IS the target) and no
+        // unit-authored prefill (the dispatcher is the author, recorded via
+        // user_id server-side) — the whole reason this modal is simpler than
+        // the Responder one, which must pick a target incident and prefill
+        // "From <unit>:".
+        bodyEl.innerHTML = '<label class="form-label form-label-sm">Note text</label>'
+            + '<textarea id="incNoteText" class="form-control form-control-sm mb-3" rows="3" '
+            + 'placeholder="Type the note... (Ctrl+Enter to save)"></textarea>'
+            + '<button class="btn btn-sm btn-success" id="incNoteSaveBtn">'
+            + '<i class="bi bi-check2 me-1"></i>Save note</button>';
+
+        function submit() {
+            var txt = (bodyEl.querySelector('#incNoteText').value || '').trim();
+            if (!txt) { alert('Note text is required.'); return; }
+            fetch('api/incident-update.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'add_note',
+                    ticket_id: ticketId,
+                    note: txt,
+                    csrf_token: _csrf()
+                })
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.error) { alert(data.error); return; }
+                // #86 — the server's message already references the case number.
+                showBriefToast(data.message || ('Note added to incident ' + caseNum));
+                bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+            })
+            .catch(function () { alert('Network error adding note'); });
+        }
+        bodyEl.querySelector('#incNoteSaveBtn').addEventListener('click', submit);
+
+        var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+        // Same focus-after-shown fix as _openResponderModal's note mode —
+        // see that function's comment for why the timing matters.
+        modalEl.addEventListener('shown.bs.modal', function _focusIncNoteText() {
+            modalEl.removeEventListener('shown.bs.modal', _focusIncNoteText);
+            var ta = document.getElementById('incNoteText');
+            if (ta) {
+                ta.focus();
+                ta.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                        e.preventDefault();
+                        submit();
+                    }
+                });
+            }
         });
     }
 
@@ -2854,6 +2935,9 @@
             case 'popup':
                 window.open('incident-detail.php?id=' + id, 'incident_' + id,
                     'width=900,height=700,scrollbars=yes,resizable=yes');
+                break;
+            case 'note':
+                _openIncidentNoteModal(id);
                 break;
             case 'close':
                 // #86 — reference the incident by its case number (e.g. 2026-0045),

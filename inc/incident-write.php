@@ -933,6 +933,126 @@ function incident_set_disposition_internal(int $ticketId, ?int $dispositionId, i
 }
 
 /**
+ * Phase 151 (GH#138) — set (or clear) an incident's designated primary /
+ * responsible unit. Ticket-level (`ticket.primary_responder_id`), not
+ * assigns-level — see specs/phase-151-primary-responsible-unit/spec.md's
+ * "architectural question the design review resolved" for why: an
+ * assigns-level flag would vanish from api/incident-detail.php the moment
+ * that unit clears (that endpoint filters to `clear IS NULL`), which
+ * directly contradicts this feature's own requirement that the
+ * designation persist through a routine clear.
+ *
+ * $responderId === null clears the designation outright (used when the
+ * primary unit is unassigned from the incident entirely — not a normal
+ * clear, see assign_unassign_internal()).
+ *
+ * $reason is caller-supplied: 'manual' (a human via the UI or External
+ * API), 'auto_single_unit' (assign_create_internal()'s auto-population),
+ * or 'unassigned' (assign_unassign_internal()'s clear-if-was-primary hook).
+ *
+ * off-mode no-op: this is the ONE function every write path calls, so the
+ * primary_unit_mode check lives here, not duplicated at each call site —
+ * see spec.md's success criteria (off must be byte-identical to before
+ * this feature existed: no write, no audit, no webhook).
+ */
+function incident_set_primary_internal(int $ticketId, ?int $responderId, int $userId, string $reason,
+    bool $viaExternalApi = false): array {
+    if ($ticketId <= 0) {
+        return ['updated' => false, 'primary_responder_id' => null, 'errors' => ['invalid ticket_id']];
+    }
+    $prefix = $GLOBALS['db_prefix'] ?? '';
+
+    $mode = get_variable('primary_unit_mode');
+    if ($mode === 'off' || $mode === false) {
+        // false: setting absent entirely (pre-migration install) — same as off.
+        return ['updated' => false, 'primary_responder_id' => null, 'errors' => [], 'noop_reason' => 'mode_off'];
+    }
+
+    $newId = ($responderId !== null && $responderId > 0) ? $responderId : null;
+
+    if ($newId !== null) {
+        // The candidate must have at least one assigns row on this ticket —
+        // active OR cleared. A unit that already cleared can still be
+        // retroactively marked primary (e.g. correcting a mistake after the
+        // fact), matching the feature's own "persists through clear" rule.
+        try {
+            $hasAssign = db_fetch_value(
+                "SELECT 1 FROM `{$prefix}assigns` WHERE `ticket_id` = ? AND `responder_id` = ? LIMIT 1",
+                [$ticketId, $newId]
+            );
+        } catch (Exception $e) {
+            return ['updated' => false, 'primary_responder_id' => null,
+                    'errors' => ['assignment lookup failed: ' . $e->getMessage()]];
+        }
+        if (!$hasAssign) {
+            return ['updated' => false, 'primary_responder_id' => null,
+                    'errors' => ['That unit has no assignment on this incident.']];
+        }
+    }
+
+    // Prior value + name, for the audit/webhook payload. Best-effort.
+    $oldId = null;
+    $oldName = null;
+    try {
+        $existing = db_fetch_value(
+            "SELECT `primary_responder_id` FROM `{$prefix}ticket` WHERE `id` = ?", [$ticketId]);
+        $oldId = ($existing !== null && $existing !== false && (int) $existing > 0) ? (int) $existing : null;
+        if ($oldId !== null) {
+            $oldName = db_fetch_value(
+                "SELECT COALESCE(`handle`, `name`) FROM `{$prefix}responder` WHERE `id` = ?", [$oldId]);
+        }
+    } catch (Exception $e) { /* non-fatal */ }
+
+    $newName = null;
+    if ($newId !== null) {
+        try {
+            $newName = db_fetch_value(
+                "SELECT COALESCE(`handle`, `name`) FROM `{$prefix}responder` WHERE `id` = ?", [$newId]);
+        } catch (Exception $e) { /* non-fatal */ }
+    }
+
+    try {
+        db_query(
+            "UPDATE `{$prefix}ticket`
+                SET `primary_responder_id` = ?, `primary_set_at` = ?, `primary_set_by` = ?, `updated` = ?
+              WHERE `id` = ?",
+            [$newId, date('Y-m-d H:i:s'), $userId, date('Y-m-d H:i:s'), $ticketId]
+        );
+    } catch (Exception $e) {
+        return ['updated' => false, 'primary_responder_id' => null,
+                'errors' => ['primary-unit write failed: ' . $e->getMessage()]];
+    }
+
+    // Audit EVERY successful write, including a no-op re-set of the same
+    // value — matching incident_set_disposition_internal()'s own convention.
+    if (!function_exists('audit_log') && is_file(__DIR__ . '/audit.php')) {
+        require_once __DIR__ . '/audit.php';
+    }
+    if (function_exists('audit_log')) {
+        try {
+            audit_log('incident', 'primary_change', 'ticket', $ticketId,
+                $newId !== null
+                    ? "Primary unit set on incident #{$ticketId}"
+                    : "Primary unit cleared on incident #{$ticketId}",
+                [
+                    'previous_responder_id'   => $oldId,
+                    'previous_responder_name' => $oldName,
+                    'new_responder_id'        => $newId,
+                    'new_responder_name'      => $newName,
+                    'reason'                  => $reason,
+                    'set_by'                  => $userId,
+                    'via_external_api'        => $viaExternalApi,
+                ]);
+        } catch (Throwable $e) {
+            error_log('[incident-write] audit_log failed for primary-unit change on ticket '
+                . $ticketId . ': ' . $e->getMessage());
+        }
+    }
+
+    return ['updated' => true, 'primary_responder_id' => $newId, 'errors' => []];
+}
+
+/**
  * Change an incident's status — handles the three legal transitions
  * (1=Closed, 2=Open, 3=Scheduled) with all the side-effects
  * api/incident-update.php's update_status branch used to do inline:

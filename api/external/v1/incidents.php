@@ -68,14 +68,35 @@ if ($method === 'GET') {
             // Deleted rows now 404, which is the same answer the
             // org-scope check below already gives for a row the token
             // may not see, and matches what the UI shows.
-            $row = db_fetch_one(
-                "SELECT t.*, it.type AS in_type_name
-                 FROM `{$prefix}ticket` t
-                 LEFT JOIN `{$prefix}in_types` it ON it.id = t.in_types_id
-                 WHERE t.id = ?
-                   AND (t.deleted_at IS NULL OR t.deleted_at = '0000-00-00 00:00:00')",
-                [$id]
-            );
+            // Phase 151 (GH#138) — primary_responder_name joined for
+            // convenience; primary_responder_id/primary_set_at/
+            // primary_set_by already flow through t.* with no code change.
+            // Schema-resilience: t.primary_responder_id doesn't exist until
+            // sql/run_phase151_primary_unit.php has run, so a hard reference
+            // to it in the JOIN (unlike t.* itself, which degrades silently)
+            // would break this entire endpoint on a not-yet-migrated
+            // install. Falls back to the pre-Phase-151 query on failure.
+            try {
+                $row = db_fetch_one(
+                    "SELECT t.*, it.type AS in_type_name,
+                            COALESCE(pr.handle, pr.name) AS primary_responder_name
+                     FROM `{$prefix}ticket` t
+                     LEFT JOIN `{$prefix}in_types` it ON it.id = t.in_types_id
+                     LEFT JOIN `{$prefix}responder` pr ON pr.id = t.primary_responder_id
+                     WHERE t.id = ?
+                       AND (t.deleted_at IS NULL OR t.deleted_at = '0000-00-00 00:00:00')",
+                    [$id]
+                );
+            } catch (Exception $e) {
+                $row = db_fetch_one(
+                    "SELECT t.*, it.type AS in_type_name
+                     FROM `{$prefix}ticket` t
+                     LEFT JOIN `{$prefix}in_types` it ON it.id = t.in_types_id
+                     WHERE t.id = ?
+                       AND (t.deleted_at IS NULL OR t.deleted_at = '0000-00-00 00:00:00')",
+                    [$id]
+                );
+            }
         } catch (Exception $e) {
             ext_api_db_error('db_query', $e);
         }
@@ -274,7 +295,19 @@ if ($method === 'PATCH') {
         ? $input['fields']
         : array_diff_key($input, array_flip(['id', 'fields']));
 
-    if (empty($fields)) {
+    // Phase 151 (GH#138) — primary_responder_id is a DEDICATED action, not
+    // part of the generic field-update whitelist (plan.md §8, matching the
+    // internal set_rec_facility precedent) -- pulled out of $fields here so
+    // it routes through incident_set_primary_internal() (same validation,
+    // audit, webhook, and off-mode no-op as the UI path) rather than
+    // silently riding along inside an unrelated PATCH. Composable with
+    // other fields in the same request: extracted first, remaining fields
+    // (if any) still go through the normal path below.
+    $primaryFieldPresent = array_key_exists('primary_responder_id', $fields);
+    $primaryRequestedId  = $primaryFieldPresent ? $fields['primary_responder_id'] : null;
+    unset($fields['primary_responder_id']);
+
+    if (empty($fields) && !$primaryFieldPresent) {
         ext_api_error('validation_failed', 422, ['errors' => ['no fields to update']]);
     }
 
@@ -306,36 +339,76 @@ if ($method === 'PATCH') {
     $userId = (int) ($_SESSION['user_id'] ?? 0);
     if ($userId <= 0) ext_api_error('auth_user_missing', 500);
 
-    try {
-        $result = incident_update_fields_internal($ticketId, $fields, $userId);
-    } catch (Exception $e) {
-        ext_api_db_error('db_query', $e);
-    }
-    if (!empty($result['errors'])) {
-        ext_api_error('validation_failed', 422, ['errors' => $result['errors']]);
-    }
+    $fieldsChanged = [];
 
-    audit_log('incident', 'update', 'ticket', $ticketId,
-        "External API updated incident #{$ticketId} (" . implode(', ', $result['fields_changed']) . ")",
-        [
-            'token_id'         => $GLOBALS['__ext_api_token_id'] ?? null,
-            'fields_changed'   => $result['fields_changed'],
-            'via_external_api' => true,
-        ]
-    );
-
-    try {
-        require_once __DIR__ . '/../../../inc/sse.php';
-        if (function_exists('sse_publish_for_incident')) {
-            sse_publish_for_incident('incident:update',
-                ['ticket_id' => $ticketId, 'fields_changed' => $result['fields_changed'], 'via' => 'external_api'],
-                $ticketId);
+    if (!empty($fields)) {
+        try {
+            $result = incident_update_fields_internal($ticketId, $fields, $userId);
+        } catch (Exception $e) {
+            ext_api_db_error('db_query', $e);
         }
-    } catch (Exception $e) { /* SSE non-fatal */ }
+        if (!empty($result['errors'])) {
+            ext_api_error('validation_failed', 422, ['errors' => $result['errors']]);
+        }
+        $fieldsChanged = $result['fields_changed'];
+
+        audit_log('incident', 'update', 'ticket', $ticketId,
+            "External API updated incident #{$ticketId} (" . implode(', ', $fieldsChanged) . ")",
+            [
+                'token_id'         => $GLOBALS['__ext_api_token_id'] ?? null,
+                'fields_changed'   => $fieldsChanged,
+                'via_external_api' => true,
+            ]
+        );
+
+        try {
+            require_once __DIR__ . '/../../../inc/sse.php';
+            if (function_exists('sse_publish_for_incident')) {
+                sse_publish_for_incident('incident:update',
+                    ['ticket_id' => $ticketId, 'fields_changed' => $fieldsChanged, 'via' => 'external_api'],
+                    $ticketId);
+            }
+        } catch (Exception $e) { /* SSE non-fatal */ }
+    }
+
+    $primaryResult = null;
+    if ($primaryFieldPresent) {
+        if (!rbac_can('action.set_primary_unit')) {
+            ext_api_error('forbidden_rbac', 403, ['required' => 'action.set_primary_unit']);
+        }
+        $primaryRespId = (int) $primaryRequestedId;
+        $primaryResult = incident_set_primary_internal($ticketId, $primaryRespId > 0 ? $primaryRespId : null,
+            $userId, 'manual', true);
+        if (($primaryResult['noop_reason'] ?? '') === 'mode_off') {
+            ext_api_error('primary_unit_disabled', 409,
+                ['errors' => ['Primary unit tracking is not enabled on this install']]);
+        }
+        if (!empty($primaryResult['errors'])) {
+            ext_api_error('validation_failed', 422, ['errors' => $primaryResult['errors']]);
+        }
+        $fieldsChanged[] = 'primary_responder_id';
+
+        // audit_log() for the primary-unit change happens INSIDE
+        // incident_set_primary_internal() (matching incident_set_
+        // disposition_internal()'s own convention of auditing itself
+        // rather than leaving it to the caller) — the trailing `true`
+        // argument above is what makes that internal audit_log call's
+        // detail payload carry via_external_api=true, which is what a
+        // real webhook subscriber actually receives.
+        try {
+            require_once __DIR__ . '/../../../inc/sse.php';
+            if (function_exists('sse_publish_for_incident')) {
+                sse_publish_for_incident('incident:primary_changed',
+                    ['ticket_id' => $ticketId, 'primary_responder_id' => $primaryResult['primary_responder_id'],
+                     'via' => 'external_api'],
+                    $ticketId);
+            }
+        } catch (Exception $e) { /* SSE non-fatal */ }
+    }
 
     ext_api_response([
         'id'             => $ticketId,
-        'fields_changed' => $result['fields_changed'],
+        'fields_changed' => $fieldsChanged,
     ]);
 }
 

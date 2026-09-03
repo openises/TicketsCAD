@@ -386,6 +386,11 @@ function _audit_to_webhook_event(string $cat, string $act, ?string $target): ?st
         'incident|reopen|ticket'        => 'incident.reopened',
         // Action notes (the incident activity log)
         'incident|note_add|action'      => 'incident.note_added',
+        // Phase 151 (GH#138) — primary/responsible unit designation changed
+        // (manual, or auto-populated when primary_unit_mode = auto). No-op
+        // itself when primary_unit_mode = off (incident_set_primary_internal()
+        // never writes/audits in that mode, so this event never fires either).
+        'incident|primary_change|ticket' => 'incident.primary_changed',
         // Assignments
         'incident|assign|assigns'       => 'assign.created',
         'incident|unassign|assigns'     => 'assign.removed',

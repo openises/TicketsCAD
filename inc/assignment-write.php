@@ -435,6 +435,33 @@ function assign_create_internal(int $ticketId, int $responderId, string $role, i
         auto_close_maybe_cancel($ticketId, $userId);
     } catch (Throwable $e) { error_log('[assignment-write] auto_close_cancel: ' . $e->getMessage()); }
 
+    // Phase 151 (GH#138) — auto-populate the primary/responsible unit when
+    // mode=auto and this assignment makes the incident's active-unit count
+    // exactly one (never re-evaluated after that — a SECOND unit being
+    // added does not retroactively change anything, per spec.md). No-ops
+    // itself under any other mode (incident_set_primary_internal() checks
+    // primary_unit_mode), so this call is safe on every install regardless
+    // of whether the feature is enabled.
+    try {
+        require_once __DIR__ . '/incident-write.php';
+        if (get_variable('primary_unit_mode') === 'auto') {
+            $stillNoPrimary = !db_fetch_value(
+                "SELECT 1 FROM `{$prefix}ticket` WHERE `id` = ? AND `primary_responder_id` IS NOT NULL",
+                [$ticketId]
+            );
+            $activeCount = (int) db_fetch_value(
+                "SELECT COUNT(*) FROM `{$prefix}assigns`
+                  WHERE `ticket_id` = ? AND (`clear` IS NULL OR DATE_FORMAT(`clear`,'%y') = '00')",
+                [$ticketId]
+            );
+            if ($stillNoPrimary && $activeCount === 1) {
+                incident_set_primary_internal($ticketId, $responderId, $userId, 'auto_single_unit');
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[assignment-write] auto primary-unit population: ' . $e->getMessage());
+    }
+
     return [
         'id'     => $assignId,
         'errors' => [],
@@ -863,6 +890,26 @@ function assign_unassign_internal(int $assignId, int $userId): array {
         auto_close_maybe_schedule($ticketId, $userId);
     } catch (Throwable $e) {
         error_log('[assignment-write] auto_close_schedule (unassign): ' . $e->getMessage());
+    }
+
+    // Phase 151 (GH#138) — an outright unassign (this function; "added in
+    // error" removal) clears the primary designation if this unit held it.
+    // Deliberately NOT mirrored in assign_update_status_internal()'s normal
+    // 'clear' branch — the feature's own rule is that the designation
+    // persists through a routine clear, and only clears when the unit is
+    // removed from the incident entirely (see spec.md). Self-no-ops under
+    // any mode other than the responder actually being the current primary.
+    try {
+        require_once __DIR__ . '/incident-write.php';
+        $isPrimary = db_fetch_value(
+            "SELECT 1 FROM `{$prefix}ticket` WHERE `id` = ? AND `primary_responder_id` = ?",
+            [$ticketId, $responderId]
+        );
+        if ($isPrimary) {
+            incident_set_primary_internal($ticketId, null, $userId, 'unassigned');
+        }
+    } catch (Throwable $e) {
+        error_log('[assignment-write] primary-unit clear-on-unassign: ' . $e->getMessage());
     }
 
     return [

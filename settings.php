@@ -1988,10 +1988,80 @@ foreach ($personnelSections as $sec) {
                     <span id="autoCloseStatus" class="align-self-center small text-success"></span>
                 </div>
             </form>
+
+            <!-- ── Primary / Responsible Unit — Phase 151 (GH#138) ── -->
+            <!-- A separate <form> from #autoCloseForm above (own save
+                 handler, own status line) -- this control needing its own
+                 submit lives in its own form, not nested inside a sibling
+                 one. -->
+            <form id="primaryUnitModeForm" class="mt-4 pt-3 border-top">
+                <div class="settings-group">
+                    <div class="settings-group-title">Primary / Responsible Unit</div>
+                    <p class="text-body-secondary small mb-2">
+                        Designate which unit is accountable for an incident's reporting.
+                        Off by default. "Manual" lets a dispatcher star a unit on the
+                        incident's Assign tab; "Automatic" additionally sets the primary
+                        unit by itself whenever an incident has exactly one assigned unit.
+                    </p>
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-4">
+                            <label for="primaryUnitModeSelect" class="form-label form-label-sm">Mode</label>
+                            <select class="form-select form-select-sm" id="primaryUnitModeSelect">
+                                <option value="off">Off</option>
+                                <option value="manual">Manual</option>
+                                <option value="auto">Automatic (single-unit incidents)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="d-flex gap-2 mt-3">
+                    <button type="submit" class="btn btn-sm btn-success">
+                        <i class="bi bi-check-lg me-1"></i>Save Primary Unit Setting
+                    </button>
+                    <span id="primaryUnitModeStatus" class="align-self-center small text-success"></span>
+                </div>
+            </form>
         </div>
         <script>
         (function () {
             'use strict';
+            var puForm = document.getElementById('primaryUnitModeForm');
+            if (puForm) {
+                fetch('api/config-admin.php?section=settings', { credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        var s = (data && data.settings) || {};
+                        document.getElementById('primaryUnitModeSelect').value = s.primary_unit_mode || 'off';
+                    })
+                    .catch(function () { /* leave default (Off) */ });
+                puForm.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    var mode = document.getElementById('primaryUnitModeSelect').value;
+                    var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+                    fetch('api/config-admin.php?section=settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ csrf_token: csrf, settings: { primary_unit_mode: mode } })
+                    })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        var status = document.getElementById('primaryUnitModeStatus');
+                        if (data && data.saved !== undefined) {
+                            status.textContent = 'Saved.';
+                            status.className = 'align-self-center small text-success';
+                        } else {
+                            status.textContent = 'Save failed: ' + ((data && data.error) || 'unknown');
+                            status.className = 'align-self-center small text-danger';
+                        }
+                        setTimeout(function () { status.textContent = ''; }, 4000);
+                    })
+                    .catch(function () {
+                        document.getElementById('primaryUnitModeStatus').textContent = 'Network error saving.';
+                        document.getElementById('primaryUnitModeStatus').className = 'align-self-center small text-danger';
+                    });
+                });
+            }
             var form = document.getElementById('autoCloseForm');
             if (!form) return;
             function pickUnit(secs) {
@@ -8076,6 +8146,7 @@ foreach ($personnelSections as $sec) {
                                 <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="assign.created" id="whEvt5"><label class="form-check-label small" for="whEvt5">assign.created</label></div></div>
                                 <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="assign.removed" id="whEvt6"><label class="form-check-label small" for="whEvt6">assign.removed</label></div></div>
                                 <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="incident.note_added" id="whEvt7"><label class="form-check-label small" for="whEvt7">incident.note_added</label></div></div>
+                                <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="incident.primary_changed" id="whEvt8"><label class="form-check-label small" for="whEvt8">incident.primary_changed</label></div></div>
                             </div>
                         </div>
                         <div class="d-flex gap-2 mt-3">

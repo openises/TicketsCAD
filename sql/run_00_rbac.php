@@ -202,6 +202,7 @@ $perms = [
     ['action.delete_incident', 'Delete Incident',      'action'],
     ['action.assign_unit',     'Assign Unit',          'action'],
     ['action.add_note',        'Add Notes',            'action'],
+    ['action.set_primary_unit', 'Set Primary Unit',    'action'],
     ['action.link_major',      'Link Major Incident',  'action'],
     ['action.create_major_event', 'Create/Escalate Major Event', 'action'],
     ['action.manage_major_event_command', 'Manage Major Event Command', 'action'],
@@ -609,6 +610,8 @@ try {
               WHERE (`category` IN ('screen', 'widget')
                  OR `code` IN ('action.create_incident', 'action.edit_incident', 'action.close_incident',
                                'action.assign_unit', 'action.add_note', 'action.set_own_zone',
+                               'action.set_primary_unit',  -- Phase 151 (GH#138): tier 0, granted to
+                                                            -- Dispatcher by default (plan.md §3)
                                'action.net_checkin', 'action.share_incident', 'action.revoke_incident_share',
                                'action.manage_org_relationships_org', 'action.activate_org_relationship',
                                -- Phase 149 (2026-08-22): action.manage_calls deliberately absent --

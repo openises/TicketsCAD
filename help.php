@@ -1541,6 +1541,7 @@ highlighted suggestion &middot; <kbd>Esc</kbd> closes the bar.</p>
         <tr><td><kbd>P</kbd></td><td>Pop out &mdash; open in new window.</td></tr>
         <tr><td><kbd>X</kbd></td><td>Close the incident (with confirmation).</td></tr>
         <tr><td><kbd>U</kbd></td><td>Units &mdash; open unit assignment panel.</td></tr>
+        <tr><td><kbd>N</kbd></td><td>Note &mdash; quickly add a note to the selected incident.</td></tr>
     </tbody>
 </table>
 

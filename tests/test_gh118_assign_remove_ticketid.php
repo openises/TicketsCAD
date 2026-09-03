@@ -252,7 +252,21 @@ global.getIncidentId = function () { return TICKET_ID; };
 global.getCsrfToken = function () { return 'CSRF-TOKEN-XYZ'; };
 global.showAlert = function (msg, type) { alerts.push({ msg: msg, type: type }); };
 global.confirm = function () { return true; }; // dispatcher clicked OK
+// Phase 151 (GH#138, 2026-09-03) fix, found while wiring the new primary-
+// unit star toggle through this exact handler pattern: loadAssignments()
+// was never a real function anywhere in incident-detail.js -- every
+// successful "Remove unit" click threw an uncaught ReferenceError right
+// after showing its success toast, silently skipping the re-render (and,
+// worse, that throw was caught by this SAME handler's own .catch(), which
+// then showed a confusing "Failed to remove unit." danger alert on top of
+// the success one -- see the retained loadAssignmentsCalls counter/global
+// below, kept so the OLD pre-fix fixture's own negative-control assertions
+// further down still exercise the exact historical bug shape). The real
+// fix now calls refreshIncident() -- the function every other mutation
+// handler in this file already calls for exactly this purpose.
 global.loadAssignments = function () { loadAssignmentsCalls++; };
+var refreshIncidentCalls = 0;
+global.refreshIncident = function () { refreshIncidentCalls++; };
 global.fetch = function (url, opts) {
     fetchCalls.push({ url: url, opts: opts });
     return fetchBehavior(url, opts);
@@ -261,7 +275,7 @@ global.fetch = function (url, opts) {
 (async function () {
     if (handlerFn) {
         // ── A. Success path: THE bug — ticketId must resolve, not throw ──
-        alerts.length = 0; fetchCalls.length = 0; loadAssignmentsCalls = 0;
+        alerts.length = 0; fetchCalls.length = 0; loadAssignmentsCalls = 0; refreshIncidentCalls = 0;
         var assignIdA = 9101;
         fetchBehavior = function () {
             return Promise.resolve({ json: function () { return Promise.resolve({ message: 'Unit removed.' }); } });
@@ -280,11 +294,11 @@ global.fetch = function (url, opts) {
         check('POST body carries a csrf token', bodyA.csrf_token === 'CSRF-TOKEN-XYZ');
         check('POST goes to api/incident-assign.php', fetchCalls.length === 1 && fetchCalls[0].url === 'api/incident-assign.php');
         check('success message surfaced', alerts.length === 1 && alerts[0].type === 'info', JSON.stringify(alerts));
-        check('loadAssignments() called to re-render the row list', loadAssignmentsCalls === 1);
+        check('refreshIncident() called to re-render the row list (Phase 151 fix -- loadAssignments() was never a real function)', refreshIncidentCalls === 1);
 
         // ── B. Server error response — button must re-enable (the original
         // handler never did this even on the success path) ──
-        alerts.length = 0; fetchCalls.length = 0; loadAssignmentsCalls = 0;
+        alerts.length = 0; fetchCalls.length = 0; loadAssignmentsCalls = 0; refreshIncidentCalls = 0;
         fetchBehavior = function () {
             return Promise.resolve({ json: function () { return Promise.resolve({ error: 'Assignment not found' }); } });
         };
@@ -293,10 +307,10 @@ global.fetch = function (url, opts) {
         await flush();
         check('server error: button re-enabled', btnB.disabled === false);
         check('server error: danger alert surfaced', alerts.length === 1 && alerts[0].type === 'danger', JSON.stringify(alerts));
-        check('server error: loadAssignments NOT called', loadAssignmentsCalls === 0);
+        check('server error: refreshIncident NOT called', refreshIncidentCalls === 0);
 
         // ── C. Network failure (.catch path — the original chain had NONE) ──
-        alerts.length = 0; fetchCalls.length = 0; loadAssignmentsCalls = 0;
+        alerts.length = 0; fetchCalls.length = 0; loadAssignmentsCalls = 0; refreshIncidentCalls = 0;
         fetchBehavior = function () { return Promise.reject(new Error('network down')); };
         var btnC = makeBtn(9103, 'GH118C');
         handlerFn.call(btnC);
@@ -340,7 +354,7 @@ global.fetch = function (url, opts) {
     try { oldFn = eval('(' + oldSrc + ')'); } catch (e) {}
     check('negative control fixture parses as a function', !!oldFn);
     if (oldFn) {
-        alerts.length = 0; fetchCalls.length = 0; loadAssignmentsCalls = 0;
+        alerts.length = 0; fetchCalls.length = 0; loadAssignmentsCalls = 0; refreshIncidentCalls = 0;
         fetchBehavior = function () {
             return Promise.resolve({ json: function () { return Promise.resolve({ message: 'ok' }); } });
         };
@@ -406,7 +420,11 @@ if ($anchorIdx !== false) {
     is_true($markerPos !== false, 'located the enclosing .assign-remove click handler in the shipped file');
 
     if ($markerPos !== false) {
-        $block = substr($jsSrc, $markerPos, 3000);
+        // Window widened 3000 -> 3500 (Phase 151, 2026-09-03): the fix
+        // comment explaining why refreshIncident() replaced the never-real
+        // loadAssignments() call pushed the handler's own .catch() block
+        // past the old 3000-char window.
+        $block = substr($jsSrc, $markerPos, 3500);
 
         is_true(strpos($block, 'var ticketId = getIncidentId();') !== false,
             'FIX: the .assign-remove handler resolves ticketId the same way every other handler in the file does');

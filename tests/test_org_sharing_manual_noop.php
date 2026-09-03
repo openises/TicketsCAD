@@ -195,8 +195,13 @@ if (!$gitAvailable) {
         // further below. This file's own job is unaffected: THIS phase
         // (142) never edited either function, and that remains true
         // regardless of what a LATER phase does to them.
+        // org_share_view_tier_field_allowlist is ALSO excluded as of Phase 151
+        // (2026-09-03, GH#138) -- that phase's own named, required edit adds
+        // the primary_responder_id/name/primary_set_at/primary_unit_mode
+        // entries; see the dedicated content-based check just below, same
+        // treatment as Phase 143's exclusions above.
         '_org_sharing_apply_precedence', 'org_sharing_resolve_shares_for_ticket',
-        'org_share_view_tier_field_allowlist', 'org_share_view_tier_assignment_allowlist',
+        'org_share_view_tier_assignment_allowlist',
         'org_share_redact_assignment_fields', 'org_share_redact_ticket_fields',
         'org_routing_rule_validate', 'org_routing_rule_create',
         'org_routing_rule_update', 'org_routing_rule_deactivate', 'org_routing_resolve_caller_org_id',
@@ -223,6 +228,20 @@ if (!$gitAvailable) {
             foreach ($mustContain as $needle) {
                 t("$fn() still contains its pre-Phase-143 logic / gained the Phase 143 relationship addition (needle: " . substr($needle, 0, 40) . ")", strpos($c, $needle) !== false);
             }
+        }
+    }
+
+    // Phase 151 (2026-09-03, GH#138) -- the ONE deliberate edit this later
+    // phase makes to org_share_view_tier_field_allowlist(): appends the
+    // primary/responsible-unit fields to the view-tier allowlist so a
+    // cross-org share doesn't silently drop them. Content-based check only:
+    // its Phase 142-era entries must still be present, plus the new ones.
+    $cAllowlist = _p142_extract_function($currentOrgSharing, 'org_share_view_tier_field_allowlist');
+    t('org_share_view_tier_field_allowlist() is present in the current tree', $cAllowlist !== null);
+    if ($cAllowlist !== null) {
+        foreach (["'unit_names'", "'primary_responder_id'", "'primary_responder_name'"] as $needle) {
+            t("org_share_view_tier_field_allowlist() still contains its pre-Phase-151 entries / gained the Phase 151 primary-unit entries (needle: $needle)",
+                strpos($cAllowlist, $needle) !== false);
         }
     }
 

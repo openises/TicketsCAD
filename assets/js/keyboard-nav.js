@@ -50,7 +50,8 @@
         'e': 'edit',
         'p': 'popup',
         'x': 'close',
-        'u': 'units'
+        'u': 'units',
+        'n': 'note'
     };
     // Phase 99n (Eric beta 2026-06-29): responder hotkeys. Same letter
     // overlap with incidents (V/E/D) is intentional — these only fire

@@ -1083,6 +1083,7 @@
                 renderAdditional(data.incident);
                 renderProtocol(data.incident);
                 renderAssignments(data.assignments);
+                renderPrimaryUnitBanner(data.incident, data.primary_candidates || []);
                 renderActions(data.actions);
                 // GH#121 — defensive ordering, matching GH#98/GH#118's
                 // fix for the same class of defect: a throw inside
@@ -1185,6 +1186,7 @@
                 if (data.error) return;
                 incidentData = data;
                 renderAssignments(data.assignments);
+                renderPrimaryUnitBanner(data.incident, data.primary_candidates || []);
                 renderActions(data.actions);
                 renderHeader(data.incident);
                 renderTimeStatus(data.incident);
@@ -2492,6 +2494,13 @@
         var badge = document.getElementById('assignedCount');
         var active = 0;
 
+        // Phase 151 (GH#138) — read once per render from the already-loaded
+        // incident payload rather than re-fetching; off by default so this
+        // is false on every install until an admin opts in.
+        var inc = (incidentData && incidentData.incident) || {};
+        var primaryUnitModeEnabled = inc.primary_unit_mode && inc.primary_unit_mode !== 'off';
+        var primaryUnitCurrentId = inc.primary_responder_id ? parseInt(inc.primary_responder_id, 10) : 0;
+
         // Clear previous timer interval
         if (sceneTimerInterval) {
             clearInterval(sceneTimerInterval);
@@ -2654,6 +2663,23 @@
 
             var unitLabel = escHtml(a.responder_handle || a.responder_name);
 
+            // Phase 151 (GH#138) — primary/responsible-unit star toggle.
+            // Active rows only (a cleared unit is changed via the "Primary:
+            // [change]" picker in the banner above, not this table) and
+            // only rendered at all when the feature is enabled — checked
+            // against incidentData.incident, set once per renderAssignments()
+            // call via the outer closure below.
+            var starHtml = '';
+            if (!isCleared && primaryUnitModeEnabled) {
+                var isPrimaryUnit = primaryUnitCurrentId && (parseInt(a.responder_id, 10) === primaryUnitCurrentId);
+                starHtml = '<button type="button" class="btn btn-sm btn-link p-0 ms-1 assign-primary-star" ' +
+                    'data-assign-responder-id="' + a.responder_id + '" ' +
+                    'data-unit="' + escHtml(a.responder_handle || a.responder_name) + '" ' +
+                    'title="' + (isPrimaryUnit ? 'Primary unit for this incident' : 'Set as primary unit') + '">' +
+                    '<i class="bi ' + (isPrimaryUnit ? 'bi-star-fill text-warning' : 'bi-star text-body-tertiary') + '"></i>' +
+                    '</button>';
+            }
+
             // Phase 116b (GH #85) — crew: the personnel assigned to this unit.
             // Dispatching a unit puts its crew on the incident (accountability),
             // shown as a compact line under the unit name. Role in parens.
@@ -2702,7 +2728,7 @@
             }
 
             html += '<tr class="' + rowClass + '" data-assign-id="' + a.id + '">' +
-                '<td class="fw-semibold" title="' + escHtml(a.responder_name) + '">' + unitLabel + crewHtml + '</td>' +
+                '<td class="fw-semibold" title="' + escHtml(a.responder_name) + '">' + unitLabel + starHtml + crewHtml + '</td>' +
                 '<td><span class="' + stateClass + ' fw-semibold">' + escHtml(currentState) + '</span></td>' +
                 '<td>' + (a._distCell || '<span class="text-body-tertiary">—</span>') + '</td>' +
                 '<td>' + formatTime(a.dispatched) + '</td>' +
@@ -2799,7 +2825,16 @@
                 }).then(function (r) { return r.json(); }).then(function (data) {
                     if (data && data.error) { selfRef.disabled = false; showAlert(data.error, 'danger'); return; }
                     showAlert(data.message || 'Unit removed.', 'info');
-                    loadAssignments();
+                    // Phase 151 (GH#138) fix, found while wiring the new primary-unit
+                    // star button through this same event-handler pattern:
+                    // loadAssignments() is not a function defined anywhere in this
+                    // file — calling it threw an uncaught ReferenceError right after
+                    // every successful "Remove unit" click, silently skipping the
+                    // page refresh (the server-side removal itself always worked;
+                    // only the client-side re-render after it was bricked).
+                    // refreshIncident() is the function every other mutation handler
+                    // in this file already calls for exactly this purpose.
+                    refreshIncident();
                 }).catch(function () {
                     selfRef.disabled = false;
                     showAlert('Failed to remove unit.', 'danger');
@@ -2878,6 +2913,127 @@
                         });
                     })(destPicks[d]);
                 }
+            });
+        }
+
+        // Phase 151 (GH#138) — primary/responsible-unit star toggle.
+        var starBtns = container.querySelectorAll('.assign-primary-star');
+        for (var st = 0; st < starBtns.length; st++) {
+            starBtns[st].addEventListener('click', function () {
+                var selfRef = this;
+                var ticketId = getIncidentId();
+                if (!ticketId) return;
+                var respId = parseInt(this.getAttribute('data-assign-responder-id'), 10);
+                var unit = this.getAttribute('data-unit') || 'this unit';
+                var body;
+                try {
+                    body = JSON.stringify({
+                        action:      'set_primary',
+                        ticket_id:   ticketId,
+                        responder_id: respId,
+                        csrf_token:  getCsrfToken()
+                    });
+                } catch (e) {
+                    showAlert('Failed to set primary unit.', 'danger');
+                    return;
+                }
+                selfRef.disabled = true;
+                fetch('api/incident-assign.php', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: body
+                }).then(function (r) { return r.json(); }).then(function (data) {
+                    if (data && data.error) { selfRef.disabled = false; showAlert(data.error, 'danger'); return; }
+                    showAlert(data.message || (unit + ' set as primary unit.'), 'info');
+                    refreshIncident();
+                }).catch(function () {
+                    selfRef.disabled = false;
+                    showAlert('Failed to set primary unit.', 'danger');
+                });
+            });
+        }
+    }
+
+    /**
+     * Phase 151 (GH#138) — the "Primary: <handle> [change]" banner above
+     * the assignments table. Hidden entirely when primary_unit_mode is
+     * 'off' (renders nothing, per spec.md's off-mode success criterion —
+     * this is purely a display concern; the real no-op guarantee lives in
+     * incident_set_primary_internal() and its callers). The [change]
+     * picker offers every candidate returned by api/incident-detail.php's
+     * primary_candidates (any responder with an assigns row on this
+     * ticket, active or cleared) so a cleared unit can still be picked.
+     */
+    function renderPrimaryUnitBanner(incident, candidates) {
+        var el = document.getElementById('primaryUnitBanner');
+        if (!el) return;
+        var mode = incident && incident.primary_unit_mode;
+        if (!mode || mode === 'off') {
+            el.classList.add('d-none');
+            el.innerHTML = '';
+            return;
+        }
+        el.classList.remove('d-none');
+
+        var currentLabel = incident.primary_responder_name
+            ? escHtml(incident.primary_responder_name)
+            : '<span class="text-body-tertiary">none set</span>';
+        var setByTitle = (incident.primary_set_by_name && incident.primary_set_at)
+            ? ' title="Set by ' + escHtml(incident.primary_set_by_name) + ' at ' + escHtml(incident.primary_set_at) + '"'
+            : '';
+
+        var options = '<option value="0">— Clear —</option>';
+        for (var i = 0; i < candidates.length; i++) {
+            var c = candidates[i];
+            var selected = (incident.primary_responder_id && parseInt(c.id, 10) === parseInt(incident.primary_responder_id, 10))
+                ? ' selected' : '';
+            options += '<option value="' + c.id + '"' + selected + '>' + escHtml(c.label) + '</option>';
+        }
+
+        el.innerHTML =
+            '<div class="d-flex align-items-center gap-2 small mb-2">' +
+            '<i class="bi bi-star-fill text-warning"></i>' +
+            '<span class="fw-semibold">Primary:</span> <span id="primaryUnitCurrentLabel"' + setByTitle + '>' + currentLabel + '</span>' +
+            '<select id="primaryUnitChangePick" class="form-select form-select-sm ms-auto" style="max-width:220px;">' +
+            options +
+            '</select>' +
+            '</div>';
+
+        var pick = document.getElementById('primaryUnitChangePick');
+        if (pick) {
+            pick.addEventListener('change', function () {
+                var selfRef = this;
+                var ticketId = getIncidentId();
+                if (!ticketId) return;
+                var respId = parseInt(this.value, 10) || 0;
+                var body;
+                try {
+                    body = JSON.stringify({
+                        action:       'set_primary',
+                        ticket_id:    ticketId,
+                        responder_id: respId,
+                        csrf_token:   getCsrfToken()
+                    });
+                } catch (e) {
+                    showAlert('Failed to update primary unit.', 'danger');
+                    return;
+                }
+                selfRef.disabled = true;
+                fetch('api/incident-assign.php', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: body
+                }).then(function (r) { return r.json(); }).then(function (data) {
+                    selfRef.disabled = false;
+                    if (data && data.error) { showAlert(data.error, 'danger'); return; }
+                    showAlert(data.message || 'Primary unit updated.', 'info');
+                    refreshIncident();
+                }).catch(function () {
+                    selfRef.disabled = false;
+                    showAlert('Failed to update primary unit.', 'danger');
+                });
             });
         }
     }

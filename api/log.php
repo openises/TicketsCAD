@@ -197,6 +197,59 @@ try {
     // facility_notes absent on this install — no facility notes to merge.
 }
 
+// Incident notes (action rows written by incident_add_note_internal()).
+// action_type = 0 ONLY — the action table also carries system-written
+// assignment/status-change rows at other action_type values, which the
+// `log` table's own rows above already surface; merging every action_type
+// would double-list the same underlying event under two different labels.
+//
+// Phase 150 (GH #135) security note, deliberately not fixed here: this
+// endpoint has no org-scoping or security-label redaction anywhere in the
+// file (verified — auth.php is the only gate). This merge inherits that
+// same lack of protection, matching the two merges above rather than
+// fixing or worsening it further. Tracked as a separate follow-up task.
+//
+// No deleted_at exclusion on the `ticket` join, deliberately (see
+// tools/soft_delete_audit_exceptions.txt's api/log.php:212 entry) — this
+// is an audit/history feed, same as the base `log` query above (line 62's
+// exception): a note recorded before an incident was later soft-deleted is
+// still part of that incident's history and should keep resolving its
+// scope/case-number, not blank out.
+try {
+    $incNotes = db_fetch_all(
+        "SELECT `a`.`date` AS `created_at`, `a`.`description`, `a`.`ticket_id`,
+                `u`.`user` AS `by_username`, `t`.`incident_number`, `t`.`scope`
+           FROM `{$prefix}action` `a`
+           LEFT JOIN `{$prefix}user` `u` ON `a`.`user` = `u`.`id`
+           LEFT JOIN `{$prefix}ticket` `t` ON `a`.`ticket_id` = `t`.`id`
+          WHERE `a`.`action_type` = 0
+            AND `a`.`date` >= CURRENT_DATE - INTERVAL ? DAY
+          ORDER BY `a`.`date` DESC
+          LIMIT 500",
+        [$days]
+    );
+    foreach ($incNotes as $n) {
+        $incNum = (isset($n['incident_number']) && trim((string) $n['incident_number']) !== '')
+            ? trim((string) $n['incident_number']) : ('#' . (int) $n['ticket_id']);
+        $entries[] = [
+            'id'           => 0,
+            'when'         => $n['created_at'],
+            'code'         => 13,               // matches log's own 'Action Added' cosmetic code
+            'code_type'    => 'Incident Note',
+            'by'           => $n['by_username'] ?? '',
+            'from'         => '',
+            'ticket_id'    => (int) $n['ticket_id'],
+            'responder_id' => 0,
+            'responder'    => '',
+            'ticket_scope' => (string) ($n['scope'] ?? ''),
+            'info'         => $incNum . ': ' . (string) $n['description'],
+        ];
+    }
+} catch (Throwable $e) {
+    // action table absent — cannot happen on any real install, guarded
+    // anyway for the same reason the sibling merges above are.
+}
+
 // Re-sort the merged feed newest-first and cap. Notes and log rows share the
 // `when` field (both DATETIME strings), so a lexical compare sorts correctly.
 usort($entries, function ($a, $b) {

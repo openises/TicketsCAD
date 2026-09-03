@@ -370,6 +370,7 @@ accident.
 | `incident.reopened` | Closed incident reopened | `reopened_by`, `previous_close_time` |
 | `incident.deleted` | Soft-deleted | `deleted_by` |
 | `incident.note_added` | Activity note added | `note_id`, `note_text`, `note_by` |
+| `incident.primary_changed` | Primary/responsible unit set or cleared (Phase 151, GH#138) — **off by default**; fires only on installs with the Primary Unit setting enabled (Settings → Incident Lifecycle) | `ticket_id`, `previous_responder_id`, `previous_responder_name`, `new_responder_id`, `new_responder_name`, `reason` (`manual` \| `auto_single_unit` \| `unassigned`), `set_by`, `via_external_api` |
 
 ### Assignments
 

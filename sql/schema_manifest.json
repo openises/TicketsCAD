@@ -1350,6 +1350,9 @@
             "org_id",
             "owner",
             "phone",
+            "primary_responder_id",
+            "primary_set_at",
+            "primary_set_by",
             "problemend",
             "problemstart",
             "rec_facility",
@@ -1801,7 +1804,7 @@
         "generated_by": "tools/gen_schema_manifest.php",
         "purpose": "columns this code writes to + tables it references; checked by inc/schema-verify.php",
         "tables": 158,
-        "columns": 1287,
+        "columns": 1290,
         "required_tables": 191
     }
 }

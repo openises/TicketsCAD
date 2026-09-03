@@ -4801,6 +4801,9 @@ Engine: InnoDB · Collation: latin1_swedish_ci
 | `deleted_at` | datetime | YES | MUL | NULL |  |
 | `deleted_by` | int(11) | YES |  | NULL |  |
 | `disposition_id` | int(11) | YES | MUL | NULL |  |
+| `primary_responder_id` | int(11) | YES | MUL | NULL |  |
+| `primary_set_at` | datetime | YES |  | NULL |  |
+| `primary_set_by` | int(11) | YES |  | NULL |  |
 
 Indexes:
 - `UNIQUE KEY ID` (id)
@@ -4809,6 +4812,7 @@ Indexes:
 - `KEY idx_par_last_cycle` (par_last_cycle_at)
 - `KEY idx_ticket_disposition` (disposition_id)
 - `KEY idx_ticket_org` (org_id)
+- `KEY idx_ticket_primary_responder` (primary_responder_id) — Phase 151 (GH#138)
 - `UNIQUE KEY uniq_incident_number` (incident_number)
 
 ### `ticket_disposition`

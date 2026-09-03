@@ -471,7 +471,7 @@ function runHandler(fnSrc, mapThrows) {
     var calls = {
         renderHeader: 0, renderDescription: 0, renderLocation: 0, renderContact: 0,
         renderFacilities: 0, renderTimeStatus: 0, renderAdditional: 0, renderProtocol: 0,
-        renderAssignments: 0, renderActions: 0, syncStatusSelect: 0,
+        renderAssignments: 0, renderActions: 0, renderPrimaryUnitBanner: 0, syncStatusSelect: 0,
         initEditButtons: 0, setInitialFocus: 0, loadDispositionOptions: [],
         mainContentRevealed: false, loadingSpinnerHidden: false
     };
@@ -506,6 +506,14 @@ function runHandler(fnSrc, mapThrows) {
     global.renderProtocol = function () { calls.renderProtocol++; };
     global.renderAssignments = function () { calls.renderAssignments++; };
     global.renderActions = function () { calls.renderActions++; };
+    // Phase 151 (GH#138, 2026-09-03) — the real handler now also calls
+    // renderPrimaryUnitBanner(data.incident, data.primary_candidates || []),
+    // right after renderAssignments(). Stub it the same as every sibling
+    // render* function above, or the eval'd handler throws a ReferenceError
+    // that this very test exists to catch (a throw from ANY call inside the
+    // success handler must not cascade and skip initEditButtons()/
+    // setInitialFocus()/loadDispositionOptions() etc.).
+    global.renderPrimaryUnitBanner = function () { calls.renderPrimaryUnitBanner++; };
     global.syncStatusSelect = function () { calls.syncStatusSelect++; };
     global.loadResponders = function () {};
     global.initEditButtons = function () { calls.initEditButtons++; };

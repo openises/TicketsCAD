@@ -414,6 +414,23 @@ The fields to update may be sent at the top level of the body (as above) or nest
 - Statuses: `200`, `400 invalid_json_body`/`invalid_id`, `403 forbidden_rbac`/`forbidden`, `404 not_found`, `422 validation_failed` (response includes a `details.errors` array)
 - **Cross-org ticket sharing:** a same-org ticket is unaffected. A share-derived ticket can only be PATCHed at `assist` tier — `view`-tier access is read-only. If the caller can see the ticket (via any tier) but the tier doesn't permit writing, the response is `403 forbidden` rather than `404 not_found`, so a legitimate `view`-tier integration gets a clear signal rather than an ambiguous "does this even exist."
 
+**Setting the primary/responsible unit (Phase 151, GH#138):** `primary_responder_id` is a DEDICATED action, not part of the generic field whitelist above — send it alone or alongside other fields in the same PATCH body:
+
+```
+PATCH /api/external/v1/incidents/<id>
+Content-Type: application/json
+
+{ "primary_responder_id": 77 }
+```
+
+Send `0` (or omit and send `null`) to clear the designation. Goes through the same writer, validation, audit, and webhook (`incident.primary_changed`) as the UI's own star-toggle/picker.
+
+- RBAC: `action.set_primary_unit` (checked in addition to `action.edit_incident` when this field is present)
+- Returns: `200 { "id": <id>, "fields_changed": [..., "primary_responder_id"] }`
+- `409 primary_unit_disabled` if the install's Primary Unit setting is `off` (Settings → Incident Lifecycle) — matches the UI's own off-mode no-op, this is not a bug
+- `422 validation_failed` if the requested responder has no assignment on this incident (see `docs/PRIMARY-UNIT-GUIDE.md`)
+- GET on this same endpoint returns `primary_responder_id`, `primary_responder_name`, `primary_set_at`, `primary_set_by` on every incident (all `null` when unset)
+
 #### Soft-delete
 
 ```

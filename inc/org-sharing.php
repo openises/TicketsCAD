@@ -402,6 +402,13 @@ function org_share_view_tier_field_allowlist(): array
         // distinct from incident-detail.php's per-assignment 'crew', which
         // names individual people and is deliberately excluded elsewhere)
         'assignments', 'active_responders', 'units_assigned', 'unit_names',
+        // Phase 151 (GH#138) — which unit is responsible for this incident's
+        // reporting. Same "which unit" class of fact as unit_names above,
+        // not narrative — an allowlist miss here would silently DROP the
+        // field for a shared ticket rather than merely leave it unredacted,
+        // since this function is allowlist-based (a field not added is a
+        // field that disappears).
+        'primary_responder_id', 'primary_responder_name', 'primary_set_at', 'primary_unit_mode',
     ];
 }
 

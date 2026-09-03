@@ -136,6 +136,39 @@ try {
     // ticket_disposition table) — leave the defaults above.
 }
 
+// Phase 151 (GH#138) — current primary/responsible unit, read defensively
+// and separately from the main query, same guarded-block convention as
+// disposition_id above (a pre-migration install has none of these columns).
+$primaryResponderId   = null;
+$primaryResponderName = null;
+$primarySetAt         = null;
+$primarySetByName     = null;
+try {
+    $pRow = db_fetch_one(
+        "SELECT `t`.`primary_responder_id`, `t`.`primary_set_at`,
+                COALESCE(`r`.`handle`, `r`.`name`) AS `primary_responder_name`,
+                `su`.`user` AS `primary_set_by_name`
+           FROM `{$prefix}ticket` `t`
+           LEFT JOIN `{$prefix}responder` `r` ON `t`.`primary_responder_id` = `r`.`id`
+           LEFT JOIN `{$prefix}user` `su` ON `t`.`primary_set_by` = `su`.`id`
+          WHERE `t`.`id` = ?",
+        [$id]
+    );
+    if ($pRow && $pRow['primary_responder_id'] !== null && (int) $pRow['primary_responder_id'] > 0) {
+        $primaryResponderId   = (int) $pRow['primary_responder_id'];
+        $primaryResponderName = $pRow['primary_responder_name'] ?? null;
+        $primarySetAt         = $pRow['primary_set_at'] ?? null;
+        // dead_control_audit.php check (d), 2026-09-03: ticket.primary_set_by
+        // had a write path (incident_set_primary_internal()) but nothing read
+        // it anywhere — surfaced here rather than baselined, since "who set
+        // this and when" is a genuinely useful thing to show, not a column
+        // that only ever needs to exist for accountability.
+        $primarySetByName     = $pRow['primary_set_by_name'] ?? null;
+    }
+} catch (Exception $e) {
+    // Pre-migration install (no primary_responder_id column) — leave defaults.
+}
+
 $result_incident = [
     'id'                  => (int) $incident['id'],
     // Phase 99m (Eric beta 2026-06-29): admin-configured incident_number
@@ -199,6 +232,11 @@ $result_incident = [
     'rec_facility_city'   => $incident['rec_facility_city'],
     'rec_facility_lat'    => $incident['rec_facility_lat'] ? (float) $incident['rec_facility_lat'] : null,
     'rec_facility_lng'    => $incident['rec_facility_lng'] ? (float) $incident['rec_facility_lng'] : null,
+    'primary_responder_id'   => $primaryResponderId,
+    'primary_responder_name' => $primaryResponderName,
+    'primary_set_at'         => $primarySetAt,
+    'primary_set_by_name'    => $primarySetByName,
+    'primary_unit_mode'      => get_variable('primary_unit_mode') ?: 'off',
 ];
 
 // ── Assignments ──
@@ -509,10 +547,36 @@ $result_incident['can_manage_sharing'] =
         && (rbac_can('action.share_incident') || rbac_can('action.revoke_incident_share')))
     && org_ticket_is_owned_by_caller($id);
 
+// Phase 151 (GH#138) — candidates for the "Primary: [change]" picker: any
+// responder with EITHER an assigns row on this ticket, active or cleared
+// (a unit that already cleared can still be retroactively marked primary —
+// spec.md), so this deliberately does NOT reuse $assignments (which is
+// already filtered to active-only above). A separate, guarded query rather
+// than widening the assignments query itself, matching the disposition/
+// primary-unit blocks' own degrade-gracefully-on-missing-schema pattern.
+$primaryCandidates = [];
+try {
+    $primaryCandidates = db_fetch_all(
+        "SELECT DISTINCT `r`.`id`, COALESCE(`r`.`handle`, `r`.`name`) AS `label`
+           FROM `{$prefix}assigns` `a`
+           JOIN `{$prefix}responder` `r` ON `a`.`responder_id` = `r`.`id`
+          WHERE `a`.`ticket_id` = ?
+          ORDER BY `label`",
+        [$id]
+    );
+    foreach ($primaryCandidates as &$pc) {
+        $pc['id'] = (int) $pc['id'];
+    }
+    unset($pc);
+} catch (Exception $e) {
+    $primaryCandidates = [];
+}
+
 ini_set('display_errors', $prevDisplay);
 
 json_response([
-    'incident'    => $result_incident,
-    'assignments' => $assignments,
-    'actions'     => $actions,
+    'incident'           => $result_incident,
+    'assignments'        => $assignments,
+    'actions'            => $actions,
+    'primary_candidates' => $primaryCandidates,
 ]);
