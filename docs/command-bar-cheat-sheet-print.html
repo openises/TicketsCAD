@@ -1,9 +1,9 @@
 <!--
-  Print source for docs/COMMAND-BAR-CHEAT-SHEET.pdf. Content is hand-kept in
-  sync with the COMMANDS registry in assets/js/command-bar.js (issue #30) —
-  if a command changes there, update this file and docs/COMMAND-BAR-CHEAT-SHEET.md
-  together, then regenerate:
+  Print source for docs/COMMAND-BAR-CHEAT-SHEET.pdf. Regenerated from the live
+  COMMANDS registry by tools/gen_command_bar_cheat_sheet.php (run it, then regenerate
+  the PDF -- see that script's own header for the exact command):
 
+    php tools/gen_command_bar_cheat_sheet.php
     "C:\Program Files\Google\Chrome\Application\chrome.exe" --headless --disable-gpu ^
       --no-pdf-header-footer --print-to-pdf-no-header ^
       --print-to-pdf="docs\COMMAND-BAR-CHEAT-SHEET.pdf" ^
@@ -169,84 +169,116 @@
   <section>
     <h2>Dispatch &amp; workflow</h2>
     <table>
-      <tr><td class="cmd">/new</td><td class="alias">&mdash;</td><td class="what">Create a new incident</td></tr>
-      <tr><td class="cmd">/incidents</td><td class="alias">/inc</td><td class="what">Focus Active Incidents widget</td></tr>
-      <tr><td class="cmd">/responders</td><td class="alias">/res /resp</td><td class="what">Focus Responders widget</td></tr>
-      <tr><td class="cmd">/units</td><td class="alias">/uni</td><td class="what">Focus Responders (units view)</td></tr>
-      <tr><td class="cmd">/facilities</td><td class="alias">/fac</td><td class="what">Focus Facilities widget</td></tr>
-      <tr><td class="cmd">/log</td><td class="alias">/logs</td><td class="what">Focus Activity Log widget</td></tr>
-      <tr><td class="cmd">/detail</td><td class="alias">&mdash;</td><td class="what">Detail page, selected incident</td></tr>
+      <tr><td class="cmd">/new</td><td class="alias">—</td><td class="what">Create a new incident</td></tr>
+      <tr><td class="cmd">/incidents</td><td class="alias">/inc</td><td class="what">Focus the Active Incidents widget</td></tr>
+      <tr><td class="cmd">/responders</td><td class="alias">/res /resp</td><td class="what">Focus the Responders widget</td></tr>
+      <tr><td class="cmd">/units</td><td class="alias">/uni</td><td class="what">Focus the Responders widget (units view)</td></tr>
+      <tr><td class="cmd">/facilities</td><td class="alias">/fac</td><td class="what">Focus the Facilities widget</td></tr>
+      <tr><td class="cmd">/activity</td><td class="alias">/logs</td><td class="what">Focus the Activity Log widget</td></tr>
+      <tr><td class="cmd">/detail</td><td class="alias">—</td><td class="what">Open detail page for the selected incident</td></tr>
       <tr><td class="cmd">/zello</td><td class="alias">/zel</td><td class="what">Toggle the Zello radio panel</td></tr>
+      <tr><td class="cmd">/road</td><td class="alias">—</td><td class="what">Toggle the road-conditions overlay on the dashboard map</td></tr>
+      <tr><td class="cmd">/radio</td><td class="alias">—</td><td class="what">Open the radio (DMR) widget</td></tr>
     </table>
   </section>
 
   <section>
     <h2>Navigation — jump to a page</h2>
     <table>
-      <tr><td class="cmd">/dashboard</td><td class="alias">/dash /sit /situ /situation</td><td class="what">Dashboard (main view)</td></tr>
-      <tr><td class="cmd">/bigscreen</td><td class="alias">/wall /eoc /fullscreen</td><td class="what">Full-screen display (big monitor)</td></tr>
-      <tr><td class="cmd">/search</td><td class="alias">&mdash;</td><td class="what">Search</td></tr>
-      <tr><td class="cmd">/reports</td><td class="alias">&mdash;</td><td class="what">Reports</td></tr>
-      <tr><td class="cmd">/settings</td><td class="alias">&mdash;</td><td class="what">Settings / config</td></tr>
-      <tr><td class="cmd">/sop</td><td class="alias">&mdash;</td><td class="what">SOP viewer</td></tr>
-      <tr><td class="cmd">/help</td><td class="alias">&mdash;</td><td class="what">Help page</td></tr>
-      <tr><td class="cmd">/roster</td><td class="alias">&mdash;</td><td class="what">Personnel roster</td></tr>
-      <tr><td class="cmd">/teams</td><td class="alias">/team</td><td class="what">Teams</td></tr>
-      <tr><td class="cmd">/schedule</td><td class="alias">&mdash;</td><td class="what">Scheduling</td></tr>
-      <tr><td class="cmd">/vehicles</td><td class="alias">&mdash;</td><td class="what">Vehicles</td></tr>
-      <tr><td class="cmd">/equipment</td><td class="alias">&mdash;</td><td class="what">Equipment</td></tr>
-      <tr><td class="cmd">/roles</td><td class="alias">&mdash;</td><td class="what">Roles &amp; permissions</td></tr>
-      <tr><td class="cmd">/profile</td><td class="alias">&mdash;</td><td class="what">Your profile</td></tr>
-      <tr><td class="cmd">/contacts</td><td class="alias">/constituents</td><td class="what">Contacts</td></tr>
-      <tr><td class="cmd">/messages</td><td class="alias">/messaging</td><td class="what">Internal messaging</td></tr>
-      <tr><td class="cmd">/links</td><td class="alias">&mdash;</td><td class="what">External links</td></tr>
-      <tr><td class="cmd">/ics</td><td class="alias">/forms</td><td class="what">ICS forms</td></tr>
+      <tr><td class="cmd">/dashboard</td><td class="alias">/dash /home /sit /situ /situation</td><td class="what">Open the dashboard (situational view)</td></tr>
+      <tr><td class="cmd">/bigscreen</td><td class="alias">/wall /fullscreen /eoc</td><td class="what">Open the full-screen situation display (large monitor)</td></tr>
+      <tr><td class="cmd">/search</td><td class="alias">—</td><td class="what">Open the search page</td></tr>
+      <tr><td class="cmd">/reports</td><td class="alias">—</td><td class="what">Open the reports page</td></tr>
+      <tr><td class="cmd">/settings</td><td class="alias">—</td><td class="what">Open the settings / configuration page</td></tr>
+      <tr><td class="cmd">/sop</td><td class="alias">—</td><td class="what">Open the SOP viewer</td></tr>
+      <tr><td class="cmd">/help</td><td class="alias">—</td><td class="what">Open the help page</td></tr>
+      <tr><td class="cmd">/roster</td><td class="alias">—</td><td class="what">Open the personnel roster</td></tr>
+      <tr><td class="cmd">/teams</td><td class="alias">/team</td><td class="what">Open the teams page</td></tr>
+      <tr><td class="cmd">/schedule</td><td class="alias">—</td><td class="what">Open the scheduling page</td></tr>
+      <tr><td class="cmd">/vehicles</td><td class="alias">—</td><td class="what">Open the vehicles page</td></tr>
+      <tr><td class="cmd">/equipment</td><td class="alias">—</td><td class="what">Open the equipment page</td></tr>
+      <tr><td class="cmd">/roles</td><td class="alias">—</td><td class="what">Open the roles &amp; permissions admin page</td></tr>
+      <tr><td class="cmd">/profile</td><td class="alias">—</td><td class="what">Open your user profile</td></tr>
+      <tr><td class="cmd">/contacts</td><td class="alias">/constituents</td><td class="what">Open the contacts / constituents page</td></tr>
+      <tr><td class="cmd">/messages</td><td class="alias">/messaging</td><td class="what">Open internal messaging</td></tr>
+      <tr><td class="cmd">/links</td><td class="alias">—</td><td class="what">Open the external links page</td></tr>
+      <tr><td class="cmd">/ics</td><td class="alias">/forms</td><td class="what">Open the ICS forms page</td></tr>
+      <tr><td class="cmd">/major</td><td class="alias">/events</td><td class="what">Open the Major Events list</td></tr>
     </table>
   </section>
 
   <section>
-    <h2>Unit status — no modal needed</h2>
-    <div class="syntax">/s &lt;handle&gt; &lt;status&gt;   (also /status, /st)</div>
-    <div class="ex">
-      <div class="row"><span class="in">/s M21 av</span><span class="arrow">→</span><span class="out">Medic 21 &rarr; Available</span></div>
-      <div class="row"><span class="in">/status E2 disp</span><span class="arrow">→</span><span class="out">Engine 2 &rarr; Dispatched</span></div>
-      <div class="row"><span class="in">/s Engine 2 dispatched</span><span class="arrow">→</span><span class="out">multi-word names work</span></div>
-    </div>
-    <div class="status-grid">
-      <table>
-        <tr><td class="status-name">Available</td><td class="alias">av avail available</td></tr>
-        <tr><td class="status-name">Busy</td><td class="alias">busy</td></tr>
-        <tr><td class="status-name">Unavailable</td><td class="alias">unav unavail unavailable</td></tr>
-        <tr><td class="status-name">Dispatched</td><td class="alias">disp dispatched dp</td></tr>
-        <tr><td class="status-name">Enroute</td><td class="alias">en enr enroute</td></tr>
-        <tr><td class="status-name">Responding</td><td class="alias">resp responding</td></tr>
-        <tr><td class="status-name">On Scene</td><td class="alias">os onscene on scene</td></tr>
-        <tr><td class="status-name">Transporting</td><td class="alias">tx transp transport</td></tr>
-        <tr><td class="status-name">At Facility</td><td class="alias">af atfacility at facility</td></tr>
-        <tr><td class="status-name">In Quarters</td><td class="alias">iq inquarters in quarters</td></tr>
-        <tr><td class="status-name">Out of Service</td><td class="alias">oos out of service</td></tr>
-      </table>
-    </div>
-    <p class="note">Status word is read from the END of what you type. Statuses needing extra info (destination, reason) route you to the unit's <kbd>S</kbd> key modal instead.</p>
+    <h2>Settings deep links</h2>
+    <table>
+      <tr><td class="cmd">/users</td><td class="alias">—</td><td class="what">Settings → User Accounts</td></tr>
+      <tr><td class="cmd">/audit</td><td class="alias">—</td><td class="what">Settings → Audit Log</td></tr>
+      <tr><td class="cmd">/types</td><td class="alias">—</td><td class="what">Settings → Incident Types</td></tr>
+      <tr><td class="cmd">/organizations</td><td class="alias">/orgs</td><td class="what">Settings → Organizations</td></tr>
+      <tr><td class="cmd">/password</td><td class="alias">—</td><td class="what">Change your password</td></tr>
+      <tr><td class="cmd">/training</td><td class="alias">—</td><td class="what">Settings → Training</td></tr>
+      <tr><td class="cmd">/zones</td><td class="alias">—</td><td class="what">Settings → Alert Zones</td></tr>
+    </table>
   </section>
 
   <section>
-    <h2>Net-Control zone move</h2>
+    <h2>Unit status — change a unit without opening a modal</h2>
+    <div class="syntax">/s &lt;handle&gt; &lt;status&gt;
+/status &lt;handle&gt; &lt;status&gt;      (same thing — /s and /st also work)</div>
+    <div class="ex">
+      <div class="row"><span class="in">/s M21 av</span><span class="arrow">&rarr;</span><span class="out">Medic 21 → Available</span></div>
+      <div class="row"><span class="in">/status E2 disp</span><span class="arrow">&rarr;</span><span class="out">Engine 2 → Dispatched</span></div>
+      <div class="row"><span class="in">/s Engine 2 dispatched</span><span class="arrow">&rarr;</span><span class="out">Multi-word unit names work too</span></div>
+      <div class="row"><span class="in">/s M4 out of service</span><span class="arrow">&rarr;</span><span class="out">Three-word statuses work too</span></div>
+    </div>
+    <p class="note">The status keyword is read from the END of what you type, so everything before it is treated as the unit handle. Case doesn&#039;t matter. Statuses needing extra info (destination, reason) route you to the unit&#039;s S-key modal instead. An unrecognized word is still tried against your install&#039;s own configured statuses.</p>
+  </section>
+
+  <section>
+    <h2>Event Net-Control zone move</h2>
     <div class="syntax">/z &lt;team&gt; &lt;zone&gt;</div>
     <div class="ex">
-      <div class="row"><span class="in">/z alpha 3</span><span class="arrow">→</span><span class="out">Alpha &rarr; zone "3"</span></div>
-      <div class="row"><span class="in">/z echo clear</span><span class="arrow">→</span><span class="out">clears Echo's zone</span></div>
+      <div class="row"><span class="in">/z alpha 3</span><span class="arrow">&rarr;</span><span class="out">Team Alpha → the zone with code or name &quot;3&quot;</span></div>
+      <div class="row"><span class="in">/z echo clear</span><span class="arrow">&rarr;</span><span class="out">Echo&#039;s zone assignment is cleared (clear, none, off all work)</span></div>
     </div>
-    <p class="note">Requires an active event selected on the Net Control board first. <kbd>clear</kbd> / <kbd>none</kbd> / <kbd>off</kbd> all clear a zone.</p>
+    <p class="note">Requires an active event selected on the Net Control board first.</p>
   </section>
 
   <section>
-    <h2>Net check-ins — capture a round in one line</h2>
-    <div class="syntax">/net &lt;id&gt; &lt;note&gt; / &lt;id&gt; &lt;note&gt; / ...</div>
+    <h2>Net-control check-ins — capture a whole round in one line</h2>
+    <div class="syntax">/net &lt;id&gt; &lt;note&gt; / &lt;id&gt; &lt;note&gt; / &lt;id&gt; &lt;note&gt; ...</div>
     <div class="ex">
-      <div class="row"><span class="in">/net 1234 tornado / 3344 hail</span></div>
+      <div class="row"><span class="in">/net 1234 tornado / 3344 hail</span><span class="arrow">&rarr;</span><span class="out">Two check-ins captured in one keystroke</span></div>
     </div>
-    <p class="note">First word of each entry is the identifier, the rest is the note. Separate entries with <kbd>/</kbd>. Opens the situational screen with the check-ins loaded.</p>
+    <p class="note">First word of each entry is the identifier, the rest is the note. Separate entries with /. Opens the situational screen with the check-ins loaded.</p>
+  </section>
+
+  <section>
+    <h2>Quick Notes — capture a note from anywhere</h2>
+    <div class="syntax">/log &lt;text&gt;   → capture a timestamped note in one keystroke
+/log          → open the notes list to review/file it</div>
+    <div class="ex">
+      <div class="row"><span class="in">/log KOB reported at 4th and Main</span><span class="arrow">&rarr;</span><span class="out">Note captured instantly, no navigation</span></div>
+    </div>
+    <p class="note">Renamed from the Activity Log widget-focus command (that&#039;s /activity now) so this shorter name could go to quick capture instead.</p>
+  </section>
+
+  <section>
+    <h2>Unit status shortcuts</h2>
+    <div class="status-grid">
+      <table>
+      <tr><td class="status-name">Available</td><td class="alias">av avail available</td></tr>
+      <tr><td class="status-name">Busy</td><td class="alias">busy</td></tr>
+      <tr><td class="status-name">Unavailable</td><td class="alias">unav unavail unavailable</td></tr>
+      <tr><td class="status-name">Dispatched</td><td class="alias">disp dispatched dp</td></tr>
+      <tr><td class="status-name">Enroute</td><td class="alias">en enr enroute</td></tr>
+      <tr><td class="status-name">Responding</td><td class="alias">resp responding</td></tr>
+      <tr><td class="status-name">On Scene</td><td class="alias">os onscene on-scene on_scene</td></tr>
+      <tr><td class="status-name">Transporting</td><td class="alias">tx transp transport transporting</td></tr>
+      <tr><td class="status-name">At Facility</td><td class="alias">af atfacility at-facility</td></tr>
+      <tr><td class="status-name">In Quarters</td><td class="alias">iq inquarters in-quarters</td></tr>
+      <tr><td class="status-name">Out of Service</td><td class="alias">oos</td></tr>
+      </table>
+    </div>
   </section>
 
   <section>
@@ -254,16 +286,15 @@
     <table>
       <tr><td class="cmd"><kbd>Enter</kbd></td><td class="what">Run the command</td></tr>
       <tr><td class="cmd"><kbd>Tab</kbd></td><td class="what">Complete to highlighted suggestion</td></tr>
-      <tr><td class="cmd"><kbd>↑ / ↓</kbd></td><td class="what">Move the highlight</td></tr>
+      <tr><td class="cmd"><kbd>&uarr; / &darr;</kbd></td><td class="what">Move the highlight</td></tr>
       <tr><td class="cmd"><kbd>Esc</kbd></td><td class="what">Close, do nothing</td></tr>
     </table>
   </section>
-
 </div>
 
 <footer>
   <span>TicketsCAD — free, open-source Computer-Aided Dispatch &middot; github.com/openises/TicketsCAD</span>
-  <span>Generated from assets/js/command-bar.js — the code is the source of truth</span>
+  <span>Generated by tools/gen_command_bar_cheat_sheet.php from assets/js/command-bar.js</span>
 </footer>
 
 </body>

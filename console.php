@@ -43,6 +43,14 @@ $can_send     = rbac_can('action.send_chat') || $can_tx;
 $can_design   = rbac_can('console.design');
 $can_matrix   = rbac_can('action.manage_matrix');
 $active_page  = 'console';
+// assets/js/zello-widget.js:271-274 has always read the proxy port from
+// this meta tag with an 8090 fallback, but nothing ever rendered the tag
+// (GH#137) -- the widget silently used the hardcoded fallback regardless
+// of the configured zello_proxy_port setting. Same 1024-65535 validation
+// + 8090 fallback as proxy/zello-proxy.php's own read of this setting, so
+// client and server agree even when the setting is unset.
+$zelloProxyPort = (int) (get_variable('zello_proxy_port') ?: 8090);
+if ($zelloProxyPort < 1024 || $zelloProxyPort > 65535) { $zelloProxyPort = 8090; }
 ?>
 <!DOCTYPE html>
 <html lang="<?php echo e(i18n_lang()); ?>" data-bs-theme="<?php echo $bs_theme; ?>">
@@ -50,6 +58,7 @@ $active_page  = 'console';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?php echo e($csrf); ?>">
+    <meta name="zello-proxy-port" content="<?php echo e((string) $zelloProxyPort); ?>">
     <title><?php echo e(t('page.console', 'Console')); ?> &mdash; <?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo newui_version(); ?></title>
 
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">

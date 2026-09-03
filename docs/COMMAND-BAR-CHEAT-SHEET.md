@@ -18,38 +18,47 @@ long as nothing else starts with `in`.
 | `/responders` | `/res`, `/resp` | Focus the Responders widget |
 | `/units` | `/uni` | Focus the Responders widget (units view) |
 | `/facilities` | `/fac` | Focus the Facilities widget |
-| `/log` | `/logs` | Focus the Activity Log widget |
-| `/detail` | — | Open the detail page for the selected incident |
+| `/activity` | `/logs` | Focus the Activity Log widget |
+| `/detail` | — | Open detail page for the selected incident |
 | `/zello` | `/zel` | Toggle the Zello radio panel |
+| `/road` | — | Toggle the road-conditions overlay on the dashboard map |
+| `/radio` | — | Open the radio (DMR) widget |
 
-## Navigation — jump straight to a page
+## Navigation — jump to a page
 
-| Command | Aliases | Opens |
+| Command | Aliases | What it does |
 |---|---|---|
-| `/dashboard` | `/dash`, `/home`, `/sit`, `/situ`, `/situation` | Dashboard (your main situational view) |
-| `/bigscreen` | `/wall`, `/fullscreen`, `/eoc` | Full-screen situation display — for the big monitor at an EOC/command post |
-| `/search` | — | Search page |
-| `/reports` | — | Reports page |
-| `/settings` | — | Settings / configuration page |
-| `/sop` | — | SOP viewer |
-| `/help` | — | Help page |
-| `/roster` | — | Personnel roster |
-| `/teams` | `/team` | Teams page |
-| `/schedule` | — | Scheduling page |
-| `/vehicles` | — | Vehicles page |
-| `/equipment` | — | Equipment page |
-| `/roles` | — | Roles & permissions admin page |
-| `/profile` | — | Your user profile |
-| `/contacts` | `/constituents` | Contacts / constituents page |
-| `/messages` | `/messaging` | Internal messaging |
-| `/links` | — | External links page |
-| `/ics` | `/forms` | ICS forms page |
+| `/dashboard` | `/dash`, `/home`, `/sit`, `/situ`, `/situation` | Open the dashboard (situational view) |
+| `/bigscreen` | `/wall`, `/fullscreen`, `/eoc` | Open the full-screen situation display (large monitor) |
+| `/search` | — | Open the search page |
+| `/reports` | — | Open the reports page |
+| `/settings` | — | Open the settings / configuration page |
+| `/sop` | — | Open the SOP viewer |
+| `/help` | — | Open the help page |
+| `/roster` | — | Open the personnel roster |
+| `/teams` | `/team` | Open the teams page |
+| `/schedule` | — | Open the scheduling page |
+| `/vehicles` | — | Open the vehicles page |
+| `/equipment` | — | Open the equipment page |
+| `/roles` | — | Open the roles & permissions admin page |
+| `/profile` | — | Open your user profile |
+| `/contacts` | `/constituents` | Open the contacts / constituents page |
+| `/messages` | `/messaging` | Open internal messaging |
+| `/links` | — | Open the external links page |
+| `/ics` | `/forms` | Open the ICS forms page |
+| `/major` | `/events` | Open the Major Events list |
 
-**`/dashboard` vs. `/bigscreen`** — these are two different screens on purpose.
-`/dashboard` is the one you live in day to day. `/bigscreen` is the full-screen
-version you switch to once, for a large monitor at an event or command post.
-Both start differently enough (`/dash`… vs `/wall`/`/eoc`) that neither
-accidentally completes to the other.
+## Settings deep links
+
+| Command | Aliases | What it does |
+|---|---|---|
+| `/users` | — | Settings → User Accounts |
+| `/audit` | — | Settings → Audit Log |
+| `/types` | — | Settings → Incident Types |
+| `/organizations` | `/orgs` | Settings → Organizations |
+| `/password` | — | Change your password |
+| `/training` | — | Settings → Training |
+| `/zones` | — | Settings → Alert Zones |
 
 ## Unit status — change a unit without opening a modal
 
@@ -67,10 +76,53 @@ accidentally completes to the other.
 | `/s Engine 2 dispatched` | Multi-word unit names work too |
 | `/s M4 out of service` | Three-word statuses work too |
 
-The status keyword is read from the **end** of what you type, so everything
-before it is treated as the unit handle. Case doesn't matter.
+The status keyword is read from the END of what you type, so everything before it is treated as the unit handle. Case doesn't matter. Statuses needing extra info (destination, reason) route you to the unit's S-key modal instead. An unrecognized word is still tried against your install's own configured statuses.
 
-**Status shortcuts** (case-insensitive):
+## Event Net-Control zone move
+
+```
+/z <team> <zone>
+```
+
+**Examples**
+
+| You type | What happens |
+|---|---|
+| `/z alpha 3` | Team Alpha → the zone with code or name "3" |
+| `/z echo clear` | Echo's zone assignment is cleared (clear, none, off all work) |
+
+Requires an active event selected on the Net Control board first.
+
+## Net-control check-ins — capture a whole round in one line
+
+```
+/net <id> <note> / <id> <note> / <id> <note> ...
+```
+
+**Examples**
+
+| You type | What happens |
+|---|---|
+| `/net 1234 tornado / 3344 hail` | Two check-ins captured in one keystroke |
+
+First word of each entry is the identifier, the rest is the note. Separate entries with /. Opens the situational screen with the check-ins loaded.
+
+## Quick Notes — capture a note from anywhere
+
+```
+/log <text>   → capture a timestamped note in one keystroke
+/log          → open the notes list to review/file it
+```
+
+**Examples**
+
+| You type | What happens |
+|---|---|
+| `/log KOB reported at 4th and Main` | Note captured instantly, no navigation |
+
+Renamed from the Activity Log widget-focus command (that's /activity now) so this shorter name could go to quick capture instead.
+
+## Unit status shortcuts (case-insensitive)
 
 | Status | Type any of |
 |---|---|
@@ -80,56 +132,11 @@ before it is treated as the unit handle. Case doesn't matter.
 | Dispatched | `disp`, `dispatched`, `dp` |
 | Enroute | `en`, `enr`, `enroute` |
 | Responding | `resp`, `responding` |
-| On Scene | `os`, `onscene`, `on-scene`, `on scene` |
+| On Scene | `os`, `onscene`, `on-scene`, `on_scene` |
 | Transporting | `tx`, `transp`, `transport`, `transporting` |
-| At Facility | `af`, `atfacility`, `at-facility`, `at facility` |
-| In Quarters | `iq`, `inquarters`, `in-quarters`, `in quarters` |
-| Out of Service | `oos`, `out of service` |
-
-**Statuses that need extra info** (like *Transporting* needing a destination
-facility, or *Out of Service* needing a reason) can't be set from the command
-bar — you'll be told to use the unit's **S** key instead, which opens the full
-status modal with the facility picker / note field.
-
-If a status word isn't recognized, the command bar still tries it against
-whatever your install's admin has actually configured under *Config → App
-Preferences → Unit Statuses* — so a status your agency added yourself will
-work even if it's not in the table above.
-
-## Event Net-Control — move a unit between zones
-
-```
-/z <team> <zone>
-```
-
-Only works when an event is active and selected on the Net Control board —
-open Net Control and pick the event first, or you'll get a reminder to.
-
-| You type | What happens |
-|---|---|
-| `/z alpha 3` | Team Alpha → the zone with code or name "3" |
-| `/z echo clear` | Echo's zone assignment is cleared (`clear`, `none`, and `off` all work) |
-
-Team names, zone codes and zone names all match case-insensitively, and a
-zone name only needs to be typed far enough to be unambiguous.
-
-## Net-control check-ins — capture a whole round in one line
-
-```
-/net <id> <note> / <id> <note> / <id> <note> ...
-```
-
-Built for when several stations are checking in back-to-back and you don't
-have time to open a form per station. Separate entries with `/`; within each
-entry, the first word is the identifier and the rest is the note.
-
-| You type | What happens |
-|---|---|
-| `/net 1234 tornado / 3344 hail / 6543 hail / 3243 wind damage` | Four check-ins captured in one keystroke |
-
-After Enter, the situational screen opens (or refreshes in place if you're
-already on a page with the check-in widget) with the new entries ready to
-work.
+| At Facility | `af`, `atfacility`, `at-facility` |
+| In Quarters | `iq`, `inquarters`, `in-quarters` |
+| Out of Service | `oos` |
 
 ## Keys once the bar is open
 
@@ -142,6 +149,4 @@ work.
 
 ---
 
-*Generated from the live command registry in `assets/js/command-bar.js` — if a
-command here doesn't match what your install actually does, the code is the
-source of truth; please open an issue.*
+*Generated by `php tools/gen_command_bar_cheat_sheet.php` from the live command registry in `assets/js/command-bar.js` — if a command here doesn't match what your install actually does, re-run the generator; if it still doesn't match, the code is the source of truth, please open an issue.*

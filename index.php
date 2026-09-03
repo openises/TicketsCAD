@@ -67,6 +67,13 @@ $theme    = $_SESSION['day_night'] ?? 'Day';
 $bs_theme = ($theme === 'Night') ? 'dark' : 'light';
 $csrf     = csrf_token();
 $userPerms = rbac_user_permissions();
+// This page embeds its own copy of the Zello widget (its own
+// <template id="tpl-zello-widget"> + its own zello-widget.js script tag,
+// not inc/zello-widget-template.php), which console.php's own GH#137 fix
+// missed -- confirmed live by a reporter still hitting the hardcoded
+// 8090 fallback here after that fix. Same read/validation/fallback.
+$zelloProxyPort = (int) (get_variable('zello_proxy_port') ?: 8090);
+if ($zelloProxyPort < 1024 || $zelloProxyPort > 65535) { $zelloProxyPort = 8090; }
 ?>
 <!DOCTYPE html>
 <html lang="<?php echo e(i18n_lang()); ?>" data-bs-theme="<?php echo $bs_theme; ?>">
@@ -74,6 +81,7 @@ $userPerms = rbac_user_permissions();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?php echo e($csrf); ?>">
+    <meta name="zello-proxy-port" content="<?php echo e((string) $zelloProxyPort); ?>">
     <title><?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo newui_version(); ?></title>
 
     <link rel="manifest" href="manifest.json">

@@ -8055,16 +8055,27 @@ foreach ($personnelSections as $sec) {
                         </div>
                         <div class="mb-2">
                             <label class="form-label form-label-sm">Event Types</label>
+                            <!-- GH#134 (rjonesbsink): these values were colon-notation
+                                 (e.g. "incident:close") while every real event fired by
+                                 inc/webhooks.php is dot-notation (e.g. "incident.closed") --
+                                 not even the same word in that case. The strict-equality
+                                 filter match in webhook_fire() could never match any of
+                                 them, so only "All Events" ever actually delivered anything;
+                                 every individual checkbox was silently inert. Values now
+                                 match the real event names verbatim. "system:refresh" is
+                                 removed outright rather than translated -- it names an SSE
+                                 dashboard-push event (inc/sse.php), a different subsystem
+                                 with its own colon-notation convention, and has no webhook
+                                 equivalent at all. -->
                             <div class="row g-1" id="webhookEventsGrid">
                                 <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="*" id="whEvtAll"><label class="form-check-label small" for="whEvtAll">All Events (*)</label></div></div>
-                                <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="incident:new" id="whEvt1"><label class="form-check-label small" for="whEvt1">incident:new</label></div></div>
-                                <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="incident:update" id="whEvt2"><label class="form-check-label small" for="whEvt2">incident:update</label></div></div>
-                                <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="incident:close" id="whEvt3"><label class="form-check-label small" for="whEvt3">incident:close</label></div></div>
-                                <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="responder:status" id="whEvt4"><label class="form-check-label small" for="whEvt4">responder:status</label></div></div>
-                                <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="responder:assign" id="whEvt5"><label class="form-check-label small" for="whEvt5">responder:assign</label></div></div>
-                                <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="responder:unassign" id="whEvt6"><label class="form-check-label small" for="whEvt6">responder:unassign</label></div></div>
-                                <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="action:note" id="whEvt7"><label class="form-check-label small" for="whEvt7">action:note</label></div></div>
-                                <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="system:refresh" id="whEvt8"><label class="form-check-label small" for="whEvt8">system:refresh</label></div></div>
+                                <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="incident.created" id="whEvt1"><label class="form-check-label small" for="whEvt1">incident.created</label></div></div>
+                                <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="incident.updated" id="whEvt2"><label class="form-check-label small" for="whEvt2">incident.updated</label></div></div>
+                                <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="incident.closed" id="whEvt3"><label class="form-check-label small" for="whEvt3">incident.closed</label></div></div>
+                                <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="responder.status_changed" id="whEvt4"><label class="form-check-label small" for="whEvt4">responder.status_changed</label></div></div>
+                                <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="assign.created" id="whEvt5"><label class="form-check-label small" for="whEvt5">assign.created</label></div></div>
+                                <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="assign.removed" id="whEvt6"><label class="form-check-label small" for="whEvt6">assign.removed</label></div></div>
+                                <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="incident.note_added" id="whEvt7"><label class="form-check-label small" for="whEvt7">incident.note_added</label></div></div>
                             </div>
                         </div>
                         <div class="d-flex gap-2 mt-3">
@@ -8146,6 +8157,30 @@ foreach ($personnelSections as $sec) {
                     });
                 })();
             </script>
+
+            <!-- GH#134 (rjonesbsink): inc/webhooks.php's SSRF guard has read
+                 webhook_url_allowlist since the 2026-06-28 security audit and
+                 help.php has always told admins to set it here, but nothing
+                 ever rendered a field for it -- the only way to populate it
+                 was a direct database write. This is install-wide (not
+                 per-webhook), so it lives here rather than on the per-webhook
+                 edit form above. -->
+            <hr class="my-3">
+            <h6 class="text-body-secondary"><i class="bi bi-shield-lock me-1"></i>Outbound URL Allowlist</h6>
+            <p class="text-body-secondary small mb-2">
+                Webhook destinations pointing at an internal/private host are blocked by default
+                (SSRF protection). If this install genuinely needs to deliver webhooks to an
+                internal hostname — e.g. a mid-tier service on your LAN — list its hostname
+                suffix below, one per line. Leave blank to keep the default protection with no
+                exceptions.
+            </p>
+            <div class="mb-2">
+                <textarea class="form-control form-control-sm font-monospace" rows="3"
+                    id="webhookUrlAllowlist" data-webhook-setting="webhook_url_allowlist"
+                    placeholder="internal.example.lan&#10;svc.mycompany.local"></textarea>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="btnSaveWebhookAllowlist">Save Allowlist</button>
+            <span class="small text-success ms-2 d-none" id="webhookAllowlistSaveOk"><i class="bi bi-check-lg"></i> Saved</span>
         </div>
 
         <!-- ── External API Tokens (Phase 94 Stage 6) ────────────── -->

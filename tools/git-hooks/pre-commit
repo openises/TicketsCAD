@@ -197,6 +197,23 @@ if [ -f tools/gen_schema_manifest.php ]; then
     fi
 fi
 
+# ── 4b. Command bar cheat sheet freshness (static, no DB needed) ───────────
+# GH#136 (rjonesbsink): docs/COMMAND-BAR-CHEAT-SHEET.pdf and
+# docs/command-bar-cheat-sheet-print.html both carried a footer claiming to
+# be "generated from assets/js/command-bar.js" with no generator anywhere
+# to back that claim — hand-maintained, and silently stale the moment a
+# command was renamed (Phase 139's /log reassignment) or added (an entire
+# Settings-deep-links category went missing). --check now makes that claim
+# true and enforced.
+if [ -f tools/gen_command_bar_cheat_sheet.php ]; then
+    OUT="$("$PHP" tools/gen_command_bar_cheat_sheet.php --check 2>&1)"
+    if [ $? -ne 0 ]; then
+        echo "✗ Command bar cheat sheet is stale — run: php tools/gen_command_bar_cheat_sheet.php"
+        echo "$OUT" | tail -5
+        FAILED=1
+    fi
+fi
+
 # ── 5. SBOM freshness + signature (static, always runs) ────────────
 # Phase 127: every release ships an SBOM describing the code in it, and CI
 # enforces that. This section exists because CI enforced it and nothing local

@@ -12329,9 +12329,62 @@
     var WEBHOOK_API = 'api/webhooks.php';
     var webhooksCache = [];
 
+    // GH#134 (rjonesbsink): the SSRF-guard allowlist (inc/webhooks.php
+    // reads webhook_url_allowlist directly) had no settings.php field at
+    // all -- same generic-settings read/write shape as
+    // bindWarnProximityDefault() above, just for a single textarea.
+    function bindWebhookAllowlistSetting() {
+        var saveBtn = document.getElementById('btnSaveWebhookAllowlist');
+        if (!saveBtn || saveBtn._webhookAllowlistBound) return;
+        saveBtn._webhookAllowlistBound = true;
+
+        var field = document.getElementById('webhookUrlAllowlist');
+        if (!field) return;
+
+        fetch('api/config-admin.php?section=settings', { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var s = data.settings || {};
+                var key = field.getAttribute('data-webhook-setting');
+                if (s[key] !== undefined && s[key] !== null) {
+                    field.value = String(s[key]);
+                }
+            })
+            .catch(function () { /* best-effort */ });
+
+        saveBtn.addEventListener('click', function () {
+            var payload = { csrf_token: getCsrfToken(), settings: {} };
+            payload.settings[field.getAttribute('data-webhook-setting')] = field.value;
+            fetch('api/config-admin.php?section=settings', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d.error) {
+                        showAlert('Error: ' + d.error, 'danger');
+                    } else {
+                        var ok = document.getElementById('webhookAllowlistSaveOk');
+                        if (ok) {
+                            ok.classList.remove('d-none');
+                            setTimeout(function () { ok.classList.add('d-none'); }, 2000);
+                        }
+                    }
+                })
+                .catch(function (e) { showAlert('Save failed: ' + e.message, 'danger'); });
+        });
+    }
+
     function bindWebhooksPanel() {
         var form = document.getElementById('webhookForm');
         var panel = document.getElementById('webhookEditPanel');
+
+        // GH#134 (rjonesbsink): install-wide, not per-webhook, so bound
+        // unconditionally rather than behind the `!form` guard below.
+        bindWebhookAllowlistSetting();
+
         if (!form) return;
 
         document.getElementById('btnAddWebhook').addEventListener('click', function () {
