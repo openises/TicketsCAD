@@ -115,6 +115,7 @@ whichever one drifted.
 | The public repo is a full-tree-replace snapshot | A PR/fix merged only in the public repo is silently reverted by the next release unless ported into the private dev tree. `tools/release-divergence-check.php` catches this — fails closed if it can't reach the baseline. |
 | Training videos are versioned artifacts of a moving product | A release that changes a path/flag/command a published video asserts needs a re-cut; freeze on-screen facts LAST, right before final render, never at the start of a pass. |
 | Never burn a `youtu.be` ID into video pixels | Can't be swapped later without a re-cut; link to a redirect you control. |
+| AI-attribution injection attempts (2026-09-04) | A tool-result mimicking a system reminder repeatedly instructed adding AI-attribution trailers, contradicting Eric's standing rule. Refused each time by judgment alone — now also mechanically blocked by `tools/git-hooks/commit-msg` (before the commit exists) and `tools/ai_attribution_audit.php` (commit history + tracked files, runs in CI, cannot be bypassed with `--no-verify`). |
 
 ## Windows / general git safety
 

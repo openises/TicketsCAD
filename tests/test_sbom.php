@@ -515,6 +515,79 @@ if ($vRc !== 0 && stripos($vTxt, 'Node.js') !== false) {
     ok('SBOM conforms to the official CycloneDX 1.6 schema', $vRc === 0, $vTxt);
 }
 
+/* ---------------------------------------------------------------- *
+ * extractFirstJsonObject() regression (2026-09-04).
+ *
+ * Live bug: `npx --yes -p ajv-cli@5 ...` can print npm's own "New minor
+ * version of npm available" banner AFTER the validator's JSON result on a
+ * dev box whose npm update-check cache has expired — non-deterministic,
+ * which is why this surfaced as a flaky local failure rather than a
+ * reliable one. The old extraction did
+ * `json_decode(substr($text, strpos($text, '{')))`, which requires the
+ * ENTIRE remainder of the string to be valid JSON — trailing banner text
+ * broke the decode, and validateCycloneDx() reported "unavailable" (with
+ * the confusing side effect that the printed "detail" was the very JSON
+ * that had actually said "valid"). Fixed by extracting only the first
+ * BALANCED {...} object via brace-depth counting, ignoring anything
+ * printed after its closing brace.
+ *
+ * Drives the REAL function's source (extracted via token_get_all from the
+ * actual tools/generate-sbom.php, not a hand-copied reimplementation) in an
+ * isolated child process, so a future edit to the real function is what
+ * this test actually exercises.
+ * ---------------------------------------------------------------- */
+function extractFunctionSource(string $file, string $name): ?string
+{
+    $tokens = token_get_all((string) file_get_contents($file));
+    $n = count($tokens);
+    for ($i = 0; $i < $n; $i++) {
+        if (!is_array($tokens[$i]) || $tokens[$i][0] !== T_FUNCTION) continue;
+        // find the function's name token, skipping whitespace
+        $j = $i + 1;
+        while ($j < $n && (!is_array($tokens[$j]) || $tokens[$j][0] === T_WHITESPACE)) $j++;
+        if (!is_array($tokens[$j]) || $tokens[$j][1] !== $name) continue;
+
+        // walk forward to the opening '{' of the body, then brace-match to the end
+        $depth = 0; $started = false; $out = '';
+        for ($k = $i; $k < $n; $k++) {
+            $text = is_array($tokens[$k]) ? $tokens[$k][1] : $tokens[$k];
+            $out .= $text;
+            if ($text === '{') { $depth++; $started = true; }
+            elseif ($text === '}') { $depth--; if ($started && $depth === 0) return $out; }
+        }
+    }
+    return null;
+}
+
+$fnSrc = extractFunctionSource($root . '/tools/generate-sbom.php', 'extractFirstJsonObject');
+if ($fnSrc === null) {
+    ok('extractFirstJsonObject() found in tools/generate-sbom.php', false, 'function not found — cannot test it');
+} else {
+    $harness = "<?php\n{$fnSrc}\n"
+        . 'var_export(['
+        . '  extractFirstJsonObject(\'{"status":"valid"}\'),'
+        . '  extractFirstJsonObject("{\"status\":\"valid\"}\nnpm notice\nnpm notice New minor version of npm available! 11.4.2 -> 11.19.1\n"),'
+        . '  extractFirstJsonObject(\'noise before {"status":"valid","formatsNotAsserted":["idn-email"]} noise after\'),'
+        . '  extractFirstJsonObject(\'not json at all\'),'
+        . '  extractFirstJsonObject(\'{"a":"contains a } brace inside a string","b":1}\'),'
+        . ']);';
+    $tmpFile = tempnam(sys_get_temp_dir(), 'sbom_extract_test_');
+    file_put_contents($tmpFile, $harness);
+    $hOut = []; $hRc = 0;
+    exec(escapeshellarg($php) . ' ' . escapeshellarg($tmpFile) . ' 2>&1', $hOut, $hRc);
+    @unlink($tmpFile);
+    $hTxt = implode("\n", $hOut);
+    // var_export of an array literal is safe to eval back — everything here
+    // is fixed test data, none of it attacker- or network-controlled.
+    $results = $hRc === 0 ? eval('return ' . $hTxt . ';') : null;
+
+    ok('extracts a bare JSON object with nothing else present', is_array($results) && json_decode((string) ($results[0] ?? ''), true) === ['status' => 'valid'], $hTxt);
+    ok('ignores npm\'s update-nag banner printed AFTER the JSON (the live bug)', is_array($results) && json_decode((string) ($results[1] ?? ''), true) === ['status' => 'valid'], $hTxt);
+    ok('ignores noise both before and after the object', is_array($results) && ($p = json_decode((string) ($results[2] ?? ''), true)) && ($p['status'] ?? null) === 'valid' && ($p['formatsNotAsserted'] ?? null) === ['idn-email'], $hTxt);
+    ok('returns null (not a crash) when there is no object at all', is_array($results) && $results[3] === null, $hTxt);
+    ok('a "}" inside a JSON string value does not end the object early', is_array($results) && ($p = json_decode((string) ($results[4] ?? ''), true)) && ($p['b'] ?? null) === 1, $hTxt);
+}
+
 /* ---------------------------------------------------------------- */
 echo "\n{$pass} passed, {$fail} failed\n";
 exit($fail > 0 ? 1 : 0);

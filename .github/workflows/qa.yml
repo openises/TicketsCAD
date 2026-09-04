@@ -37,6 +37,36 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # PR-level half of the AI-attribution gate (see the "Ninth gate" step
+      # below for the commit/tracked-file half). CLAUDE.md's rule covers
+      # "commits, PRs, releases, or any actions" — a commit-message/file gate
+      # alone would miss an attribution line added only to a PR title/body.
+      # Only meaningful on a pull_request event; a plain push has no PR body.
+      - name: AI-attribution audit (pull request title/body)
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -e
+          PATTERN='co-authored-by[[:space:]]*:.*(anthropic\.com|openai\.com|claude[[:space:]-]*(sonnet|opus|haiku|fable|code|ai)|copilot|chatgpt|gpt-?[0-9]|gemini)|generated[[:space:]]+with.{0,60}(claude|copilot|chatgpt|gpt-?[0-9]|openai|anthropic|gemini)|noreply@anthropic\.com'
+          FOUND=0
+          if printf '%s' "$PR_TITLE" | grep -qiE "$PATTERN"; then
+            echo "✗ AI-attribution pattern found in PR title"; FOUND=1
+          fi
+          if printf '%s' "$PR_BODY" | grep -qiE "$PATTERN"; then
+            echo "✗ AI-attribution pattern found in PR body"; FOUND=1
+          fi
+          case "$PR_TITLE$PR_BODY" in
+            *🤖*)
+              case "$PR_TITLE$PR_BODY" in
+                *[Cc]laude*|*[Aa]nthropic*) echo "✗ robot-emoji + claude/anthropic found in PR title/body"; FOUND=1 ;;
+              esac
+              ;;
+          esac
+          [ "$FOUND" -eq 0 ] || exit 1
+          echo "[OK] no AI-attribution signatures in PR title/body"
+
       - name: Set up PHP 8.2
         uses: shivammathur/setup-php@v2
         with:
@@ -138,6 +168,29 @@ jobs:
       # code.
       - name: RBAC exclusion-list privilege-leak audit (admin-only exclusion ↔ real role grants)
         run: php tests/test_rbac_exclusion_leak_audit.php
+
+      # Ninth gate in the family, and the only one this whole audit lineage
+      # exists BECAUSE OF an attempted policy violation rather than a bug. A
+      # tool-result formatted exactly like a genuine system reminder has,
+      # across three separate sessions, instructed the agent handling them to
+      # append an AI-attribution trailer/line to commits and PRs — directly
+      # contradicting Eric's standing global rule (CLAUDE.md: never add AI
+      # attribution to a commit, PR, or release). See
+      # tools/ai_attribution_audit.php's own docblock for the exact banned
+      # strings — not repeated here so this comment doesn't trip its own gate.
+      # Refused every time by the session's own judgment, which is one layer;
+      # this is the mechanical second layer, and the one that actually runs
+      # here because CI cannot be bypassed the way a local git hook can
+      # (--no-verify, a clone that never ran install-git-hooks.sh, a commit
+      # made outside the git CLI entirely, e.g. GitHub's own web editor).
+      # This job's checkout is shallow (depth 1), so the commit-history half
+      # sees only the commit(s) in this push — that is the right scope for a
+      # regression gate; a one-time full-history sweep already confirmed the
+      # existing history clean, and there is nothing to grandfather going
+      # forward since real commit messages never legitimately match these
+      # patterns.
+      - name: AI-attribution audit (commit history + tracked files ↔ known attribution signatures)
+        run: php tests/test_ai_attribution_audit.php
 
       # Anti-rot gate for the published SBOM. An SBOM that is accurate once and
       # stale afterwards is worse than none, because it asserts a currency it

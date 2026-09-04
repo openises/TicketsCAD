@@ -12,6 +12,7 @@
 #   3e. tools/rbac_permission_audit.php          (rbac_can() code ↔ real permissions row)
 #   3f. tools/dead_control_audit.php             (a control/column ↔ anything that reads it)
 #   3g. tools/rbac_exclusion_leak_audit.php      (admin-only exclusion list ↔ real role grants)
+#   3h. tools/ai_attribution_audit.php           (commit history + tracked files ↔ AI-attribution signatures)
 #   4. tools/gen_schema_manifest.php --check     (manifest ↔ what the code writes)
 #   5. tools/generate-sbom.php --check/--verify  (SBOM ↔ dependencies + signature)
 #
@@ -177,6 +178,22 @@ if [ -f tools/rbac_exclusion_leak_audit.php ]; then
         echo "⚠ RBAC exclusion-leak audit skipped (database unreachable) — CI will run it"
     elif [ $CODE -ne 0 ]; then
         echo "✗ RBAC exclusion-leak audit found an admin-only permission reachable by a lower role:"
+        echo "$OUT" | tail -20
+        FAILED=1
+    fi
+fi
+
+# ── 3h. AI-attribution audit (static, always runs) ─────────────────────
+# Second layer behind commit-msg's own AI-attribution block above — this one
+# also sweeps tracked-file CONTENT and the full commit-history reachable from
+# HEAD, so it catches anything the current commit message check can't see:
+# an attribution string committed into a file rather than a message, or a
+# past commit that landed some other way (--no-verify, a hook never
+# installed, a commit made outside the git CLI). Static, no database needed.
+if [ -f tools/ai_attribution_audit.php ]; then
+    OUT="$("$PHP" tools/ai_attribution_audit.php 2>&1)"
+    if [ $? -ne 0 ]; then
+        echo "✗ AI-attribution audit found a signature in tracked files or commit history:"
         echo "$OUT" | tail -20
         FAILED=1
     fi

@@ -1,0 +1,21 @@
+# AI-attribution audit baseline — tools/ai_attribution_audit.php
+#
+# One "path:line | reason" entry per KNOWN, REVIEWED case where a tracked
+# file legitimately contains one of the banned AI-attribution strings as
+# something OTHER than real attribution (documenting the policy, or a real
+# product feature that happens to display "Claude" in its UI). Anything not
+# listed here fails the build. That split is the whole point: the policy can
+# still be documented and the radio-AI feature can still describe its own
+# UI, without either one silently widening into cover for the thing this
+# audit exists to catch.
+#
+# This baseline covers ONLY the tracked-file half of the audit. The
+# commit-history half has NO baseline and NEVER will — there is no
+# legitimate reason a real commit message needs to match these patterns, so
+# there is nothing to grandfather there.
+#
+# FORMAT   path:line | reason        (both required; a reason-less entry
+#                                     fails the gate, same convention as
+#                                     tools/soft_delete_audit_exceptions.txt)
+
+specs/phase-85f-claude-on-radio/spec.md:176 | Phase 85f UI mockup — a caller-queue status label reading "🤖 Claude AI — pending response" is the literal, intentional PRODUCT UI for the on-air Claude-assisted-response feature (see claude-on-amateur-radio skill), not a code-attribution trailer.

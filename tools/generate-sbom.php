@@ -552,6 +552,48 @@ function licenseLabel($license): string
  * @return array{0:string,1:string} [status, detail] where status is
  *         'valid' | 'invalid' | 'unavailable'
  */
+
+/**
+ * Find the first top-level {...} object in $text by brace-depth counting
+ * (respecting quoted strings and backslash escapes) and return just that
+ * substring — never "from the first { to end of string", which breaks the
+ * moment anything (npm's own notices, a trailing newline banner) is printed
+ * after the JSON a subprocess emitted. Returns null if no balanced object
+ * is found at all.
+ */
+function extractFirstJsonObject(string $text): ?string
+{
+    $start = strpos($text, '{');
+    if ($start === false) return null;
+
+    $depth = 0;
+    $inString = false;
+    $escaped = false;
+    $len = strlen($text);
+    for ($i = $start; $i < $len; $i++) {
+        $ch = $text[$i];
+        if ($inString) {
+            if ($escaped) {
+                $escaped = false;
+            } elseif ($ch === '\\') {
+                $escaped = true;
+            } elseif ($ch === '"') {
+                $inString = false;
+            }
+            continue;
+        }
+        if ($ch === '"') { $inString = true; continue; }
+        if ($ch === '{') { $depth++; continue; }
+        if ($ch === '}') {
+            $depth--;
+            if ($depth === 0) {
+                return substr($text, $start, $i - $start + 1);
+            }
+        }
+    }
+    return null; // never balanced — truncated output, not a parse-after-the-fact problem
+}
+
 function validateCycloneDx(string $bomPath): array
 {
     if (!is_file($bomPath)) return ['invalid', "no such file: {$bomPath}"];
@@ -582,13 +624,23 @@ function validateCycloneDx(string $bomPath): array
     $code = 0;
     exec($cmd, $out, $code);
 
-    /* npm chatters about deprecated transitive packages; keep the substance. */
-    $text = implode("\n", array_filter($out, static fn($l)
-        => stripos(ltrim($l), 'npm warn') !== 0));
+    /* npm chatters about deprecated transitive packages and (intermittently
+     * — only when npm's own update cache has expired, which is why this
+     * surfaced as a flaky local failure rather than a reliable one) a
+     * "New minor version of npm available" banner; keep the substance. */
+    $text = implode("\n", array_filter($out, static fn($l) => stripos(ltrim($l), 'npm warn') !== 0
+        && stripos(ltrim($l), 'npm notice') !== 0));
 
-    /* The runner emits one JSON object. Anything else means it never ran. */
-    $brace  = strpos($text, '{');
-    $parsed = $brace === false ? null : json_decode(substr($text, $brace), true);
+    /* The runner emits one JSON object, but npx/npm can still print trailing
+     * lines AFTER it that the filter above doesn't recognize (seen live:
+     * npm's update-nag banner landed after the JSON, once, non-deterministically
+     * — `json_decode(substr($text, $brace))` requires the ENTIRE remainder to
+     * be valid JSON, so trailing garbage fails the decode even though the
+     * validator's own answer, sitting right there in $text, was "valid").
+     * Extract only the FIRST balanced {...} object by brace-depth, ignoring
+     * anything after its closing brace, rather than assuming the object runs
+     * to the end of the string. */
+    $parsed = json_decode((string) extractFirstJsonObject($text), true);
     if (!is_array($parsed) || !isset($parsed['status'])) {
         return ['unavailable', trim($text) !== '' ? trim($text) : 'validator produced no result'];
     }
