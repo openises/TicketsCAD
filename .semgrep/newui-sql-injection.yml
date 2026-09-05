@@ -1,0 +1,58 @@
+rules:
+  - id: newui-tainted-sql-query-string
+    mode: taint
+    pattern-sources:
+      - pattern: $_GET[...]
+      - pattern: $_POST[...]
+      - pattern: $_REQUEST[...]
+      - pattern: $_COOKIE[...]
+    pattern-sanitizers:
+      - pattern: intval(...)
+      - pattern: (int)$X
+      - pattern: (integer)$X
+      - pattern: floatval(...)
+      - pattern: (float)$X
+      - pattern: sanitize_int(...)
+      - pattern: sanitize_coordinate(...)
+      # db_table() (inc/db.php) is this codebase's own centralized
+      # identifier-position sanitizer: it strips everything except
+      # [a-zA-Z0-9_] before returning a backtick-quoted string, regardless
+      # of what's passed in -- so a value that has passed through it can
+      # never carry SQL syntax, no matter its origin.
+      - pattern: db_table(...)
+      - pattern: preg_replace('/[^a-zA-Z0-9_]/', '', $X)
+      - pattern: "in_array($X, $ARR, true) ? $X : $DEFAULT"
+      - pattern: "(isset($X) && in_array($X, $ARR, true)) ? $X : $DEFAULT"
+      - pattern: |
+          if (!in_array($X, $ARR, true)) {
+            $X = $DEFAULT;
+          }
+      - pattern: "strtoupper($X) === $LITERAL"
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: db_query($SQL, ...)
+              - pattern: db_fetch_all($SQL, ...)
+              - pattern: db_fetch_one($SQL, ...)
+              - pattern: db_fetch_value($SQL, ...)
+          - focus-metavariable: $SQL
+      - patterns:
+          - pattern-either:
+              - pattern: $PDO->query($SQL)
+              - pattern: $PDO->exec($SQL)
+          - focus-metavariable: $SQL
+    message: >-
+      Tainted request input ($_GET/$_POST/$_REQUEST/$_COOKIE) flows into a SQL
+      query string without going through db_query()'s bound ? placeholder +
+      params-array pattern. Fix by either (a) binding the value as a
+      parameter -- db_query($sql, [$value]) with a ? in $sql -- for a VALUE
+      position, or (b) passing it through db_table() (inc/db.php) or checking
+      it against a literal allowlist of known-safe strings for an IDENTIFIER
+      or SQL-keyword position. Escaping alone (addslashes, etc.) is NOT
+      sufficient for identifier or keyword positions -- it only protects
+      quoted string values.
+    languages: [php]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command"

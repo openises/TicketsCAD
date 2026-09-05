@@ -1,0 +1,24 @@
+# Reviewed Semgrep SQL-injection taint-tracking false positives.
+# See tools/sqli_taint_audit.php's docblock before adding an entry --
+# this file records ACCEPTED FALSE POSITIVES, never real findings.
+# Every current entry is the same idiom: a literal array-keyed lookup
+# for a sort column (e.g. `$sortMap[$_GET['sort']] ?? 'default'`) --
+# the attacker selects AMONG hardcoded values, never supplies one --
+# which Semgrep's OSS taint engine doesn't recognize syntactically.
+# Individually verified by reading the code (2026-09):
+#   api/audit-log.php:223      -- $sortMap[$_GET['sort']] ?? 'event_time'
+#   api/file-upload.php:179    -- $colMap[$entityType] ?? null
+#   api/incident-list.php:120  -- $sort_map[$sort] ?? '`t`.`date`'
+#   api/incident-search.php:138 -- same $sort_map pattern (sibling of incident-list.php)
+#   api/mesh.php:1536          -- same int-cast + ?-bound IN(...) pattern as
+#                                  zello-inbox.php below (sibling endpoint)
+#   api/zello-inbox.php:266    -- ids are array_map('intval', ...)-cast and
+#                                  bound via a dynamically-sized ?-placeholder
+#                                  list; the flagged fragment is only "?,?,?"
+# Regenerate with: php tools/sqli_taint_audit.php --update-baseline
+api/audit-log.php:223
+api/file-upload.php:179
+api/incident-list.php:120
+api/incident-search.php:138
+api/mesh.php:1536
+api/zello-inbox.php:266

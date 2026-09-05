@@ -32,6 +32,7 @@ __pycache__/
 
 # SonarQube scanner working directory — internal state, no source value.
 /.scannerwork/
+sonar_external_issues*.json
 
 # ──────────────────────────────────────────────────────────────────────
 #  Runtime / per-deployment artifacts
