@@ -480,12 +480,12 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
         <button class="draw-btn" id="drawFinish" title="Finish polygon/line" style="display:none;background:var(--bs-success);color:#fff;"><i class="bi bi-check-lg"></i></button>
         <button class="draw-btn" id="drawCancel" title="Cancel drawing" style="display:none;"><i class="bi bi-x-lg text-danger"></i></button>
         <hr style="margin:2px 0;border-color:var(--bs-border-color);">
-        <button class="draw-btn" id="toggleMarkups" title="Toggle saved markups"><i class="bi bi-layers"></i></button>
+        <button class="draw-btn" id="toggleMarkups" title="Toggle saved markups"><i class="bi bi-pin-map"></i></button>
     </div>
 
     <!-- Markups Toggle Panel -->
     <div id="markupsPanel">
-        <div class="fw-semibold mb-1"><i class="bi bi-layers me-1"></i>Saved Markups</div>
+        <div class="fw-semibold mb-1"><i class="bi bi-pin-map me-1"></i>Saved Markups</div>
         <div id="markupsList"><small class="text-body-secondary">Loading...</small></div>
     </div>
 </div>

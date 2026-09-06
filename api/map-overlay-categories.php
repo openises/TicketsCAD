@@ -9,7 +9,16 @@
  *   POST ?action=archive       → soft-delete (archived_at)
  *   POST ?action=assign_markup → set mmarkup.category_id from markup_id
  *
- * RBAC: action.manage_config.
+ * RBAC: action.manage_config for every action EXCEPT `list`. `list` only
+ * returns overlay-toggle labels (name/color/icon/sort_order/default_visible/
+ * markup_count) -- no more sensitive than the sibling map-image-overlays.php,
+ * map-config.php, road-conditions.php and weather-alerts.php endpoints,
+ * none of which carry an RBAC gate beyond being logged in. Gating `list`
+ * on a Super-Admin-only permission meant every other role's layer control
+ * (situation.php and index.php's dashboard Map widget both call this) fell
+ * back to a single generic "Uncategorised markups" toggle instead of the
+ * install's real named categories -- GH#139, confirmed via a live
+ * throwaway Dispatcher-role account before this fix.
  */
 ini_set('display_errors', '0');
 header('Content-Type: application/json');
@@ -18,12 +27,6 @@ require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/functions.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
-
-if (!rbac_can('action.manage_config')) {
-    http_response_code(403);
-    echo json_encode(['error' => 'Forbidden — requires action.manage_config']);
-    exit;
-}
 
 $prefix = $GLOBALS['db_prefix'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
@@ -48,6 +51,15 @@ if ($action === 'list' && $method === 'GET') {
         );
         json_response(['categories' => $rows]);
     } catch (Exception $e) { json_error('list failed: ' . $e->getMessage(), 500); }
+}
+
+// Every action below actually mutates category data -- these stay
+// Super-Admin-only. (json_response()/json_error() above always exit, so
+// this is never reached for a successful or failed `list` call.)
+if (!rbac_can('action.manage_config')) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Forbidden — requires action.manage_config']);
+    exit;
 }
 
 if ($action === 'create' && $method === 'POST') {
