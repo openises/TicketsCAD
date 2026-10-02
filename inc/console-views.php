@@ -100,9 +100,143 @@ function console_component_clean(array $c, array $caps) {
 }
 
 /**
+ * Phase 152 (Console rebuild, 5-persona review) — strip TEMPLATE
+ * catalog: the flat "show" bag that replaces the positioned-component
+ * palette above (console_view_strips.controls_json's new meaning; see
+ * sql/run_phase152_strip_templates.php for the data migration). Each key
+ * maps to the SAME capability requirement its old positioned-component
+ * equivalent had (console_component_catalog()'s own 'needs' list) — a
+ * channel that couldn't show a 'ptt' component before still can't show
+ * ptt:true in a template. `sel`/`patchchips` are universal (no
+ * capability gate — Select is already always-rendered chrome today, and
+ * showing "no active patches" is harmless on any channel); `vu`/`recall`
+ * are the two genuinely NEW controls, gated on having a live audio level
+ * to show (voice_rx) or anything to have missed (voice_rx or any text
+ * capability) respectively.
+ */
+function console_strip_template_needs() {
+    return [
+        'ptt'        => ['voice_tx'],
+        'mon'        => ['voice_rx'],
+        'mute'       => ['voice_rx'],
+        'vol'        => ['voice_rx'],
+        'text'       => ['text_rx', 'text_tx', 'source'],
+        'vu'         => ['voice_rx'],
+        'recall'     => ['voice_rx', 'text_rx', 'text_tx', 'source'],
+        'sel'        => null,
+        'patchchips' => null,
+    ];
+}
+
+/** True when the channel's capabilities permit this show-flag key. */
+function console_strip_show_allowed($key, array $caps) {
+    $needs = console_strip_template_needs();
+    if (!array_key_exists($key, $needs)) { return false; }
+    if ($needs[$key] === null) { return true; }
+    foreach ($needs[$key] as $capKey) {
+        if (!empty($caps[$capKey])) { return true; }
+    }
+    return false;
+}
+
+/**
+ * Validate + clamp a requested {show, hotkey} template against a
+ * channel's real capabilities — show:true for a control the channel
+ * cannot support is silently dropped to false (not a hard error; the
+ * designer's own UI is expected to already grey these out, but the
+ * server never trusts the client alone). Always returns every known key
+ * (defaulting absent/invalid ones to false), so a template is never
+ * missing a key a reader might expect.
+ *
+ * @param mixed $showRequest  the client-submitted {ptt:bool, ...} bag
+ * @param mixed $hotkeyRequest a single key char or "F1".."F12", or null
+ * @param array $caps the channel's capabilities array
+ * @return array{show: array<string,bool>, hotkey: string|null}
+ */
+function console_strip_template_clean($showRequest, $hotkeyRequest, array $caps) {
+    $showRequest = is_array($showRequest) ? $showRequest : [];
+    $show = [];
+    foreach (array_keys(console_strip_template_needs()) as $key) {
+        $requested = !empty($showRequest[$key]);
+        $show[$key] = $requested && console_strip_show_allowed($key, $caps);
+    }
+    $hotkey = null;
+    if (is_string($hotkeyRequest)) {
+        $h = trim($hotkeyRequest);
+        // A single printable key or a function-key name (F1-F12) — matches
+        // what a keydown handler can realistically bind a strip hotkey to.
+        if ($h !== '' && preg_match('/^(F[1-9]|F1[0-2]|[A-Za-z0-9])$/', $h)) {
+            $hotkey = strtoupper($h);
+        }
+    }
+    return ['show' => $show, 'hotkey' => $hotkey];
+}
+
+/**
+ * Convert a LEGACY controls_json payload (Phase 114b2 flat control-key
+ * list, or Phase 114b3 positioned-component array) into the new template
+ * {show, hotkey} shape. Shared by sql/run_phase152_strip_templates.php's
+ * one-time data migration AND console_view_attach_strips()'s own
+ * defensive fallback below (a row that somehow hasn't been migrated yet
+ * — a race with a deploy step, an install that hasn't run migrations —
+ * must still render correctly rather than throwing or silently going
+ * blank; this project's standing schema-resilience discipline applied to
+ * a data-shape migration instead of a schema one). NOT called for a row
+ * already in the new {show:...} shape — callers check that first.
+ *
+ * @param mixed $decoded  json_decode()'d controls_json (array or null)
+ * @return array{show: array<string,bool>, hotkey: string|null}
+ */
+function console_strip_show_from_legacy_controls($decoded, array $caps) {
+    $show = array_fill_keys(array_keys(console_strip_template_needs()), false);
+    $show['sel'] = true; // universal chrome today — see the migration's own docblock
+
+    if (is_array($decoded) && !empty($decoded)) {
+        if (is_string($decoded[0] ?? null)) {
+            // Phase 114b2 flat control-key list.
+            if (in_array('voice', $decoded, true)) {
+                $show['ptt'] = true; $show['mon'] = true;
+                $show['mute'] = true; $show['vol'] = true;
+            }
+            if (in_array('text', $decoded, true)) {
+                $show['text'] = true;
+            }
+        } else {
+            // Phase 114b3 positioned-component array.
+            foreach ($decoded as $comp) {
+                $type = is_array($comp) ? ($comp['type'] ?? '') : '';
+                switch ($type) {
+                    case 'ptt':     $show['ptt'] = true; break;
+                    case 'monitor': $show['mon'] = true; break;
+                    case 'mute':    $show['mute'] = true; break;
+                    case 'volume':  $show['vol'] = true; break;
+                    case 'text':    $show['text'] = true; break;
+                }
+            }
+        }
+    }
+
+    // Never claim a control the channel genuinely can't support, even for
+    // a legacy row that somehow recorded one (shouldn't happen, but this
+    // is the same "server never trusts stored/client data alone" posture
+    // console_strip_template_clean() applies to a fresh save).
+    foreach ($show as $key => $val) {
+        if ($val && !console_strip_show_allowed($key, $caps)) { $show[$key] = false; }
+    }
+
+    return ['show' => $show, 'hotkey' => null];
+}
+
+/**
  * Default positioned component set for a channel — also the converter
  * for legacy b2 flat control lists. Mirrors Eric's sketch: label block
  * on top, LED beside it, activity line, wide PTT, small buttons below.
+ *
+ * RETAINED for sql/run_phase152_strip_templates.php's own migration logic
+ * and for rendering any pre-migration row a caller might still encounter
+ * mid-deploy — the LIVE write path (console_view_save_strips() below) no
+ * longer produces this shape; new saves always use the template shape
+ * above.
  */
 function console_components_default(array $caps) {
     $comps = [
@@ -143,38 +277,34 @@ function console_views_column_exists($table, $column) {
 /** Attach {strips:[...]} to one console_views row (id required). */
 function console_view_attach_strips(array $v) {
     $prefix = $GLOBALS['db_prefix'] ?? '';
-    $hasLayoutCol = console_views_column_exists('console_view_strips', 'layout_json');
-    $layoutSel = $hasLayoutCol ? ', layout_json' : '';
     $strips = db_fetch_all(
-        "SELECT channel_id, position, width, overrides_json, controls_json $layoutSel
+        "SELECT channel_id, position, width, overrides_json, controls_json
            FROM `{$prefix}console_view_strips`
           WHERE view_id = ? ORDER BY position",
         [$v['id']]
     );
-    foreach ($strips as $i => &$s) {
+    foreach ($strips as &$s) {
         $s['overrides'] = $s['overrides_json'] ? (json_decode($s['overrides_json'], true) ?: []) : [];
-        $decoded = $s['controls_json'] ? (json_decode($s['controls_json'], true) ?: []) : [];
-        $s['layout'] = (!empty($s['layout_json']))
-            ? (json_decode($s['layout_json'], true) ?: null) : null;
-        // Legacy b2 rows: flat control-key list, no layout — convert to
-        // the default positioned set so clients see ONE format.
-        if ($decoded && is_string($decoded[0] ?? null)) {
+        $decoded = $s['controls_json'] ? (json_decode($s['controls_json'], true) ?: null) : null;
+
+        if (is_array($decoded) && array_key_exists('show', $decoded)) {
+            // Already in the new template shape (the common case post-
+            // migration) — use as-is.
+            $template = ['show' => (array) $decoded['show'], 'hotkey' => $decoded['hotkey'] ?? null];
+        } else {
+            // Defensive fallback for a row that hasn't been migrated yet
+            // (sql/run_phase152_strip_templates.php) — same schema-
+            // resilience discipline this project applies everywhere else;
+            // a page load must not go blank just because a migration
+            // hasn't run on this install yet.
             $ch = channel_get((int) $s['channel_id']);
-            $decoded = console_components_default($ch ? $ch['capabilities'] : []);
+            $template = console_strip_show_from_legacy_controls($decoded, $ch ? $ch['capabilities'] : []);
         }
-        $s['components'] = $decoded;
-        if (!$s['layout']) {
-            // Legacy width (1|2) → a sensible rectangle, flowed left-to-right.
-            $w = ((int) $s['width'] === 2) ? 6 : 3;
-            $perRow = (int) floor(12 / $w);
-            $s['layout'] = [
-                'x' => ($i % $perRow) * $w,
-                'y' => (int) floor($i / $perRow) * 14,
-                'w' => $w, 'h' => 14,
-            ];
-        }
-        unset($s['overrides_json'], $s['controls_json'], $s['layout_json']);
+        $s['show'] = $template['show'];
+        $s['hotkey'] = $template['hotkey'];
+        unset($s['overrides_json'], $s['controls_json']);
     }
+    unset($s);
     $v['strips'] = $strips;
     return $v;
 }
@@ -402,10 +532,14 @@ function console_view_delete($id) {
 }
 
 /**
- * Validate + persist a full strip set for one view. Mirrors the b2.5
- * free-form layout validation exactly (component capability gating,
- * colour/mode whitelist, size clamps) — a published view (shared OR
- * personal) can never contain a dead or malformed control.
+ * Validate + persist a full strip set for one view. Phase 152 (Console
+ * rebuild, 5-persona review): strips are ORDERED (array index = position,
+ * an admin-assigned list — the review's unanimous rejection of free-drag/
+ * pixel placement, even at the strip-bank level) with a 1|2 unit width,
+ * never a pixel rectangle. `console_strip_template_clean()` does the same
+ * job `console_component_clean()` used to (capability gating, so a
+ * published view can never contain a dead control) against the new flat
+ * show-bag shape instead of a positioned-component list.
  */
 function console_view_save_strips($id, $strips) {
     $prefix = $GLOBALS['db_prefix'] ?? '';
@@ -413,7 +547,14 @@ function console_view_save_strips($id, $strips) {
     if (count($strips) > 64) { return ['ok' => false, 'status' => 400, 'error' => 'Too many strips (max 64)']; }
 
     $clean = [];
-    $overrideKeys = ['label', 'short_label', 'color'];
+    // 'ptt_color' was missing here until 2026-09-08 (Eric's own live report
+    // on your-server): console-designer.js's inspector has offered a
+    // "PTT button color" picker, and console.js's renderStrip() has read
+    // ov.ptt_color to paint the PTT button, since this phase shipped -- but
+    // this whitelist silently dropped the value on every save, so the
+    // control existed and appeared to work in the designer (client-side
+    // state) while never actually persisting.
+    $overrideKeys = ['label', 'short_label', 'color', 'ptt_color'];
     foreach ($strips as $i => $s) {
         $chId = (int) ($s['channel_id'] ?? 0);
         $ch = channel_get($chId);
@@ -423,50 +564,52 @@ function console_view_save_strips($id, $strips) {
             if (!isset($s['overrides'][$k])) { continue; }
             $val = trim((string) $s['overrides'][$k]);
             if ($val === '') { continue; }
-            if ($k === 'color' && !preg_match('/^#[0-9a-fA-F]{3,8}$/', $val)) {
+            if (($k === 'color' || $k === 'ptt_color') && !preg_match('/^#[0-9a-fA-F]{3,8}$/', $val)) {
                 return ['ok' => false, 'status' => 400, 'error' => "Strip $i: invalid $k"];
             }
             $ov[$k] = substr($val, 0, $k === 'label' ? 120 : 24);
         }
 
-        $lay = is_array($s['layout'] ?? null) ? $s['layout'] : [];
-        $layout = [
-            'x' => max(0, min(11, (int) ($lay['x'] ?? 0))),
-            'y' => max(0, min(500, (int) ($lay['y'] ?? 0))),
-            'w' => max(1, min(12, (int) ($lay['w'] ?? 3))),
-            'h' => max(4, min(100, (int) ($lay['h'] ?? 14))),
-        ];
-        if ($layout['x'] + $layout['w'] > 12) { $layout['w'] = 12 - $layout['x']; }
-
-        $reqComps = is_array($s['components'] ?? null) ? $s['components'] : [];
-        if (count($reqComps) > 24) { return ['ok' => false, 'status' => 400, 'error' => "Strip $i: too many components (max 24)"]; }
-        $components = [];
-        foreach ($reqComps as $ci => $c) {
-            if (!is_array($c)) { return ['ok' => false, 'status' => 400, 'error' => "Strip $i component $ci: malformed"]; }
-            $cc = console_component_clean($c, $ch['capabilities']);
-            if ($cc === null) {
-                return ['ok' => false, 'status' => 400, 'error' => "Strip $i component $ci: invalid or not supported by this channel"];
-            }
-            $components[] = $cc;
-        }
+        $width = ((int) ($s['width'] ?? 1) === 2) ? 2 : 1;
+        $template = console_strip_template_clean($s['show'] ?? null, $s['hotkey'] ?? null, $ch['capabilities']);
 
         $clean[] = [
             'channel_id' => $chId,
-            'width'      => ($layout['w'] >= 6) ? 2 : 1,
-            'layout'     => json_encode($layout),
+            'width'      => $width,
             'overrides'  => $ov ? json_encode($ov) : null,
-            'components' => $components ? json_encode($components) : null,
+            'controls'   => json_encode($template),
         ];
     }
+
+    // Hotkeys must be unique WITHIN one view — two strips racing for the
+    // same key press is a worse operator experience than no hotkey at
+    // all. Silently drop the LATER duplicate rather than rejecting the
+    // whole save (matches this function's existing "clamp, don't reject
+    // outright" posture for out-of-range layout values before this
+    // rewrite).
+    $seenHotkeys = [];
+    foreach ($clean as &$s) {
+        $decoded = json_decode($s['controls'], true);
+        $hk = $decoded['hotkey'] ?? null;
+        if ($hk !== null) {
+            if (isset($seenHotkeys[$hk])) {
+                $decoded['hotkey'] = null;
+                $s['controls'] = json_encode($decoded);
+            } else {
+                $seenHotkeys[$hk] = true;
+            }
+        }
+    }
+    unset($s);
 
     try {
         db_query("DELETE FROM `{$prefix}console_view_strips` WHERE view_id = ?", [(int) $id]);
         foreach ($clean as $pos => $s) {
             db_query(
                 "INSERT INTO `{$prefix}console_view_strips`
-                    (view_id, channel_id, position, width, layout_json, overrides_json, controls_json)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [$id, $s['channel_id'], $pos, $s['width'], $s['layout'], $s['overrides'], $s['components']]
+                    (view_id, channel_id, position, width, overrides_json, controls_json)
+                 VALUES (?, ?, ?, ?, ?, ?)",
+                [$id, $s['channel_id'], $pos, $s['width'], $s['overrides'], $s['controls']]
             );
         }
         db_query("UPDATE `{$prefix}console_views` SET updated_at = NOW() WHERE id = ?", [(int) $id]);

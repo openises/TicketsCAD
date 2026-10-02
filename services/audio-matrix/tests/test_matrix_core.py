@@ -10,6 +10,7 @@ guard, and route-table validation. Run:
 
 import os
 import sys
+import time
 from array import array
 
 # Import the sibling modules (services/audio-matrix on the path).
@@ -182,6 +183,70 @@ core6.add_route(Route("m", "n", allow_cross_class=True))
 check("route_add audited", any(e[0] == "matrix.route_add" for e in events))
 check("cross_class override audited",
       any(e[0] == "matrix.cross_class_route" for e in events))
+
+# ── 8. remove_channel() (Phase 152 — dynamic browser-leg sessions) ────
+print("\n8. remove_channel()")
+core7 = MatrixCore()
+core7.add_channel(Channel("bws1", "Browser Session 1"))
+core7.add_channel(Channel("bws2", "Browser Session 2"))
+core7.add_route(Route("bws1", "bws2"))
+core7.add_route(Route("bws2", "bws1"))
+check("channel exists before removal", core7.channel("bws1") is not None)
+removed = core7.remove_channel("bws1")
+check("remove_channel() returns True for a real channel", removed is True)
+check("channel is gone after removal", core7.channel("bws1") is None)
+check("routes referencing the removed channel (both directions) are gone",
+      all("bws1" not in (r.src, r.dst) for r in core7.routes()))
+check("the OTHER channel is untouched", core7.channel("bws2") is not None)
+check("removing an unknown channel returns False, does not raise",
+      core7.remove_channel("does-not-exist") is False)
+
+# A route between two SURVIVING channels must not be collaterally removed
+# by an unrelated channel's departure.
+core8 = MatrixCore()
+core8.add_channel(Channel("x", "X"))
+core8.add_channel(Channel("y", "Y"))
+core8.add_channel(Channel("z", "Z"))
+core8.add_route(Route("x", "y"))
+core8.remove_channel("z")
+check("removing an unrelated channel leaves an existing route intact",
+      any(r.src == "x" and r.dst == "y" for r in core8.routes()))
+
+# ── 9. Route.expires_at -- read-time enforcement (Phase 152 prereq #6) ─
+print("\n9. Route.expires_at read-time expiry")
+core9 = MatrixCore()
+core9.add_channel(Channel("ex_src", "Expiry Source"))
+core9.add_channel(Channel("ex_dst", "Expiry Dest"))
+lsrc9 = LoopbackLeg(core9, "ex_src"); core9.channel("ex_src").leg = lsrc9
+ldst9 = LoopbackLeg(core9, "ex_dst"); core9.channel("ex_dst").leg = ldst9
+
+check("a route with expires_at=None never expires",
+      not Route("ex_src", "ex_dst").is_expired())
+check("is_expired() accepts an explicit `now` for deterministic testing",
+      Route("ex_src", "ex_dst", expires_at=1000.0).is_expired(now=1001.0) is True
+      and Route("ex_src", "ex_dst", expires_at=1000.0).is_expired(now=999.0) is False)
+
+# A route expiring 60s in the FUTURE still carries audio right now.
+core9.add_route(Route("ex_src", "ex_dst", expires_at=time.time() + 60.0))
+lsrc9.feed(tone(1234))
+core9.tick()
+check("a route that has not yet expired still relays audio",
+      first_sample(ldst9.last()) == 1234)
+
+# The SAME route, but already in the past -- tick() must exclude it,
+# without anyone ever calling remove_route() or disabling it.
+core9.remove_route("ex_src", "ex_dst")
+core9.add_route(Route("ex_src", "ex_dst", expires_at=time.time() - 1.0))
+ldst9.reset()
+lsrc9.feed(tone(1234))
+core9.tick()
+check("an EXPIRED route delivers SILENCE -- read-time refusal, no sweep involved",
+      F.is_silence(ldst9.last()))
+check("the expired Route object is still present (not auto-removed) -- "
+      "GET /routes must be able to show 'expired', not make it vanish",
+      any(r.src == "ex_src" and r.dst == "ex_dst" for r in core9.routes()))
+expired_route = next(r for r in core9.routes() if r.src == "ex_src" and r.dst == "ex_dst")
+check("the Route's own is_expired() (default now=real time) agrees", expired_route.is_expired() is True)
 
 print(f"\n=== {_pass} passed, {_fail} failed ===")
 sys.exit(0 if _fail == 0 else 1)

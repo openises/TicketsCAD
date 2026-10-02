@@ -1,0 +1,156 @@
+/**
+ * Phase 153 (2026-09-08) — browser-native WebRTC phone widget styles.
+ * Same shell conventions as zello-widget.css / radio-widget.css.
+ */
+
+.phone-widget {
+    position: fixed;
+    z-index: 1100;
+    width: 300px;
+    height: 380px;
+    min-width: 260px;
+    min-height: 280px;
+    max-width: 480px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    border-radius: 8px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--bs-border-color);
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    font-size: 0.85rem;
+    overflow: hidden;
+    transition: box-shadow 0.15s ease;
+}
+
+.phone-widget:focus-within {
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35), 0 0 0 2px var(--bs-primary);
+}
+
+.phone-widget.phone-hidden {
+    display: none;
+}
+
+.phone-widget.dragging {
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45), 0 0 0 2px var(--bs-primary);
+}
+
+.phone-widget.dragging * {
+    pointer-events: none;
+}
+
+.phone-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: var(--bs-secondary-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+    cursor: move;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.phone-header-icon { font-size: 1rem; }
+.phone-header-title { font-weight: 600; font-size: 0.82rem; white-space: nowrap; }
+.phone-header-extension { font-size: 0.75rem; opacity: 0.7; flex: 1; }
+.phone-header-actions { display: flex; gap: 2px; margin-left: auto; }
+.phone-header-actions .btn { padding: 2px 5px; font-size: 0.75rem; line-height: 1; }
+
+.phone-status-badge {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--bs-secondary-color);
+}
+.phone-status-badge.status-connected   { background: var(--bs-success); box-shadow: 0 0 4px var(--bs-success); }
+.phone-status-badge.status-connecting  { background: var(--bs-warning); }
+.phone-status-badge.status-disconnected{ background: var(--bs-danger); }
+.phone-status-badge.status-in-call     { background: var(--bs-info); box-shadow: 0 0 6px var(--bs-info); }
+
+.phone-unbound-panel {
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--bs-secondary-color);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.phone-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.phone-incoming {
+    background: var(--bs-success-bg-subtle, rgba(25,135,84,.12));
+    border: 1px solid var(--bs-success);
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 10px;
+    animation: phone-ring-pulse 1s ease-in-out infinite;
+}
+@keyframes phone-ring-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(25,135,84,.4); }
+    50%      { box-shadow: 0 0 0 6px rgba(25,135,84,0); }
+}
+.phone-incoming-caller { font-weight: 600; margin-bottom: 8px; }
+.phone-incoming-actions { display: flex; gap: 8px; }
+.phone-incoming-actions .btn { flex: 1; }
+
+.phone-incall {
+    text-align: center;
+    padding: 12px 6px;
+    margin-bottom: 10px;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 6px;
+    background: var(--bs-secondary-bg);
+}
+.phone-incall-peer { font-weight: 600; font-size: 0.95rem; margin-bottom: 2px; }
+.phone-incall-timer { font-variant-numeric: tabular-nums; opacity: .75; margin-bottom: 8px; }
+.phone-incall-actions { display: flex; gap: 8px; justify-content: center; }
+
+.phone-dialpad-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+}
+.phone-key {
+    font-size: 1rem;
+    padding: 8px 0;
+}
+
+.phone-footer {
+    padding: 4px 10px;
+    border-top: 1px solid var(--bs-border-color);
+    background: var(--bs-secondary-bg);
+    flex-shrink: 0;
+}
+
+.phone-resize-handle {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 14px;
+    height: 14px;
+    cursor: nwse-resize;
+}
+.phone-resize-handle::after {
+    content: '';
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid var(--bs-border-color);
+    border-bottom: 2px solid var(--bs-border-color);
+}

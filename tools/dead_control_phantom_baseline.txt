@@ -885,3 +885,63 @@ phantom:dmr_channels.id_interval_seconds
 # actual correctness is proven directly by test_rbac_admin_only.php
 # instead, which is the stronger guarantee for a security-critical column.
 phantom:permissions.admin_only
+
+# Phase 152 prerequisite #3 -- console_sessions.last_seen_at is a genuine
+# tool-limitation false positive, not a real write-path gap. The checker's
+# "is this bare column name read somewhere" pass matches on the LITERAL
+# TOKEN `last_seen_at` across the whole tree, not scoped per-table -- and
+# `last_seen_at` is a common column name genuinely read for OTHER tables
+# (mesh_bridges, mesh_nodes, dvswitch/dmr_channels -- see api/mesh.php,
+# api/dvswitch.php, api/messaging-bridges.php), which the checker's
+# separate "is console_sessions queried anywhere" signal (true -- this
+# table IS queried, for its OTHER columns) combines into a false
+# cross-table match. console_sessions.last_seen_at itself is neither read
+# nor written by any PHP code as of this commit -- it's a schema column
+# reserved for a later task (the browser leg's own heartbeat/activity
+# bookkeeping is a Python-side concern that doesn't need a PHP write path
+# yet). Re-audit when that write path is added.
+phantom:console_sessions.last_seen_at
+
+# Phase 152 thin position layer -- console_positions.org_id is the SAME
+# cross-table false-positive shape as console_sessions.last_seen_at just
+# above: `org_id` is an extremely common column name genuinely read for
+# MANY other tables (ticket, facilities, responder, teams,
+# member_organizations, and others), and the checker's "is this bare
+# column name read somewhere" pass matches on that literal token across
+# the whole tree, not scoped per-table -- combined with "is
+# console_positions queried anywhere" (true, via inc/console-
+# positions.php's SELECT * queries, for its OTHER columns) into a false
+# cross-table match. console_positions.org_id itself is neither read nor
+# written by any PHP/JS code as of this commit -- it's a schema column
+# deliberately reserved for a later org-scoped pass, per plan.md section 3
+# ("org_id INT DEFAULT NULL ... not enforced/filtered by this thin slice,
+# reserved for a later org-scoped pass if ever needed"). Re-audit when
+# that pass lands and actually reads/writes it.
+phantom:console_positions.org_id
+
+# 2026-10-01 (unrelated /watch sweep fixing GH#146/#149/#150/#152) -- these
+# two are NOT a finding against main's own code. `git diff --stat HEAD`
+# confirms none of this sweep's 18 changed files touch comm_channels,
+# console_views, or either column name. The still-unmerged
+# phase-154-comms-strip-redesign branch's own schema migration (which adds
+# comm_channels.icon and console_views.layout_json, and the real code that
+# writes them) was run against THIS SHARED dev database at some point
+# while that branch was being built -- confirmed directly: the migration
+# file sql/run_phase154_comms_strip.php does not exist anywhere in main's
+# own git history (`git show HEAD:sql/run_phase154_comms_strip.php` fails),
+# yet `SHOW COLUMNS` against the live connection this audit runs against
+# finds both columns present. main's own inc/console-views.php does read
+# `console_view_strips.layout_json` (a DIFFERENT table, already has a real
+# write path, not this finding) and, separately, the read that triggers
+# THIS finding is reachable code with nothing on main writing to it because
+# the writer is phase-154-exclusive. A genuinely fresh database built from
+# main's own migrations (exactly what CI does) will never have either
+# column at all, so this is invisible to CI -- it only reproduces on a dev
+# box whose database has drifted ahead of the branch checked out against
+# it. Baseline rather than investigate-and-fix because there is nothing on
+# main to fix: the real write path is sitting on the other branch, waiting
+# to merge. Re-audit (and very likely just delete these two lines) the
+# moment phase-154-comms-strip-redesign lands on main -- its own write code
+# for both columns should make the live finding disappear on its own.
+phantom:comm_channels.icon
+phantom:console_views.layout_json

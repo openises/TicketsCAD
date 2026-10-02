@@ -2565,6 +2565,47 @@ function health_check_schema(): array
  * see the design spec's live-data findings) reports 'ok' with 0
  * reconciled, not a warning.
  */
+/**
+ * Phase 152 prerequisite #5 — reports any live comm_routes connected
+ * component that mixes `amateur` with `commercial`/`pstn` classes with NO
+ * audited override anywhere in it. See
+ * inc/matrix-routes.php::matrix_regulatory_scan_components()'s own
+ * docblock for why this check exists (a channel's regulatory_class can be
+ * changed after routes already connected it to others, with nothing in
+ * the route create/update path ever re-checking).
+ *
+ * An install with no `comm_routes` table at all (every install today —
+ * see CLAUDE.md's Phase 114c entry: the audio-matrix service has no
+ * deploy step anywhere yet) reports 'ok' with an explicit note, not a
+ * false 'unknown'/'critical' — matching health_check_public_board()'s
+ * "report a fact, don't infer a fault" shape for a feature that's simply
+ * not in use on this install.
+ */
+function health_check_matrix_regulatory(): array
+{
+    try {
+        $prefix = $GLOBALS['db_prefix'] ?? '';
+        $exists = db_fetch_value(
+            "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
+            [$prefix . 'comm_routes']
+        );
+        if ((int) $exists !== 1) {
+            return ['checked' => true, 'severity' => 'ok', 'violations' => [],
+                    'note' => 'comm_routes table not present — audio matrix routing not installed on this instance'];
+        }
+        require_once __DIR__ . '/matrix-routes.php';
+        $violations = matrix_regulatory_scan_components();
+        return [
+            'checked'    => true,
+            'severity'   => empty($violations) ? 'ok' : 'critical',
+            'violations' => $violations,
+        ];
+    } catch (Throwable $e) {
+        return ['checked' => false, 'error' => 'matrix regulatory scan failed',
+                'violations' => [], 'severity' => 'unknown'];
+    }
+}
+
 function health_check_team_membership_reconciliation(): array
 {
     try {
@@ -3354,6 +3395,7 @@ function health_check_all(): array
         $publicBoard = health_check_public_board();
         $teamMembership = health_check_team_membership_reconciliation();
         $httpsEnforcement = health_check_https_enforcement();
+        $matrixRegulatory = health_check_matrix_regulatory();
 
         $critical = 0;
         $warn     = 0;
@@ -3395,7 +3437,7 @@ function health_check_all(): array
             $warn++;
         }
         foreach ([$backups, $keys, $exposure, $geocoding, $geocodeCacheWritable, $tileCacheWritable,
-                  $publicBoard, $teamMembership, $httpsEnforcement] as $sec) {
+                  $publicBoard, $teamMembership, $httpsEnforcement, $matrixRegulatory] as $sec) {
             if (($sec['severity'] ?? '') === 'critical') {
                 $critical++;
             } elseif (($sec['severity'] ?? '') === 'warn') {
@@ -3434,6 +3476,7 @@ function health_check_all(): array
             'public_board' => $publicBoard,
             'team_membership' => $teamMembership,
             'https_enforcement' => $httpsEnforcement,
+            'matrix_regulatory' => $matrixRegulatory,
             'summary'      => ['critical' => $critical, 'warn' => $warn, 'unknown' => $unknown],
         ];
     } catch (Throwable $e) {

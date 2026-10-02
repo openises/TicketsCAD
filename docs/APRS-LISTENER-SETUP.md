@@ -85,9 +85,12 @@ What it does:
    `/etc/systemd/system/`, `daemon-reload`, `enable`, `restart`.
 4. Prints the first 20 lines of the journal so you can confirm it started.
 
-Re-running the installer is safe (idempotent) — it's also run automatically
-by `tools/deploy.sh` as part of a normal deploy, so a routine update does not
-require re-running it by hand.
+Re-running the installer is safe (idempotent) — but `tools/deploy.sh` does
+**not** run it automatically (checked directly against the script, 2026-09-07:
+it deploys the committed PHP/JS/Python tree and applies SQL migrations only,
+with no per-service installer hook). A routine `tools/deploy.sh` update does
+not touch or restart this listener; re-run `install.sh` by hand after any
+deploy that changes `aprs_listener.py` itself.
 
 ## Verifying ingest
 

@@ -181,8 +181,6 @@ theme-color: assets/css/config.css :: color: #6c757d
 theme-color: assets/css/config.css :: color: #9ca3af
 theme-color: assets/css/config.css :: color: #adb5bd
 theme-color: assets/css/config.css :: outline: #2980b9
-theme-color: assets/css/console-designer.css :: color: #000
-theme-color: assets/css/console-designer.css :: color: #fff
 theme-color: assets/css/console.css :: color: #fff
 theme-color: assets/css/dashboard.css :: background-color: #2980b9
 theme-color: assets/css/dashboard.css :: background-color: #2c3e50

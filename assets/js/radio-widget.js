@@ -561,6 +561,33 @@
         var minBtn = widget.querySelector('#radioMinimize');
         var closeBtn = widget.querySelector('#radioClose');
 
+        // Detach into its own window (2026-09-08, Eric's request) --
+        // see assets/js/window-detach.js's own docblock; same mechanism
+        // as the Zello widget's own Detach button.
+        var detachBtn = widget.querySelector('#radioDetach');
+        var detachHandle = null;
+        if (detachBtn && window.WindowDetach) {
+            detachBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (detachHandle) { return; }
+                detachBtn.disabled = true;
+                detachHandle = window.WindowDetach.open(widget, {
+                    width: 380, height: 540, title: 'Radio (DMR) — TicketsCAD',
+                    onOpen: function () {
+                        widget.classList.add('radio-detached');
+                    },
+                    onClose: function (reason) {
+                        detachHandle = null;
+                        detachBtn.disabled = false;
+                        widget.classList.remove('radio-detached');
+                        if (reason === 'unsupported') {
+                            console.warn('[radio-widget] could not detach -- the browser blocked the popup window');
+                        }
+                    }
+                });
+            });
+        }
+
         // Phase 101 — audio-mute toggle. Distinct from the play/pause
         // control (which drives DVR rewind). This one just silences
         // the final speaker output; the ring buffer keeps filling,
@@ -595,6 +622,10 @@
         });
         if (closeBtn) closeBtn.addEventListener('click', function (e) {
             e.stopPropagation();
+            // 2026-09-08 (security-review finding) -- cancel a pending or
+            // active detach FIRST; see zello-widget.js's own Close handler
+            // for the full rationale (same shared window-detach.js race).
+            if (detachHandle) { detachHandle.close(); }
             hide();
         });
     }

@@ -29,8 +29,8 @@
         usgs_topo:         'https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}',
         usgs_imagery:      'https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}',
         usgs_imagery_topo: 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}',
-        cartodb_positron:  'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-        cartodb_dark:      'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        cartodb_positron:  'https://basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png?key={key}',
+        cartodb_dark:      'https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png?key={key}',
         esri_street:       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
         esri_sat:          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         esri_topo:         'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
@@ -6895,6 +6895,9 @@
     //  TILE PROVIDERS (uses settings API + auto-populate URL)
     // ═══════════════════════════════════════════════════════════════
     var _tilePreviewMap = null;
+    // GH#150 — dirty-check baseline for the Tile URL field; see
+    // bindTileProviderPanel()'s change handler and loadTileProvider() below.
+    var _tileUrlAutoFilled = null;
     var _tilePreviewLayer = null;
 
     // Provider metadata: cost, key requirement, notes
@@ -6905,6 +6908,10 @@
         google_hybrid: { cost: 'Paid (free tier)', key: true, note: 'Satellite + road labels overlay. Same API key.' },
         bing_road:     { cost: 'Free (limited)', key: true, note: 'Requires Bing Maps key from bingmapsportal.com. 125K transactions/year free.' },
         bing_aerial:   { cost: 'Free (limited)', key: true, note: 'Aerial/satellite from Bing. Same key as Road.' },
+        // GH#150: CARTO now requires a free key on basemaps.cartocdn.com —
+        // see the note on these two templates in inc/tile-config.php.
+        cartodb_positron: { cost: 'Free (key required)', key: true, note: 'CARTO now requires a free API key for raster basemaps (carto.com/basemaps/apikey) — up to 5M requests/month non-commercial. Light grey base, low-distraction.' },
+        cartodb_dark:     { cost: 'Free (key required)', key: true, note: 'CARTO now requires a free API key for raster basemaps (carto.com/basemaps/apikey) — up to 5M requests/month non-commercial. Dark variant, pairs with the dark theme.' },
         esri_street:   { cost: 'Free', key: false, note: 'ArcGIS street map. No API key for basic access. High quality.' },
         esri_sat:      { cost: 'Free', key: false, note: 'ArcGIS satellite imagery. Excellent US coverage.' },
         esri_topo:     { cost: 'Free', key: false, note: 'ArcGIS topographic. Great for rural/wilderness areas.' },
@@ -6920,11 +6927,23 @@
         var urlInput = document.getElementById('setTileUrl');
         var infoEl = document.getElementById('tileProviderInfo');
 
-        // Auto-populate URL and show info when provider changes
+        // Auto-populate URL and show info when provider changes.
+        //
+        // GH#150 (rjonesbsink, 2026-09-21): this used to overwrite urlInput
+        // unconditionally on every change, with no dirty-check — so typing a
+        // manual edit (e.g. adding a {key} placeholder a preset doesn't
+        // carry) never survived comparing two presets in the same dropdown,
+        // since both selections fire this same handler. _tileUrlAutoFilled
+        // tracks the last value WE wrote; we only overwrite the field when
+        // it's still exactly that value (untouched) or empty — a real
+        // manual edit is left alone. loadTileProvider() re-baselines this
+        // once the saved settings actually land in the field.
         providerSelect.addEventListener('change', function () {
             var key = providerSelect.value;
-            if (TILE_URLS[key] !== undefined) {
+            if (TILE_URLS[key] !== undefined &&
+                (urlInput.value.trim() === '' || urlInput.value === _tileUrlAutoFilled)) {
                 urlInput.value = TILE_URLS[key];
+                _tileUrlAutoFilled = urlInput.value;
             }
             updateTileProviderInfo(key);
             updateTilePreview();
@@ -7068,6 +7087,11 @@
         apiGet('settings').then(function (data) {
             var settings = data.settings || {};
             applySettingsToForm(document.getElementById('tileProviderForm'), settings);
+            // Re-baseline the dirty-check: the value that just landed came
+            // from the server, not from a user edit, so the next provider
+            // switch should still be free to auto-populate over it.
+            var loadedUrlInput = document.getElementById('setTileUrl');
+            if (loadedUrlInput) _tileUrlAutoFilled = loadedUrlInput.value;
             // Show provider info for current selection
             var sel = document.getElementById('setTileProvider');
             if (sel) updateTileProviderInfo(sel.value);

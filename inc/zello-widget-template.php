@@ -41,6 +41,16 @@
                         aria-pressed="false">
                     <i class="bi bi-volume-up-fill"></i>
                 </button>
+                <!-- 2026-09-08 (Eric's request) — pop this widget out into
+                     its own window, for spreading controls across a
+                     multi-monitor dispatch desk. See assets/js/window-
+                     detach.js's own docblock for what "always on top"
+                     genuinely means here (a real OS-level PiP window
+                     where the browser supports it, an honest non-always-
+                     on-top popup otherwise). -->
+                <button class="btn btn-sm btn-outline-secondary" id="zelloDetach" title="Detach into its own window" aria-label="Detach Zello into its own window">
+                    <i class="bi bi-box-arrow-up-right"></i>
+                </button>
                 <button class="btn btn-sm btn-outline-secondary" id="zelloMinimize" title="Minimize" aria-label="Minimize Zello">
                     <i class="bi bi-dash"></i>
                 </button>

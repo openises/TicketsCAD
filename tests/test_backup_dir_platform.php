@@ -456,10 +456,31 @@ $probeDir = $sandbox . '/quiet/backups';
 if (is_dir($probeDir)) {
     $savedHost = $_SERVER['HTTP_HOST'] ?? null;
     $_SERVER['HTTP_HOST'] = 'tcad-selftest.invalid:8089';
+    // 2026-10-01 (found while syncing to the public repo): PHP's CLI SAPI
+    // defaults $_SERVER['SCRIPT_NAME'] to the literal FILESYSTEM path of
+    // the script being run -- there is no real HTTP request, so there is
+    // no real URL path to reflect. _health_self_base_url() (correctly,
+    // for a genuine web request, where a server always sets SCRIPT_NAME
+    // from the URL, never the disk path) treats SCRIPT_NAME's directory
+    // as the app's own URL prefix and folds it into the candidate URLs
+    // this probe tries. Left at its CLI default, that prefix becomes
+    // wherever THIS test file happens to be checked out on disk -- and
+    // tools/release-snapshot.sh's own documented default staging
+    // directory is literally named "ticketscad-public-build", which trips
+    // this test's very next assertion (no tried URL may contain
+    // "ticketscad-") for a reason that has nothing to do with a real
+    // archive ever being probed. Pin SCRIPT_NAME to a realistic, fixed
+    // in-app value -- what a genuine web request to the real health-check
+    // page would set it to -- so this test exercises the real HTTP-context
+    // behavior regardless of which directory the checkout happens to live
+    // in on disk.
+    $savedScript = $_SERVER['SCRIPT_NAME'] ?? null;
+    $_SERVER['SCRIPT_NAME'] = '/tools/check-health.php';
     $before = glob($probeDir . '/*') ?: [];
     $p = health_check_backup_probe($probeDir, true);
     $after  = glob($probeDir . '/*') ?: [];
     if ($savedHost === null) { unset($_SERVER['HTTP_HOST']); } else { $_SERVER['HTTP_HOST'] = $savedHost; }
+    if ($savedScript === null) { unset($_SERVER['SCRIPT_NAME']); } else { $_SERVER['SCRIPT_NAME'] = $savedScript; }
 
     test('the probe ran', !empty($p['checked']), (string) ($p['reason'] ?? ''));
     test('it tried the DEFAULT ports, not just the app\'s own',

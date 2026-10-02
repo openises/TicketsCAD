@@ -123,6 +123,14 @@ if (!$userIsAdmin) {
             // scope call:* events ever use (see inc/sse.php's
             // sse_publish_for_call()).
             'call:%'      => ['screen.call_queue'],
+            // Phase 152 prerequisite #7 (2026-09-07) — audio-matrix channel
+            // connect/disconnect + TX confirmation. No allocates concept
+            // exists for a matrix channel either (same reasoning as call:*
+            // above) — 'entitled' keyed on screen.console is the only
+            // scope that reaches every console viewer, not just
+            // action.manage_matrix admins (see inc/sse.php's plain
+            // sse_publish() call in api/matrix-channel-state.php).
+            'comm:%'      => ['screen.console'],
         ];
         foreach ($entPermMap as $pfx => $perms) {
             foreach ($perms as $p) {

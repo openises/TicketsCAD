@@ -40,7 +40,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Set
 
 from frame import (
     BYTES_PER_FRAME,
@@ -89,6 +89,22 @@ class Channel:
     name: str
     reg_class: RegClass = RegClass.INTERNAL
     leg: Optional[object] = None          # has .outbound(frame)
+    # Phase 152 prerequisite #2 (Python half) -- an optional per-channel
+    # FCC station-ID gate (fcc_gate.FccRelayGate or any object exposing
+    # .tick(source_live: bool) -> bool). None (the default, and every
+    # channel's behavior before this existed) means "no gate at all" --
+    # a direct human PTT leg is NEVER given one, since this gate applies
+    # only to audio a Route autonomously relays onto a destination with no
+    # operator at the mic for that leg. See fcc_gate.py's own docblock.
+    fcc_gate: Optional[object] = None
+    # Phase 152 workstation identity (plan.md section 3.5) -- set ONLY on
+    # a browser-leg channel (legs/browser.py's BrowserLegServer._handle(),
+    # resolved once at WS connect from console_sessions.workstation_token).
+    # None for every other channel (DMR, Zello, the intercom hub, loopback)
+    # -- the adjacent-transmit-mute filter in MatrixCore.tick() is a no-op
+    # the instant either side of a route lacks one, so it can never affect
+    # anything but browser-to-browser paths.
+    workstation_token: Optional[str] = None
     # runtime inbound jitter buffer (legs append; the tick pops one/frame)
     _inq: deque = field(default_factory=lambda: deque(maxlen=INQ_MAX), repr=False)
     _keyed: bool = field(default=False, repr=False)   # last tick had audio (health/UI)
@@ -108,10 +124,26 @@ class Route:
     ducking: bool = True       # may this route be ducked under a hotter one?
     enabled: bool = True
     allow_cross_class: bool = False   # audited operator override flag
+    # Phase 152 prerequisite #6 -- Unix epoch seconds (float/int), or None
+    # for "never expires". READ-TIME enforcement: MatrixCore.tick() checks
+    # this on every mix tick and excludes an expired route's contribution
+    # exactly like a disabled one -- the matrix service itself refuses to
+    # keep relaying expired audio, independent of whether any PHP-side
+    # sweep (tools/matrix_expiry_warning_tick.php) has ever run. Never
+    # auto-removes the Route object itself -- an expired-but-still-
+    # present row still shows in GET /routes (so the console can render
+    # "expired, needs renewal" instead of it just vanishing), it simply
+    # stops carrying audio.
+    expires_at: Optional[float] = None
 
     @property
     def factor(self) -> float:
         return db_to_factor(self.gain_db)
+
+    def is_expired(self, now: Optional[float] = None) -> bool:
+        if self.expires_at is None:
+            return False
+        return (now if now is not None else time.time()) >= self.expires_at
 
 
 class MatrixCore:
@@ -127,6 +159,12 @@ class MatrixCore:
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._on_audit = on_audit   # callback(event_type, detail) for the audit log
+        # Phase 152 workstation identity -- dst workstation_token -> set of
+        # muted src workstation_tokens ("dst's speakers do not want to hear
+        # this src's own transmissions"). Populated at boot from
+        # console_workstation_mutes (service.py's load_workstation_mutes())
+        # and kept live via control_http.py's /workstation-mutes endpoint.
+        self._workstation_mutes: Dict[str, set] = {}
 
     # ── channel table ────────────────────────────────────────────────
     def add_channel(self, channel: Channel) -> Channel:
@@ -142,6 +180,27 @@ class MatrixCore:
     def channels(self) -> List[Channel]:
         with self._lock:
             return list(self._channels.values())
+
+    def remove_channel(self, channel_id: str) -> bool:
+        """
+        Phase 152 — every DB-loaded channel (DMR, Zello, etc.) is static for
+        the service's lifetime, but a browser-leg console session comes and
+        goes with every tab open/close. Removes the channel and every route
+        that references it (as src or dst) so a churning session can never
+        leave orphaned routes accumulating forever. Safe to call from a
+        different thread than the tick loop (same lock as everywhere else).
+        """
+        with self._lock:
+            if channel_id not in self._channels:
+                return False
+            del self._channels[channel_id]
+            before = len(self._routes)
+            self._routes = [r for r in self._routes if channel_id not in (r.src, r.dst)]
+            removed_routes = before - len(self._routes)
+            self._audit("matrix.channel_remove", {
+                "channel_id": channel_id, "routes_removed": removed_routes,
+            })
+            return True
 
     # ── route table ──────────────────────────────────────────────────
     def add_route(self, route: Route) -> Route:
@@ -184,6 +243,47 @@ class MatrixCore:
         with self._lock:
             return list(self._routes)
 
+    # ── workstation mutes (Phase 152, plan.md section 3.5) ───────────
+    def set_workstation_mute(self, workstation_token: str, muted_workstation_token: str, muted: bool) -> None:
+        """
+        `workstation_token`'s speakers should (muted=True) or should no
+        longer (muted=False) suppress `muted_workstation_token`'s own
+        transmissions. Directional by construction -- the caller (PHP's
+        console_workstation_set_mute_pair(), or service.py's boot-time
+        load) is responsible for calling this twice for a mutual pairing,
+        exactly like the two Route rows a full-duplex patch already needs.
+        """
+        with self._lock:
+            if muted:
+                self._workstation_mutes.setdefault(workstation_token, set()).add(muted_workstation_token)
+            else:
+                s = self._workstation_mutes.get(workstation_token)
+                if s is not None:
+                    s.discard(muted_workstation_token)
+                    if not s:
+                        del self._workstation_mutes[workstation_token]
+
+    def workstation_mutes(self) -> Dict[str, List[str]]:
+        """{workstation_token: [muted_workstation_token, ...]} — for
+        GET /workstation-mutes (health/debugging), sorted for stable
+        output."""
+        with self._lock:
+            return {k: sorted(v) for k, v in self._workstation_mutes.items()}
+
+    def _route_muted_for_dst(self, route: Route, dst: Channel, chans: Dict[str, Channel]) -> bool:
+        """Is `route`'s contribution suppressed for THIS destination only?
+        True only when BOTH sides are real browser-leg channels (a
+        workstation_token is None for every DMR/Zello/hub/loopback
+        channel) and the destination's workstation currently mutes the
+        source's. Never channel-wide: a different destination with no
+        such pairing still hears this exact same source normally."""
+        if not dst.workstation_token:
+            return False
+        src_ch = chans.get(route.src)
+        if src_ch is None or not src_ch.workstation_token:
+            return False
+        return src_ch.workstation_token in self._workstation_mutes.get(dst.workstation_token, ())
+
     # ── audio ingress (a leg appends frames as they arrive) ──────────
     def inbound(self, channel_id: str, frame: bytes, keyed: bool = True) -> None:
         """
@@ -221,8 +321,16 @@ class MatrixCore:
                 cur[cid] = f
                 ch._keyed = not is_silence(f)   # for /health + UI RX lamps
 
-            # 2. Mix per destination from this tick's frames.
-            routes = [r for r in self._routes if r.enabled]
+            # 2. Mix per destination from this tick's frames. Phase 152
+            #    prerequisite #6: an expired route is excluded exactly
+            #    like a disabled one -- read-time enforcement, checked
+            #    fresh every tick (never a cached "was valid at load
+            #    time" decision), independent of whether any PHP-side
+            #    sweep has run. The Route object itself is NOT removed --
+            #    it still appears in GET /routes so a stale patch reads
+            #    as "expired", not as if it never existed.
+            now = time.time()
+            routes = [r for r in self._routes if r.enabled and not r.is_expired(now)]
             by_dst: Dict[str, List[Route]] = {}
             for r in routes:
                 by_dst.setdefault(r.dst, []).append(r)
@@ -232,13 +340,23 @@ class MatrixCore:
                 if dst is None:
                     continue
                 # Highest priority among routes whose source is live now.
+                # Phase 152 workstation mute: a route suppressed for THIS
+                # destination (_route_muted_for_dst()) counts as though it
+                # weren't there at all for BOTH the ducking-priority
+                # computation and the mix itself -- a muted source must
+                # never be able to duck another, unrelated source into
+                # silence on a destination it isn't even allowed to reach.
                 hot = None
                 for r in in_routes:
+                    if self._route_muted_for_dst(r, dst, chans):
+                        continue
                     if not is_silence(cur.get(r.src, SILENCE)):
                         hot = r.priority if hot is None else max(hot, r.priority)
 
                 contributions = []
                 for r in in_routes:
+                    if self._route_muted_for_dst(r, dst, chans):
+                        continue
                     f = cur.get(r.src, SILENCE)
                     if is_silence(f):
                         continue
@@ -247,6 +365,22 @@ class MatrixCore:
                     if r.ducking and hot is not None and r.priority < hot:
                         factor *= db_to_factor(DUCK_DB)
                     contributions.append(apply_gain(f, factor))
+
+                # Phase 152 prerequisite #2 (Python half) -- an FCC gate on
+                # the DESTINATION channel refuses the WHOLE relayed mix for
+                # this tick when it isn't currently permitted (no callsign
+                # on file, or a hard-enforced ID interval has lapsed with no
+                # human "at the mic" for this autonomous leg to confirm).
+                # `hot is not None` is exactly "this destination's routed
+                # source(s) are live right now" -- the same utterance-
+                # boundary signal the gate uses to decide when to re-check
+                # rather than trusting a stale cached decision. A channel
+                # with no gate configured (fcc_gate is None -- every
+                # channel's behavior before this gate existed, and every
+                # direct-human-PTT leg forever, since those never go
+                # through routing at all) is completely unaffected.
+                if dst.fcc_gate is not None and not dst.fcc_gate.tick(hot is not None):
+                    contributions = []
 
                 dst.deliver(mix(contributions) if contributions else SILENCE)
 

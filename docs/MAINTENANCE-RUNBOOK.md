@@ -242,6 +242,38 @@ on any install: zero configured trunks means zero rows either sweep ever
 finds, the same genuine no-op-sweep shape as `channel-receive-tick` and
 `org-relationship-cleanup` above.
 
+The Communications Console patch-rail expiry warning (Phase 152, added
+2026-09-08 after a net-control persona review flagged that a live
+cross-class bridge — e.g. an amateur DMR talkgroup patched to a Zello
+channel for a joint net — could go dead mid-net with nothing but a small
+countdown chip in the console UI to warn an operator) is the same shape
+again — `ticketscad-matrix-expiry-warning.service` running
+`/usr/bin/php /var/www/newui/tools/matrix_expiry_warning_tick.php`, and
+`ticketscad-matrix-expiry-warning.timer` pointing `Unit=` at it — every
+60 seconds, fine-grained enough to give useful notice ahead of the
+default 5-minute warning lead (`matrix_expiry_warning_lead_secs`):
+
+```ini
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=60s
+AccuracySec=5s
+Persistent=true
+Unit=ticketscad-matrix-expiry-warning.service
+```
+
+This job is bookkeeping ONLY, not enforcement — `services/audio-matrix/
+matrix_core.py`'s own `Route.is_expired()` check, re-evaluated fresh on
+every audio-mix tick, is what actually stops relaying an expired route's
+audio; this job's whole job is firing a `comm:route_expiring` SSE event
+and stamping `warned_at` (once per approaching deadline, re-armed on
+renewal) far enough ahead that a dispatcher isn't surprised. A missed or
+delayed tick never changes whether a route keeps mixing or stops — see
+`tools/matrix_expiry_warning_tick.php`'s own docblock. Safe to enable
+unconditionally on any install: zero cross-class (or any) patch-rail
+routes with an `expires_at` set means zero rows this sweep ever finds,
+the same genuine no-op-sweep shape as the other jobs on this list.
+
 #### If you use Web Push, SMS, e-mail, Slack or webhooks: run that one every 15 seconds
 
 Since 2026-07-31 the pending-message sweep also **sends the outbound
@@ -292,6 +324,9 @@ sudo systemctl enable --now ticketscad-org-relationship-cleanup.timer
 # Safe to enable unconditionally, same reasoning -- a genuine no-op sweep
 # on any install with zero configured inbound-call trunks:
 sudo systemctl enable --now ticketscad-inbound-calls-tick.timer
+# Safe to enable unconditionally, same reasoning -- a genuine no-op sweep
+# on any install with zero patch-rail routes carrying an expires_at:
+sudo systemctl enable --now ticketscad-matrix-expiry-warning.timer
 sudo systemctl list-timers --all | grep ticketscad
 sudo journalctl -u ticketscad-par-tick.service -n 20 --no-pager
 

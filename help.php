@@ -459,14 +459,6 @@ geocoder. If that matters for your deployment, host geocoding internally.</p>
             <td>United States only</td>
             <td>Satellite imagery with topographic overlay.</td>
             <td>US Geological Survey</td></tr>
-        <tr><td><strong>CartoDB &mdash; Positron</strong></td>
-            <td>Worldwide</td>
-            <td>Light grey base, low-distraction. Good when overlays carry the visual weight (incidents, units).</td>
-            <td>&copy; OpenStreetMap contributors, &copy; CARTO</td></tr>
-        <tr><td><strong>CartoDB &mdash; Dark Matter</strong></td>
-            <td>Worldwide</td>
-            <td>Dark variant. Pairs with the NewUI dark theme.</td>
-            <td>&copy; OpenStreetMap contributors, &copy; CARTO</td></tr>
         <tr><td><strong>Esri &mdash; Street</strong></td>
             <td>Worldwide</td>
             <td>Esri-styled street map. Useful when matching agency&#39;s existing ArcGIS visuals.</td>
@@ -495,6 +487,12 @@ geocoder. If that matters for your deployment, host geocoding internally.</p>
 <table class="table table-sm table-bordered">
     <thead><tr><th>Name</th><th>How to get a key</th><th>Free tier (approx.)</th></tr></thead>
     <tbody>
+        <tr><td><strong>CartoDB &mdash; Positron</strong></td>
+            <td>carto.com/basemaps/apikey &mdash; free, takes a minute, no CARTO account required. CARTO added this requirement to raster basemaps in 2026; the same key also works for Dark Matter below.</td>
+            <td>5,000,000 requests/month (non-commercial); 1,000,000/month (commercial).</td></tr>
+        <tr><td><strong>CartoDB &mdash; Dark Matter</strong></td>
+            <td>carto.com/basemaps/apikey &mdash; same key as Positron above.</td>
+            <td>5,000,000 requests/month (non-commercial); 1,000,000/month (commercial).</td></tr>
         <tr><td><strong>Mapbox</strong></td>
             <td>account.mapbox.com &mdash; sign up for a free account, copy the default public token.</td>
             <td>50,000 free map loads/month, then $0.60/1,000.</td></tr>

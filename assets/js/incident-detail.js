@@ -42,6 +42,59 @@
         initSecurityBadge(id); // Phase 18c (2026-06-11) — security label badge + dialog
         initMajorLink(id); // 2026-06 — link this incident to a major incident
         initShareModal(id); // Phase 142 (GH#70 Phase 2) — manual cross-org sharing
+        initAllstarRelay(id); // Phase 153 (2026-09-08) — mock AllStar relay
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  ALLSTAR RELAY (Phase 153, 2026-09-08)
+    //
+    //  Simulates calling a responder over ham radio: relays a spoken
+    //  summary of this incident to the mock AllStar node and reports
+    //  back real, measured proof (duration + RMS), not a bare success
+    //  flag. A real transmission takes ~20-30 seconds end to end
+    //  (synthesis, delivery, and the audio genuinely playing out in real
+    //  time on the far end) -- the button is disabled with a progress
+    //  message for the duration of the call so a dispatcher doesn't
+    //  double-fire it.
+    // ═══════════════════════════════════════════════════════════════
+    function initAllstarRelay(ticketId) {
+        var btn = document.getElementById('btnAllstarRelay');
+        if (!btn) return; // not permitted -> server omitted the button
+
+        btn.addEventListener('click', function () {
+            var original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Relaying&hellip; (~20-30s)';
+            showAlert('Relaying a spoken summary of this incident to the AllStar node&hellip; this genuinely plays out in real time, so it takes about 20-30 seconds.', 'info');
+
+            fetch('api/allstar-relay.php?action=trigger', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ticket_id: ticketId, csrf_token: getCsrfToken() })
+            }).then(function (r) { return r.json().then(function (data) { return { status: r.status, data: data }; }); })
+              .then(function (res) {
+                  btn.disabled = false;
+                  btn.innerHTML = original;
+                  if (res.status >= 200 && res.status < 300 && res.data) {
+                      var d = res.data;
+                      if (d.ok) {
+                          showAlert('AllStar relay delivered and verified: <strong>' + d.duration_sec.toFixed(1)
+                              + 's</strong> of genuinely audible audio (RMS ' + d.rms.toFixed(4) + ') recorded on the relay node ('
+                              + escHtml(d.recording_name) + ').', 'success');
+                      } else {
+                          showAlert('AllStar relay completed, but the recorded audio looked too quiet/short to trust ('
+                              + d.duration_sec.toFixed(1) + 's, RMS ' + d.rms.toFixed(4) + '). Check the relay node.', 'warning');
+                      }
+                  } else {
+                      showAlert('AllStar relay failed: ' + escHtml((res.data && res.data.error) || 'unknown error'), 'danger');
+                  }
+              }).catch(function () {
+                  btn.disabled = false;
+                  btn.innerHTML = original;
+                  showAlert('AllStar relay failed: request error.', 'danger');
+              });
+        });
     }
 
     // ═══════════════════════════════════════════════════════════════

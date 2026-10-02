@@ -75,6 +75,26 @@ t('sync preserves admin overrides (label/color/enabled untouched)',
     $eb2['label'] === 'My Custom Label' && $eb2['color'] === '#ff0000' && (int) $eb2['enabled'] === 0);
 db_query("UPDATE `{$prefix}comm_channels` SET label = 'Event Bus', color = NULL, enabled = 1 WHERE id = ?", [$eb['id']]);
 
+// ── Phase 152 prerequisite #1: regulatory_class lock ─────────────────────
+// eventbus:main ships 'internal' per the catalog. Reproduce the pre-fix
+// bug directly: an UNLOCKED manual reclassification must still be reverted
+// by sync (that's the existing, correct "derived field" behavior for
+// everything that ISN'T locked) -- then prove a LOCKED one survives.
+db_query("UPDATE `{$prefix}comm_channels` SET regulatory_class = 'amateur', regulatory_class_locked = 0 WHERE id = ?", [$eb['id']]);
+channel_registry_sync();
+$ebUnlocked = channel_get('eventbus:main');
+t('UNLOCKED regulatory_class is still reverted by sync (confirms the derived-field default is unchanged)',
+    $ebUnlocked['regulatory_class'] === 'internal');
+
+db_query("UPDATE `{$prefix}comm_channels` SET regulatory_class = 'amateur', regulatory_class_locked = 1 WHERE id = ?", [$eb['id']]);
+channel_registry_sync();
+$ebLocked = channel_get('eventbus:main');
+t('LOCKED regulatory_class survives sync (the Phase 152 fix -- this assertion fails against the pre-fix code)',
+    $ebLocked['regulatory_class'] === 'amateur' && (int) $ebLocked['regulatory_class_locked'] === 1);
+
+// Reset for any later test in this file that assumes the shipped default.
+db_query("UPDATE `{$prefix}comm_channels` SET regulatory_class = 'internal', regulatory_class_locked = 0 WHERE id = ?", [$eb['id']]);
+
 // ── dmr_bm: enabled follows source; prune on source delete ──────────────
 $dmrOk = true;
 try {
@@ -177,12 +197,16 @@ t('api/channels.php: feed covers zello/dmr/local_chat/nws/eventbus/broker',
 
 // ── Console page (114b slice b1) wiring guards ───────────────────────────
 $page = (string) @file_get_contents('console.php');
-t('console.php: auth, RBAC gate, CSRF meta, cache-busted assets',
+// zello-widget.js itself moved into inc/navbar.php on 2026-09-08 (it's no
+// longer console.php's own responsibility to load it directly) -- the
+// wiring guard for that now checks that console.php still pulls navbar.php
+// in at all, which is what actually gets the widget onto this page.
+t('console.php: auth, RBAC gate, CSRF meta, cache-busted assets, navbar (which loads the Zello widget)',
     strpos($page, "rbac_can('screen.console')") !== false
     && strpos($page, 'csrf-token') !== false
     && strpos($page, "asset_v('assets/js/console.js')") !== false
     && strpos($page, "asset_v('assets/css/console.css')") !== false
-    && strpos($page, 'zello-widget.js') !== false);
+    && strpos($page, "inc/navbar.php") !== false);
 $js = (string) @file_get_contents('assets/js/console.js');
 t('console.js: ES5 IIFE, no template literals / arrow functions / let-const',
     strpos($js, "(function () {") === 0 || strpos($js, '(function () {') !== false);

@@ -216,7 +216,10 @@
 }
 
 .sop-content table {
+    display: block;
     width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
     margin-bottom: 1rem;
     border-collapse: collapse;
 }
@@ -372,6 +375,8 @@
     .sop-content h3 { font-size: 13pt; }
 
     .sop-content table {
+        display: table;
+        overflow-x: visible;
         page-break-inside: avoid;
     }
 

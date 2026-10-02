@@ -281,6 +281,11 @@ $canCfg   = (!function_exists('rbac_can') || rbac_can('action.manage_config'));
               // same code the API endpoint itself enforces.
               if (!function_exists('rbac_can') || rbac_can('action.manage_calls')) {
                   _cfg_link('sip-trunks-admin', 'sip-trunks-admin.php', t('sidebar.tab.sip_trunks', 'Inbound Calls (SIP/PBX)'), 'sip pbx phone trunk inbound call queue asterisk freepbx'); } ?>
+        <?php // Phase 153 (2026-09-08) -- browser-native WebRTC phone extensions
+              // (general + direct-station numbers). Reuses action.manage_calls,
+              // same domain as the Inbound Calls trunk admin above.
+              if (!function_exists('rbac_can') || rbac_can('action.manage_calls')) {
+                  _cfg_link('phone-extensions-admin', 'phone-extensions-admin.php', t('sidebar.tab.phone_extensions', 'Phone Extensions'), 'sip extension webrtc general direct station number phone widget'); } ?>
 
         <?php _cfg_sub(t('sidebar.sub.voice', 'Voice')); ?>
         <?php // Phase 113 — pluggable text-to-speech engines (standalone page).
@@ -292,6 +297,15 @@ $canCfg   = (!function_exists('rbac_can') || rbac_can('action.manage_config'));
               // app until api/matrix.php + matrix-admin.php.
               if (!function_exists('rbac_can') || rbac_can('action.manage_matrix')) {
                   _cfg_link('matrix-admin', 'matrix-admin.php', t('sidebar.tab.matrix_admin', 'Audio Matrix Patches'), 'audio matrix patch route comm_routes dmr zello allstar'); } ?>
+        <?php // 2026-09-08 -- public HTTP audio-stream channels (Broadcastify,
+              // LiveATC, NOAA Weather Radio, Icecast). Reuses action.manage_matrix
+              // (same as matrix-admin.php above) rather than a new permission code.
+              if (!function_exists('rbac_can') || rbac_can('action.manage_matrix')) {
+                  _cfg_link('stream-channels-admin', 'stream-channels-admin.php', t('sidebar.tab.stream_channels', 'Stream Channels'), 'broadcastify liveatc noaa weather radio icecast public stream test'); } ?>
+        <?php // Phase 152 -- the thin position layer's admin page (standalone,
+              // matrix-admin.php's own shape). Gated on action.manage_positions.
+              if (!function_exists('rbac_can') || rbac_can('action.manage_positions')) {
+                  _cfg_link('console-positions-admin', 'console-positions-admin.php', t('sidebar.tab.console_positions', 'Console Positions'), 'console position seat presence dispatcher handoff'); } ?>
         <?php _cfg_tab('radio-messaging',   t('sidebar.tab.radio_messaging',   'Radio Messaging'), 'radio messaging meshtastic dmr text aprs'); ?>
         <?php _cfg_tab('zello-radio',       t('sidebar.tab.zello_radio',       'Zello Network Radio'), 'zello poc push to talk ptt'); ?>
         <?php _cfg_tab('dvswitch-dmr',      t('sidebar.tab.dvswitch_dmr',      'DMR (DVSwitch)'), 'dmr dvswitch brandmeister digital radio'); ?>

@@ -12,6 +12,19 @@
 #     and user.level's comment was corrected. Re-running the audit against
 #     `user` finds nothing (see tests/test_dead_control_audit.php).
 
+# --- Phase 153 (2026-09-08), genuinely written, no UI reads it yet ---
+# inbound_calls.constituent_id: resolved and written at ring time
+# (inc/inbound-calls.php's _p153_resolve_constituent()) so a caller has a
+# real Constituents record from the moment the phone rings, per FR-26's
+# broadcast-payload restriction the existing client-side flow (assets/js/
+# new-incident.js's phone-blur lookup, api/constituents.php?phone=X) never
+# needed this column at all -- it looks up by PHONE NUMBER, not by this id.
+# Kept for future reporting/audit value ("which constituent record did
+# this call resolve to") rather than exposed on a live endpoint just to
+# give the audit something to point at; add a real consumer (and remove
+# this line) the day one actually needs it.
+column:inbound_calls.constituent_id
+
 # --- Confirmed tool false positive: hyphenated column name ---
 # teams.sub-group: the bare-array-key regex (`[\s*['"]([a-zA-Z0-9_]+)['"]\s*]`)
 # does not include `-` in its character class, so `$row['sub-group']` (a real,

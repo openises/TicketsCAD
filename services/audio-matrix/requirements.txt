@@ -1,0 +1,17 @@
+# TicketsCAD audio-matrix service (Phase 114c + Phase 152)
+#
+# mysql-connector-python: loads comm_channels/comm_routes at boot
+# (service.py degrades to an empty matrix if this or the DB is absent —
+# see service.py's own optional-import handling).
+#
+# websockets: Phase 152 prerequisite #3's browser audio leg
+# (legs/browser.py). The one real new dependency this phase adds --
+# everything else the service uses (threading, socket, http.server,
+# json, dataclasses) is Python standard library, matching this project's
+# stdlib-first preference for bridge/service processes (see
+# services/sip-bridge/requirements.txt's identical reasoning). A raw
+# WebSocket server (RFC 6455 handshake + frame masking/pings/close codes)
+# is exactly the kind of protocol this project's own
+# browser-audio-to-voice-service skill warns against hand-rolling.
+mysql-connector-python>=9.0.0
+websockets>=15.0.1

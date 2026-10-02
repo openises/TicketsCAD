@@ -239,6 +239,27 @@ function sched_job_registry(): array {
             'command'    => $win ? 'php tools\\inbound_calls_tick.php' : 'php tools/inbound_calls_tick.php',
             'purpose'    => 'Folds wrapped-up calls to ended once wrapup_seconds elapses, and flags claims whose heartbeat has lapsed as stale',
         ],
+        // Phase 152 (2026-09-08) -- Communications Console patch-rail
+        // expiry warning. Registered after a net-control persona review
+        // found this tick had NEVER been wired in (tools/matrix_expiry_
+        // warning_tick.php's own docblock explained why at the time: the
+        // audio-matrix service had no deploy story yet). It does now
+        // (services/audio-matrix/install.sh, same phase) -- so the
+        // original reason no longer holds, and a live cross-class bridge
+        // going dead mid-net with nothing but a small countdown chip to
+        // warn the operator is a real, avoidable gap. 60s, matching this
+        // tick's own docblock's suggested cadence (finer than the 5-15
+        // minute jobs above -- the default 5-minute warning lead needs
+        // sub-minute granularity to give useful notice).
+        'matrix_expiry_warning' => [
+            'label'      => 'Communications Console patch-rail expiry warning',
+            'interval_s' => 60,
+            'grace_mult' => 15,
+            'unit'       => $win ? 'TicketsCAD Background Jobs' : 'ticketscad-matrix-expiry-warning.timer',
+            'unit_kind'  => $win ? 'schtasks' : 'systemd',
+            'command'    => $win ? 'php tools\\matrix_expiry_warning_tick.php' : 'php tools/matrix_expiry_warning_tick.php',
+            'purpose'    => 'Fires a comm:route_expiring SSE warning before a live cross-class patch-rail bridge expires -- bookkeeping only, never affects whether the route keeps mixing',
+        ],
     ];
 }
 
@@ -501,6 +522,32 @@ function sched_job_required(string $jobKey): array {
         // resolves against the sidebar's own registered labels.
         return ['required' => false, 'why' => 'No inbound-call trunks are configured. '
             . "Configure one at Settings \u{2192} Communications & Integrations \u{2192} Inbound Calls (SIP/PBX)."];
+    }
+
+    if ($jobKey === 'matrix_expiry_warning') {
+        // Same "shipped default configuration is not evidence of use"
+        // discipline as every job above -- required only once an admin
+        // has actually created a patch-rail route that carries an
+        // expires_at (every cross-class route does, by the mandatory-
+        // expiry rule -- see inc/matrix-routes.php); a same-class route
+        // with no expiry, or an install that has never used the patch
+        // rail at all, never reports this job critical just because
+        // nothing is scheduling it.
+        try {
+            $exists = (int) db_fetch_value(
+                "SELECT COUNT(*) FROM information_schema.TABLES
+                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
+                [$prefix . 'comm_routes']
+            );
+            if ($exists === 1) {
+                $n = (int) db_fetch_value(
+                    "SELECT COUNT(*) FROM `{$prefix}comm_routes` WHERE `enabled` = 1 AND `expires_at` IS NOT NULL");
+                if ($n > 0) {
+                    return ['required' => true, 'why' => "{$n} enabled patch-rail route(s) carry an expiry -- a missed tick means no advance warning before a live bridge goes dead"];
+                }
+            }
+        } catch (Exception $e) {}
+        return ['required' => false, 'why' => 'No enabled patch-rail routes carry an expiry (the patch rail may be unused, or every current route is same-class with no expires_at set)'];
     }
 
     return ['required' => false, 'why' => 'Unknown job'];

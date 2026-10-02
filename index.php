@@ -67,13 +67,11 @@ $theme    = $_SESSION['day_night'] ?? 'Day';
 $bs_theme = ($theme === 'Night') ? 'dark' : 'light';
 $csrf     = csrf_token();
 $userPerms = rbac_user_permissions();
-// This page embeds its own copy of the Zello widget (its own
-// <template id="tpl-zello-widget"> + its own zello-widget.js script tag,
-// not inc/zello-widget-template.php), which console.php's own GH#137 fix
-// missed -- confirmed live by a reporter still hitting the hardcoded
-// 8090 fallback here after that fix. Same read/validation/fallback.
-$zelloProxyPort = (int) (get_variable('zello_proxy_port') ?: 8090);
-if ($zelloProxyPort < 1024 || $zelloProxyPort > 65535) { $zelloProxyPort = 8090; }
+// The Zello widget's proxy-port meta tag, CSS, template, and JS all moved
+// into inc/navbar.php on 2026-09-08 (see its own docblock) -- this page's
+// own previously-duplicated copy of #tpl-zello-widget is gone; it had
+// already drifted out of sync with inc/zello-widget-template.php once
+// (GH#137) precisely because two copies existed to drift.
 ?>
 <!DOCTYPE html>
 <html lang="<?php echo e(i18n_lang()); ?>" data-bs-theme="<?php echo $bs_theme; ?>">
@@ -81,7 +79,6 @@ if ($zelloProxyPort < 1024 || $zelloProxyPort > 65535) { $zelloProxyPort = 8090;
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="<?php echo e($csrf); ?>">
-    <meta name="zello-proxy-port" content="<?php echo e((string) $zelloProxyPort); ?>">
     <title><?php echo e(t('login.title', 'Tickets NewUI')); ?> <?php echo newui_version(); ?></title>
 
     <link rel="manifest" href="manifest.json">
@@ -106,8 +103,7 @@ if ($zelloProxyPort < 1024 || $zelloProxyPort > 65535) { $zelloProxyPort = 8090;
          [E] / …). Its own file because situation.php needs it too and does not
          load widgets.css. -->
     <link rel="stylesheet" href="assets/css/action-bar.css?v=<?php echo asset_v('assets/css/action-bar.css'); ?>">
-    <link rel="stylesheet" href="assets/css/zello-widget.css?v=<?php echo asset_v('assets/css/zello-widget.css'); ?>">
-    <!-- radio-widget.css moved to inc/navbar.php so it's loaded on every page -->
+    <!-- zello-widget.css + radio-widget.css both moved to inc/navbar.php so they're loaded on every page -->
     <link rel="stylesheet" href="assets/css/chat.css?v=<?php echo asset_v('assets/css/chat.css'); ?>">
     <link rel="stylesheet" href="assets/css/mobile.css">
     <link rel="stylesheet" href="assets/css/print.css" media="print">
@@ -440,69 +436,8 @@ if ($zelloProxyPort < 1024 || $zelloProxyPort > 65535) { $zelloProxyPort = 8090;
     </div>
 </template>
 
-<!-- Zello Widget Template -->
-<template id="tpl-zello-widget">
-    <div class="zello-widget zello-hidden">
-        <div class="zello-header">
-            <span class="zello-status-badge status-disconnected"></span>
-            <i class="bi bi-megaphone zello-header-icon"></i>
-            <span class="zello-header-title">Zello</span>
-            <span class="zello-header-channel"></span>
-            <div class="zello-header-actions">
-                <!-- Phase 101 (Eric beta 2026-07-01) — header toolbar in
-                     the Responders-widget style. Archive + Mute live
-                     with Minimize + Close. -->
-                <a href="zello-archive.php" target="_blank" rel="noopener"
-                   class="btn btn-sm btn-outline-secondary" id="zelloArchive"
-                   title="Open archive in a new tab" aria-label="Open Zello archive">
-                    <i class="bi bi-clock-history"></i>
-                </a>
-                <!-- GH #55 (Eric 2026-07-04) — Live monitor: when ON, channel
-                     audio keeps playing even while the widget is minimized /
-                     you navigate to another page. OFF (default) = audio only
-                     when the widget is open (prior behavior). Mute (below)
-                     silences everything and overrides this. -->
-                <button class="btn btn-sm btn-outline-secondary" id="zelloLiveBtn"
-                        title="Live monitor off — audio plays only while the widget is open"
-                        aria-label="Live monitor off" aria-pressed="false">
-                    <i class="bi bi-broadcast"></i>
-                </button>
-                <button class="btn btn-sm btn-outline-secondary" id="zelloMuteBtn"
-                        title="Mute incoming audio" aria-label="Mute incoming audio"
-                        aria-pressed="false">
-                    <i class="bi bi-volume-up-fill"></i>
-                </button>
-                <button class="btn btn-sm btn-outline-secondary" id="zelloMinimize" title="Minimize" aria-label="Minimize Zello">
-                    <i class="bi bi-dash"></i>
-                </button>
-                <button class="btn btn-sm btn-outline-secondary" id="zelloClose" title="Close" aria-label="Close Zello">
-                    <i class="bi bi-x"></i>
-                </button>
-            </div>
-        </div>
-        <div class="zello-feed" id="zelloFeed">
-            <div class="zello-feed-empty">
-                <span><i class="bi bi-megaphone d-block mb-2" style="font-size:1.5rem"></i>No messages yet.<br>Connect to start receiving.</span>
-            </div>
-        </div>
-        <div class="zello-input-row">
-            <input type="text" class="form-control form-control-sm" id="zelloTextInput"
-                   placeholder="Type a message..." autocomplete="off" aria-label="Zello text message">
-            <button class="btn btn-sm btn-primary" id="zelloSendBtn" title="Send" aria-label="Send message">
-                <i class="bi bi-send"></i>
-            </button>
-        </div>
-        <div class="zello-ptt-bar">
-            <button class="zello-ptt-btn" id="zelloPttBtn">
-                <i class="bi bi-mic-fill me-1"></i> Push to Talk
-            </button>
-            <div class="zello-ptt-hint">Hold Space or click to talk</div>
-        </div>
-        <div class="zello-resize-handle"></div>
-    </div>
-</template>
-
-<!-- Radio Widget template moved to inc/navbar.php so it loads on every page. -->
+<!-- Zello Widget template + Radio Widget template both moved to
+     inc/navbar.php so they load on every page. -->
 
 
 <!-- Chat Widget Template -->
@@ -598,8 +533,7 @@ $__allowedWidgets = array_values(array_filter(
          nothing without action.net_checkin. */ ?>
 <?php include_once NEWUI_ROOT . '/inc/net-checkin-widget.php'; ?>
 <script src="assets/js/app.js?v=<?php echo asset_v('assets/js/app.js'); ?>"></script>
-<script src="assets/js/zello-widget.js?v=<?php echo asset_v('assets/js/zello-widget.js'); ?>"></script>
-<!-- radio-widget.js moved to inc/navbar.php so it loads on every page -->
+<!-- zello-widget.js + radio-widget.js both moved to inc/navbar.php so they load on every page -->
 <script src="assets/js/chat-widget.js?v=<?php echo asset_v('assets/js/chat-widget.js'); ?>"></script>
 <script src="assets/js/keyboard-nav.js?v=<?php echo asset_v('assets/js/keyboard-nav.js'); ?>"></script>
 <script src="assets/js/audio-alerts.js?v=<?php echo asset_v('assets/js/audio-alerts.js'); ?>"></script>

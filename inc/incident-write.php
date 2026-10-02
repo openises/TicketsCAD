@@ -863,7 +863,8 @@ function incident_clear_stragglers(int $ticketId, int $userId, array $opts = [])
  *
  * Phase 132 Step 2 (2026-08-03, GH #16).
  */
-function incident_set_disposition_internal(int $ticketId, ?int $dispositionId, int $userId): array {
+function incident_set_disposition_internal(int $ticketId, ?int $dispositionId, int $userId,
+    bool $viaExternalApi = false): array {
     if ($ticketId <= 0) {
         return ['updated' => false, 'disposition_id' => null, 'errors' => ['invalid ticket_id']];
     }
@@ -922,7 +923,8 @@ function incident_set_disposition_internal(int $ticketId, ?int $dispositionId, i
                 $newId !== null
                     ? "Disposition set on incident #{$ticketId}"
                     : "Disposition cleared on incident #{$ticketId}",
-                ['old_disposition_id' => $oldId, 'new_disposition_id' => $newId, 'user_id' => $userId]);
+                ['old_disposition_id' => $oldId, 'new_disposition_id' => $newId, 'user_id' => $userId,
+                 'via_external_api' => $viaExternalApi]);
         } catch (Throwable $e) {
             error_log('[incident-write] audit_log failed for disposition change on ticket '
                 . $ticketId . ': ' . $e->getMessage());

@@ -21,8 +21,8 @@ REM  "run once a day" -- that describes the RETENTION cadence, not how often
 REM  this script may safely call them. Both are idempotent cutoff-date
 REM  queries (SELECT eligible rows / DELETE WHERE created_at < cutoff):
 REM  calling them every minute costs one cheap query on the minutes nothing
-REM  is due and is otherwise correct. One task drives all seven ticks: fewer
-REM  moving parts than seven separate tasks, and they are always in step.
+REM  is due and is otherwise correct. One task drives all eight ticks: fewer
+REM  moving parts than eight separate tasks, and they are always in step.
 REM  (channel_receive_tick, added Phase 134, is a no-op sweep -- 0 channels
 REM  polled -- on any install that hasn't opted a channel in to inbound
 REM  polling, so scheduling it unconditionally alongside the others is safe
@@ -96,7 +96,10 @@ if errorlevel 1 set "RC=1"
 "%TICKETSCAD_PHP%" tools\inbound_calls_tick.php >> "%LOGDIR%\inbound_calls_tick.log" 2>&1
 if errorlevel 1 set "RC=1"
 
-REM All seven jobs always run: a failure in one must not stop the others. The
+"%TICKETSCAD_PHP%" tools\matrix_expiry_warning_tick.php >> "%LOGDIR%\matrix_expiry_warning_tick.log" 2>&1
+if errorlevel 1 set "RC=1"
+
+REM All eight jobs always run: a failure in one must not stop the others. The
 REM exit code reports whether any of them failed, so Task Scheduler's
 REM "Last Run Result" is meaningful.
 exit /b %RC%

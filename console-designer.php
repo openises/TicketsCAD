@@ -1,27 +1,30 @@
 <?php
 /**
- * NewUI v4.0 — Console Designer (Phase 114b, slices b2 + b3)
+ * NewUI v4.0 — Console Designer (Phase 152 — Console rebuild)
  *
  * Authors BOTH layers of console.php's views (inc/console-views.php's
  * docblock has the full model):
- *   SHARED views   — admin-authored, console.design required. Unchanged
- *                    b2 surface: the "Shared Views" panel.
- *   PERSONAL views — Phase 114b3. Any screen.console holder gets their
- *                    OWN "My Personal Views" panel — no console.design
- *                    needed (Eric, 2026-08-20: personal is scoped to its
- *                    owner and shouldn't need elevated permission).
- *                    Optionally mark one is_shared to make it a browsable
- *                    clone source for other operators ("Adopt a layout").
+ *   SHARED views   — admin-authored, console.design required.
+ *   PERSONAL views — any screen.console holder gets their OWN "My
+ *                    Personal Views" panel — no console.design needed
+ *                    (Eric, 2026-08-20: personal is scoped to its owner
+ *                    and shouldn't need elevated permission). Optionally
+ *                    mark one is_shared to make it a browsable clone
+ *                    source for other operators ("Adopt a layout").
  *
- * Three panes (console-designer.md §2), now serving whichever view (of
- * either layer) the caller is editing:
+ * Three panes, now serving whichever view (of either layer) the caller
+ * is editing:
  *   left   — view lists (create / rename / delete / share) — one or two
  *            panels depending on console.design
- *   middle — canvas: the selected view's strip bank; drag to reorder,
- *            click a strip to select it
+ *   middle — the selected view's strips as a plain ORDERED LIST (Up/Down
+ *            + a 1x/2x width badge per row, click to select) — NOT a
+ *            free-drag canvas; the 5-persona design review unanimously
+ *            rejected pixel positioning at the strip level (specs/
+ *            phase-152-comms-console-v2/tasks.md's "Console rebuild")
  *   right  — channel list (click to add a strip) + strip inspector
- *            (label / short label / colours / width / control palette,
- *            capability-gated so a saved view can't hold a dead button)
+ *            (label / short label / colours / width / hotkey / which
+ *            controls show, capability-gated so a saved view can't hold
+ *            a dead button)
  *
  * Designer mode never keys TX — strips render presentation only.
  */
@@ -69,8 +72,6 @@ $active_page = 'console';
 
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="assets/vendor/gridstack/gridstack.min.css">
-    <link rel="stylesheet" href="assets/vendor/gridstack/gridstack-extra.min.css">
 
     <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo newui_version(); ?>">
     <link rel="stylesheet" href="assets/css/console.css?v=<?php echo asset_v('assets/css/console.css'); ?>">
@@ -96,6 +97,8 @@ $active_page = 'console';
             </a>
         </div>
     </div>
+
+    <div id="cdToast" class="alert d-none py-2 mb-3" role="status" aria-live="polite"></div>
 
     <div class="row g-3">
         <!-- Left: views (b3 — shared panel admin-only, personal panel for everyone) -->
@@ -133,16 +136,14 @@ $active_page = 'console';
             </div>
         </div>
 
-        <!-- Middle: canvas -->
+        <!-- Middle: the strip list (ordered, no canvas — see docblock) -->
         <div class="col-lg-7">
             <div class="card h-100">
                 <div class="card-header py-2 d-flex justify-content-between align-items-center">
                     <span class="fw-semibold small" id="cdCanvasTitle">Select or create a view</span>
                     <span class="text-body-secondary small" id="cdDirtyFlag"></span>
                 </div>
-                <div class="card-body">
-                    <div class="console-bank cd-canvas" id="cdCanvas"></div>
-                </div>
+                <div class="list-group list-group-flush" id="cdStripList"></div>
             </div>
         </div>
 
@@ -151,10 +152,6 @@ $active_page = 'console';
             <div class="card mb-3">
                 <div class="card-header py-2 fw-semibold small">Channels — click to add a strip</div>
                 <div class="list-group list-group-flush cd-channel-list" id="cdChannelList"></div>
-            </div>
-            <div class="card mb-3 d-none" id="cdPalette">
-                <div class="card-header py-2 fw-semibold small">Components — click to add to the selected strip</div>
-                <div class="card-body py-2 d-flex flex-wrap gap-1" id="cdPaletteBody"></div>
             </div>
             <div class="card d-none" id="cdInspector">
                 <div class="card-header py-2 fw-semibold small">Settings</div>
@@ -165,7 +162,6 @@ $active_page = 'console';
 
 </div>
 
-<script src="assets/vendor/gridstack/gridstack-all.js"></script>
 <script src="assets/js/console-designer.js?v=<?php echo asset_v('assets/js/console-designer.js'); ?>"></script>
 </body>
 </html>

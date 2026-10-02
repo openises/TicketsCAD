@@ -355,6 +355,23 @@ INSERT IGNORE INTO `permissions` (`code`, `name`, `category`, `description`) VAL
     ('field.caller_history',   'View Caller History',           'call_queue', "See a claimed call's matched constituent identity and prior-incident summary"),
     ('field.patient_history',  'View Caller Patient History',   'call_queue', 'See clinical/patient detail nested inside a caller''s prior-incident history');
 
+-- Phase 152 (2026-09-07, Communications Console v2) — patch/coupling
+-- creation and the thin position layer. action.patch_create is
+-- deliberately Dispatcher-tier (tier 0, no admin_only entry needed —
+-- creating a same-class patch between two channels a dispatcher already
+-- has full access to is a routine operational action, same tier as
+-- action.dispatch_unit). action.patch_cross_class and
+-- action.manage_positions are BOTH tier 1 (Org Admin or above) --
+-- see the admin_only UPDATE block below and the Dispatcher exclusion
+-- list + repair-DELETEs further down, matching action.manage_matrix's
+-- own precedent exactly (this project's five prior RBAC exclusion-list
+-- leaks all trace back to a tier-1+ code missing ONE of those three
+-- places, never all three at once).
+INSERT IGNORE INTO `permissions` (`code`, `name`, `category`, `description`) VALUES
+    ('action.patch_create',      'Create Patch / Coupling',        'action', 'Create a same-class patch or group coupling between two or more channels, and renew/break one you created'),
+    ('action.patch_cross_class', 'Create Cross-Class Patch',       'action', 'Create (or renew) a patch that bridges amateur-class audio with commercial/PSTN-class audio, with the mandatory audited override and expiry'),
+    ('action.manage_positions',  'Manage Console Positions (Admin)', 'action', 'Create/edit/delete named console positions (seats) and their default channel sets');
+
 -- Phase 145 (2026-08-19, GH#90) — facility-account portal. TWO permissions,
 -- deliberately given category 'facility_account' rather than 'screen'/
 -- 'action' — Operator's grant below sweeps `category IN ('screen','widget',
@@ -412,7 +429,15 @@ UPDATE `permissions` SET `admin_only` = 1 WHERE `code` IN (
     -- not be able to unilaterally declare a major event on an ordinary
     -- night); routine link/unlink of an incident to an EXISTING major event
     -- stays on the original, broadly-granted action.link_major.
-    'action.create_major_event', 'action.manage_major_event_command'
+    'action.create_major_event', 'action.manage_major_event_command',
+    -- Phase 152 (2026-09-07, Communications Console v2, 5-persona review) --
+    -- a cross-class patch (amateur<->commercial/PSTN) is the FCC-override
+    -- case, same tier as action.manage_matrix; action.manage_positions is
+    -- admin room-configuration (who sits where, default channel sets), same
+    -- tier as other "configure the install" actions. action.patch_create
+    -- is DELIBERATELY NOT in this list -- it's tier 0 (Dispatcher-default),
+    -- see its own INSERT comment above.
+    'action.patch_cross_class', 'action.manage_positions'
 );
 -- Propagate onto each code's canonical alias partner in BOTH directions
 -- (sql/run_rbac_v2.php's A8 step may already have created the canonical
@@ -616,7 +641,7 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
                                        -- Dispatcher (role 3) had already been swept up by this file's
                                        -- broad NOT-IN grant on a prior re-import, exactly the pattern
                                        -- this file's own repair-DELETE history documents.
-        'action.manage_calls'          -- Phase 149 (2026-08-22) — force-reclaiming an ACTIVE
+        'action.manage_calls',         -- Phase 149 (2026-08-22) — force-reclaiming an ACTIVE
                                        -- (non-stale) claim, and trunk configuration, are admin-only
                                        -- (roles 1-2, same tier as action.manage_config); a Dispatcher
                                        -- still gets screen.call_queue/action.claim_call/
@@ -638,6 +663,11 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
                                        -- assumption going forward: EVERY exclusion-list addition needs
                                        -- both repair-DELETEs below, even for a permission created in
                                        -- the same commit as its own exclusion.
+        'action.patch_cross_class', 'action.manage_positions'  -- Phase 152 (2026-09-07) —
+                                       -- same tier as action.manage_matrix just above; a Dispatcher
+                                       -- gets action.patch_create (tier 0, granted via this broad
+                                       -- INSERT since it's not named here) but not the cross-class
+                                       -- override or position/room administration.
     )
       AND `admin_only` = 0;
 
@@ -661,7 +691,8 @@ DELETE `role_permissions` FROM `role_permissions`
         'action.manage_org_routing', 'action.manage_org_routing_org',
         'action.manage_org_relationships',
         'screen.facility_portal', 'action.facility_self_report',
-        'action.manage_matrix', 'action.manage_calls'
+        'action.manage_matrix', 'action.manage_calls',
+        'action.patch_cross_class', 'action.manage_positions'
       );
 
 DELETE rp FROM `role_permissions` rp
@@ -679,7 +710,8 @@ DELETE rp FROM `role_permissions` rp
         'action.manage_org_routing', 'action.manage_org_routing_org',
         'action.manage_org_relationships',
         'screen.facility_portal', 'action.facility_self_report',
-        'action.manage_matrix', 'action.manage_calls'
+        'action.manage_matrix', 'action.manage_calls',
+        'action.patch_cross_class', 'action.manage_positions'
       );
 
 -- Operator gets all screens/widgets/fields + key operational actions (45 permissions)

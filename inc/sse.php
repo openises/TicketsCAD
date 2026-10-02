@@ -337,9 +337,24 @@ if (!function_exists('sse_publish')) {
      * a non-NULL org id additionally requires the connecting user's
      * org_visible_ids() to include it (api/stream.php enforces the read
      * side; this is the write side).
+     *
+     * Phase 153 (2026-09-08) — $targetUserId is the one real gap Phase 149
+     * had: a direct-station number rings ONE specific workstation, not
+     * every dispatcher. When present, this call is a genuinely different
+     * shape (scope='user', not 'entitled') rather than a filter layered on
+     * top of the broadcast — $orgId is ignored in that branch, since a
+     * single named user's own session is already the narrowest possible
+     * target and org-scoping would only ever be redundant with it. A
+     * general/shared number (or a direct number with no bound workstation
+     * session to target) passes $targetUserId=null and gets today's
+     * unchanged broadcast-to-every-entitled-user behavior — this is
+     * correct for the general number, not a fallback covering a gap.
      */
-    function sse_publish_for_call(int $callId, string $eventType, array $payload, ?int $orgId = null): bool
+    function sse_publish_for_call(int $callId, string $eventType, array $payload, ?int $orgId = null, ?int $targetUserId = null): bool
     {
+        if ($targetUserId !== null && $targetUserId > 0) {
+            return sse_publish($eventType, $payload, null, 'user', $targetUserId);
+        }
         return sse_publish($eventType, $payload, null, 'entitled', $orgId);
     }
 

@@ -163,6 +163,36 @@
     try {
         liveMonitor = (localStorage.getItem('zello_live_monitor') === '1');
     } catch (e) { /* ignore */ }
+
+    // 2026-09-08 (Eric's bug report) -- persist whether the widget was OPEN,
+    // the same way mute/live-monitor already persist, so it survives a full
+    // page navigation. TicketsCAD is a classic multi-page site: every nav is
+    // a fresh page load, and init() below always starts the widget collapsed
+    // (zello-hidden). Without this, an operator who has the widget open on
+    // the dashboard and then starts a new incident sees it "disappear" --
+    // it's really just reset to closed on the new page, not gone, but reads
+    // the same to the operator either way. The underlying WebSocket/audio
+    // connection already survives navigation via the Phase 101-5 SharedWorker;
+    // this only restores the VISUAL open/closed state to match it. Toggling
+    // the detached-widget popup does NOT solve this on its own -- see
+    // window-detach.js's own docblock: the detached window closes on main-tab
+    // unload, by design, since its content depends on the main tab's live JS.
+    //
+    // radio-widget.js deliberately does NOT do this (see its init(), "we used
+    // to auto-open... but that caused every page navigation to fire SSE +
+    // history + N parallel dmr-lookup calls... making non-radio pages feel
+    // sluggish") -- do not copy this fix there without re-checking that cost.
+    // Zello's own show() is a materially different shape: connectWebSocket()
+    // routes through the same SharedWorker liveMonitor already keeps warm
+    // (idempotent, no new connection in the common case), and loadHistory()
+    // is ONE capped local fetch (api/zello-messages.php?limit=50) against
+    // this app's own database -- not a fan-out of N external API calls. The
+    // per-navigation cost here is one small same-origin request, not several
+    // hundred-ms round trips to a third party.
+    var wasOpen = false;
+    try {
+        wasOpen = (localStorage.getItem('zello_widget_open') === '1');
+    } catch (e) { /* ignore */ }
     // True when audio is allowed to play right now given widget visibility
     // and the live-monitor preference.
     function audioAllowed() { return visible || liveMonitor; }
@@ -322,6 +352,14 @@
         if (liveMonitor) {
             try { connectWebSocket(); } catch (e) {}
         }
+
+        // Restore the open/closed state the operator left it in on the
+        // PREVIOUS page, so navigating (e.g. to start a new incident)
+        // doesn't read as the widget vanishing. show() itself re-persists
+        // '1', which is a harmless no-op here.
+        if (wasOpen) {
+            try { show(); } catch (e) {}
+        }
     }
 
     // ── Attach Listeners ─────────────────────────────────────────
@@ -361,10 +399,44 @@
             });
         }
 
+        // Detach into its own window (2026-09-08, Eric's request) --
+        // see assets/js/window-detach.js's own docblock. Disabled while
+        // already detached so a second click can't try to move a node
+        // that's already been moved; re-enabled once the detached
+        // window closes and the widget is back in this document.
+        var detachBtn = widget.querySelector('#zelloDetach');
+        var detachHandle = null;
+        if (detachBtn && window.WindowDetach) {
+            detachBtn.addEventListener('click', function () {
+                if (detachHandle) { return; }
+                detachBtn.disabled = true;
+                detachHandle = window.WindowDetach.open(widget, {
+                    width: 380, height: 540, title: 'Zello — TicketsCAD',
+                    onOpen: function () {
+                        widget.classList.add('zello-detached');
+                    },
+                    onClose: function (reason) {
+                        detachHandle = null;
+                        detachBtn.disabled = false;
+                        widget.classList.remove('zello-detached');
+                        if (reason === 'unsupported') {
+                            console.warn('[zello-widget] could not detach -- the browser blocked the popup window');
+                        }
+                    }
+                });
+            });
+        }
+
         // Close button
         var closeBtn = widget.querySelector('#zelloClose');
         if (closeBtn) {
             closeBtn.addEventListener('click', function () {
+                // 2026-09-08 (security-review finding) -- cancel a pending
+                // or active detach FIRST, so Close can never hide the node
+                // while a still-in-flight PiP/popup request is about to
+                // move it into a freshly-opened window with nothing on
+                // screen. Safe to call unconditionally when null.
+                if (detachHandle) { detachHandle.close(); }
                 hide();
             });
         }
@@ -373,6 +445,7 @@
         var minBtn = widget.querySelector('#zelloMinimize');
         if (minBtn) {
             minBtn.addEventListener('click', function () {
+                if (detachHandle) { detachHandle.close(); }
                 hide();
             });
         }
@@ -495,6 +568,7 @@
     function show() {
         visible = true;
         widget.classList.remove('zello-hidden');
+        try { localStorage.setItem('zello_widget_open', '1'); } catch (e) {}
 
         // Connect WebSocket if not connected
         if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -519,6 +593,7 @@
     function hide() {
         visible = false;
         widget.classList.add('zello-hidden');
+        try { localStorage.setItem('zello_widget_open', '0'); } catch (e) {}
     }
 
     function toggle() {

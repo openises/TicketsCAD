@@ -82,14 +82,103 @@ if (!function_exists('inbound_calls_normalize_ts')) {
     /** Best-effort SSE publish -- a no-op until inc/sse.php's
      *  sse_publish_for_call() lands (Milestone 3); guarded so ingest never
      *  fatals on an install mid-upgrade. */
-    function _p149_sse(int $callId, string $eventType, array $payload, ?int $orgId): void
+    function _p149_sse(int $callId, string $eventType, array $payload, ?int $orgId, ?int $targetUserId = null): void
     {
         if (function_exists('sse_publish_for_call')) {
             try {
-                sse_publish_for_call($callId, $eventType, $payload, $orgId);
+                sse_publish_for_call($callId, $eventType, $payload, $orgId, $targetUserId);
             } catch (Throwable $e) {
                 error_log('[inbound-calls sse] ' . $eventType . ' call=' . $callId . ' failed: ' . $e->getMessage());
             }
+        }
+    }
+
+    /**
+     * Phase 153 (2026-09-08) — resolve a called number against
+     * phone_extensions. Returns ['extension_id'=>int|null,
+     * 'is_general'=>bool, 'target_user_id'=>int|null]. A direct (non-
+     * general) extension with an active console_sessions row bound to its
+     * workstation_token resolves target_user_id to that operator; a
+     * general number, an unmatched number, or a direct extension with
+     * nobody currently logged in there all resolve target_user_id=null,
+     * which _p149_sse() correctly treats as "broadcast to every entitled
+     * dispatcher" -- the safe degradation for "rang a direct line nobody's
+     * sitting at right now" rather than the call vanishing silently.
+     */
+    function _p153_resolve_extension(?string $calledNumber): array
+    {
+        $result = ['extension_id' => null, 'is_general' => false, 'target_user_id' => null];
+        if (!$calledNumber) return $result;
+        $prefix = _p149_prefix();
+        try {
+            $ext = db_fetch_one(
+                "SELECT id, is_general, workstation_token FROM `{$prefix}phone_extensions`
+                  WHERE extension = ? AND enabled = 1",
+                [$calledNumber]
+            );
+        } catch (Throwable $e) {
+            return $result; // phone_extensions may not exist yet on an unmigrated install
+        }
+        if (!$ext) return $result;
+        $result['extension_id'] = (int) $ext['id'];
+        $result['is_general'] = ((int) $ext['is_general']) === 1;
+        if (!$result['is_general'] && !empty($ext['workstation_token'])) {
+            try {
+                $session = db_fetch_one(
+                    "SELECT user_id FROM `{$prefix}console_sessions`
+                      WHERE workstation_token = ? AND expires_at > NOW()
+                      ORDER BY last_seen_at DESC, id DESC LIMIT 1",
+                    [$ext['workstation_token']]
+                );
+                if ($session) {
+                    $result['target_user_id'] = (int) $session['user_id'];
+                }
+            } catch (Throwable $e) {
+                // console_sessions absent/unreachable -- fall back to broadcast
+            }
+        }
+        return $result;
+    }
+
+    /**
+     * Phase 153 (2026-09-08) — Eric: "I want the caller ID from that
+     * workstation to be in the constituents." Look up an existing
+     * constituent by phone (reusing api/constituents.php's own digit-
+     * normalization convention so this NEVER disagrees with what the
+     * dispatcher's own manual phone-blur lookup in new-incident.js would
+     * find) and return its id; if none exists, create a bare record (phone
+     * number only -- contact defaults to the number itself, never a
+     * fabricated name) so the caller has a real Constituents entry from
+     * the moment the phone rings, not only if an incident happens to be
+     * created from the call.
+     */
+    function _p153_resolve_constituent(?string $callerNumber): ?int
+    {
+        if (!$callerNumber) return null;
+        $prefix = _p149_prefix();
+        $digits = preg_replace('/\D/', '', $callerNumber);
+        if (strlen($digits) < 4) return null; // matches new-incident.js's own minimum-digits gate
+        $like = '%' . $digits . '%';
+        try {
+            $existing = db_fetch_one(
+                "SELECT id FROM `{$prefix}constituents`
+                  WHERE REPLACE(REPLACE(REPLACE(`phone`, '-', ''), ' ', ''), '(', '') LIKE ?
+                     OR REPLACE(REPLACE(REPLACE(`phone_2`, '-', ''), ' ', ''), '(', '') LIKE ?
+                     OR REPLACE(REPLACE(REPLACE(`phone_3`, '-', ''), ' ', ''), '(', '') LIKE ?
+                     OR REPLACE(REPLACE(REPLACE(`phone_4`, '-', ''), ' ', ''), '(', '') LIKE ?
+                  LIMIT 1",
+                [$like, $like, $like, $like]
+            );
+            if ($existing) return (int) $existing['id'];
+
+            db_query(
+                "INSERT INTO `{$prefix}constituents` (`contact`, `phone`) VALUES (?, ?)",
+                [$callerNumber, $callerNumber]
+            );
+            return (int) db_insert_id();
+        } catch (Throwable $e) {
+            error_log('[inbound-calls constituent] ' . $e->getMessage());
+            return null;
         }
     }
 
@@ -118,15 +207,39 @@ if (!function_exists('inbound_calls_normalize_ts')) {
 
     /** The SSE-broadcast payload shape (plan.md §6's "hard structural
      *  limit" -- caller_number/called_number/trunk_label/mute_bypass/
-     *  timestamps only, NEVER a constituent match or history summary). */
+     *  timestamps only, NEVER a constituent match or history summary).
+     *  Phase 153 adds called_extension_id/is_general_number/extension_label
+     *  -- routing/line information (which number rang), not caller
+     *  identity, so it doesn't cross FR-26's line; lets the ringing banner
+     *  show "Direct: Workstation 2" vs "General Number". */
     function inbound_call_broadcast_payload(array $call, array $trunk): array
     {
+        $extLabel = null;
+        $isGeneral = false;
+        if (!empty($call['called_extension_id'])) {
+            try {
+                $prefix = _p149_prefix();
+                $ext = db_fetch_one(
+                    "SELECT label, is_general FROM `{$prefix}phone_extensions` WHERE id = ?",
+                    [(int) $call['called_extension_id']]
+                );
+                if ($ext) {
+                    $extLabel = $ext['label'];
+                    $isGeneral = ((int) $ext['is_general']) === 1;
+                }
+            } catch (Throwable $e) {
+                // phone_extensions absent/unreachable -- banner falls back to called_number alone
+            }
+        }
         return [
             'call_id'        => (int) $call['id'],
             'trunk_id'       => (int) $call['trunk_id'],
             'trunk_label'    => (string) ($trunk['label'] ?? ''),
             'caller_number'  => $call['caller_number'],
             'called_number'  => $call['called_number'],
+            'called_extension_id'   => $call['called_extension_id'] !== null ? (int) $call['called_extension_id'] : null,
+            'called_extension_label'=> $extLabel,
+            'is_general_number'     => $isGeneral,
             'state'          => $call['state'],
             // claimed_by (the numeric user id) is NOT the caller-identity
             // FR-26 restricts -- it is which DISPATCHER holds the claim,
@@ -195,14 +308,22 @@ if (!function_exists('inbound_calls_normalize_ts')) {
                 $initialState = 'abandoned';
                 $endedAt = $eventTs;
             }
+            // Phase 153 -- resolved once, up front, so both the INSERT and
+            // the ringing SSE publish below use the SAME extension/target/
+            // constituent resolution rather than two independent lookups
+            // that could theoretically disagree under a race.
+            $extResolved = _p153_resolve_extension($calledNumber);
+            $constituentId = _p153_resolve_constituent($callerNumber);
             try {
                 db_query(
                     "INSERT INTO `{$prefix}inbound_calls`
                         (`trunk_id`, `org_id`, `provider_call_id`, `caller_number`, `caller_name`,
-                         `called_number`, `state`, `ended_at`, `ringing_at`, `last_event_at`)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                         `constituent_id`, `called_number`, `called_extension_id`, `state`,
+                         `ended_at`, `ringing_at`, `last_event_at`)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     [$trunkId, $orgId, $providerCallId, $callerNumber, $callerName,
-                     $calledNumber, $initialState, $endedAt, $eventTs, $eventTs]
+                     $constituentId, $calledNumber, $extResolved['extension_id'], $initialState,
+                     $endedAt, $eventTs, $eventTs]
                 );
             } catch (Throwable $e) {
                 // Concurrent duplicate INSERT racing the unique key -- the
@@ -219,7 +340,8 @@ if (!function_exists('inbound_calls_normalize_ts')) {
                 $call = inbound_call_find_by_provider($trunkId, $providerCallId);
                 if ($event === 'ringing' && $call) {
                     inbound_call_audit((int) $call['id'], 'rang', null, null, null, ['caller_number' => $callerNumber]);
-                    _p149_sse((int) $call['id'], 'call:ringing', inbound_call_broadcast_payload($call, $trunk), $orgId);
+                    _p149_sse((int) $call['id'], 'call:ringing', inbound_call_broadcast_payload($call, $trunk), $orgId,
+                        $extResolved['target_user_id']);
                 } elseif ($call) {
                     inbound_call_audit((int) $call['id'], 'abandoned', null, null, null, ['reason' => 'terminal event with no prior ringing seen']);
                     _p149_sse((int) $call['id'], 'call:abandoned', inbound_call_broadcast_payload($call, $trunk), $orgId);

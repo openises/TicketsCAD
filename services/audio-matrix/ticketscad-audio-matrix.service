@@ -1,0 +1,31 @@
+[Unit]
+Description=TicketsCAD Audio Matrix (Phase 114c + Phase 152 Communications Console v2)
+Documentation=https://github.com/openises/TicketsCAD/blob/main/services/audio-matrix/service.py
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+ExecStart=/usr/bin/python3 /var/www/newui/services/audio-matrix/service.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+# Config comes from /etc/ticketscad-audio-matrix.conf (see service.py's own
+# docblock) -- same location/mode convention as the APRS listener's.
+Environment=AUDIO_MATRIX_CONF=/etc/ticketscad-audio-matrix.conf
+
+# Tighter sandbox -- the service only needs network out/in (DB socket, the
+# browser-leg WebSocket port, the loopback control-plane port, and -- only
+# once dmr.mode is flipped to "live" -- the local DMR bridge's HTTP port)
+# plus read access to its own source tree.
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+NoNewPrivileges=true
+ReadOnlyPaths=/var/www/newui/services/audio-matrix
+
+[Install]
+WantedBy=multi-user.target

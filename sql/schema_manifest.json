@@ -135,6 +135,11 @@
             "sort",
             "text"
         ],
+        "comm_channel_reads": [
+            "channel_id",
+            "last_seen_event_ref",
+            "position_id"
+        ],
         "comm_channel_state": [
             "channel_id",
             "state"
@@ -150,14 +155,32 @@
             "regulatory_class",
             "sort_order"
         ],
+        "comm_id_log": [
+            "callsign",
+            "channel_id",
+            "id_at",
+            "notes",
+            "source",
+            "user_id"
+        ],
+        "comm_ptt_state": [
+            "channel_id",
+            "conversation_started_at",
+            "last_tx_at",
+            "user_id"
+        ],
         "comm_routes": [
             "allow_cross_class",
             "created_by",
             "dst_channel_id",
             "ducking",
             "enabled",
+            "expires_at",
             "gain_db",
+            "group_id",
             "note",
+            "operator_ack_by",
+            "operator_callsign",
             "priority",
             "src_channel_id"
         ],
@@ -172,6 +195,25 @@
         "config": [
             "key",
             "value"
+        ],
+        "console_position_sessions": [
+            "console_session_id",
+            "position_id",
+            "user_id",
+            "username"
+        ],
+        "console_positions": [
+            "created_by",
+            "default_channel_ids_json",
+            "label",
+            "sort_order"
+        ],
+        "console_sessions": [
+            "expires_at",
+            "session_token",
+            "user_id",
+            "username",
+            "workstation_token"
         ],
         "console_view_strips": [
             "channel_id",
@@ -189,6 +231,19 @@
             "name",
             "owner_user_id",
             "sort_order"
+        ],
+        "console_workstation_mutes": [
+            "created_by",
+            "muted_workstation_id",
+            "workstation_id"
+        ],
+        "console_workstations": [
+            "last_seen_at",
+            "workstation_token"
+        ],
+        "constituents": [
+            "contact",
+            "phone"
         ],
         "dashboard_layouts": [
             "hidden_widgets",
@@ -493,6 +548,7 @@
             "reason"
         ],
         "inbound_calls": [
+            "called_extension_id",
             "called_number",
             "caller_name",
             "caller_number",
@@ -500,6 +556,7 @@
             "claimed_at",
             "claimed_by",
             "claimed_by_name",
+            "constituent_id",
             "ended_at",
             "last_event_at",
             "org_id",
@@ -1056,6 +1113,16 @@
             "dismissed_at",
             "dismissed_by",
             "permission_id"
+        ],
+        "phone_extensions": [
+            "enabled",
+            "extension",
+            "is_general",
+            "label",
+            "org_id",
+            "sip_password",
+            "sip_username",
+            "workstation_token"
         ],
         "places": [
             "apply_to",
@@ -1626,14 +1693,22 @@
         "certifications",
         "chat_messages",
         "codes",
+        "comm_channel_reads",
         "comm_channel_state",
         "comm_channels",
+        "comm_id_log",
         "comm_modes",
+        "comm_ptt_state",
         "comm_routes",
         "conditions",
         "config",
+        "console_position_sessions",
+        "console_positions",
+        "console_sessions",
         "console_view_strips",
         "console_views",
+        "console_workstation_mutes",
+        "console_workstations",
         "constituents",
         "css_day",
         "css_night",
@@ -1740,6 +1815,7 @@
         "permission_review_dismissals",
         "permissions",
         "personnel",
+        "phone_extensions",
         "places",
         "push_subscriptions",
         "quick_notes",
@@ -1803,8 +1879,8 @@
     "_meta": {
         "generated_by": "tools/gen_schema_manifest.php",
         "purpose": "columns this code writes to + tables it references; checked by inc/schema-verify.php",
-        "tables": 158,
-        "columns": 1290,
-        "required_tables": 191
+        "tables": 168,
+        "columns": 1337,
+        "required_tables": 200
     }
 }

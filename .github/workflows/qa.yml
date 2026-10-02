@@ -241,10 +241,15 @@ jobs:
           NEWUI_TEST_NO_HTTP: '1'
         run: php tools/test_all.php
 
-      - name: Audio-matrix Python suite (Phase 114c, no radio/bridge)
+      - name: Audio-matrix Python suite (Phase 114c/152, no radio/bridge)
         run: |
           set -e
-          for t in test_matrix_core test_control_http test_dmr_leg test_service; do
+          # mysql-connector-python is soft-optional (service.py degrades to
+          # an empty matrix without it — no test forces a real DB); websockets
+          # is a hard dependency of test_browser_leg (Phase 152 prerequisite
+          # #3). Install both so the suite matches what a real deploy needs.
+          python3 -m pip install --quiet -r services/audio-matrix/requirements.txt
+          for t in test_matrix_core test_control_http test_dmr_leg test_service test_browser_leg test_fcc_gate test_intercom_reflector test_workstation_mute; do
             echo "── $t ──"
             python3 "services/audio-matrix/tests/$t.py"
           done

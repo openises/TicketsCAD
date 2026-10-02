@@ -15,3 +15,19 @@ step
 # override) but no PHP endpoint emits that key literally -- not
 # investigated further here, out of this phase's scope.
 ptt_color
+# 2026-09-08 -- Phase 153 (browser-native WebRTC telephony). All five are
+# properties of JsSIP/WebRTC objects, never emitted by any PHP endpoint:
+# `e.cause`/`e.originator` are JsSIP RTCSession event args, `e.peerconnection`
+# is JsSIP's own session event, `session.remote_identity` is JsSIP's
+# RTCSession object (assets/vendor/jssip/), and `ev.streams` is the
+# browser-native RTCTrackEvent from addEventListener('track', ...). The
+# tool attributes an unmatched property read to the nearest fetch() call
+# in the same file (api/phone-extensions.php, used elsewhere in
+# phone-widget.js for the my_extension lookup) rather than recognizing
+# these came from a third-party library / native browser API with no PHP
+# involved at all -- a genuine tool limitation, not a real gap.
+cause
+originator
+peerconnection
+remote_identity
+streams

@@ -8,6 +8,9 @@
  * POST   action=channel_update             — edit
  * POST   action=channel_toggle             — enable / disable
  * POST   action=channel_delete             — soft delete (sets enabled=0 + clears token)
+ * POST   action=channel_purge              — GH#140: permanently delete an ALREADY
+ *                                              soft-deleted (disabled) channel + its
+ *                                              dmr_id_log/dmr_ptt_state/dmr_messages rows
  * POST   action=channel_rotate_token       — mint a new bridge bearer (returned ONCE)
  * GET    ?action=channel_test_health&id=N  — proxy /health to the bridge HTTP control
  * POST   action=channel_test_tx            — proxy /tx/test to the bridge (1 kHz tone)
@@ -467,6 +470,34 @@ if ($method === 'POST') {
             json_response(['ok' => true]);
         } catch (Exception $e) {
             json_error('delete failed: ' . $e->getMessage(), 500);
+        }
+    }
+
+    if ($action === 'channel_purge') {
+        // GH#140 (cbyrdmo, openises/TicketsCAD) — channel_delete above has
+        // only ever been a soft delete (disable + clear token, the Phase 35A
+        // bridge model), and nothing hard-deleted a dmr_channels row. A
+        // mistakenly-created or fully decommissioned channel therefore
+        // squatted forever on its UNIQUE `label` and `usrp_listen_port`.
+        //
+        // Same gate as channel_delete (Phase 82b's action.dmr_configure —
+        // the permission already covers channel CRUD, of which this is one
+        // more, more permanent, member). The real writer, and the full
+        // cascade/registry-sync reasoning, lives in
+        // inc/dmr-channel-write.php so it can be driven directly by
+        // tests/test_gh140_dmr_channel_purge.php — the same shape as
+        // inc/wastebasket-write.php's wb_purge_ticket_children().
+        dvs_require_perm('action.dmr_configure');
+        dvs_csrf_check($input);
+        require_once __DIR__ . '/../inc/dmr-channel-write.php';
+        $id = (int) ($input['id'] ?? 0);
+        if ($id <= 0) json_error('id required');
+        try {
+            $result = dmr_channel_purge_internal($id);
+            json_response($result);
+        } catch (Exception $e) {
+            error_log('[dvswitch channel_purge] ' . $e->getMessage());
+            json_error($e->getMessage(), $e->getMessage() === 'not found' ? 404 : 400);
         }
     }
 

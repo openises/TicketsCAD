@@ -404,6 +404,16 @@ $perms = [
     ['action.manage_calls',    'Manage Inbound Calls (Admin)',  'call_queue'],
     ['field.caller_history',   'View Caller History',           'call_queue'],
     ['field.patient_history',  'View Caller Patient History',   'call_queue'],
+
+    // Phase 152 (2026-09-07, Communications Console v2, 5-persona review) --
+    // mirrors sql/rbac.sql's own permission INSERT for these three codes.
+    // action.patch_create is tier 0 (Dispatcher-default); the other two are
+    // tier 1, same treatment as action.manage_matrix (see the admin_only
+    // UPDATE block below and the Dispatcher allow-list further down, which
+    // deliberately does NOT name them).
+    ['action.patch_create',      'Create Patch / Coupling',          'action'],
+    ['action.patch_cross_class', 'Create Cross-Class Patch',         'action'],
+    ['action.manage_positions',  'Manage Console Positions (Admin)', 'action'],
 ];
 
 $pInserted = 0;
@@ -489,7 +499,8 @@ try {
         'action.delete_ics_form', 'action.delete_equipment_log',
         'action.manage_public_board_org', 'action.manage_ics_form_types_org',
         'action.manage_matrix', 'action.manage_calls',
-        'action.create_major_event', 'action.manage_major_event_command'
+        'action.create_major_event', 'action.manage_major_event_command',
+        'action.patch_cross_class', 'action.manage_positions'
     )");
     // Propagate onto each code's canonical alias partner in BOTH
     // directions (sql/run_rbac_v2.php's A8 step may already have created
@@ -617,7 +628,11 @@ try {
                                -- Phase 149 (2026-08-22): action.manage_calls deliberately absent --
                                -- withheld from Dispatcher (plan.md §5).
                                'screen.call_queue', 'action.claim_call',
-                               'field.caller_history', 'field.patient_history'))
+                               'field.caller_history', 'field.patient_history',
+                               -- Phase 152 (2026-09-07): tier 0, Dispatcher-default per plan.md's
+                               -- RBAC section. action.patch_cross_class/action.manage_positions
+                               -- deliberately absent -- withheld by never being named here.
+                               'action.patch_create'))
                 AND `admin_only` = 0");
     echo "[OK] Dispatcher permissions mapped\n";
 } catch (Exception $e) {}
@@ -642,15 +657,22 @@ try {
 // mechanism. Self-healing on every run, mirroring the Org Admin repair
 // above.
 try {
+    // Phase 152 (2026-09-07): action.patch_cross_class/action.manage_positions
+    // added to both repair-DELETEs defensively even though they're brand-new
+    // codes with no pre-canonical predecessor (the alias-mirror mechanism
+    // that bit action.manage_calls needs an OLD code Dispatcher already held
+    // to mirror FROM, which these two have never had) -- this file's own
+    // documented lesson is "verify the LIVE grant, not the mechanism," so
+    // don't rely on that reasoning alone standing in for the check.
     db_query("DELETE `{$prefix}role_permissions` FROM `{$prefix}role_permissions`
               JOIN `{$prefix}permissions` p ON p.id = `{$prefix}role_permissions`.`permission_id`
               WHERE `{$prefix}role_permissions`.`role_id` = 3
-                AND p.`code` IN ('action.manage_calls')");
+                AND p.`code` IN ('action.manage_calls', 'action.patch_cross_class', 'action.manage_positions')");
     db_query("DELETE rp FROM `{$prefix}role_permissions` rp
               JOIN `{$prefix}permissions` canon ON canon.id = rp.permission_id
               JOIN `{$prefix}permissions` old_p ON old_p.deprecated_alias_of = canon.code
               WHERE rp.role_id = 3
-                AND old_p.code IN ('action.manage_calls')");
+                AND old_p.code IN ('action.manage_calls', 'action.patch_cross_class', 'action.manage_positions')");
     echo "[OK] Dispatcher canonical-alias privilege leak repaired (if any)\n";
 } catch (Exception $e) {}
 

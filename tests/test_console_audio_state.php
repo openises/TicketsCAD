@@ -79,6 +79,32 @@ t('radio console gain multiplies the REAL ring-buffer samples inside pullSamples
 t('radio console mute composes with (never replaces) the widget\'s own muted/audioMuted silence gate',
     strpos($radioSrc, 'if (muted || audioMuted || consoleMuted || !audioAllowed()) return out;') !== false);
 
+// ── Simulselect matrix extension (2026-09-08, unification plan step 3) ──
+// Same structural-guard style as the zello/radio checks above: console-
+// audio.js has fetch()/window-widget dependencies so it isn't Node-eval'd
+// here, but these regexes pin the specific, real code shapes rather than
+// re-deriving the logic. The one behavioral property that matters most --
+// this NEVER touches zello-widget.js's/radio-widget.js's own PTT buttons,
+// only adds a second independent transmit path via window.ConsoleMatrix --
+// is proven by the unchanged assertions above (ptt.start()/stop() still
+// call the exact same startTransmit()/pttStart() functions) still passing
+// unmodified after this extension landed.
+$audioSrc = (string) @file_get_contents(__DIR__ . '/../assets/js/console-audio.js');
+t('console-audio.js exists', $audioSrc !== '');
+t('simulselectPttStart() keys intercom_dd / matrix-engaged DMR members via window.ConsoleMatrix.talkStart(), not the zello/radio singleton path',
+    strpos($audioSrc, "window.ConsoleMatrix.talkStart(id)") !== false
+    && strpos($audioSrc, "meta.adapter === 'intercom_dd'") !== false);
+t('the matrix branch connects the session first (mic-permission prompt) before calling talkStart, never assumes an existing connection',
+    (bool) preg_match('/window\.ConsoleMatrix\.connect\(function \(ok\) \{\s*if \(ok\) \{ window\.ConsoleMatrix\.talkStart\(id\); \}/', $audioSrc));
+t('simulselectPttStop() tears down every matrix-engaged member via talkEnd(), not just the zello/radio singletons',
+    strpos($audioSrc, 'window.ConsoleMatrix.talkEnd(members[i])') !== false);
+t('a DMR channel only takes the matrix path when matrixAudio is actually engaged (s && s.matrixAudio) -- never unconditionally for every dmr_bm/dmr_local channel',
+    (bool) preg_match("/\\(meta\\.adapter === 'dmr_bm' \\|\\| meta\\.adapter === 'dmr_local'\\) && s && s\\.matrixAudio/", $audioSrc));
+t('simulselectTargets() exists for the visible "TX target" readout (ARES persona review, 2026-09-08)',
+    strpos($audioSrc, 'simulselectTargets:') !== false);
+t('registerChannels() now captures each channel\'s label (needed by simulselectTargets() to name real channels, not just adapter families)',
+    strpos($audioSrc, 'label: ch.label || null') !== false);
+
 $node = null;
 foreach (['node', 'node.exe'] as $cand) {
     $probe = @shell_exec($cand . ' --version 2>&1');

@@ -44,9 +44,15 @@
     var MONITOR_ATTEN = 0.35;
 
     // mon defaults TRUE — see effectiveGain()'s docblock for why that's
-    // what keeps an untouched console's behavior unchanged.
+    // what keeps an untouched console's behavior unchanged. matrixAudio
+    // (Phase 152) defaults FALSE for the identical reason: an operator who
+    // never touches it keeps today's singleton-widget-launcher behavior on
+    // a matrix-backed (DMR) strip exactly as before — engaging the real,
+    // independent browser-leg audio path is always an explicit opt-in per
+    // strip (console.js's renderStrip()), never a silent behavior change,
+    // and never on for a channel the matrix has no leg for (Zello).
     function defaultState() {
-        return { selected: false, mon: true, muted: false, volume: 100, simulselect: false };
+        return { selected: false, mon: true, muted: false, volume: 100, simulselect: false, matrixAudio: false };
     }
 
     // Coerce/clamp an arbitrary (possibly partial, possibly attacker- or
@@ -61,7 +67,8 @@
             mon: (s.mon === undefined) ? true : !!s.mon,
             muted: !!s.muted,
             volume: vol,
-            simulselect: !!s.simulselect
+            simulselect: !!s.simulselect,
+            matrixAudio: !!s.matrixAudio
         };
     }
 

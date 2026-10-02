@@ -703,19 +703,15 @@ Webhook events: `incident_type.created`, `incident_type.updated`, `incident_type
 
 ### 6.8 Attachments
 
-**Status:** PENDING (Phase 94 Stage 4h). Handler file `attachments.php` not on disk yet.
+**Status:** SHIPPED, upload only (GH#146, rjonesbsink, 2026-09-15 — this section previously said the handler file wasn't on disk yet; that was stale, `attachments.php` is a real, complete implementation). **GET (list) and DELETE are NOT implemented** — only the POST upload route below exists; there is no way to list or delete an attachment through the External API today.
 
-Planned shape (multipart for uploads, JSON for list/delete):
-
-| Method | Path                                                     | Scope                                  |
-|--------|----------------------------------------------------------|----------------------------------------|
-| GET    | `/api/external/v1/incidents/<id>/attachments`            | `incidents:read` (parent perm)         |
-| POST   | `/api/external/v1/incidents/<id>/attachments` (multipart)| `incidents:write` (parent perm)        |
-| DELETE | `/api/external/v1/attachments/<file_id>`                 | `attachments:write`                    |
+| Method | Path                                                       | Scope               | RBAC permission        |
+|--------|-------------------------------------------------------------|---------------------|-------------------------|
+| POST   | `/api/external/v1/incidents/<id>/attachments` (multipart)   | `attachments:write`  | `action.upload_files`  |
 
 Also supported via parent: `/api/external/v1/members/<id>/attachments`, `/api/external/v1/facilities/<id>/attachments`. Upload size capped by the `external_api_max_upload_bytes` setting (default 10 MB; see appendix).
 
-Webhook events: `attachment.created`, `attachment.deleted`.
+Webhook events: `attachment.created` (fired automatically by the shared upload path; the handler does not call `webhook_fire()` directly). There is no `attachment.deleted` event, since delete isn't implemented.
 
 ---
 

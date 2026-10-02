@@ -1,0 +1,28 @@
+jssip-3.10.1.min.js
+===================
+
+Source:  JsSIP 3.10.1 (https://www.npmjs.com/package/jssip), MIT license.
+Built:   locally with esbuild, 2026-09-08, because the published npm
+         package ships no browser/UMD build at all -- its package.json
+         has no "browser"/"unpkg"/"jsdelivr" field, only
+         "main": "lib-es5/JsSIP.js" (a CommonJS entry point full of
+         require() calls a <script> tag cannot run). Fetching any file
+         out of the package via a CDN (jsdelivr, unpkg) returns that same
+         CommonJS module, not something usable directly in a browser.
+
+Build steps (reproducible):
+    npm init -y
+    npm install jssip@3.10.1 esbuild --no-save
+    # entry.js:
+    #   import * as JsSIP from 'jssip';
+    #   window.JsSIP = JsSIP;
+    npx esbuild entry.js --bundle --minify --format=iife \
+        --global-name=__JsSIP_UMD --outfile=jssip-bundle.min.js
+
+Verified before vendoring: `node --check` (syntax), and a Node smoke test
+with faked `window`/`navigator`/`document` globals confirming
+`JsSIP.UA` / `JsSIP.WebSocketInterface` are real functions and
+`JsSIP.version === '3.10.1'`.
+
+To upgrade: bump the version in the npm install step above, rebuild, and
+re-run the same verification before replacing this file.

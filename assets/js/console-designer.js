@@ -1,26 +1,28 @@
 /**
- * NewUI v4.0 — Console Designer (Phase 114b, slice b2.5 — free-form)
+ * NewUI v4.0 — Console Designer (Phase 152 — Console rebuild)
  *
- * Eric's 2026-07-07 direction: draw.io-style freedom — a grid layout
- * within a grid layout:
+ * Rebuilt from the b2.5 free-form GridStack + custom-drag canvas to a
+ * plain ADMIN-ASSIGNED ORDERED LIST (order via Up/Down buttons + a 1x/2x
+ * width toggle per strip), per the 5-persona design review's UNANIMOUS
+ * finding (specs/phase-152-comms-console-v2/tasks.md, "Console rebuild"):
+ * real dispatch consoles (MCC 7500, Zetron, Avtec) use admin-assigned
+ * layouts, not live drag — and no GridStack/drag library is needed
+ * anywhere in the new console or designer as a result.
  *
- *   OUTER — the view canvas (12 columns, 20px rows) driven by GridStack
- *   (the same engine as the dashboard). Each strip is a widget: drag by
- *   its handle bar, resize both dimensions.
+ * A strip's content is no longer a freely-placed component array — it is
+ * the same {show:{ptt,sel,mon,mute,vol,text,vu,recall,patchchips},hotkey}
+ * bag console.js's renderStrip() consumes (inc/console-views.php). The
+ * Inspector (right pane) edits a selected strip's overrides + show flags
+ * + hotkey directly; there is no separate "palette" of placeable
+ * components anymore — the show-flag checkboxes ARE the palette.
  *
- *   INNER — each strip body is a fine 12-column × 14px-row grid with
- *   CUSTOM pointer-drag placement (not a nested GridStack — live
- *   GridStack instances inside GridStack items hard-froze the renderer;
- *   see the b2.5 commit). Components snap to the grid, can be dragged
- *   anywhere, resized from the corner handle, and — unlike a packing
- *   engine — may OVERLAP/stack freely, exactly like draw.io.
- *
- * Click a component to edit its props in the inspector (text, colours,
- * PTT mode). The palette only offers components the channel is capable
- * of; "future" components (backends arrive with the audio bus) carry a
- * corner tag and render disabled at runtime.
- *
- * Designer mode never keys TX — components are presentation previews.
+ * vu has no backend yet (VU metering is a separate, still-pending
+ * Console rebuild task) — its checkbox renders disabled with an honest
+ * "future" tag, mirroring this project's own precedent for the old
+ * 'say' (TTS) component, rather than silently omitting it or pretending
+ * it works. patchchips and recall became real the moment the patch rail
+ * (assets/js/console-patch-rail.js) and the Recall tab (assets/js/
+ * console-recall.js) shipped — see FUTURE_FLAGS below.
  *
  * ES5 IIFE — no arrow functions, no let/const, no template literals.
  */
@@ -29,17 +31,42 @@
 
     var CH_API = 'api/channels.php';
     var VIEWS_API = 'api/console-views.php';
-    var OUTER_CELL = 20;   // px per outer row — matches runtime console.js
-    var INNER_CELL = 14;   // px per inner row — matches runtime console.js
     var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+
+    // Mirrors console_strip_template_needs() (inc/console-views.php) — a
+    // capability-gate map so the designer can never OFFER a checkbox the
+    // server would silently drop to false anyway. Kept in sync manually
+    // (nine small, stable keys); tests/test_phase152_console_strip_templates.php
+    // asserts this object's keys match the server's own map.
+    var SHOW_FLAG_NEEDS = {
+        ptt: ['voice_tx'], mon: ['voice_rx'], mute: ['voice_rx'], vol: ['voice_rx'],
+        text: ['text_rx', 'text_tx', 'source'],
+        vu: ['voice_rx'], recall: ['voice_rx', 'text_rx', 'text_tx', 'source'],
+        sel: null, patchchips: null
+    };
+    var SHOW_FLAG_LABELS = {
+        ptt: 'PTT', sel: 'Select', mon: 'Monitor', mute: 'Mute', vol: 'Volume',
+        text: 'Text / messages', vu: 'VU meter', recall: 'Recall shortcut',
+        patchchips: 'Patch badges'
+    };
+    // Not yet backed by a real subsystem (VU metering, Recall tab, patch
+    // rail are separate pending Console rebuild tasks) — offered as
+    // visibly-future, disabled checkboxes rather than omitted outright.
+    var FUTURE_FLAGS = { vu: true };
+    var HOTKEY_RE = /^(F[1-9]|F1[0-2]|[A-Za-z0-9])$/;
+
+    function showFlagAllowed(key, caps) {
+        var needs = SHOW_FLAG_NEEDS[key];
+        if (needs === null) { return true; }
+        for (var i = 0; i < needs.length; i++) { if (caps[needs[i]]) { return true; } }
+        return false;
+    }
 
     var viewListEl = document.getElementById('cdViewList');       // shared (admin-only panel, may be absent)
     var myViewListEl = document.getElementById('cdMyViewList');   // personal (always present)
-    var canvasEl = document.getElementById('cdCanvas');
+    var stripListEl = document.getElementById('cdStripList');
     var canvasTitle = document.getElementById('cdCanvasTitle');
     var channelListEl = document.getElementById('cdChannelList');
-    var paletteEl = document.getElementById('cdPalette');
-    var paletteBody = document.getElementById('cdPaletteBody');
     var inspectorEl = document.getElementById('cdInspector');
     var inspectorBody = document.getElementById('cdInspectorBody');
     var saveBtn = document.getElementById('cdSaveBtn');
@@ -49,26 +76,25 @@
     var cloneSourcesCard = document.getElementById('cdCloneSourcesCard');
     var cloneSourceListEl = document.getElementById('cdCloneSourceList');
     var dirtyFlag = document.getElementById('cdDirtyFlag');
-    if (!myViewListEl || !canvasEl || typeof window.GridStack === 'undefined') { return; }
-
-    var canDesign = document.body.getAttribute('data-can-design') === '1';
+    if (!myViewListEl || !stripListEl) { return; }
 
     var channels = [];
     var channelsById = {};
     var views = [];              // shared (owner_user_id NULL)
-    var myViews = [];            // Phase 114b3 — the caller's own personal views
-    var sharedPersonalViews = []; // Phase 114b3 — OTHER users' is_shared personal views (clone sources)
-    var componentCatalog = {};   // type -> {needs, label, future, props}
+    var myViews = [];             // the caller's own personal views
+    var sharedPersonalViews = []; // OTHER users' is_shared personal views (clone sources)
     var currentViewId = null;
     var currentViewScope = null; // 'shared' | 'personal' — which list currentViewId lives in
     var meta = { name: '', icon: '', is_shared: false };
     var dirty = false;
 
-    var outerGrid = null;        // GridStack instance for the canvas
-    var strips = {};             // stripId -> {channel_id, overrides, el, grid, comps:{compId->comp}}
-    var stripSeq = 0, compSeq = 0;
-    var selStrip = null;         // selected strip id
-    var selComp = null;          // selected comp id (within selStrip)
+    // The one piece of client-side state this rebuild actually needs: a
+    // plain ordered array. Array index IS the strip's position — the
+    // server derives position from array order on save (inc/console-
+    // views.php's console_view_save_strips()), so nothing here tracks a
+    // position number explicitly.
+    var strips = [];              // [{channel_id, overrides, show, hotkey, width}]
+    var selIndex = null;          // index into strips[], or null
 
     // ── Helpers ──────────────────────────────────────────────────
     function el(tag, cls, text) {
@@ -85,7 +111,7 @@
             local_chat: 'bi-chat-dots', smtp: 'bi-envelope', sms: 'bi-phone',
             slack: 'bi-slack', push: 'bi-bell', nws: 'bi-cloud-lightning-rain',
             eventbus: 'bi-lightning-charge', allstar: 'bi-broadcast-pin',
-            sip: 'bi-telephone', intercom: 'bi-door-open', ptt1: 'bi-mic'
+            sip: 'bi-telephone', intercom: 'bi-door-open', intercom_dd: 'bi-door-open', ptt1: 'bi-mic'
         };
         return map[adapter] || 'bi-broadcast-pin';
     }
@@ -104,14 +130,16 @@
         }).catch(function () { cb({ error: 'network error' }); });
     }
 
-    function compAllowed(type, caps) {
-        var def = componentCatalog[type];
-        if (!def) { return false; }
-        if (def.needs === null) { return true; }
-        for (var i = 0; i < def.needs.length; i++) {
-            if (caps[def.needs[i]]) { return true; }
-        }
-        return false;
+    var toastEl = document.getElementById('cdToast');
+    var toastTimer = null;
+    function showToast(type, message) {
+        if (!toastEl) { return; }
+        toastEl.className = 'alert alert-' + type + ' py-2 mb-3';
+        toastEl.textContent = message;
+        if (toastTimer) { window.clearTimeout(toastTimer); }
+        toastTimer = window.setTimeout(function () {
+            toastEl.classList.add('d-none');
+        }, 4000);
     }
 
     function setDirty(d) {
@@ -120,256 +148,206 @@
         if (saveBtn) { saveBtn.classList.toggle('d-none', currentViewId === null); }
     }
 
-    // ── Component preview rendering (inside inner-grid widgets) ──
-    function compPreview(comp, ch) {
-        var def = componentCatalog[comp.type] || { label: comp.type, future: false };
-        var props = comp.props || {};
-        var box = el('div', 'cdc cdc-' + comp.type);
-        if (comp.type === 'label') {
-            box.textContent = props.text || (ch ? (ch.short_label || ch.label) : 'Label');
-            if (props.bg) { box.style.background = props.bg; }
-            if (props.fg) { box.style.color = props.fg; }
-        } else if (comp.type === 'ptt') {
-            box.textContent = props.text || 'PTT';
-            box.style.background = props.color || '#dc3545';
-        } else if (comp.type === 'led') {
-            box.appendChild(el('span', 'console-led console-led-connected'));
-        } else if (comp.type === 'activity') {
-            box.textContent = 'last caller · 2m ago';
-        } else if (comp.type === 'text') {
-            box.appendChild(el('div', 'cdc-text-hint', 'Messages / feed'));
-        } else if (comp.type === 'monitor') {
-            box.textContent = props.text || 'Mon';
-        } else if (comp.type === 'mute') {
-            box.textContent = props.text || 'Mute';
-        } else if (comp.type === 'volume') {
-            box.appendChild(el('div', 'cdc-vol-track'));
-        } else if (comp.type === 'say') {
-            box.textContent = props.text || 'Say';
-        } else {
-            box.textContent = def.label;
-        }
-        if (def.future) {
-            box.appendChild(el('span', 'cdc-future-tag', 'future'));
-        }
-        return box;
-    }
-
-    // ── Strips on the outer grid ─────────────────────────────────
-    function addStrip(channelId, layout, overrides, comps, skipDirty) {
-        var ch = channelsById[channelId];
-        var sid = 's' + (++stripSeq);
-        layout = layout || { x: 0, y: 0, w: 3, h: 14 };
-
-        var content = el('div', 'cd-strip-frame');
-        var handle = el('div', 'cds-handle');
-        handle.appendChild(el('i', 'bi ' + adapterIcon(ch ? ch.adapter : '') + ' me-1'));
-        handle.appendChild(el('span', 'cds-handle-label',
-            (overrides && (overrides.short_label || overrides.label))
-            || (ch ? (ch.short_label || ch.label) : ('#' + channelId))));
-        var rm = el('button', 'btn cd-strip-remove', null);
-        rm.type = 'button';
-        rm.title = 'Remove strip';
-        rm.appendChild(el('i', 'bi bi-x-lg'));
-        handle.appendChild(rm);
-        content.appendChild(handle);
-        var body = el('div', 'cds-body');
-        content.appendChild(body);
-
-        var widget = outerGrid.addWidget({
-            x: layout.x, y: layout.y, w: layout.w, h: layout.h, content: '',
-        });
-        widget.setAttribute('data-strip-id', sid);
-        widget.querySelector('.grid-stack-item-content').appendChild(content);
-
-        var st = { id: sid, channel_id: channelId, overrides: overrides || {}, el: widget, body: body, comps: {} };
-        strips[sid] = st;
-
-        for (var i = 0; i < (comps || []).length; i++) {
-            addComp(st, comps[i], true);
-        }
-
-        rm.addEventListener('click', function (e) {
-            e.stopPropagation();
-            outerGrid.removeWidget(widget);
-            delete strips[sid];
-            if (selStrip === sid) { selStrip = null; selComp = null; }
-            setDirty(true);
-            renderInspector();
-            renderPalette();
-        });
-
-        handle.addEventListener('click', function () {
-            selStrip = sid;
-            selComp = null;
-            highlight();
-            renderInspector();
-            renderPalette();
-        });
-        body.addEventListener('mousedown', function (e) {
-            if (e.target === body) {
-                selStrip = sid;
-                selComp = null;
-                highlight();
-                renderInspector();
-                renderPalette();
-            }
-        });
-
-        return st;
-    }
-
-    // ── Components: custom snap-to-grid drag/resize (may overlap) ─
-    function placeComp(c) {
-        c.el.style.left = (c.x / 12 * 100) + '%';
-        c.el.style.width = (c.w / 12 * 100) + '%';
-        c.el.style.top = (c.y * INNER_CELL) + 'px';
-        c.el.style.height = (c.h * INNER_CELL) + 'px';
-    }
-
-    function addComp(st, comp, skipDirty) {
-        var cid = 'c' + (++compSeq);
-        var ch = channelsById[st.channel_id];
-        var wrap = el('div', 'cd-comp');
-        wrap.setAttribute('data-comp-id', cid);
-        wrap.appendChild(compPreview(comp, ch));
-        var grip = el('div', 'cd-comp-resize');
-        grip.title = 'Resize';
-        wrap.appendChild(grip);
-        st.body.appendChild(wrap);
-
-        var c = {
-            type: comp.type, props: comp.props || {}, el: wrap,
-            x: comp.x || 0, y: comp.y || 0,
-            w: Math.max(1, Math.min(12, comp.w || 12)),
-            h: Math.max(1, comp.h || 2)
+    // Default show-flags for a strip freshly added from the channel list —
+    // everything the channel is capable of, matching console.js's
+    // defaultShowTemplate() for the auto view (same reasoning: a new
+    // strip should start USEFUL, not blank).
+    function defaultShowForChannel(caps) {
+        return {
+            ptt: !!caps.voice_tx, sel: true,
+            mon: !!caps.voice_rx, mute: !!caps.voice_rx, vol: !!caps.voice_rx,
+            text: !!(caps.text_rx || caps.text_tx || caps.source),
+            vu: false, recall: false, patchchips: false
         };
-        st.comps[cid] = c;
-        placeComp(c);
+    }
 
-        function select() {
-            selStrip = st.id;
-            selComp = cid;
-            highlight();
-            renderInspector();
-            renderPalette();
+    // ── Strip list (middle pane) ────────────────────────────────────
+    function renderStripList() {
+        stripListEl.innerHTML = '';
+        if (!strips.length) {
+            stripListEl.appendChild(el('div', 'text-body-secondary p-3 small',
+                currentViewId === null
+                    ? 'Pick a view on the left, or create one.'
+                    : 'No strips yet — click a channel on the right to add one.'));
+            return;
+        }
+        for (var i = 0; i < strips.length; i++) {
+            (function (s, idx) {
+                var ch = channelsById[s.channel_id];
+                var row = el('div', 'cd-strip-row list-group-item d-flex align-items-center gap-2'
+                    + (idx === selIndex ? ' active' : ''));
+                row.appendChild(el('i', 'bi ' + adapterIcon(ch ? ch.adapter : '')));
+                var lbl = el('span', 'flex-grow-1 text-truncate small',
+                    s.overrides.short_label || s.overrides.label || (ch ? (ch.short_label || ch.label) : ('#' + s.channel_id)));
+                row.appendChild(lbl);
+                if (s.hotkey) { row.appendChild(el('span', 'badge text-bg-secondary', s.hotkey)); }
+                row.appendChild(el('span', 'badge text-bg-info', s.width === 2 ? '2x' : '1x'));
+
+                var upBtn = el('button', 'btn btn-sm btn-outline-secondary py-0 px-1', null);
+                upBtn.type = 'button'; upBtn.title = 'Move up'; upBtn.disabled = idx === 0;
+                upBtn.appendChild(el('i', 'bi bi-arrow-up'));
+                upBtn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    var t = strips[idx - 1]; strips[idx - 1] = strips[idx]; strips[idx] = t;
+                    if (selIndex === idx) { selIndex = idx - 1; } else if (selIndex === idx - 1) { selIndex = idx; }
+                    setDirty(true); renderStripList(); renderInspector();
+                });
+                row.appendChild(upBtn);
+
+                var downBtn = el('button', 'btn btn-sm btn-outline-secondary py-0 px-1', null);
+                downBtn.type = 'button'; downBtn.title = 'Move down'; downBtn.disabled = idx === strips.length - 1;
+                downBtn.appendChild(el('i', 'bi bi-arrow-down'));
+                downBtn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    var t = strips[idx + 1]; strips[idx + 1] = strips[idx]; strips[idx] = t;
+                    if (selIndex === idx) { selIndex = idx + 1; } else if (selIndex === idx + 1) { selIndex = idx; }
+                    setDirty(true); renderStripList(); renderInspector();
+                });
+                row.appendChild(downBtn);
+
+                var rmBtn = el('button', 'btn btn-sm btn-outline-danger py-0 px-1', null);
+                rmBtn.type = 'button'; rmBtn.title = 'Remove strip';
+                rmBtn.appendChild(el('i', 'bi bi-x-lg'));
+                rmBtn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    strips.splice(idx, 1);
+                    if (selIndex === idx) { selIndex = null; } else if (selIndex !== null && selIndex > idx) { selIndex--; }
+                    setDirty(true); renderStripList(); renderInspector();
+                });
+                row.appendChild(rmBtn);
+
+                row.addEventListener('click', function () {
+                    selIndex = idx;
+                    renderStripList();
+                    renderInspector();
+                });
+                stripListEl.appendChild(row);
+            })(strips[i], i);
+        }
+    }
+
+    // ── Inspector (right pane, bottom card) ─────────────────────────
+    function inspectorRow(labelText, inputEl2) {
+        var row = el('div', 'mb-2');
+        row.appendChild(el('label', 'form-label small mb-1', labelText));
+        row.appendChild(inputEl2);
+        return row;
+    }
+
+    function colorRow(labelText, value, onChange) {
+        var wrap = el('div', 'd-flex align-items-center gap-2');
+        var inp = document.createElement('input');
+        inp.type = 'color';
+        inp.className = 'form-control form-control-color form-control-sm';
+        inp.value = /^#[0-9a-fA-F]{6}$/.test(value || '') ? value : '#dc3545';
+        var clear = el('a', 'small' + (value ? '' : ' d-none'), 'clear');
+        clear.href = '#';
+        inp.addEventListener('input', function () { clear.classList.remove('d-none'); onChange(inp.value); });
+        clear.addEventListener('click', function (e) { e.preventDefault(); clear.classList.add('d-none'); onChange(''); });
+        wrap.appendChild(inp);
+        wrap.appendChild(clear);
+        return inspectorRow(labelText, wrap);
+    }
+
+    function textRow(labelText, value, placeholder, maxLen, onChange) {
+        var inp = document.createElement('input');
+        inp.type = 'text';
+        inp.className = 'form-control form-control-sm';
+        inp.maxLength = maxLen;
+        inp.value = value || '';
+        inp.placeholder = placeholder || '';
+        inp.addEventListener('input', function () { onChange(inp.value); });
+        return inspectorRow(labelText, inp);
+    }
+
+    function renderInspector() {
+        var s = (selIndex !== null) ? strips[selIndex] : null;
+        if (!s) { inspectorEl.classList.add('d-none'); return; }
+        inspectorEl.classList.remove('d-none');
+        inspectorBody.innerHTML = '';
+        var ch = channelsById[s.channel_id];
+        var caps = (ch && ch.capabilities) || {};
+
+        inspectorBody.appendChild(el('div', 'small fw-semibold mb-2',
+            (ch ? ch.label + ' — ' + ch.adapter : 'missing channel #' + s.channel_id)));
+
+        inspectorBody.appendChild(textRow('Label override', s.overrides.label, ch ? ch.label : '', 120, function (v) {
+            if (v) { s.overrides.label = v; } else { delete s.overrides.label; }
+            setDirty(true); renderStripList();
+        }));
+        inspectorBody.appendChild(textRow('Short label', s.overrides.short_label, 'shown in tight spots', 24, function (v) {
+            if (v) { s.overrides.short_label = v; } else { delete s.overrides.short_label; }
+            setDirty(true); renderStripList();
+        }));
+        inspectorBody.appendChild(colorRow('Strip accent color', s.overrides.color, function (v) {
+            if (v) { s.overrides.color = v; } else { delete s.overrides.color; }
+            setDirty(true);
+        }));
+        if (caps.voice_tx) {
+            inspectorBody.appendChild(colorRow('PTT button color', s.overrides.ptt_color, function (v) {
+                if (v) { s.overrides.ptt_color = v; } else { delete s.overrides.ptt_color; }
+                setDirty(true);
+            }));
         }
 
-        // Drag to move (snap to grid, overlap allowed — draw.io style).
-        wrap.addEventListener('mousedown', function (e) {
-            if (e.button !== 0 || e.target === grip) { return; }
-            e.preventDefault();
-            e.stopPropagation();
-            select();
-            var colW = st.body.clientWidth / 12;
-            var startX = e.clientX, startY = e.clientY;
-            var origX = c.x, origY = c.y;
-            var moved = false;
-            var onMove = function (ev) {
-                var dx = Math.round((ev.clientX - startX) / colW);
-                var dy = Math.round((ev.clientY - startY) / INNER_CELL);
-                var nx = Math.max(0, Math.min(12 - c.w, origX + dx));
-                var ny = Math.max(0, origY + dy);
-                if (nx !== c.x || ny !== c.y) {
-                    c.x = nx; c.y = ny;
-                    placeComp(c);
-                    moved = true;
-                }
-            };
-            var onUp = function () {
-                document.removeEventListener('mousemove', onMove);
-                document.removeEventListener('mouseup', onUp);
-                if (moved) { setDirty(true); }
-            };
-            document.addEventListener('mousemove', onMove);
-            document.addEventListener('mouseup', onUp);
+        var widthSel = document.createElement('select');
+        widthSel.className = 'form-select form-select-sm';
+        var o1 = el('option', null, 'Normal (1x)'); o1.value = '1';
+        var o2 = el('option', null, 'Wide (2x)'); o2.value = '2';
+        widthSel.appendChild(o1); widthSel.appendChild(o2);
+        widthSel.value = String(s.width === 2 ? 2 : 1);
+        widthSel.addEventListener('change', function () {
+            s.width = (widthSel.value === '2') ? 2 : 1;
+            setDirty(true); renderStripList();
         });
+        inspectorBody.appendChild(inspectorRow('Width', widthSel));
 
-        // Corner grip to resize.
-        grip.addEventListener('mousedown', function (e) {
-            if (e.button !== 0) { return; }
-            e.preventDefault();
-            e.stopPropagation();
-            select();
-            var colW = st.body.clientWidth / 12;
-            var startX = e.clientX, startY = e.clientY;
-            var origW = c.w, origH = c.h;
-            var moved = false;
-            var onMove = function (ev) {
-                var dw = Math.round((ev.clientX - startX) / colW);
-                var dh = Math.round((ev.clientY - startY) / INNER_CELL);
-                var nw = Math.max(1, Math.min(12 - c.x, origW + dw));
-                var nh = Math.max(1, origH + dh);
-                if (nw !== c.w || nh !== c.h) {
-                    c.w = nw; c.h = nh;
-                    placeComp(c);
-                    moved = true;
-                }
-            };
-            var onUp = function () {
-                document.removeEventListener('mousemove', onMove);
-                document.removeEventListener('mouseup', onUp);
-                if (moved) { setDirty(true); }
-            };
-            document.addEventListener('mousemove', onMove);
-            document.addEventListener('mouseup', onUp);
+        var hkInp = document.createElement('input');
+        hkInp.type = 'text';
+        hkInp.className = 'form-control form-control-sm';
+        hkInp.maxLength = 3;
+        hkInp.placeholder = 'e.g. F5 or A';
+        hkInp.value = s.hotkey || '';
+        hkInp.title = 'A single key or F1-F12 — toggles Select on this strip. Must be unique within the view.';
+        hkInp.addEventListener('input', function () {
+            var v = hkInp.value.replace(/^\s+|\s+$/g, '').toUpperCase();
+            s.hotkey = (v && HOTKEY_RE.test(v)) ? v : null;
+            setDirty(true); renderStripList();
         });
+        inspectorBody.appendChild(inspectorRow('Hotkey (optional)', hkInp));
 
-        if (!skipDirty) { setDirty(true); }
-        return cid;
-    }
-
-    function refreshCompPreview(st, cid) {
-        var c = st.comps[cid];
-        var grip = c.el.querySelector('.cd-comp-resize');
-        c.el.innerHTML = '';
-        c.el.appendChild(compPreview({ type: c.type, props: c.props }, channelsById[st.channel_id]));
-        c.el.appendChild(grip);
-    }
-
-    function highlight() {
-        var nodes = canvasEl.querySelectorAll('[data-strip-id]');
-        for (var i = 0; i < nodes.length; i++) {
-            nodes[i].classList.toggle('cd-strip-selected',
-                nodes[i].getAttribute('data-strip-id') === selStrip);
+        inspectorBody.appendChild(el('div', 'small fw-semibold mt-3 mb-1', 'Controls shown on this strip'));
+        var flagsWrap = el('div', 'd-flex flex-column gap-1');
+        var order = ['sel', 'ptt', 'mon', 'mute', 'vol', 'text', 'vu', 'recall', 'patchchips'];
+        for (var i = 0; i < order.length; i++) {
+            (function (key) {
+                var allowed = showFlagAllowed(key, caps);
+                var future = !!FUTURE_FLAGS[key];
+                var lbl = el('label', 'form-check form-check-inline mb-0', null);
+                var inp = document.createElement('input');
+                inp.type = 'checkbox';
+                inp.className = 'form-check-input';
+                inp.checked = !!s.show[key];
+                inp.disabled = !allowed || future;
+                inp.addEventListener('change', function () {
+                    s.show[key] = inp.checked;
+                    setDirty(true);
+                });
+                lbl.appendChild(inp);
+                lbl.appendChild(el('span', 'form-check-label small', SHOW_FLAG_LABELS[key]));
+                if (future) {
+                    lbl.appendChild(el('span', 'badge text-bg-warning ms-1', 'future'));
+                    lbl.title = 'Arrives with a later phase — no backend yet';
+                } else if (!allowed) {
+                    lbl.title = 'This channel is not capable of this control';
+                }
+                flagsWrap.appendChild(lbl);
+            })(order[i]);
         }
-        var comps = canvasEl.querySelectorAll('[data-comp-id]');
-        for (var k = 0; k < comps.length; k++) {
-            comps[k].classList.toggle('cd-comp-selected',
-                comps[k].getAttribute('data-comp-id') === selComp);
-        }
-    }
-
-    // ── Serialize the canvas back to API format ──────────────────
-    function serialize() {
-        var out = [];
-        for (var sid in strips) {
-            if (!Object.prototype.hasOwnProperty.call(strips, sid)) { continue; }
-            var st = strips[sid];
-            var n = st.el.gridstackNode || {};
-            var comps = [];
-            for (var cid in st.comps) {
-                if (!Object.prototype.hasOwnProperty.call(st.comps, cid)) { continue; }
-                var c = st.comps[cid];
-                var comp = { type: c.type, x: c.x, y: c.y, w: c.w, h: c.h };
-                if (c.props && Object.keys(c.props).length) { comp.props = c.props; }
-                comps.push(comp);
-            }
-            out.push({
-                channel_id: st.channel_id,
-                layout: { x: n.x || 0, y: n.y || 0, w: n.w || 3, h: n.h || 14 },
-                overrides: st.overrides,
-                components: comps,
-            });
-        }
-        return out;
+        inspectorBody.appendChild(flagsWrap);
     }
 
     // ── View list ────────────────────────────────────────────────
-    // Renders one view list into a target element. scope is 'shared' or
-    // 'personal' — click handlers stash it on currentViewScope so
-    // renderCanvasChrome()/save know which behaviors apply (is_shared
-    // toggle only makes sense for personal views).
     function renderOneViewList(targetEl, list, scope, emptyText) {
         if (!targetEl) { return; }
         targetEl.innerHTML = '';
@@ -406,54 +384,34 @@
 
     function findView(id, scope) {
         var list = (scope === 'personal') ? myViews : views;
-        for (var i = 0; i < list.length; i++) {
-            if (list[i].id === id) { return list[i]; }
-        }
+        for (var i = 0; i < list.length; i++) { if (list[i].id === id) { return list[i]; } }
         return null;
-    }
-
-    function destroyCanvas() {
-        strips = {};
-        if (outerGrid) {
-            // destroy(false): tear down the engine but KEEP the #cdCanvas
-            // element — destroy(true) removes the grid element itself from
-            // the DOM, after which every re-init works on a detached node
-            // and strips silently render nowhere.
-            try { outerGrid.destroy(false); } catch (e) {}
-            outerGrid = null;
-        }
-        canvasEl.innerHTML = '';
     }
 
     function selectView(id, scope) {
         currentViewId = id;
         currentViewScope = scope;
-        selStrip = null;
-        selComp = null;
-        destroyCanvas();
+        selIndex = null;
         var v = findView(id, scope);
         meta = { name: v ? v.name : '', icon: (v && v.icon) || '', is_shared: !!(v && v.is_shared) };
-        renderCanvasChrome();
+        strips = [];
         if (v) {
-            outerGrid = GridStack.init({
-                column: 12,
-                cellHeight: OUTER_CELL,
-                margin: 4,
-                float: true,
-                animate: false,
-                handle: '.cds-handle',
-                disableOneColumnMode: true,
-            }, canvasEl);
-            outerGrid.on('change', function () { setDirty(true); });
             for (var i = 0; i < (v.strips || []).length; i++) {
                 var s = v.strips[i];
-                addStrip(s.channel_id, s.layout, s.overrides || {}, s.components || [], true);
+                strips.push({
+                    channel_id: s.channel_id,
+                    overrides: s.overrides || {},
+                    show: s.show || {},
+                    hotkey: s.hotkey || null,
+                    width: s.width === 2 ? 2 : 1
+                });
             }
         }
+        renderCanvasChrome();
         setDirty(false);
         renderViewList();
+        renderStripList();
         renderInspector();
-        renderPalette();
     }
 
     // ── Canvas chrome (view name/icon/delete in the card header) ─
@@ -461,12 +419,8 @@
         canvasTitle.innerHTML = '';
         if (currentViewId === null) {
             canvasTitle.textContent = 'Select or create a view';
-            canvasEl.classList.remove('grid-stack');
-            canvasEl.appendChild(el('div', 'text-body-secondary p-3 small',
-                'Pick a view on the left, or create one, then click channels to add strips. Drag strips by their title bar; drag/resize the components inside.'));
             return;
         }
-        canvasEl.classList.add('grid-stack');
         var nameInp = document.createElement('input');
         nameInp.type = 'text';
         nameInp.className = 'form-control form-control-sm d-inline-block cd-name-input';
@@ -483,10 +437,9 @@
         iconInp.addEventListener('input', function () { meta.icon = iconInp.value; setDirty(true); });
         canvasTitle.appendChild(iconInp);
 
-        // Phase 114b3 — "available for others to adopt" toggle, personal
-        // views only. Never a live shared tab; just makes this view show
-        // up in OTHER operators' "Clone from…" list (console_views.
-        // is_shared, see inc/console-views.php's docblock).
+        // "Available for others to adopt" toggle, personal views only.
+        // Never a live shared tab; just makes this view show up in OTHER
+        // operators' "Clone from…" list (console_views.is_shared).
         if (currentViewScope === 'personal') {
             var shareLbl = el('label', 'form-check form-check-inline ms-2 mb-0 cd-share-toggle', null);
             var shareInp = document.createElement('input');
@@ -494,10 +447,7 @@
             shareInp.className = 'form-check-input';
             shareInp.checked = !!meta.is_shared;
             shareInp.title = 'Let other operators clone this layout for themselves';
-            shareInp.addEventListener('change', function () {
-                meta.is_shared = shareInp.checked;
-                setDirty(true);
-            });
+            shareInp.addEventListener('change', function () { meta.is_shared = shareInp.checked; setDirty(true); });
             shareLbl.appendChild(shareInp);
             shareLbl.appendChild(el('span', 'form-check-label small', 'Shared'));
             canvasTitle.appendChild(shareLbl);
@@ -514,14 +464,8 @@
             if (!window.confirm(warn)) { return; }
             post({ action: 'delete', id: currentViewId }, function (j) {
                 if (j.ok) {
-                    currentViewId = null;
-                    currentViewScope = null;
-                    destroyCanvas();
-                    setDirty(false);
-                    renderViewList();
-                    renderCanvasChrome();
-                    renderInspector();
-                    renderPalette();
+                    currentViewId = null; currentViewScope = null; strips = []; selIndex = null;
+                    setDirty(false); renderViewList(); renderCanvasChrome(); renderStripList(); renderInspector();
                 } else {
                     window.alert(j.error || 'Delete failed');
                 }
@@ -530,10 +474,6 @@
         canvasTitle.appendChild(delBtn);
     }
 
-    // Shared "new view" prompt row, reused for both the shared-views panel
-    // (console.design) and the personal-views panel (Phase 114b3, any
-    // screen.console holder — payloadExtra carries {personal:true} and,
-    // for a clone, {based_on_view_id}).
     function promptNewViewRow(containerEl, scope, payloadExtra, placeholder) {
         if (containerEl.querySelector('.cd-newview-row')) { return; }
         var row = el('div', 'list-group-item py-2 cd-newview-row');
@@ -558,13 +498,8 @@
             var payload = { action: 'create', name: name };
             for (var k in payloadExtra) { if (Object.prototype.hasOwnProperty.call(payloadExtra, k)) { payload[k] = payloadExtra[k]; } }
             post(payload, function (j) {
-                if (j.ok) {
-                    renderViewList();
-                    selectView(j.id, scope);
-                } else {
-                    ok.disabled = false;
-                    window.alert(j.error || 'Create failed');
-                }
+                if (j.ok) { renderViewList(); selectView(j.id, scope); }
+                else { ok.disabled = false; window.alert(j.error || 'Create failed'); }
             });
         };
         ok.addEventListener('click', create);
@@ -574,23 +509,10 @@
         });
     }
 
-    if (newViewBtn) {
-        newViewBtn.addEventListener('click', function () {
-            promptNewViewRow(viewListEl, 'shared', {}, 'Shared view name');
-        });
-    }
+    if (newViewBtn) { newViewBtn.addEventListener('click', function () { promptNewViewRow(viewListEl, 'shared', {}, 'Shared view name'); }); }
+    if (newPersonalViewBtn) { newPersonalViewBtn.addEventListener('click', function () { promptNewViewRow(myViewListEl, 'personal', { personal: true }, 'Personal view name'); }); }
 
-    if (newPersonalViewBtn) {
-        newPersonalViewBtn.addEventListener('click', function () {
-            promptNewViewRow(myViewListEl, 'personal', { personal: true }, 'Personal view name');
-        });
-    }
-
-    // ── Clone an existing view (Phase 114b3) ───────────────────────
-    // Browses: every shared view, the caller's OWN personal views, and
-    // other users' is_shared personal views — exactly console_view_
-    // visible_as_clone_source()'s rule on the server, mirrored here for
-    // display (the server re-validates on submit regardless).
+    // ── Clone an existing view ──────────────────────────────────────
     function renderCloneSources() {
         if (!cloneSourceListEl) { return; }
         cloneSourceListEl.innerHTML = '';
@@ -616,8 +538,7 @@
                         e.preventDefault();
                         cloneSourcesCard.classList.add('d-none');
                         var suggested = v.name + ' copy';
-                        promptNewViewRow(myViewListEl, 'personal',
-                            { personal: true, based_on_view_id: v.id }, 'New view name');
+                        promptNewViewRow(myViewListEl, 'personal', { personal: true, based_on_view_id: v.id }, 'New view name');
                         var pending = myViewListEl.querySelector('.cd-newview-row input');
                         if (pending) { pending.value = suggested; pending.select(); }
                     });
@@ -625,9 +546,7 @@
                 })(groups[g].list[i]);
             }
         }
-        if (!any) {
-            cloneSourceListEl.appendChild(el('div', 'list-group-item small text-body-secondary', 'No views available to clone yet.'));
-        }
+        if (!any) { cloneSourceListEl.appendChild(el('div', 'list-group-item small text-body-secondary', 'No views available to clone yet.')); }
     }
 
     if (cloneBtn) {
@@ -649,247 +568,17 @@
                 var lbl = el('span', 'flex-grow-1 text-truncate small', ch.label);
                 lbl.title = ch.channel_key;
                 a.appendChild(lbl);
-                if (parseInt(ch.enabled, 10) !== 1) {
-                    a.appendChild(el('span', 'badge text-bg-secondary ms-1', 'off'));
-                }
+                if (parseInt(ch.enabled, 10) !== 1) { a.appendChild(el('span', 'badge text-bg-secondary ms-1', 'off')); }
                 a.addEventListener('click', function (e) {
                     e.preventDefault();
-                    if (currentViewId === null || !outerGrid) {
-                        window.alert('Select or create a view first.');
-                        return;
-                    }
-                    var comps = defaultComps(ch.capabilities || {});
-                    var h = 5 + Math.ceil((maxCompY(comps) * INNER_CELL + 30) / OUTER_CELL);
-                    var st = addStrip(ch.id, { w: 3, h: h }, {}, comps);
-                    selStrip = st.id;
-                    selComp = null;
-                    setDirty(true);
-                    highlight();
-                    renderInspector();
-                    renderPalette();
+                    if (currentViewId === null) { window.alert('Select or create a view first.'); return; }
+                    strips.push({ channel_id: ch.id, overrides: {}, show: defaultShowForChannel(ch.capabilities || {}), hotkey: null, width: 1 });
+                    selIndex = strips.length - 1;
+                    setDirty(true); renderStripList(); renderInspector();
                 });
                 channelListEl.appendChild(a);
             })(channels[i]);
         }
-    }
-
-    function maxCompY(comps) {
-        var m = 0;
-        for (var i = 0; i < comps.length; i++) {
-            if (comps[i].y + comps[i].h > m) { m = comps[i].y + comps[i].h; }
-        }
-        return m;
-    }
-
-    // Default component set for a fresh strip — mirrors Eric's sketch
-    // (label block top, LED beside, activity, wide PTT, feed box).
-    function defaultComps(caps) {
-        var comps = [
-            { type: 'label', x: 0, y: 0, w: 10, h: 3 },
-            { type: 'led', x: 10, y: 0, w: 2, h: 1 },
-            { type: 'activity', x: 0, y: 3, w: 12, h: 2 },
-        ];
-        var y = 5;
-        if (caps.voice_tx) {
-            comps.push({ type: 'ptt', x: 0, y: y, w: 12, h: 3 });
-            y += 3;
-        }
-        if (caps.text_rx || caps.text_tx || caps.source) {
-            comps.push({ type: 'text', x: 0, y: y, w: 12, h: 10 });
-            y += 10;
-        }
-        return comps;
-    }
-
-    // ── Palette — add components to the SELECTED strip ───────────
-    function renderPalette() {
-        if (!paletteEl || !paletteBody) { return; }
-        var st = selStrip ? strips[selStrip] : null;
-        if (!st) {
-            paletteEl.classList.add('d-none');
-            return;
-        }
-        paletteEl.classList.remove('d-none');
-        paletteBody.innerHTML = '';
-        var ch = channelsById[st.channel_id];
-        var caps = (ch && ch.capabilities) || {};
-        for (var type in componentCatalog) {
-            if (!Object.prototype.hasOwnProperty.call(componentCatalog, type)) { continue; }
-            if (!compAllowed(type, caps)) { continue; }
-            (function (t) {
-                var def = componentCatalog[t];
-                var b = el('button', 'btn btn-sm btn-outline-secondary cd-palette-btn', null);
-                b.type = 'button';
-                b.appendChild(document.createTextNode(def.label));
-                if (def.future) {
-                    b.appendChild(el('span', 'badge text-bg-warning ms-1 cd-palette-future', 'future'));
-                    b.title = 'Backend arrives with the audio bus (Phase 114c+) — placeable now for layout planning';
-                }
-                b.addEventListener('click', function () {
-                    var sizes = {
-                        label: { w: 12, h: 3 }, led: { w: 2, h: 1 }, activity: { w: 12, h: 2 },
-                        ptt: { w: 12, h: 3 }, text: { w: 12, h: 8 }, monitor: { w: 4, h: 2 },
-                        mute: { w: 4, h: 2 }, volume: { w: 12, h: 1 }, say: { w: 4, h: 2 }
-                    };
-                    var sz = sizes[t] || { w: 6, h: 2 };
-                    var cid = addComp(st, { type: t, x: 0, y: 0, w: sz.w, h: sz.h, props: {} });
-                    selComp = cid;
-                    highlight();
-                    renderInspector();
-                });
-                paletteBody.appendChild(b);
-            })(type);
-        }
-    }
-
-    // ── Inspector ────────────────────────────────────────────────
-    function inspectorRow(labelText, inputEl2) {
-        var row = el('div', 'mb-2');
-        row.appendChild(el('label', 'form-label small mb-1', labelText));
-        row.appendChild(inputEl2);
-        return row;
-    }
-
-    function colorRow(labelText, value, onChange) {
-        var wrap = el('div', 'd-flex align-items-center gap-2');
-        var inp = document.createElement('input');
-        inp.type = 'color';
-        inp.className = 'form-control form-control-color form-control-sm';
-        inp.value = /^#[0-9a-fA-F]{6}$/.test(value || '') ? value : '#dc3545';
-        var clear = el('a', 'small' + (value ? '' : ' d-none'), 'clear');
-        clear.href = '#';
-        inp.addEventListener('input', function () {
-            clear.classList.remove('d-none');
-            onChange(inp.value);
-        });
-        clear.addEventListener('click', function (e) {
-            e.preventDefault();
-            clear.classList.add('d-none');
-            onChange('');
-        });
-        wrap.appendChild(inp);
-        wrap.appendChild(clear);
-        return inspectorRow(labelText, wrap);
-    }
-
-    function textRow(labelText, value, placeholder, maxLen, onChange) {
-        var inp = document.createElement('input');
-        inp.type = 'text';
-        inp.className = 'form-control form-control-sm';
-        inp.maxLength = maxLen;
-        inp.value = value || '';
-        inp.placeholder = placeholder || '';
-        inp.addEventListener('input', function () { onChange(inp.value); });
-        return inspectorRow(labelText, inp);
-    }
-
-    function renderInspector() {
-        var st = selStrip ? strips[selStrip] : null;
-        if (!st) {
-            inspectorEl.classList.add('d-none');
-            return;
-        }
-        inspectorEl.classList.remove('d-none');
-        inspectorBody.innerHTML = '';
-        var ch = channelsById[st.channel_id];
-
-        // Component selected → component props
-        if (selComp && st.comps[selComp]) {
-            var c = st.comps[selComp];
-            var def = componentCatalog[c.type] || { label: c.type, props: [] };
-            inspectorBody.appendChild(el('div', 'small fw-semibold mb-2',
-                def.label + (def.future ? ' (future)' : '')));
-
-            if (def.props.indexOf('text') !== -1) {
-                inspectorBody.appendChild(textRow('Text', c.props.text,
-                    c.type === 'label' ? (ch ? ch.label : '') : def.label, 40,
-                    function (v) {
-                        if (v) { c.props.text = v; } else { delete c.props.text; }
-                        setDirty(true);
-                        refreshCompPreview(st, selComp);
-                    }));
-            }
-            if (def.props.indexOf('color') !== -1) {
-                inspectorBody.appendChild(colorRow('Button colour', c.props.color, function (v) {
-                    if (v) { c.props.color = v; } else { delete c.props.color; }
-                    setDirty(true);
-                    refreshCompPreview(st, selComp);
-                }));
-            }
-            if (def.props.indexOf('bg') !== -1) {
-                inspectorBody.appendChild(colorRow('Background', c.props.bg, function (v) {
-                    if (v) { c.props.bg = v; } else { delete c.props.bg; }
-                    setDirty(true);
-                    refreshCompPreview(st, selComp);
-                }));
-            }
-            if (def.props.indexOf('fg') !== -1) {
-                inspectorBody.appendChild(colorRow('Text colour', c.props.fg, function (v) {
-                    if (v) { c.props.fg = v; } else { delete c.props.fg; }
-                    setDirty(true);
-                    refreshCompPreview(st, selComp);
-                }));
-            }
-            if (def.props.indexOf('mode') !== -1) {
-                var pm = document.createElement('select');
-                pm.className = 'form-select form-select-sm';
-                var optM = el('option', null, 'Momentary (hold to talk)'); optM.value = 'momentary';
-                var optL = el('option', null, 'Latch (click on / click off)'); optL.value = 'latch';
-                pm.appendChild(optM); pm.appendChild(optL);
-                pm.value = c.props.mode || 'momentary';
-                pm.addEventListener('change', function () {
-                    if (pm.value === 'latch') { c.props.mode = 'latch'; } else { delete c.props.mode; }
-                    setDirty(true);
-                });
-                inspectorBody.appendChild(inspectorRow('PTT mode', pm));
-            }
-
-            var delC = el('button', 'btn btn-sm btn-outline-danger w-100 mt-1', null);
-            delC.type = 'button';
-            delC.appendChild(el('i', 'bi bi-trash me-1'));
-            delC.appendChild(document.createTextNode('Remove component'));
-            delC.addEventListener('click', function () {
-                // Inner components are custom DOM nodes in the strip body
-                // (only the OUTER strips are GridStack widgets). The old
-                // st.grid.removeWidget() referenced a non-existent grid
-                // property on the strip and threw, aborting the handler --
-                // so the button did nothing. Remove the node directly.
-                if (c.el && c.el.parentNode) { c.el.parentNode.removeChild(c.el); }
-                delete st.comps[selComp];
-                selComp = null;
-                setDirty(true);
-                renderInspector();
-                renderPalette();
-            });
-            inspectorBody.appendChild(delC);
-            return;
-        }
-
-        // Strip selected → strip-level settings
-        inspectorBody.appendChild(el('div', 'small fw-semibold mb-2',
-            (ch ? ch.label + ' — ' + ch.adapter : 'missing channel')));
-        inspectorBody.appendChild(textRow('Label override', st.overrides.label, ch ? ch.label : '', 120,
-            function (v) {
-                if (v) { st.overrides.label = v; } else { delete st.overrides.label; }
-                setDirty(true);
-                var hl = st.el.querySelector('.cds-handle-label');
-                if (hl) { hl.textContent = st.overrides.short_label || st.overrides.label || (ch ? (ch.short_label || ch.label) : ''); }
-            }));
-        inspectorBody.appendChild(textRow('Short label', st.overrides.short_label, 'shown in tight spots', 24,
-            function (v) {
-                if (v) { st.overrides.short_label = v; } else { delete st.overrides.short_label; }
-                setDirty(true);
-                var hl = st.el.querySelector('.cds-handle-label');
-                if (hl) { hl.textContent = st.overrides.short_label || st.overrides.label || (ch ? (ch.short_label || ch.label) : ''); }
-            }));
-        inspectorBody.appendChild(colorRow('Strip accent colour', st.overrides.color, function (v) {
-            if (v) { st.overrides.color = v; } else { delete st.overrides.color; }
-            setDirty(true);
-            var frame = st.el.querySelector('.cd-strip-frame');
-            if (frame) { frame.style.borderTopColor = v || ''; }
-        }));
-        inspectorBody.appendChild(el('div', 'small text-body-secondary',
-            'Click a component on the strip to edit it; use the palette below to add more. Drag the strip by its title bar; resize from the corner.'));
     }
 
     // ── Publish ──────────────────────────────────────────────────
@@ -900,25 +589,27 @@
             var finish = function (j) {
                 saveBtn.disabled = false;
                 if (j.ok) {
-                    setDirty(false);
-                    renderViewList();
+                    setDirty(false); renderViewList();
+                    showToast('success', 'View published.');
                 } else {
-                    window.alert(j.error || 'Publish failed');
+                    showToast('danger', j.error || 'Publish failed.');
                 }
             };
             var v = findView(currentViewId, currentViewScope);
             var metaChanged = v && (v.name !== meta.name || (v.icon || '') !== (meta.icon || '')
                 || (currentViewScope === 'personal' && !!v.is_shared !== !!meta.is_shared));
             var publishStrips = function () {
-                post({ action: 'save_strips', id: currentViewId, strips: serialize() }, finish);
+                var payload = [];
+                for (var i = 0; i < strips.length; i++) {
+                    var s = strips[i];
+                    payload.push({ channel_id: s.channel_id, overrides: s.overrides, show: s.show, hotkey: s.hotkey, width: s.width });
+                }
+                post({ action: 'save_strips', id: currentViewId, strips: payload }, finish);
             };
             if (metaChanged) {
                 var updatePayload = { action: 'update', id: currentViewId, name: meta.name, icon: meta.icon };
                 if (currentViewScope === 'personal') { updatePayload.is_shared = !!meta.is_shared; }
-                post(updatePayload, function (j) {
-                    if (!j.ok) { finish(j); return; }
-                    publishStrips();
-                });
+                post(updatePayload, function (j) { if (!j.ok) { finish(j); return; } publishStrips(); });
             } else {
                 publishStrips();
             }
@@ -939,17 +630,13 @@
             views = (j && j.views) || [];
             myViews = (j && j.my_views) || [];
             sharedPersonalViews = (j && j.shared_personal_views) || [];
-            componentCatalog = (j && j.components) || {};
             renderViewList();
             renderChannelList();
-            // Land on the caller's first personal view if they have one and
-            // no shared view exists to show instead (a non-designer never
-            // sees a shared view here at all, since viewListEl is absent).
             if (views.length) { selectView(views[0].id, 'shared'); }
             else if (myViews.length) { selectView(myViews[0].id, 'personal'); }
-            else { renderCanvasChrome(); }
+            else { renderCanvasChrome(); renderStripList(); }
         })
         .catch(function () {
-            canvasEl.appendChild(el('div', 'text-danger p-3 small', 'Failed to load channels/views.'));
+            stripListEl.appendChild(el('div', 'text-danger p-3 small', 'Failed to load channels/views.'));
         });
 })();

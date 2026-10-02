@@ -115,6 +115,21 @@
         ProxyPassReverse ws://127.0.0.1:8090/
     </Location>
 
+    # ── Communications Console audio-matrix browser-leg WebSocket reverse-proxy ──
+    # Same pattern again. The browser leg (services/audio-matrix/legs/
+    # browser.py, part of the ticketscad-audio-matrix.service, NOT the
+    # dmr-proxy/zello-proxy daemons above) listens on 0.0.0.0:18093 by
+    # default (see /etc/ticketscad-audio-matrix.conf's "browser" section).
+    # Uncomment this ONLY once you've actually deployed that service --
+    # see docs/AUDIO-MATRIX-SETUP.md's "Expose the browser leg" step,
+    # which also covers saving the resulting wss://<host>/matrix-ws URL
+    # into the settings table (matrix_ws_url) so the console's own
+    # "Matrix Audio"/"Join Intercom" checkboxes can actually reach it.
+    # <Location /matrix-ws>
+    #     ProxyPass        ws://127.0.0.1:18093/ keepalive=On
+    #     ProxyPassReverse ws://127.0.0.1:18093/
+    # </Location>
+
     # ── Security headers ──
     # set_security_headers() in inc/security-headers.php sets these on
     # API responses but static assets bypass PHP entirely; setting them

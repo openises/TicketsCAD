@@ -144,6 +144,51 @@ function channel_adapter_catalog() {
                 'record' => true,
             ],
         ],
+        // Phase 152 (2026-09-07, Console rebuild) — dispatcher-to-
+        // dispatcher intercom, per spec.md user story #11. DELIBERATELY
+        // distinct from 'intercom' above: that one is a physical station/
+        // door-relay endpoint (dispatcher-to-STATION); this is dispatcher-
+        // to-dispatcher, riding the same browser leg as every other
+        // channel (Phase 152 prerequisite #3), no RF/Zello network
+        // underneath it at all. A fixed, always-present party-line channel
+        // (5-persona review, 2026-09-07: 4 of 5 personas preferred this
+        // over a phone-directory model) — one row exists on every install
+        // by default (sql/run_phase152_intercom_dd.php).
+        //
+        // regulatory_class is 'internal' AND additionally, uniquely among
+        // every adapter in this catalog, structurally BLOCKED from ever
+        // being patched or coupled to ANY other channel at all (see
+        // inc/matrix-routes.php::matrix_route_validate()'s intercom_dd
+        // leaf rule) — internal-class alone would still permit patching to
+        // a Zello/SIP channel for dispatch monitoring, which is exactly
+        // what must never happen to dispatcher-only chatter.
+        'intercom_dd' => [
+            'label' => 'Dispatcher Intercom',
+            'regulatory_class' => 'internal',
+            'capabilities' => [
+                'voice_rx' => true, 'voice_tx' => true, 'ptt_floor' => true,
+                'full_duplex' => true,
+            ],
+        ],
+        // 2026-09-08 (Eric: "a source of audio we can listen to while
+        // testing services... I want to create multiple streams as
+        // needed" — full channel type, not a CLI-only test tool). A
+        // public HTTP audio stream (Broadcastify, LiveATC, NOAA Weather
+        // Radio, Icecast, any plain HTTP MP3/AAC/OGG feed) patched into
+        // the matrix like any other channel. One-way (voice_rx only —
+        // there is nothing to transmit back to a listen-only public
+        // stream). regulatory_class 'internal': a public feed carries no
+        // TicketsCAD-side transmit obligation, so it never blocks a
+        // patch the way amateur/pstn classes do. Managed by inc/http-
+        // stream-channels.php (stream-channels-admin.php), NOT synced by
+        // channel_registry_sync() below — there is no settings panel
+        // this adapter derives from the way DMR/Zello/mesh do, each row
+        // is created directly by an admin action, one channel per stream.
+        'http_stream' => [
+            'label' => 'Public Audio Stream',
+            'regulatory_class' => 'internal',
+            'capabilities' => ['voice_rx' => true],
+        ],
     ];
 }
 
@@ -251,6 +296,11 @@ function channel_registry_sources() {
         $want['nws:alerts'] = $mk('nws', 'nws:alerts', 'NWS Weather Alerts', true, [], 50);
     }
     $want['eventbus:main'] = $mk('eventbus', 'eventbus:main', 'Event Bus', true, [], 51);
+    // Phase 152 (Console rebuild) — the dispatcher intercom, same "always
+    // present, always enabled, no external config" shape as eventbus:main
+    // just above. Exactly ONE row on every install, regardless of position/
+    // presence configuration — a solo install can simply never select it.
+    $want['intercom_dd:main'] = $mk('intercom_dd', 'intercom_dd:main', 'Dispatcher Intercom', true, [], 15);
 
     return $want;
 }
@@ -261,6 +311,10 @@ function channel_registry_sources() {
  * managed rows, prunes managed rows whose source vanished. Never touches
  * unmanaged (hand-created) rows; never overwrites label/short_label/color/
  * sort_order/enabled on existing rows.
+ *
+ * Phase 152 exception: regulatory_class is only "derived" until an admin
+ * manually reclassifies a channel (regulatory_class_locked=1) -- from then
+ * on this function leaves it alone, same treatment as label/color/etc.
  *
  * Exception: dmr_bm rows track their source's enabled flag — the DMR panel
  * is that channel's own admin surface, so it stays authoritative.
@@ -303,7 +357,14 @@ function channel_registry_sync() {
         if ((string) $e['capabilities_json'] !== (string) $w['capabilities_json']) {
             $sets[] = 'capabilities_json = ?'; $args[] = $w['capabilities_json'];
         }
-        if ($e['regulatory_class'] !== $w['regulatory_class']) {
+        // Phase 152 prerequisite #1: once an admin has manually reclassified
+        // a channel (api/channels.php's `update` action sets the lock), sync
+        // must stop treating regulatory_class as derived -- otherwise the
+        // very next sync silently reverts a correction (e.g. a DVMProject
+        // P25 network that is actually Part 90, not amateur; an internal
+        // intercom line reclassified off the sip adapter's pstn default).
+        if ((int) $e['regulatory_class_locked'] !== 1
+            && $e['regulatory_class'] !== $w['regulatory_class']) {
             $sets[] = 'regulatory_class = ?';  $args[] = $w['regulatory_class'];
         }
         if ($w['adapter'] === 'dmr_bm' && (int) $e['enabled'] !== (int) $w['enabled']) {

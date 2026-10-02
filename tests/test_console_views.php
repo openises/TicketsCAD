@@ -117,11 +117,26 @@ t('console-views API: component catalog covers Eric\'s sketch set '
     && strpos($incSrc, "'mute'") !== false && strpos($incSrc, "'volume'") !== false
     && substr_count($incSrc, "'future' => false") >= 8
     && substr_count($incSrc, "'future' => true") === 1);
-t('console-views API: geometry clamped (inner 12-col, outer 12-col) + colours/mode validated',
-    strpos($combined, "preg_match('/^#[0-9a-fA-F]{3,8}\$/'") !== false
-    && strpos($combined, "['momentary', 'latch']") !== false
-    && strpos($combined, "if (\$out['x'] + \$out['w'] > 12)") !== false
-    && strpos($combined, "if (\$layout['x'] + \$layout['w'] > 12)") !== false);
+// Phase 152 (Console rebuild): console_view_save_strips() no longer takes
+// a pixel layout rectangle or a positioned-component array at all -- the
+// outer-rectangle x+w<=12 clamp this guard used to check for is genuinely
+// GONE (there is no more outer rectangle; a strip's only geometry is
+// width 1|2). The INNER per-component geometry/mode clamp
+// (console_component_clean(), x+w<=12 / momentary|latch) is retained,
+// unused by the live save path, purely for console_components_default()'s
+// migration/fallback rendering -- see that function's own doc comment.
+// This guard now checks the REPLACEMENT validation: width clamped to
+// {1,2}, hotkey format + per-view uniqueness, show-flags capability-gated
+// via console_strip_show_allowed(), and the overrides.color check (the
+// one piece of the old validation that genuinely carried over untouched).
+t('console-views API: strip-template validation (width clamp, hotkey format+uniqueness, '
+    . 'capability-gated show flags) replaces the retired free-form geometry/mode validation',
+    strpos($combined, 'function console_strip_template_clean(') !== false
+    && strpos($combined, "((int) (\$s['width'] ?? 1) === 2) ? 2 : 1") !== false
+    && strpos($combined, "preg_match('/^(F[1-9]|F1[0-2]|[A-Za-z0-9])\$/'") !== false
+    && strpos($combined, 'function console_strip_show_allowed(') !== false
+    && strpos($combined, "preg_match('/^#[0-9a-fA-F]{3,8}\$/'") !== false
+    && strpos($incSrc, '$seenHotkeys') !== false);
 t('console-views API: legacy flat control lists converted at read time',
     strpos($combined, 'console_components_default(') !== false
     && strpos($combined, 'is_string($decoded[0]') !== false);
@@ -137,20 +152,27 @@ t('console-views API: Phase 114b3 personal-view scoping — the RBAC boundary is
     && strpos($incSrc, 'is_shared') !== false);
 
 // ── Designer page + runtime wiring ───────────────────────────────────────
+// Phase 152 (Console rebuild) retired the GridStack/free-drag canvas
+// entirely (5-persona review, unanimous rejection of free-drag at the
+// strip level) — the detailed coverage of that rebuild (no-canvas, no-
+// GridStack, launcher-strip distinction, hotkeys, the client/server
+// capability-gate sync) lives in its own dedicated file,
+// tests/test_phase152_console_strip_templates.php. These guards are
+// trimmed to what's still true post-rebuild rather than re-describing
+// retired architecture.
 $page = (string) @file_get_contents('console-designer.php');
-// Phase 114b3: the PAGE gate loosened from console.design to screen.console
-// (any operator may reach the page to build their OWN personal views —
-// Eric, 2026-08-20). console.design is still checked, but only to decide
+// The PAGE gate loosened from console.design to screen.console (any
+// operator may reach the page to build their OWN personal views — Eric,
+// 2026-08-20). console.design is still checked, but only to decide
 // whether the admin-only "Shared Views" panel renders — assert that
 // distinction precisely rather than just "the string console.design
 // appears somewhere", which would trivially still pass and hide the gate
 // having moved.
 t('console-designer.php: PAGE gate is screen.console (not console.design — '
-    . 'any operator may build a PERSONAL view), gridstack + cache-busted assets present',
+    . 'any operator may build a PERSONAL view), cache-busted assets present',
     strpos($page, "rbac_can('screen.console')") !== false
-    && strpos($page, 'gridstack-all.js') !== false
     && strpos($page, "asset_v('assets/js/console-designer.js')") !== false
-    && strpos($page, 'cdPalette') !== false);
+    && strpos($page, 'cdStripList') !== false);
 t('console-designer.php: console.design still gates whether the SHARED views panel renders',
     strpos($page, '$can_design = rbac_can(\'console.design\')') !== false
     && strpos($page, 'if ($can_design)') !== false
@@ -158,47 +180,16 @@ t('console-designer.php: console.design still gates whether the SHARED views pan
 $djs = (string) @file_get_contents('assets/js/console-designer.js');
 t('console-designer.js: ES5 style (no arrows/template literals/let/const)',
     !preg_match('/=>|`|\blet\s|\bconst\s/', $djs));
-t('console-designer.js: GridStack outer strips + CUSTOM snap-grid inner drag (no nested GridStack — froze the renderer)',
-    substr_count($djs, 'GridStack.init(') === 1
-    && strpos($djs, "handle: '.cds-handle'") !== false
-    && strpos($djs, 'function placeComp') !== false
-    && strpos($djs, 'cd-comp-resize') !== false
-    && strpos($djs, "addEventListener('mousemove'") !== false);
-t('console-designer.js: palette + per-component inspector + publish serialization',
-    strpos($djs, 'renderPalette') !== false
-    && strpos($djs, 'gridstackNode') !== false
-    && strpos($djs, "action: 'save_strips'") !== false
-    && strpos($djs, 'components: comps') !== false);
 $cjs = (string) @file_get_contents('assets/js/console.js');
 t('console.js: tabs render designer views + All Channels fallback',
     strpos($cjs, 'consoleTabs') !== false
     && strpos($cjs, "'All Channels'") !== false
     && strpos($cjs, 'api/console-views.php') !== false
     && strpos($cjs, 'newui_console_active_view') !== false);
-t('console.js: positioned renderer (abs strips + components, matching grid math)',
-    strpos($cjs, 'renderPositionedStrip') !== false
-    && strpos($cjs, 'renderComponent') !== false
-    && strpos($cjs, 'OUTER_CELL = 20') !== false
-    && strpos($cjs, 'INNER_CELL = 14') !== false
-    && strpos($cjs, 'console-bank-abs') !== false);
-t("console.js: the ONE remaining future component ('say' — no TTS backend yet) still "
-    . 'renders disabled with an honest tooltip; disabled channels fail soft',
-    strpos($cjs, 'ccp-future-rt') !== false
-    && strpos($cjs, 'no backend yet') !== false
-    && strpos($cjs, "'Channel disabled'") !== false);
-t('console.js: Phase 114b3 — monitor/mute/volume are REAL interactive controls now '
-    . '(wired to window.ConsoleAudio), not the old disabled future placeholder',
-    strpos($cjs, "comp.type === 'monitor'") !== false
-    && strpos($cjs, "comp.type === 'mute'") !== false
-    && strpos($cjs, "comp.type === 'volume'") !== false
-    && strpos($cjs, 'window.ConsoleAudio.setMon(') !== false
-    && strpos($cjs, 'window.ConsoleAudio.setMuted(') !== false
-    && strpos($cjs, 'window.ConsoleAudio.setVolume(') !== false);
-t('console.js: Select + Simulselect are universal strip chrome, present on every strip '
-    . 'in both the auto and positioned (designer) renderers',
+t('console.js: Select is real, wired chrome — buildSelectChrome() is called from '
+    . 'the one strip renderer (renderStrip())',
     strpos($cjs, 'function buildSelectChrome(') !== false
-    && strpos($cjs, 'buildSelectChrome(ch)') !== false
-    && substr_count($cjs, 'buildSelectChrome(') >= 3); // definition + renderStrip + renderPositionedStrip
+    && strpos($cjs, 'buildSelectChrome(ch)') !== false);
 $cpage = (string) @file_get_contents('console.php');
 t('console.php: tab bar + Design Views link for console.design holders',
     strpos($cpage, 'consoleTabs') !== false

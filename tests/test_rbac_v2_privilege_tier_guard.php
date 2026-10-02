@@ -65,7 +65,11 @@ echo "=== run_rbac_v2.php A8 privilege-tier alias guard ===\n\n";
 
 $start = strpos($src, "rrbv2_step('permissions: seed canonical codes + link aliases',");
 $a8bStart = strpos($src, "rrbv2_step('permissions: repair cross-tier alias merges");
-$a8bEnd = strpos($src, "// A10", $a8bStart ?: 0);
+// 2026-10-01 (CI fix): A10 was moved to run BEFORE A8 (a fresh install's
+// A8 referenced roles.is_super before A10 created it), so A8b is now
+// followed by A9, not A10. See test_rbac_v2_a8_idempotency.php's own
+// matching note.
+$a8bEnd = strpos($src, "// A9", $a8bStart ?: 0);
 if ($start === false || $a8bStart === false || $a8bEnd === false) {
     echo "[FAIL] could not isolate A8/A8b from sql/run_rbac_v2.php (markers moved?)\n";
     echo "\n1 passed, 1 failed\n";

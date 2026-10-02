@@ -37,8 +37,17 @@ function tile_provider_templates(): array
         'usgs_topo'         => 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}',
         'usgs_imagery'      => 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}',
         'usgs_imagery_topo' => 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}',
-        'cartodb_positron'  => 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-        'cartodb_dark'      => 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        // GH#150 (rjonesbsink, 2026-09-21): CARTO now requires a free API
+        // key on basemaps.cartocdn.com — an unkeyed request to the old
+        // {s}.basemaps.cartocdn.com/<style>/... path gets served an
+        // "API key required" watermark tile, confirmed against CARTO's own
+        // basemap-styles repo. The authenticated path drops the {s}
+        // subdomain and moves under /rastertiles/, with the key as a plain
+        // ?key= query parameter — the existing generic {key} substitution
+        // (inc/tile-proxy.php, assets/js/config.js) already handles it once
+        // the template carries the placeholder, same as the Mapbox row below.
+        'cartodb_positron'  => 'https://basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png?key={key}',
+        'cartodb_dark'      => 'https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png?key={key}',
         'esri_street'       => 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
         'esri_sat'          => 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         'esri_topo'         => 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',

@@ -236,3 +236,17 @@ apikey:reassign_grace_seconds
 apikey:reassigned_from
 apikey:stale_since
 apikey:was_stale
+
+# Phase 152 (Communications Console v2) prerequisite #3 — api/console-
+# session.php mints the token a browser tab uses to authenticate its own
+# WebSocket connection to the audio-matrix service's dynamic browser leg
+# (services/audio-matrix/legs/browser.py). The endpoint and its Python-side
+# consumer (proven live end-to-end by services/audio-matrix/tests/
+# test_browser_leg.py and tests/test_phase152_console_session.php) both
+# exist and are tested; the CONSOLE JS THAT CALLS THIS ENDPOINT is a later
+# task in the same phase's tasks.md (the console rebuild — strip UI, patch
+# rail), deliberately built after the leg + endpoint it depends on, not a
+# forgotten wiring gap. Remove these two lines when that JS lands and
+# reads response.session_token / response.ws_url.
+apikey:session_token
+apikey:ws_url

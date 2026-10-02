@@ -86,7 +86,12 @@ if (!function_exists('_p117_ot_provider')) {
             'deviceId'            => $tid,
             'tid'                 => $tid,
             'mode'                => 3,         // HTTP private
-            'monitoring'          => 1,         // "move" — sensible for a vehicle
+            // GH#152 (d3xter, 2026-09-28): OwnTracks's real monitoring scale is
+            // -1=Quiet, 0=Manual, 1=Significant, 2=Move -- this was 1
+            // (Significant, cell/wifi-only), the opposite of "move" despite the
+            // old comment here. 2 is the real continuous-GPS "move" value, the
+            // one actually appropriate for a vehicle device.
+            'monitoring'          => 2,         // Move — sensible for a vehicle
             'locatorInterval'     => 30,
             'locatorDisplacement' => 0,
             'pubTopicBase'        => 'owntracks/' . $username . '/' . $tid,

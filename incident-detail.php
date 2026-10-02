@@ -168,6 +168,19 @@ $canCreateMajorEvent = function_exists('rbac_can') ? rbac_can('action.create_maj
                     title="Share this incident with another organization">
                 <i class="bi bi-share me-1"></i>Share&hellip;
             </button>
+            <?php if (is_admin() || (function_exists('rbac_can') && rbac_can('action.dispatch_unit'))): ?>
+            <!-- Phase 153 (2026-09-08) — mock AllStar relay. Simulates
+                 calling a responder over ham radio: relays a short spoken
+                 incident summary to the mock AllStar node and reports
+                 back real, measured proof of audible delivery (duration +
+                 RMS), not just a bare success flag. RBAC reuses
+                 action.dispatch_unit (this is a dispatch action, not a new
+                 capability area) -- api/allstar-relay.php re-checks it. -->
+            <button type="button" class="btn btn-sm btn-outline-warning" id="btnAllstarRelay"
+                    title="Relay a spoken summary of this incident to the AllStar node (simulates calling a responder)">
+                <i class="bi bi-broadcast-pin me-1"></i>AllStar Relay
+            </button>
+            <?php endif; ?>
             <a href="index.php" class="btn btn-sm btn-outline-secondary">
                 <i class="bi bi-arrow-left me-1"></i>Dashboard
             </a>

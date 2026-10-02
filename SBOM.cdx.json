@@ -2,10 +2,10 @@
     "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
     "bomFormat": "CycloneDX",
     "specVersion": "1.6",
-    "serialNumber": "urn:uuid:a53977e1-be4c-5b5b-b109-896804f95198",
-    "version": 44,
+    "serialNumber": "urn:uuid:139c1975-d178-502e-bf3d-8bbc176a703d",
+    "version": 46,
     "metadata": {
-        "timestamp": "2026-09-02T17:57:29Z",
+        "timestamp": "2026-09-07T21:51:24Z",
         "lifecycles": [
             {
                 "phase": "pre-build"
@@ -52,7 +52,7 @@
         "properties": [
             {
                 "name": "ticketscad:content-digest",
-                "value": "d5d7c2a46b1701b37ff0d9c5369482bace389de0a02c74cb941e327aa5ef5550"
+                "value": "8cf9c6108b60f4c920198cf50c3c9db49e13368f24b99b910d34e74f47efc96a"
             },
             {
                 "name": "ticketscad:standard",
@@ -1059,6 +1059,28 @@
                 {
                     "name": "ticketscad:identifier",
                     "value": "pkg:deb/python3-venv"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component License, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Installed with apt at image-build or install time and not distributed with this software. No version is written in the installing file, so apt resolves whatever the host's configured archive currently serves; the SBOM author cannot state a version, a producer, a licence or a hash from this tree, because all four depend on which distribution and which archive snapshot the operator builds against. Operators who need these should generate an SBOM from the built image (for example with \"syft\" or \"trivy\"), which reads the package database and resolves all of them exactly. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:deb/python3-websockets#os-packages",
+            "name": "python3-websockets",
+            "description": "Operating-system package installed by services/audio-matrix/install.sh.",
+            "scope": "required",
+            "purl": "pkg:deb/python3-websockets",
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:deb/python3-websockets"
                 },
                 {
                     "name": "ticketscad:unknown",
@@ -2728,7 +2750,7 @@
             "type": "library",
             "bom-ref": "pkg:pypi/mysql-connector-python#python-services",
             "name": "mysql-connector-python",
-            "description": "Used by: services/aprs/aprs_listener.py, services/aprs/install.sh, services/audio-matrix/service.py",
+            "description": "Used by: services/aprs/aprs_listener.py, services/aprs/install.sh, services/audio-matrix/install.sh, services/audio-matrix/requirements.txt, services/audio-matrix/service.py",
             "scope": "required",
             "licenses": [
                 {
@@ -2748,12 +2770,16 @@
                     "value": "pkg:pypi/mysql-connector-python"
                 },
                 {
+                    "name": "ticketscad:note",
+                    "value": "Declared constraint: >=9.0.0"
+                },
+                {
                     "name": "ticketscad:unknown",
                     "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component Dependency Relationship"
                 },
                 {
                     "name": "ticketscad:unknown-reason",
-                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package; it is installed by services/aprs/install.sh with no version constraint written, so pip resolves whatever is current on PyPI at the moment the operator runs the installer. Stating a version here would be a guess, and a guessed version is a false attestation. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. The declared constraint is \">=9.0.0\", which bounds but does not determine the installed version. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
                 }
             ]
         },
@@ -3077,6 +3103,38 @@
                 {
                     "name": "ticketscad:unknown-reason",
                     "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. No requirements file pins this package and no installer in this repository names a version for it. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:pypi/websockets#python-services",
+            "name": "websockets",
+            "description": "Used by: services/audio-matrix/install.sh, services/audio-matrix/requirements.txt",
+            "scope": "required",
+            "purl": "pkg:pypi/websockets",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://pypi.org/project/websockets/"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:pypi/websockets"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "Declared constraint: >=15.0.1"
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Version, Component Producer, Component Hash Value, Component Hash Algorithm, Component License, Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "Optional Python service dependency, installed with pip on the operator's host at deploy time and not distributed with this software. The producer is whoever controls this name on PyPI at install time, which the SBOM author cannot pin from this tree. The declared constraint is \">=15.0.1\", which bounds but does not determine the installed version. The resolved version is therefore known only on the operator's host; operators should generate a deployment SBOM (for example with \"pip freeze\") to capture it. The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
                 }
             ]
         },
@@ -3768,6 +3826,7 @@
                 "pkg:deb/python3-numpy#os-packages",
                 "pkg:deb/python3-pip#os-packages",
                 "pkg:deb/python3-venv#os-packages",
+                "pkg:deb/python3-websockets#os-packages",
                 "pkg:deb/qemu-user-static#os-packages",
                 "pkg:deb/unzip#os-packages",
                 "pkg:deb/zlib1g-dev#os-packages",
@@ -3818,6 +3877,7 @@
                 "pkg:pypi/pyserial#python-services",
                 "pkg:pypi/requests#python-services",
                 "pkg:pypi/vosk#python-services",
+                "pkg:pypi/websockets#python-services",
                 "pkg:npm/bootstrap@5.3.3#vendored-frontend",
                 "pkg:npm/bootstrap-icons@1.11.3#vendored-frontend",
                 "pkg:npm/gridstack@10.3.1#vendored-frontend",

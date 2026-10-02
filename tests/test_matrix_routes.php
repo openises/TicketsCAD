@@ -96,11 +96,24 @@ function mk_test_channel($prefix, $key, $label, $class, &$createdChannelIds) {
     return $id;
 }
 
+// Phase 152 prerequisite #6: a cross-class route now REQUIRES expires_at.
+// Shared future timestamp for every allow_cross_class=1 fixture call below
+// -- incidental to what each of those assertions actually tests, same as
+// the allow_cross_class=1 additions themselves.
+$farFuture = date('Y-m-d H:i:s', time() + 3600);
+
 $suffix = uniqid();
 $intA = mk_test_channel($prefix, "test_matrix:intA:$suffix", 'Test Internal A', 'internal', $createdChannelIds);
 $intB = mk_test_channel($prefix, "test_matrix:intB:$suffix", 'Test Internal B', 'internal', $createdChannelIds);
 $ama  = mk_test_channel($prefix, "test_matrix:amateur:$suffix", 'Test Amateur', 'amateur', $createdChannelIds);
 $pstn = mk_test_channel($prefix, "test_matrix:pstn:$suffix", 'Test PSTN', 'pstn', $createdChannelIds);
+// Kept structurally SEPARATE from intA/intB on purpose (Phase 152
+// prerequisite #5): pstn ends up transitively connected to ama below via
+// $idCross, and later assertions edit intA<->intB expecting them to stay
+// OUTSIDE that mixed component -- using a distinct third internal channel
+// for the "defaults" route below keeps that contamination from leaking
+// into intB and silently breaking the later update() assertions.
+$intC = mk_test_channel($prefix, "test_matrix:intC:$suffix", 'Test Internal C', 'internal', $createdChannelIds);
 
 // ── matrix_route_validate() ───────────────────────────────────────────────
 $threw = null;
@@ -156,18 +169,30 @@ try {
 } catch (InvalidArgumentException $e) { $threw = $e->getMessage(); }
 t('create: cross-class without override rejected end-to-end', $threw !== null);
 
-$idCross = matrix_route_create(['src_channel_id' => $ama, 'dst_channel_id' => $pstn, 'allow_cross_class' => 1]);
+$idCross = matrix_route_create(['src_channel_id' => $ama, 'dst_channel_id' => $pstn, 'allow_cross_class' => 1, 'expires_at' => $farFuture]);
 $createdRouteIds[] = $idCross;
 $rowCross = matrix_route_get($idCross);
 t('create: cross-class WITH override persists allow_cross_class=1',
     $rowCross && (int) $rowCross['allow_cross_class'] === 1);
 
 $threw = null;
-try { matrix_route_create(['src_channel_id' => $intA, 'dst_channel_id' => $pstn, 'gain_db' => 999]); }
+// allow_cross_class=1 is INCIDENTAL here too, same reason as $idNote below
+// -- $pstn is already transitively tied to $ama via $idCross, so this
+// call must clear that guard before it can even reach the gain check this
+// assertion is actually testing.
+try { matrix_route_create(['src_channel_id' => $intA, 'dst_channel_id' => $pstn, 'gain_db' => 999, 'allow_cross_class' => 1, 'expires_at' => $farFuture]); }
 catch (InvalidArgumentException $e) { $threw = $e->getMessage(); }
 t('create: gain out of range rejected', $threw !== null && stripos($threw, 'Gain') !== false);
 
-$idNote = matrix_route_create(['src_channel_id' => $pstn, 'dst_channel_id' => $intB]);
+// allow_cross_class=1 here is INCIDENTAL to what this assertion tests
+// (the create-time defaults) -- it's required because $pstn is already
+// transitively connected to the amateur channel via $idCross above
+// (Phase 152 prerequisite #5's connected-component guard, see
+// inc/matrix-routes.php::matrix_route_would_cross_class()); without it
+// this call is correctly refused by the SAME override path the pairwise
+// guard already uses, just reached transitively instead of directly.
+// $intC (not $intB) on purpose -- see its own declaration comment above.
+$idNote = matrix_route_create(['src_channel_id' => $pstn, 'dst_channel_id' => $intC, 'allow_cross_class' => 1, 'expires_at' => $farFuture]);
 $createdRouteIds[] = $idNote;
 $rowNote = matrix_route_get($idNote);
 t('create: defaults are gain=0.0, priority=0, ducking=1, enabled=1, note=NULL when omitted',

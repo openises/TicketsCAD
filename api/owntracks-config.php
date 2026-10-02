@@ -141,8 +141,19 @@ function _ot_build_layered_config(int $memberId, string $username, string $secre
     // Layer A — hardcoded baseline. 2026-06-14 (Phase 55) — rewritten
     // to be conservative-by-default for off-duty / unassigned members.
     //
+    // GH#152 (d3xter, 2026-09-28): OwnTracks's real published monitoring
+    // scale (https://owntracks.org/booklet/tech/json/) is -1=Quiet,
+    // 0=Manual, 1=Significant, 2=Move — this file had shifted the whole
+    // scale up by one (0=Quiet..3=Move, a value OwnTracks has never had)
+    // ever since it was written, so every value pushed to a real device
+    // meant something different than intended: the "Significant" baseline
+    // below was sending literal value 2, which OwnTracks reads as "Move"
+    // (continuous GPS) — the OPPOSITE of the low-battery intent — and
+    // Layer D's "Move" override a few lines down was sending 3, a value
+    // outside OwnTracks's own range. Values below are now the real ones.
+    //
     // Per OwnTracks Android docs (https://owntracks.org/booklet/features/location/):
-    //   monitoring=2 (Significant) "relies mostly on cell tower and WiFi
+    //   monitoring=1 (Significant) "relies mostly on cell tower and WiFi
     //   location to conserve power" — i.e. NO GPS at all most of the
     //   time. This is the lowest battery mode that still publishes
     //   occasional updates.
@@ -151,7 +162,7 @@ function _ot_build_layered_config(int $memberId, string $username, string $secre
     // so dispatch knows the phone is alive, position only reported when
     // the member actually moves a meaningful distance (500m+).
     //
-    //   monitoring                = 2 (Significant)     — cell/wifi-only, no GPS
+    //   monitoring                = 1 (Significant)     — cell/wifi-only, no GPS
     //   pubInterval               = 60 minutes          — hourly still-alive ping
     //   locatorInterval           = 600 seconds (10min) — hard floor between updates
     //   locatorDisplacement       = 500m                — only publish if moved
@@ -175,7 +186,7 @@ function _ot_build_layered_config(int $memberId, string $username, string $secre
         'password'                            => $secret,
         'deviceId'                            => 'phone',
         'tid'                                 => strtoupper(substr($username, 0, 2)),
-        'monitoring'                          => 2,
+        'monitoring'                          => 1,
         'locatorInterval'                     => 600,
         'locatorDisplacement'                 => 500,
         'pegLocatorFastestIntervalToInterval' => true,
@@ -234,14 +245,14 @@ function _ot_build_layered_config(int $memberId, string $username, string $secre
     // Eric's spec: 5min stationary, 30s when moving. Plus high-accuracy
     // GPS so dispatch can see the actual position on the incident map.
     //
-    //   monitoring                = 3 (Move)         — overrides baseline=2
+    //   monitoring                = 2 (Move)         — overrides baseline=1
     //   moveModeLocatorInterval   = 30s              — wake every 30s
     //   pubInterval               = 5 minutes        — still-alive ping
     //   locatorDisplacement       = 20m              — tighter movement floor
     //   locatorPriority           = 1 (HighAccuracy) — GPS fused with cell/wifi
     //   ignoreInaccurateLocations = 100m             — tighter accuracy floor
     if (_ot_member_has_active_incident($memberId)) {
-        $cfg['monitoring']               = 3;
+        $cfg['monitoring']               = 2;
         $cfg['moveModeLocatorInterval']  = 30;
         $cfg['locatorInterval']          = 30;
         $cfg['pubInterval']              = 5;
@@ -287,12 +298,16 @@ function _ot_tunable_keys(): array {
     $int = function ($v) { return (int) $v; };
     $bool = function ($v) { return (bool) (int) $v; };
     return [
+        // GH#152 (d3xter, 2026-09-28): matches OwnTracks's real scale
+        // (https://owntracks.org/booklet/tech/json/) -- was shifted up by
+        // one (0..3) with no -1/Quiet at all; see the Layer A/D comments
+        // above in _ot_build_layered_config() for the full story.
         'monitoring' => [
             'settings_key' => 'monitoring',
             'label'        => 'Monitoring mode',
             'hint'         => 'Quiet = no auto publish. Manual = on-demand. Significant = OS-driven, very low battery (recommended). Move = aggressive, for active vehicle tracking.',
             'type'         => 'select',
-            'options'      => [0 => 'Quiet (0)', 1 => 'Manual (1)', 2 => 'Significant (2)', 3 => 'Move (3)'],
+            'options'      => [-1 => 'Quiet (-1)', 0 => 'Manual (0)', 1 => 'Significant (1)', 2 => 'Move (2)'],
             'cast'         => $int,
         ],
         'locatorInterval' => [

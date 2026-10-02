@@ -451,7 +451,7 @@ check('proxied URL keeps {z}/{x}/{y}', /\{z\}/.test(osm) && /\{x\}/.test(osm) &&
 var esriDirect = 'https://server.arcgisonline.com/x/{z}/{y}/{x}';
 var esri = MP.tileUrlFor('esri_sat', esriDirect);
 check('terms-forbidden provider stays direct in proxy mode', esri === esriDirect, esri);
-var carto = MP.tileUrlFor('cartodb_dark', 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png');
+var carto = MP.tileUrlFor('cartodb_dark', 'https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png?key={key}');
 check('CARTO stays direct in proxy mode', carto.indexOf('cartocdn.com') !== -1, carto);
 
 // isProxied must agree with tileUrlFor.

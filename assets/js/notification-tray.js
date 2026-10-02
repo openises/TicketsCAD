@@ -46,7 +46,15 @@
         'call:stale':        { icon: 'bi-exclamation-triangle',      color: 'text-warning',   label: 'Call Claim Stale' },
         'call:wrapup':       { icon: 'bi-telephone',                 color: 'text-secondary', label: 'Call Wrapping Up' },
         'call:ended':        { icon: 'bi-telephone-minus',           color: 'text-secondary', label: 'Call Ended' },
-        'call:abandoned':    { icon: 'bi-telephone-x-fill',          color: 'text-muted',     label: 'Missed Call' }
+        'call:abandoned':    { icon: 'bi-telephone-x-fill',          color: 'text-muted',     label: 'Missed Call' },
+        // Phase 152 prerequisite #7 (2026-09-07) — a matrix channel (a
+        // browser console session, today) dropping/reconnecting is rare
+        // and worth a tray notification on its own, same tier as
+        // call:stale. comm:tx_state is DELIBERATELY NOT added here: a
+        // start/stop pair fires on every single PTT press, which would
+        // flood the tray with routine noise -- that state belongs on the
+        // console strip's own TX lamp (Console rebuild work), not here.
+        'comm:channel_state': { icon: 'bi-broadcast-pin',            color: 'text-warning',   label: 'Channel Connection' }
     };
 
     function init() {

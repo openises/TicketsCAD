@@ -272,8 +272,14 @@ function tile_proxy_policy(): array
             'caveat' => 'CARTO\'s authoritative Basemap Terms of Service could not be read (the legal '
                       . 'page redirects to an unparseable PDF), so this is a refusal on absence of a '
                       . 'grant rather than on an explicit prohibition.',
-            'url' => 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-            'subdomains' => 'abcd', 'max_zoom' => 19,
+            // GH#150 (2026-09-21): matches inc/tile-config.php's canonical
+            // template -- CARTO now requires a free key, see that file's
+            // comment on these same two providers for the full detail. This
+            // 'url' field is documentation-only for a refused (proxy=false)
+            // provider (tile_proxy_upstream_url() returns before ever
+            // reading it), kept in sync here so it doesn't go stale.
+            'url' => 'https://basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png?key={key}',
+            'subdomains' => '', 'max_zoom' => 19,
             'attribution' => '&copy; OpenStreetMap contributors &copy; CARTO',
         ],
         'cartodb_dark' => [
@@ -282,8 +288,8 @@ function tile_proxy_policy(): array
             'source' => 'https://docs.carto.com/faqs/carto-basemaps',
             'caveat' => 'CARTO\'s authoritative Basemap Terms of Service could not be read; refusal '
                       . 'rests on the absence of a grant rather than an explicit prohibition.',
-            'url' => 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-            'subdomains' => 'abcd', 'max_zoom' => 19,
+            'url' => 'https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png?key={key}',
+            'subdomains' => '', 'max_zoom' => 19,
             'attribution' => '&copy; OpenStreetMap contributors &copy; CARTO',
         ],
         'esri_street' => [

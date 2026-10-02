@@ -47,7 +47,12 @@ function tra(string $name, bool $ok, string $detail = ''): void {
 echo "=== run_rbac_v2.php A8 idempotency-check regression ===\n\n";
 
 $start = strpos($src, "rrbv2_step('permissions: seed canonical codes + link aliases',");
-$end = strpos($src, "// ─────────────────────────────────────────────────────────────────────\n// A10", $start ?: 0);
+// 2026-10-01 (CI fix: a fresh install's A8 step referenced roles.is_super
+// before A10 created it, since A10 used to run AFTER A8) -- A10 was moved
+// to run BEFORE A8, so A8's block is now followed directly by A9 again,
+// not A10. Same boundary concept (the comment header immediately after
+// A8's own content ends), just the next section's real name.
+$end = strpos($src, "// ─────────────────────────────────────────────────────────────────────\n// A9", $start ?: 0);
 if ($start === false || $end === false || $end <= $start) {
     echo "[FAIL] could not isolate the A8 step block from sql/run_rbac_v2.php (markers moved?)\n";
     echo "\n1 passed, 1 failed\n";

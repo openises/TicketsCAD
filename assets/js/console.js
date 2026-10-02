@@ -31,15 +31,31 @@
     var canSend = document.body.getAttribute('data-can-send') === '1';
     var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
 
+    var toastEl = document.getElementById('consoleToast');
+    var toastTimer = null;
+    function showToast(type, message) {
+        if (!toastEl) { return; }
+        toastEl.className = 'alert alert-' + type + ' py-2 mb-3';
+        toastEl.textContent = message;
+        if (toastTimer) { window.clearTimeout(toastTimer); }
+        toastTimer = window.setTimeout(function () {
+            toastEl.classList.add('d-none');
+        }, 4000);
+    }
+
     var channels = [];           // last fetched channel list (enabled only)
     var channelsById = {};
     var views = [];              // shared views from the designer
     var myViews = [];             // Phase 114b3 — the caller's own personal views
     var activeView = 'auto';     // 'auto' or a view id (string)
+    var hadStoredView = false;   // true only if the operator has EXPLICITLY picked a tab before (see loadViews())
     var openFeeds = {};          // channelId -> feed element while drawer open
     var refreshCount = 0;
 
-    try { activeView = localStorage.getItem(TAB_KEY) || 'auto'; } catch (e) {}
+    try {
+        var storedView = localStorage.getItem(TAB_KEY);
+        if (storedView) { activeView = storedView; hadStoredView = true; }
+    } catch (e) {}
 
     // ── Helpers ──────────────────────────────────────────────────
     function el(tag, cls, text) {
@@ -73,26 +89,33 @@
         return map[adapter] || 'bi-broadcast-pin';
     }
 
-    // Default control list for a channel with no designer config —
-    // everything the channel is capable of (b1 behavior).
-    function defaultControls(caps) {
-        var out = ['activity'];
-        if (caps.voice_rx || caps.voice_tx) { out.push('voice'); }
-        if (caps.text_rx || caps.text_tx || caps.source) { out.push('text'); }
-        return out;
+    // Phase 152 (Console rebuild) — default {show:...} template for a
+    // channel with no designer-authored strip (the "All Channels" auto
+    // view) — everything the channel is capable of, matching what
+    // console_strip_show_from_legacy_controls() derives server-side for a
+    // b2-style "voice" bundle, plus sel:true (the auto view's strips have
+    // always shown Select unconditionally; a designer-authored strip may
+    // now turn it off — see console_strip_template_needs()'s null entry for
+    // 'sel' in inc/console-views.php for why sel stopped being hardcoded
+    // chrome).
+    function defaultShowTemplate(caps) {
+        return {
+            ptt: !!caps.voice_tx, sel: true,
+            mon: !!caps.voice_rx, mute: !!caps.voice_rx, vol: !!caps.voice_rx,
+            text: !!(caps.text_rx || caps.text_tx || caps.source),
+            vu: false, recall: false, patchchips: false
+        };
     }
 
-    // ── Select / Simulselect / Monitor / Mute / Volume (Phase 114b3) ──
-    // Select + Simulselect are universal strip chrome — present on EVERY
-    // strip in EVERY view (auto and designer-authored alike), not part of
-    // the designer's placeable-component palette. Rationale: "which
-    // channel has my attention right now" and "which channels page out
-    // together" are per-operator RUNTIME behaviors orthogonal to how an
-    // admin laid the board out, the same way the LED/label are always
-    // present regardless of a designer's choices. Monitor/mute/volume,
-    // by contrast, stay individually placeable palette components (see
-    // renderComponent() below) because they're genuinely optional per
-    // strip in the free-form designer.
+    // ── Select / Simulselect / Monitor / Mute / Volume ──────────────
+    // Phase 152: Select (and the Simulselect checkbox that rides inside
+    // its chrome) is a normal, independently toggleable show-flag now
+    // (tpl.show.sel — see console_strip_template_needs()'s null entry for
+    // 'sel' in inc/console-views.php, meaning no capability gate, just an
+    // admin choice) rather than forced-on universal chrome; the "All Channels"
+    // auto view's defaultShowTemplate() sets it true to preserve the
+    // pre-152 look there. Monitor/Mute/Volume are likewise independently
+    // toggleable per strip (buildAudioControlsBlock()'s show param).
     function audioState(chId) {
         return window.ConsoleAudio
             ? window.ConsoleAudio.getState(chId)
@@ -136,49 +159,58 @@
     }
 
     // Real Mon / Mute / Volume block for a voice_rx-capable channel.
-    // Used by the auto/flat strip renderer; the designer's positioned
-    // view places these as independent components instead (see
-    // renderComponent()).
-    function buildAudioControlsBlock(ch) {
+    // Phase 152: each sub-control is independently toggleable per the
+    // strip's own {show:...} template now (a designer-authored strip may
+    // show Volume without Mon, etc.) — show picks which of the three
+    // render; omitted flags default all-on (the "All Channels" auto view
+    // has no template to consult and always showed all three).
+    function buildAudioControlsBlock(ch, show) {
+        show = show || { mon: true, mute: true, vol: true };
         var wrap = el('div', 'console-audio-controls');
         var st = audioState(ch.id);
 
-        var monBtn = el('button', 'btn btn-sm console-audio-btn console-mon-btn' + (st.mon ? ' active' : ''), 'Mon');
-        monBtn.type = 'button';
-        monBtn.title = st.mon
-            ? 'Monitor ON — audible at reduced volume while another channel is selected. Click to silence while unselected.'
-            : 'Monitor OFF — silent while this channel is not selected. Click to include it in the background mix again.';
-        monBtn.setAttribute('aria-pressed', st.mon ? 'true' : 'false');
-        monBtn.addEventListener('click', function () {
-            if (!window.ConsoleAudio) { return; }
-            window.ConsoleAudio.setMon(ch.id, !window.ConsoleAudio.getState(ch.id).mon);
-        });
-        wrap.appendChild(monBtn);
+        if (show.mon) {
+            var monBtn = el('button', 'btn btn-sm console-audio-btn console-mon-btn' + (st.mon ? ' active' : ''), 'Mon');
+            monBtn.type = 'button';
+            monBtn.title = st.mon
+                ? 'Monitor ON — audible at reduced volume while another channel is selected. Click to silence while unselected.'
+                : 'Monitor OFF — silent while this channel is not selected. Click to include it in the background mix again.';
+            monBtn.setAttribute('aria-pressed', st.mon ? 'true' : 'false');
+            monBtn.addEventListener('click', function () {
+                if (!window.ConsoleAudio) { return; }
+                window.ConsoleAudio.setMon(ch.id, !window.ConsoleAudio.getState(ch.id).mon);
+            });
+            wrap.appendChild(monBtn);
+        }
 
-        var muteBtn = el('button', 'btn btn-sm console-audio-btn console-mute-btn' + (st.muted ? ' active' : ''), 'Mute');
-        muteBtn.type = 'button';
-        muteBtn.title = st.muted ? 'Muted — click to unmute' : 'Click to mute this channel';
-        muteBtn.setAttribute('aria-pressed', st.muted ? 'true' : 'false');
-        muteBtn.addEventListener('click', function () {
-            if (!window.ConsoleAudio) { return; }
-            window.ConsoleAudio.setMuted(ch.id, !window.ConsoleAudio.getState(ch.id).muted);
-        });
-        wrap.appendChild(muteBtn);
+        if (show.mute) {
+            var muteBtn = el('button', 'btn btn-sm console-audio-btn console-mute-btn' + (st.muted ? ' active' : ''), 'Mute');
+            muteBtn.type = 'button';
+            muteBtn.title = st.muted ? 'Muted — click to unmute' : 'Click to mute this channel';
+            muteBtn.setAttribute('aria-pressed', st.muted ? 'true' : 'false');
+            muteBtn.addEventListener('click', function () {
+                if (!window.ConsoleAudio) { return; }
+                window.ConsoleAudio.setMuted(ch.id, !window.ConsoleAudio.getState(ch.id).muted);
+            });
+            wrap.appendChild(muteBtn);
+        }
 
-        var volWrap = el('div', 'console-volume-row');
-        var volInp = document.createElement('input');
-        volInp.type = 'range';
-        volInp.min = '0';
-        volInp.max = '100';
-        volInp.className = 'form-range console-volume-slider';
-        volInp.value = String(st.volume);
-        volInp.title = 'Volume';
-        volInp.addEventListener('input', function () {
-            if (!window.ConsoleAudio) { return; }
-            window.ConsoleAudio.setVolume(ch.id, volInp.value);
-        });
-        volWrap.appendChild(volInp);
-        wrap.appendChild(volWrap);
+        if (show.vol) {
+            var volWrap = el('div', 'console-volume-row');
+            var volInp = document.createElement('input');
+            volInp.type = 'range';
+            volInp.min = '0';
+            volInp.max = '100';
+            volInp.className = 'form-range console-volume-slider';
+            volInp.value = String(st.volume);
+            volInp.title = 'Volume';
+            volInp.addEventListener('input', function () {
+                if (!window.ConsoleAudio) { return; }
+                window.ConsoleAudio.setVolume(ch.id, volInp.value);
+            });
+            volWrap.appendChild(volInp);
+            wrap.appendChild(volWrap);
+        }
 
         return wrap;
     }
@@ -232,6 +264,36 @@
         }
     }
 
+    // Patch rail (Console rebuild) — repaint checkbox state + the patched
+    // badge on ALREADY-RENDERED strips without a full renderBank(), so
+    // another operator's patch action (arriving live via SSE) never
+    // disrupts THIS operator's open text drawer or in-progress typing.
+    // The rail's own confirm-bar Couple/Cancel click IS this operator's
+    // own deliberate action, so it uses this same light repaint too
+    // rather than a full rebuild — no reason to prefer one over the other
+    // once this function exists.
+    function paintPatchState() {
+        if (!window.ConsolePatchRail) { return; }
+        var strips = bank.querySelectorAll('[data-channel-id]');
+        for (var i = 0; i < strips.length; i++) {
+            var chId = strips[i].getAttribute('data-channel-id');
+            var chk = strips[i].querySelector('.console-strip-patch-select');
+            if (chk) { chk.checked = window.ConsolePatchRail.isSelected(chId); }
+            var existingBadge = strips[i].querySelector('.console-strip-patched-badge');
+            var shouldShow = strips[i].getAttribute('data-patchchips-shown') === '1'
+                && window.ConsolePatchRail.isPatched(chId);
+            if (shouldShow && !existingBadge) {
+                var badge = el('span', 'console-strip-patched-badge', 'Patched');
+                badge.title = 'This channel is part of an active standing patch or group';
+                var head = strips[i].querySelector('.console-strip-head');
+                var led = head ? head.querySelector('.console-led') : null;
+                if (head) { head.insertBefore(badge, led); }
+            } else if (!shouldShow && existingBadge) {
+                existingBadge.parentNode.removeChild(existingBadge);
+            }
+        }
+    }
+
     // Master "Simulselect PTT" hold-to-talk button — appears only when at
     // least one TX-capable channel is currently a simulselect member.
     // Keys every member's REAL adapter PTT simultaneously (see console-
@@ -270,31 +332,72 @@
         bar.appendChild(btn);
     }
 
-    // ── Strip rendering ──────────────────────────────────────────
-    // cfg (optional, from a designer view): {overrides:{label,short_label,
-    // color,ptt_color,ptt_mode}, controls:[...], width:1|2}
-    function renderStrip(ch, cfg) {
-        var ov = (cfg && cfg.overrides) || {};
-        var controls = (cfg && cfg.controls && cfg.controls.length)
-            ? cfg.controls : defaultControls(ch.capabilities || {});
+    // ── Strip rendering (Phase 152 — ONE renderer, no free-form canvas) ──
+    // Every strip, in every view (auto or designer-authored), renders
+    // through this one function now — renderPositionedStrip()/
+    // renderComponent() and the pixel-geometry math they needed are gone
+    // (unanimous 5-persona rejection of free-drag at the strip level, see
+    // specs/phase-152-comms-console-v2/tasks.md's "Console rebuild"
+    // section). A strip's only geometry is width (1 or 2 columns in the
+    // existing flex-wrap bank — see console.css's .console-strip-wide,
+    // unchanged); its content is driven entirely by tpl.show, the same
+    // {ptt,sel,mon,mute,vol,text,vu,recall,patchchips} bag
+    // console_view_save_strips()/console_view_attach_strips() persist and
+    // return (inc/console-views.php). Activity + status LED are now
+    // universal chrome (no show-flag governs them, matching Select's own
+    // prior "always there" treatment) since every strip — real or
+    // launcher — benefits from knowing when a channel last had traffic.
+    //
+    // tpl: {overrides:{label,short_label,color,ptt_color}, show:{...},
+    //       hotkey:'F5'|'A'|null, width:1|2}
+    function renderStrip(ch, tpl) {
+        var ov = (tpl && tpl.overrides) || {};
+        var show = (tpl && tpl.show) || {};
         var accent = ov.color || ch.color;
         var pttColor = ov.ptt_color || accent;
 
-        var strip = el('div', 'console-strip' + ((cfg && cfg.width === 2) ? ' console-strip-wide' : ''));
+        var strip = el('div', 'console-strip' + ((tpl && tpl.width === 2) ? ' console-strip-wide' : ''));
         strip.setAttribute('data-channel-id', ch.id);
+        if (show.patchchips) { strip.setAttribute('data-patchchips-shown', '1'); }
+        if (tpl && tpl.hotkey) { strip.setAttribute('data-hotkey', tpl.hotkey); }
         if (accent) { strip.style.borderTopColor = accent; }
 
         var head = el('div', 'console-strip-head');
+        // Patch rail (Console rebuild) — checkbox-select coupling creation
+        // (5-persona review, unanimous rejection of drag-to-patch). Only
+        // offered to an action.patch_create/action.manage_matrix holder;
+        // console-patch-rail.js owns the actual selection state so this
+        // strip and the confirm bar always agree.
+        if (window.ConsolePatchRail && window.ConsolePatchRail.canPatch()) {
+            var patchChk = document.createElement('input');
+            patchChk.type = 'checkbox';
+            patchChk.className = 'form-check-input console-strip-patch-select';
+            patchChk.title = 'Select this channel to couple it with another';
+            patchChk.checked = window.ConsolePatchRail.isSelected(ch.id);
+            patchChk.addEventListener('change', function () {
+                window.ConsolePatchRail.toggleSelect(ch.id, patchChk.checked);
+            });
+            head.appendChild(patchChk);
+        }
         head.appendChild(el('i', 'bi ' + adapterIcon(ch.adapter) + ' me-1'));
         var lbl = el('span', 'console-strip-label',
             ov.short_label || ov.label || ch.short_label || ch.label);
-        lbl.title = (ov.label || ch.label) + ' (' + ch.adapter + ')';
+        lbl.title = (ov.label || ch.label) + ' (' + ch.adapter + ')'
+            + (tpl && tpl.hotkey ? ' — hotkey ' + tpl.hotkey : '');
         head.appendChild(lbl);
+        // tpl.show.patchchips (Console rebuild) — a real badge now, backed
+        // by the patch rail's own live route/group state, replacing the
+        // designer's former disabled "future" checkbox for this flag.
+        if (show.patchchips && window.ConsolePatchRail && window.ConsolePatchRail.isPatched(ch.id)) {
+            var patchedBadge = el('span', 'console-strip-patched-badge', 'Patched');
+            patchedBadge.title = 'This channel is part of an active standing patch or group';
+            head.appendChild(patchedBadge);
+        }
         var led = el('span', 'console-led console-led-' + (ch.state || 'unknown'));
         led.title = 'Status: ' + (ch.state || 'unknown');
         head.appendChild(led);
         strip.appendChild(head);
-        strip.appendChild(buildSelectChrome(ch));
+        if (show.sel) { strip.appendChild(buildSelectChrome(ch)); }
 
         if (ch.regulatory_class === 'amateur') {
             var regBadge = el('div', 'console-strip-reg', 'AMATEUR — ID required');
@@ -314,41 +417,102 @@
             return strip;
         }
 
-        // Activity line (also the in-place refresh target)
-        if (controls.indexOf('activity') !== -1) {
-            var act = el('div', 'console-strip-activity');
-            if (ch.last_rx_at) {
-                act.appendChild(el('span', 'console-activity-text',
-                    (ch.last_caller ? ch.last_caller + ' · ' : '') + relTime(ch.last_rx_at)));
-            } else {
-                act.appendChild(el('span', 'console-activity-text text-body-secondary', 'no recent activity'));
-            }
-            strip.appendChild(act);
+        // Activity line — universal chrome now (also the in-place refresh
+        // target; see updateInPlace()).
+        var act = el('div', 'console-strip-activity');
+        if (ch.last_rx_at) {
+            act.appendChild(el('span', 'console-activity-text',
+                (ch.last_caller ? ch.last_caller + ' · ' : '') + relTime(ch.last_rx_at)));
+        } else {
+            act.appendChild(el('span', 'console-activity-text text-body-secondary', 'no recent activity'));
         }
+        strip.appendChild(act);
 
         var caps = ch.capabilities || {};
         var controlsBox = el('div', 'console-strip-controls');
 
-        // Voice: bind to today's backends (bus PTT lands in 114c+)
-        if (controls.indexOf('voice') !== -1 && (caps.voice_tx || caps.voice_rx)) {
-            if (ch.adapter === 'zello') {
-                var zb = el('button', 'btn btn-sm console-ptt', null);
+        // Phase 152 — a matrix-backed channel (DMR today; see console-
+        // mic.js's own docblock for why Zello never appears here) whose
+        // operator has explicitly engaged Matrix Audio gets a REAL PTT
+        // wired to the browser-leg session instead of the launcher. Off by
+        // default (console-audio-logic.js's defaultState()) — an operator
+        // who never touches the toggle sees exactly today's behavior.
+        var isMatrixBacked = !!(window.ConsoleMatrix && window.ConsoleMatrix.isMatrixBacked(ch.adapter));
+        var matrixAudioOn = isMatrixBacked && !!audioState(ch.id).matrixAudio;
+
+        if (show.ptt && (caps.voice_tx || caps.voice_rx)) {
+            // Phase 152 persona review (the veteran's addition): while a
+            // channel's audio still rides the shared Zello/Radio SINGLETON
+            // widget, this button is a LAUNCHER, not a real PTT — it must
+            // look visually distinct (no PTT accent color, an outline
+            // style instead of console-ptt's solid red) and must be
+            // structurally excluded from whatever a future physical-PTT/
+            // footswitch binding (console-hid.js) treats as an eligible
+            // TX target, so stomping a pedal on a launcher strip can never
+            // silently do nothing. data-launcher marks that exclusion for
+            // that future code to query; console-strip-launcher marks it
+            // for CSS. Only zello/dmr_bm/dmr_local resolve to a launcher
+            // today — anything else with voice capability but no adapter-
+            // specific handler is an honest "not wired yet" note, same as
+            // before.
+            var isLauncher = (ch.adapter === 'zello' || (isMatrixBacked && !matrixAudioOn));
+            if (isLauncher) { strip.classList.add('console-strip-launcher'); strip.setAttribute('data-launcher', '1'); }
+            // Phase 152 prerequisite #8 (console-hid.js, physical PTT) --
+            // the ONE marker that means "a hardware pedal/hotkey press on
+            // THIS strip would actually key real audio right now": real
+            // matrix audio engaged AND this operator holds TX permission.
+            // Deliberately separate from data-launcher's absence (a text-
+            // only channel also lacks data-launcher but is never a real
+            // PTT target either) -- console-hid.js queries this attribute
+            // directly rather than inferring eligibility from other state.
+            if (matrixAudioOn && canTx) { strip.setAttribute('data-real-ptt', '1'); }
+            if (matrixAudioOn) {
+                // Real, independent PTT over the browser-leg session — held
+                // down, not clicked, matching every other real PTT control
+                // in this app (simulselect, radio-widget.js's own button).
+                var mb = el('button', 'btn btn-sm console-ptt', null);
+                mb.type = 'button';
+                mb.appendChild(el('i', 'bi bi-broadcast me-1'));
+                mb.appendChild(document.createTextNode('PTT'));
+                if (pttColor) { mb.style.background = pttColor; }
+                if (!canTx) {
+                    mb.disabled = true;
+                } else {
+                    var mbStart = function (e) { e.preventDefault(); window.ConsoleMatrix.talkStart(ch.id); mb.classList.add('console-simulselect-active'); };
+                    var mbStop = function () { window.ConsoleMatrix.talkEnd(ch.id); mb.classList.remove('console-simulselect-active'); };
+                    mb.addEventListener('mousedown', mbStart);
+                    mb.addEventListener('touchstart', mbStart, { passive: false });
+                    mb.addEventListener('mouseup', mbStop);
+                    mb.addEventListener('mouseleave', mbStop);
+                    mb.addEventListener('touchend', mbStop);
+                    mb.addEventListener('touchcancel', mbStop);
+                }
+                controlsBox.appendChild(mb);
+            } else if (ch.adapter === 'zello') {
+                var zb = el('button', 'btn btn-sm console-launcher-btn', null);
                 zb.type = 'button';
                 zb.appendChild(el('i', 'bi bi-mic-fill me-1'));
                 zb.appendChild(document.createTextNode('Open Zello'));
-                if (pttColor) { zb.style.background = pttColor; }
+                zb.title = 'Opens the shared Zello widget for PTT — not an independent per-strip control yet';
                 zb.addEventListener('click', function () {
                     if (window.EventBus) { window.EventBus.emit('zello:toggle'); }
                 });
                 controlsBox.appendChild(zb);
             } else if (ch.adapter === 'dmr_bm' || ch.adapter === 'dmr_local') {
-                var rb = el('button', 'btn btn-sm console-ptt', null);
+                var rb = el('button', 'btn btn-sm console-launcher-btn', null);
                 rb.type = 'button';
                 rb.setAttribute('data-action', 'radio'); // radio-widget global delegator
                 rb.appendChild(el('i', 'bi bi-broadcast me-1'));
                 rb.appendChild(document.createTextNode('Open Radio'));
-                if (pttColor) { rb.style.background = pttColor; }
+                rb.title = 'Opens the shared Radio widget for PTT — not an independent per-strip control yet';
                 controlsBox.appendChild(rb);
+            } else if (ch.adapter === 'intercom_dd') {
+                // No legacy widget to launch here at all — unlike Zello/DMR
+                // above, there is no fallback action; the "Matrix Audio"
+                // toggle rendered below (retitled "Join Intercom" for this
+                // adapter) is the only way onto this channel.
+                controlsBox.appendChild(el('div', 'console-strip-note',
+                    'Turn on Join Intercom below to talk on this channel'));
             } else {
                 controlsBox.appendChild(el('div', 'console-strip-note',
                     'Voice controls arrive with the audio bus (Phase 114c+)'));
@@ -356,17 +520,74 @@
             if (!canTx) {
                 controlsBox.appendChild(el('div', 'console-strip-note', 'Listen-only (no TX permission)'));
             }
-            // Phase 114b3 — real Mon/Mute/Volume, for every channel this
-            // console can actually receive audio from (Zello + DMR today;
-            // see console-audio.js's docblock for the honest scope of what
-            // "real" means while each adapter is still a singleton widget).
-            if (caps.voice_rx && (ch.adapter === 'zello' || ch.adapter === 'dmr_bm' || ch.adapter === 'dmr_local')) {
-                controlsBox.appendChild(buildAudioControlsBlock(ch));
+        }
+        // Matrix Audio toggle — only offered for a channel the audio matrix
+        // actually has a leg for. Engaging it is an explicit per-operator,
+        // per-strip choice (never automatic): it lazily connects the
+        // session (first real mic-permission prompt happens here, never on
+        // page load) and switches this ONE channel from the shared
+        // singleton widget to its own independent route — see console-
+        // audio.js's applyAudio() for why the two are mutually exclusive.
+        if (isMatrixBacked && canTx) {
+            // intercom_dd has no legacy widget to be mutually exclusive
+            // WITH (see console-audio.js's isMatrixCapable) — reworded so
+            // the toggle reads as "join the party line", not "replace a
+            // widget that doesn't exist for this channel".
+            var isIntercomDd = (ch.adapter === 'intercom_dd');
+            var maLbl = el('label', 'console-matrix-audio-toggle form-check form-check-inline mb-0', null);
+            var maInp = document.createElement('input');
+            maInp.type = 'checkbox';
+            maInp.className = 'form-check-input';
+            maInp.checked = matrixAudioOn;
+            if (isIntercomDd) {
+                maInp.title = matrixAudioOn
+                    ? 'You are joined to the dispatcher intercom — PTT/Monitor/Mute/Volume act on this channel'
+                    : 'Join the dispatcher intercom (uses your microphone)';
+            } else {
+                maInp.title = matrixAudioOn
+                    ? 'Independent matrix audio is ON for this strip — PTT/Monitor/Mute/Volume act on THIS channel alone'
+                    : 'Turn on independent audio for this channel (uses your microphone; replaces the shared radio widget for THIS strip only)';
             }
+            maInp.addEventListener('change', function () {
+                var want = maInp.checked;
+                maInp.disabled = true;
+                window.ConsoleAudio.setMatrixAudio(ch.id, want, function (ok) {
+                    maInp.disabled = false;
+                    if (!ok) { maInp.checked = !want; }
+                    renderBank();
+                });
+            });
+            maLbl.appendChild(maInp);
+            maLbl.appendChild(el('span', 'form-check-label small', isIntercomDd ? 'Join Intercom' : 'Matrix Audio'));
+            controlsBox.appendChild(maLbl);
+        }
+        // Recall tab's per-strip shortcut (plan.md: "a one-button
+        // shortcut into the same per-adapter replay endpoints the Recall
+        // tab already uses") — voice-capable adapters only; text-only
+        // channels already show their history inline via the Feed drawer
+        // below, no separate "replay" concept applies to them.
+        if (show.recall && (ch.adapter === 'zello' || ch.adapter === 'dmr_bm' || ch.adapter === 'dmr_local')) {
+            var replayBtn = el('button', 'btn btn-sm btn-outline-secondary console-strip-replay', null);
+            replayBtn.type = 'button';
+            replayBtn.title = 'Play the most recent recorded traffic on this channel';
+            replayBtn.appendChild(el('i', 'bi bi-play-fill'));
+            replayBtn.addEventListener('click', function () {
+                if (window.ConsoleRecall) { window.ConsoleRecall.replayLatestForChannel(ch); }
+            });
+            controlsBox.appendChild(replayBtn);
+        }
+        // Phase 114b3/152 — real Mon/Mute/Volume, independently toggleable
+        // per the strip's own template now, for every channel this console
+        // can actually receive audio from (Zello + DMR today; see console-
+        // audio.js's docblock for the honest scope of what "real" means
+        // while each adapter is still a singleton widget).
+        if ((show.mon || show.mute || show.vol) && caps.voice_rx
+            && (ch.adapter === 'zello' || ch.adapter === 'dmr_bm' || ch.adapter === 'dmr_local')) {
+            controlsBox.appendChild(buildAudioControlsBlock(ch, show));
         }
 
         // Text drawer
-        if (controls.indexOf('text') !== -1 && (caps.text_rx || caps.text_tx || caps.source)) {
+        if (show.text && (caps.text_rx || caps.text_tx || caps.source)) {
             var tBtn = el('button', 'btn btn-sm btn-outline-secondary console-text-toggle', null);
             tBtn.type = 'button';
             tBtn.appendChild(el('i', 'bi bi-chat-left-text me-1'));
@@ -529,194 +750,15 @@
         return null;
     }
 
-    // ── Positioned rendering (b2.5 free-form views) ──────────────
-    // Same grid math as the designer: outer canvas = 12 columns of the
-    // bank width × 20px rows; inner strip grid = 12 columns × 14px rows.
-    var OUTER_CELL = 20;
-    var INNER_CELL = 14;
-
-    function pct(units) { return (units / 12 * 100) + '%'; }
-
-    function renderComponent(comp, ch) {
-        var props = comp.props || {};
-        var caps = ch.capabilities || {};
-        var node;
-        if (comp.type === 'label') {
-            node = el('div', 'ccp ccp-label', props.text || ch.short_label || ch.label);
-            if (props.bg) { node.style.background = props.bg; }
-            if (props.fg) { node.style.color = props.fg; }
-        } else if (comp.type === 'led') {
-            node = el('div', 'ccp ccp-led');
-            var led = el('span', 'console-led console-led-' + (ch.state || 'unknown'));
-            led.title = 'Status: ' + (ch.state || 'unknown');
-            node.appendChild(led);
-        } else if (comp.type === 'activity') {
-            node = el('div', 'ccp ccp-activity');
-            var act = el('span', 'console-activity-text' + (ch.last_rx_at ? '' : ' text-body-secondary'),
-                ch.last_rx_at
-                    ? (ch.last_caller ? ch.last_caller + ' · ' : '') + relTime(ch.last_rx_at)
-                    : 'no recent activity');
-            node.appendChild(act);
-        } else if (comp.type === 'ptt') {
-            node = el('button', 'ccp ccp-ptt console-ptt', props.text || 'PTT');
-            node.type = 'button';
-            node.style.background = props.color || '#dc3545';
-            if (!canTx) {
-                node.disabled = true;
-                node.title = 'Listen-only (no TX permission)';
-            } else if (ch.adapter === 'zello') {
-                node.title = 'Opens the Zello widget for PTT';
-                node.addEventListener('click', function () {
-                    if (window.EventBus) { window.EventBus.emit('zello:toggle'); }
-                });
-            } else if (ch.adapter === 'dmr_bm' || ch.adapter === 'dmr_local') {
-                node.setAttribute('data-action', 'radio');
-                node.title = 'Opens the Radio widget for PTT';
-            } else {
-                node.disabled = true;
-                node.title = 'In-strip PTT arrives with the audio bus (Phase 114c)';
-            }
-        } else if (comp.type === 'text') {
-            node = el('div', 'ccp ccp-text');
-            var feed = el('div', 'console-strip-feed ccp-feed');
-            node.appendChild(feed);
-            if (caps.text_tx && canSend) {
-                var form = el('div', 'input-group input-group-sm console-send-row');
-                var inp = document.createElement('input');
-                inp.type = 'text';
-                inp.className = 'form-control form-control-sm';
-                inp.placeholder = 'Send…';
-                inp.maxLength = 500;
-                var sb = el('button', 'btn btn-sm btn-primary', null);
-                sb.type = 'button';
-                sb.appendChild(el('i', 'bi bi-send'));
-                form.appendChild(inp);
-                form.appendChild(sb);
-                node.appendChild(form);
-                var doSend = function () {
-                    var body = inp.value.replace(/^\s+|\s+$/g, '');
-                    if (!body) { return; }
-                    sb.disabled = true;
-                    fetch(API, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'send', id: ch.id, body: body, csrf_token: csrf })
-                    }).then(function (r) { return r.json(); }).then(function (j) {
-                        sb.disabled = false;
-                        if (j && j.ok) {
-                            inp.value = '';
-                            loadFeed(ch.id, feed);
-                        } else {
-                            var msg = (j && (j.error || (j.result && j.result.error))) || 'send failed';
-                            showFeedNotice(feed, 'Send failed: ' + msg);
-                        }
-                    }).catch(function () {
-                        sb.disabled = false;
-                        showFeedNotice(feed, 'Send failed: network error');
-                    });
-                };
-                sb.addEventListener('click', doSend);
-                inp.addEventListener('keydown', function (e) {
-                    if (e.key === 'Enter') { e.preventDefault(); doSend(); }
-                });
-            }
-            // Feed boxes are always visible in positioned strips — poll them.
-            openFeeds[ch.id] = feed;
-            loadFeed(ch.id, feed);
-        } else if (comp.type === 'monitor') {
-            // Phase 114b3 — REAL, wired to ConsoleAudio (console-audio.js).
-            var monSt = audioState(ch.id);
-            node = el('button', 'ccp ccp-btn console-mon-btn' + (monSt.mon ? ' active' : ''), props.text || 'Mon');
-            node.type = 'button';
-            node.title = monSt.mon
-                ? 'Monitor ON — audible at reduced volume while another channel is selected'
-                : 'Monitor OFF — silent while unselected';
-            node.setAttribute('aria-pressed', monSt.mon ? 'true' : 'false');
-            node.addEventListener('click', function () {
-                if (window.ConsoleAudio) { window.ConsoleAudio.setMon(ch.id, !window.ConsoleAudio.getState(ch.id).mon); }
-            });
-        } else if (comp.type === 'mute') {
-            var muteSt = audioState(ch.id);
-            node = el('button', 'ccp ccp-btn console-mute-btn' + (muteSt.muted ? ' active' : ''), props.text || 'Mute');
-            node.type = 'button';
-            node.title = muteSt.muted ? 'Muted — click to unmute' : 'Click to mute this channel';
-            node.setAttribute('aria-pressed', muteSt.muted ? 'true' : 'false');
-            node.addEventListener('click', function () {
-                if (window.ConsoleAudio) { window.ConsoleAudio.setMuted(ch.id, !window.ConsoleAudio.getState(ch.id).muted); }
-            });
-        } else if (comp.type === 'volume') {
-            var volSt = audioState(ch.id);
-            node = el('div', 'ccp ccp-volume');
-            var volInp2 = document.createElement('input');
-            volInp2.type = 'range';
-            volInp2.min = '0';
-            volInp2.max = '100';
-            volInp2.className = 'form-range console-volume-slider';
-            volInp2.value = String(volSt.volume);
-            volInp2.title = 'Volume';
-            volInp2.addEventListener('input', function () {
-                if (window.ConsoleAudio) { window.ConsoleAudio.setVolume(ch.id, volInp2.value); }
-            });
-            node.appendChild(volInp2);
-        } else {
-            // 'say' (TTS button) — no backend yet, honestly disabled.
-            node = el('button', 'ccp ccp-btn ccp-future-rt', props.text || 'Say');
-            node.type = 'button';
-            node.disabled = true;
-            node.title = 'Say (TTS) arrives with a future phase — no backend yet';
-        }
-        node.classList.add('console-comp');
-        node.style.position = 'absolute';
-        node.style.left = pct(comp.x || 0);
-        node.style.width = pct(comp.w || 12);
-        node.style.top = ((comp.y || 0) * INNER_CELL) + 'px';
-        node.style.height = ((comp.h || 1) * INNER_CELL) + 'px';
-        return node;
-    }
-
-    function renderPositionedStrip(ch, s) {
-        var ov = s.overrides || {};
-        var lay = s.layout || { x: 0, y: 0, w: 3, h: 14 };
-        var strip = el('div', 'console-strip console-strip-abs');
-        strip.setAttribute('data-channel-id', ch.id);
-        var accent = ov.color || ch.color;
-        if (accent) { strip.style.borderTopColor = accent; }
-        strip.style.left = pct(lay.x);
-        strip.style.width = 'calc(' + pct(lay.w) + ' - 8px)';
-        strip.style.top = (lay.y * OUTER_CELL) + 'px';
-        strip.style.height = (lay.h * OUTER_CELL) + 'px';
-
-        var inner = el('div', 'console-strip-inner');
-        var comps = s.components || [];
-        for (var i = 0; i < comps.length; i++) {
-            inner.appendChild(renderComponent(comps[i], ch));
-        }
-        strip.appendChild(inner);
-
-        // Select + Simulselect — universal chrome, overlaid at the strip
-        // level (not part of the designer-placed component set) so it's
-        // present regardless of what an admin chose to lay out inside.
-        var selChrome = buildSelectChrome(ch);
-        selChrome.classList.add('console-select-chrome-abs');
-        strip.appendChild(selChrome);
-
-        if ((parseInt(ch.enabled, 10) || 0) !== 1) {
-            strip.classList.add('console-strip-disabled');
-            strip.appendChild(el('div', 'console-strip-off-note', 'Channel disabled'));
-        }
-        if (ch.regulatory_class === 'amateur') {
-            var reg = el('div', 'console-strip-reg console-strip-reg-abs', 'AMATEUR');
-            reg.title = 'Amateur radio channel — station ID required';
-            // Phase 148 — see the identical comment in renderStrip() above.
-            if (ch.config && ch.config.dmr_channel_id) {
-                reg.setAttribute('data-dmr-channel-id', ch.config.dmr_channel_id);
-            }
-            strip.appendChild(reg);
-        }
-        return strip;
-    }
-
     // ── Bank render + refresh loop ───────────────────────────────
+    // Phase 152: both branches now render through the SAME renderStrip()
+    // — a designer-authored view supplies its own {overrides,show,hotkey,
+    // width} per strip (already the exact shape renderStrip() expects,
+    // straight from console_view_attach_strips()); the auto view
+    // synthesizes an equivalent template per channel via
+    // defaultShowTemplate(). The bank stays the plain flex-wrap flow
+    // (console.css's .console-bank/.console-strip-wide, unchanged) in
+    // BOTH cases — there is no more absolute-canvas mode.
     function renderBank() {
         bank.innerHTML = '';
         openFeeds = {};
@@ -725,27 +767,18 @@
         var rendered = 0;
 
         if (view) {
-            bank.classList.add('console-bank-abs');
-            var maxY = 0;
             for (var i = 0; i < view.strips.length; i++) {
                 var s = view.strips[i];
                 var ch = channelsById[s.channel_id];
                 if (!ch) { continue; } // channel removed since publish — fail soft
-                bank.appendChild(renderPositionedStrip(ch, s));
-                var lay = s.layout || {};
-                var bottom = (lay.y || 0) + (lay.h || 14);
-                if (bottom > maxY) { maxY = bottom; }
+                bank.appendChild(renderStrip(ch, s));
                 rendered++;
             }
-            bank.style.height = ((maxY + 1) * OUTER_CELL) + 'px';
             if (!rendered) {
-                bank.style.height = '';
                 bank.appendChild(el('div', 'text-body-secondary p-4',
                     'This view has no strips yet. Open the designer to add channels.'));
             }
         } else {
-            bank.classList.remove('console-bank-abs');
-            bank.style.height = '';
             if (activeView !== 'auto') {
                 // Saved tab no longer exists — fall back.
                 activeView = 'auto';
@@ -753,7 +786,8 @@
             }
             for (var k = 0; k < channels.length; k++) {
                 if (int0(channels[k].enabled) !== 1) { continue; } // auto view: enabled only
-                bank.appendChild(renderStrip(channels[k], null));
+                var autoCh = channels[k];
+                bank.appendChild(renderStrip(autoCh, { overrides: {}, show: defaultShowTemplate(autoCh.capabilities || {}), hotkey: null, width: 1 }));
                 rendered++;
             }
             if (!rendered) {
@@ -763,8 +797,33 @@
         }
         if (count) { count.textContent = String(rendered); }
         paintAudioState();
+        paintPatchState();
         renderSimulselectBar();
     }
+
+    // ── Hotkeys (Phase 152) ─────────────────────────────────────────
+    // A strip's optional hotkey (F1-F12 or a single character, assigned
+    // in the designer) toggles Select on that strip — the same real,
+    // already-wired action the Sel button drives. This is deliberately
+    // the SAME action for every strip regardless of launcher/real-PTT
+    // status: hardware-PTT/footswitch binding (console-hid.js, a later
+    // task) is a separate mechanism that will need to exclude launcher
+    // strips (data-launcher="1") from its own eligible-target set — see
+    // renderStrip()'s docblock — but a keyboard hotkey merely changing
+    // which channel has the operator's attention in the mix is safe and
+    // useful on a launcher strip too. Ignored while focus is in a text
+    // input/textarea so typing a message never triggers a strip switch.
+    document.addEventListener('keydown', function (e) {
+        if (!window.ConsoleAudio) { return; }
+        var t = e.target;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) { return; }
+        var key = String(e.key).toUpperCase().replace(/"/g, '');
+        var strip = bank.querySelector('[data-hotkey="' + key + '"]');
+        if (!strip) { return; }
+        e.preventDefault();
+        var chId = strip.getAttribute('data-channel-id');
+        window.ConsoleAudio.setSelected(chId, !window.ConsoleAudio.getState(chId).selected);
+    });
 
     // Phase 148 — FCC 97.119 badge live status. Makes the "AMATEUR — ID
     // required" badge (previously purely decorative — see
@@ -900,6 +959,20 @@
             .then(function (j) {
                 views = (j && j.views) || [];
                 myViews = (j && j.my_views) || [];
+                // If the operator has never explicitly picked a tab (no
+                // stored preference at all) and an admin has published at
+                // least one shared view, land on that view instead of the
+                // generic auto-generated "All Channels" fallback --
+                // otherwise every per-strip designer customization (label/
+                // accent-color overrides, show-flags) is invisible until the
+                // operator happens to click over to the named tab by hand.
+                // "All Channels" is itself a real, rememberable choice
+                // (hadStoredView is only false when the key was genuinely
+                // absent, never when it was explicitly set to 'auto') so an
+                // operator who deliberately prefers it is never overridden.
+                if (!hadStoredView && activeView === 'auto' && views.length) {
+                    activeView = String(views[0].id);
+                }
                 renderTabs();
                 if (then) { then(); }
             })
@@ -915,10 +988,20 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'sync', csrf_token: csrf })
-            }).then(function (r) { return r.json(); }).then(function () {
+            }).then(function (r) { return r.json(); }).then(function (j) {
                 syncBtn.disabled = false;
+                if (j && j.ok) {
+                    var r = j.result || {};
+                    showToast('success', 'Sync complete: ' + (r.created || 0) + ' created, '
+                        + (r.updated || 0) + ' updated, ' + (r.pruned || 0) + ' pruned.');
+                } else {
+                    showToast('danger', (j && j.error) || 'Sync failed.');
+                }
                 refresh(true);
-            }).catch(function () { syncBtn.disabled = false; });
+            }).catch(function () {
+                syncBtn.disabled = false;
+                showToast('danger', 'Sync failed (network error).');
+            });
         });
     }
 
@@ -957,6 +1040,74 @@
         window.ConsoleAudio.subscribe(function () { paintAudioState(); renderSimulselectBar(); });
         window.ConsoleAudio.load(); // fire-and-forget — subscribe() above repaints once it lands
     }
+
+    // Phase 152 persona review #1 (the veteran's strongest point): an
+    // operator's eyes are on the CAD/map during an incident, not the
+    // strip, so TX confirmation needs a real, fast (<300ms) TONE, and a
+    // disconnect needs a PERSISTENT alarm (sound + visual), not a quiet
+    // gray strip. Both fire off the browser-leg's own server-confirmed
+    // events (console-mic.js's tx_started/tx_ended and connection-state
+    // notifications) — never a client-side click alone, matching
+    // prerequisite #7's whole reason for existing.
+    var matrixAlarmBar = null;
+    function matrixAlarmEl() {
+        if (matrixAlarmBar) { return matrixAlarmBar; }
+        matrixAlarmBar = el('div', 'console-matrix-alarm d-none');
+        matrixAlarmBar.setAttribute('role', 'alert');
+        (document.getElementById('consoleSimulselectBar') || bank.parentNode || bank)
+            .parentNode.insertBefore(matrixAlarmBar, bank);
+        return matrixAlarmBar;
+    }
+    function beep(freq, ms) {
+        try {
+            var Ctx = window.AudioContext || window.webkitAudioContext;
+            var ctx = new Ctx();
+            var osc = ctx.createOscillator();
+            var gain = ctx.createGain();
+            osc.frequency.value = freq;
+            gain.gain.value = 0.15;
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            setTimeout(function () { osc.stop(); ctx.close(); }, ms);
+        } catch (e) { /* no Web Audio available — visual-only fallback below still fires */ }
+    }
+    if (window.ConsoleMatrix) {
+        window.ConsoleMatrix.subscribeTxState(function (chanId, tx) {
+            if (tx === 'started') { beep(880, 120); }
+        });
+        window.ConsoleMatrix.subscribeConnState(function (state) {
+            var bar = matrixAlarmEl();
+            if (state === 'disconnected') {
+                bar.textContent = 'Independent matrix audio DISCONNECTED — reconnecting… PTT/Monitor on Matrix Audio strips is silent until this clears.';
+                bar.classList.remove('d-none');
+                beep(220, 400);
+            } else if (state === 'connected') {
+                bar.classList.add('d-none');
+            }
+            // 'failed' (never-yet-connected, e.g. install has no matrix
+            // service deployed, or the operator declined the mic prompt)
+            // is deliberately silent here — it's the default, correct
+            // state on most installs today, not an alarm-worthy event.
+        });
+    }
+
+    // Patch rail (Console rebuild) — console-patch-rail.js emits these
+    // LOCAL (non-SSE) events on this same page; a light repaint, never a
+    // full renderBank(), so this never disrupts another strip's open text
+    // drawer or in-progress typing (see paintPatchState()'s own docblock).
+    // event-bus.js loads via inc/navbar.php's loadGlobal() (a dynamically-
+    // injected <script>, no ordering guarantee vs. this page's own static
+    // tags) — poll briefly rather than assume it's ready, same reasoning
+    // as console-patch-rail.js's own waitForEventBus().
+    (function waitForEventBusThen(triesLeft) {
+        if (window.EventBus) {
+            window.EventBus.on('console:selection-clear', paintPatchState);
+            window.EventBus.on('console:patches-changed', paintPatchState);
+            return;
+        }
+        if (triesLeft > 0) { setTimeout(function () { waitForEventBusThen(triesLeft - 1); }, 100); }
+    })(50);
 
     // Initial load: channels first (so the bank can render), then views.
     fetch(API + '?probe=1')

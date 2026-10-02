@@ -48,7 +48,31 @@ var EventBus = (function () {
         'facility:update',
         'chat:message',
         'message:new', 'message:broadcast',
-        'system:refresh'
+        'system:refresh',
+        // Phase 152 prerequisite #6 — a cross-class audio-matrix patch
+        // approaching its mandatory expiry. Wired here (the plumbing)
+        // ahead of any consumer on purpose, matching prerequisite #3's
+        // own console-mic.js/console-playback.js deferral — the
+        // countdown chip + one-click renew UI is Console-rebuild work;
+        // see tools/matrix_expiry_warning_tick.php / inc/sse.php's plain
+        // 'admin'-scope sse_publish() call for the publish side.
+        'comm:route_expiring',
+        // Phase 152 prerequisite #7 — fail-loud channel connect/disconnect
+        // + TX confirmation (api/matrix-channel-state.php, fired by
+        // services/audio-matrix/legs/browser.py the instant a session's WS
+        // actually opens/closes or the core actually starts/stops mixing
+        // its frames into a route). Same UI-deferred-to-Console-rebuild
+        // shape as comm:route_expiring above — the strip's "disconnected"
+        // visual and TX lamp don't exist yet.
+        'comm:channel_state', 'comm:tx_state',
+        // Console rebuild — the patch rail's live feed (api/matrix.php's
+        // create/update/delete/renew/group_create/group_break actions).
+        'comm:route_created', 'comm:route_updated', 'comm:route_removed',
+        'comm:group_created', 'comm:group_removed',
+        // Adjacent-transmit-mute acoustic proximity auto-discovery
+        // (assets/js/console-beacon.js) -- broadcast to every OTHER
+        // connected console session when someone starts a search.
+        'comm:beacon_request'
     ];
 
     function parseJSON(str) {

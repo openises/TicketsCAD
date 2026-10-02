@@ -13,7 +13,11 @@
  *                             the broker (action.send_chat or
  *                             action.console_tx)
  * POST action=update        — presentation overrides: label, short_label,
- *                             color, enabled, sort_order (console.design)
+ *                             color, enabled, sort_order (console.design);
+ *                             regulatory_class (amateur|commercial|pstn|
+ *                             internal) locks it against the next sync
+ *                             (Phase 152 prerequisite #1); pass
+ *                             regulatory_class_locked=0 alone to unlock
  * POST action=sync          — re-derive managed rows from config sources
  *                             (console.design)
  *
@@ -22,14 +26,22 @@
  */
 ini_set('display_errors', '0');
 
-require_once __DIR__ . '/auth.php';
+// CHANNELS_API_LIBRARY_ONLY (Console rebuild, Recall tab) — mirrors api/
+// owntracks-config.php's OT_CONFIG_LIBRARY_ONLY convention exactly: a
+// caller (tests/test_phase152_recall_tab.php, driving the real
+// channel_feed() rather than a hand-copied reimplementation) defines this
+// constant BEFORE require()ing this file to get channel_feed() and its
+// dependencies without auth.php's session/RBAC machinery (CLI-hostile)
+// or the HTTP dispatch below running at all.
 require_once __DIR__ . '/../inc/db.php';
 require_once __DIR__ . '/../inc/functions.php';
-require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/channel_registry.php';
-
-if (!rbac_can('screen.console') && !rbac_can('screen.settings')) {
-    json_error('Forbidden', 403);
+if (!defined('CHANNELS_API_LIBRARY_ONLY')) {
+    require_once __DIR__ . '/auth.php';
+    require_once __DIR__ . '/../inc/rbac.php';
+    if (!rbac_can('screen.console') && !rbac_can('screen.settings')) {
+        json_error('Forbidden', 403);
+    }
 }
 
 /**
@@ -56,7 +68,13 @@ function channel_feed(array $ch, $limit) {
                     'dir'  => $r['direction'],
                 ];
             }
-        } elseif ($ch['adapter'] === 'dmr_bm' && !empty($ch['config']['dmr_channel_id'])) {
+        } elseif (($ch['adapter'] === 'dmr_bm' || $ch['adapter'] === 'dmr_local') && !empty($ch['config']['dmr_channel_id'])) {
+            // Console rebuild (Recall tab) — dmr_local (114i exploration
+            // spike, no live rows on any install yet) shares dmr_bm's
+            // exact dmr_messages/config.dmr_channel_id shape but was never
+            // added to this branch's condition; found while building on
+            // this function for the first time, fixed in the same commit
+            // rather than left as a silent gap for whenever it IS wired up.
             foreach (db_fetch_all(
                 "SELECT call_started_at, radio_callsign, radio_id, transcript, direction
                    FROM `{$prefix}dmr_messages`
@@ -114,6 +132,8 @@ function channel_feed(array $ch, $limit) {
     }
     return array_reverse($items); // oldest first for display
 }
+
+if (defined('CHANNELS_API_LIBRARY_ONLY')) { return; }
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     try {
@@ -235,6 +255,27 @@ if ($action === 'update') {
     if (array_key_exists('sort_order', $input)) {
         $sets[] = 'sort_order = ?';  $args[] = (int) $input['sort_order'];
         $changed['sort_order'] = $args[count($args) - 1];
+    }
+    // Phase 152 prerequisite #1: regulatory_class is admin-configurable
+    // per channel, not fixed by adapter. Any manual set here locks it so
+    // channel_registry_sync() stops treating it as derived (see that
+    // function's docblock) -- otherwise the very next sync would silently
+    // revert the correction.
+    if (array_key_exists('regulatory_class', $input)) {
+        $v = (string) $input['regulatory_class'];
+        if (!in_array($v, ['amateur', 'commercial', 'pstn', 'internal'], true)) {
+            json_error('Invalid regulatory_class');
+        }
+        $sets[] = 'regulatory_class = ?';        $args[] = $v;
+        $sets[] = 'regulatory_class_locked = 1';
+        $changed['regulatory_class'] = $v;
+        $changed['regulatory_class_locked'] = 1;
+    } elseif (array_key_exists('regulatory_class_locked', $input)) {
+        // Explicit unlock (no class change) — hands the channel back to
+        // sync-derived classification on the next sync.
+        $sets[] = 'regulatory_class_locked = ?';
+        $args[] = $input['regulatory_class_locked'] ? 1 : 0;
+        $changed['regulatory_class_locked'] = end($args);
     }
     if (!$sets) { json_error('Nothing to update'); }
 

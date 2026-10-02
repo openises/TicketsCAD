@@ -577,8 +577,12 @@ p46_assert(
 // (no GPS) per OwnTracks docs. Layer D (incident-active) overrides
 // monitoring to Move when actually on a call.
 p46_assert(
+    // GH#152 (2026-09-28): OwnTracks's real scale is -1=Quiet, 0=Manual,
+    // 1=Significant, 2=Move — the baseline below was shifted up by one
+    // for years (literal value 2, which OwnTracks reads as Move) until
+    // that fix; 1 is the real Significant value.
     'owntracks-config.php — baseline uses Significant mode (low battery)',
-    preg_match("/'monitoring'\s*=>\s*2,\s*\n/s", $otCfgPhp2) === 1,
+    preg_match("/'monitoring'\s*=>\s*1,\s*\n/s", $otCfgPhp2) === 1,
     'baseline is not in Significant mode — off-duty members will drain battery'
 );
 p46_assert(
@@ -609,8 +613,11 @@ p46_assert(
     'Layer D never applies the 30s/5min incident-active spec'
 );
 p46_assert(
+    // GH#152: 2 is the real OwnTracks "Move" value (see the baseline
+    // assertion above) — this used to assert 3, a value OwnTracks has
+    // never had.
     'owntracks-config.php — Layer D flips monitoring to Move mode',
-    preg_match("/\\\$cfg\\['monitoring'\\]\s*=\s*3/", $otCfgPhp2) === 1,
+    preg_match("/\\\$cfg\\['monitoring'\\]\s*=\s*2/", $otCfgPhp2) === 1,
     'Layer D no longer escalates to Move — baseline is Significant, so without this Layer D wont actually use GPS'
 );
 p46_assert(

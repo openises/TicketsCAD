@@ -330,6 +330,46 @@ rrbv2_step("user_roles: backfill scope from org_id (org-scoped grants)",
     });
 
 // ─────────────────────────────────────────────────────────────────────
+// A10 — roles.is_super (Super Admin short-circuit flag)
+// ─────────────────────────────────────────────────────────────────────
+//
+// Moved to run BEFORE A8 (2026-10-01, caught by CI on a genuinely fresh
+// install, not reproduced on this project's own long-lived dev databases
+// -- see root-cause note below): A8's own admin_only privilege-tier guard
+// (a few hundred lines down) reads `rr.is_super` while mirroring an
+// admin_only old code's role_permissions rows onto its new canonical
+// code. On a fresh install this column does not exist until THIS step
+// runs, and this step used to sit AFTER A8 in file order, so the very
+// first permission with admin_only > 0 that A8 processes on a fresh
+// install threw "Unknown column 'rr.is_super'" -- every dev/training/
+// your deployment database this project actually runs against had already
+// passed this point in its migration history long before admin_only
+// existed at all, which is why nothing caught it until a truly fresh
+// install did. No dependency runs the other way: this block only touches
+// `roles`, which base_schema.sql already creates, and nothing before A8
+// needs is_super to not yet exist.
+
+rrbv2_step('roles.is_super column',
+    fn() => rrbv2_col_exists('roles', 'is_super'),
+    fn() => db_query("{$ALTER} TABLE `{$prefix}roles`
+                      ADD COLUMN `is_super` TINYINT(1) NOT NULL DEFAULT 0
+                      COMMENT 'Bypass all permission checks (Super Admin only)'
+                      AFTER `is_default`"));
+
+rrbv2_step('roles.is_super: set role_id=1 to super',
+    function () use ($prefix) {
+        try {
+            $val = (int) (db_fetch_value(
+                "SELECT is_super FROM `{$prefix}roles` WHERE id = 1"
+            ) ?? 0);
+            return $val === 1;
+        } catch (Throwable $e) { return false; }
+    },
+    function () use ($prefix) {
+        db_query("UPDATE `{$prefix}roles` SET is_super = 1 WHERE id = 1");
+    });
+
+// ─────────────────────────────────────────────────────────────────────
 // A8 — Insert canonical new permission codes; link old codes via alias
 // ─────────────────────────────────────────────────────────────────────
 //
@@ -578,30 +618,6 @@ rrbv2_step('permissions: repair cross-tier alias merges (A8 guard backfill)',
             db_query("UPDATE `{$prefix}permissions` SET deprecated_alias_of = NULL WHERE id = ?", [$row['id']]);
             echo "          un-linked {$row['old_code']} from {$row['new_code']} (privilege-tier mismatch)\n";
         }
-    });
-
-// ─────────────────────────────────────────────────────────────────────
-// A10 — roles.is_super (Super Admin short-circuit flag)
-// ─────────────────────────────────────────────────────────────────────
-
-rrbv2_step('roles.is_super column',
-    fn() => rrbv2_col_exists('roles', 'is_super'),
-    fn() => db_query("{$ALTER} TABLE `{$prefix}roles`
-                      ADD COLUMN `is_super` TINYINT(1) NOT NULL DEFAULT 0
-                      COMMENT 'Bypass all permission checks (Super Admin only)'
-                      AFTER `is_default`"));
-
-rrbv2_step('roles.is_super: set role_id=1 to super',
-    function () use ($prefix) {
-        try {
-            $val = (int) (db_fetch_value(
-                "SELECT is_super FROM `{$prefix}roles` WHERE id = 1"
-            ) ?? 0);
-            return $val === 1;
-        } catch (Throwable $e) { return false; }
-    },
-    function () use ($prefix) {
-        db_query("UPDATE `{$prefix}roles` SET is_super = 1 WHERE id = 1");
     });
 
 // ─────────────────────────────────────────────────────────────────────

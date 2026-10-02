@@ -100,24 +100,40 @@
  *   neither misses the reset.
  */
 
-// Tokens we recognize as date tokens. Map: token (without braces) →
-// PHP date() format character (or 'special' if computed differently).
-$INCNUM_DATE_TOKENS = [
-    'YYYY' => 'Y',
-    'YY'   => 'y',
-    'MM'   => 'm',
-    'DD'   => 'd',
-    'HH'   => 'H',
-    'JJJ'  => 'z+1',  // PHP z is 0-indexed; we add 1 and zero-pad to 3
-    'UU'   => 'W',
-];
+/**
+ * Tokens we recognize as date tokens. Map: token (without braces) →
+ * PHP date() format character (or 'special' if computed differently).
+ *
+ * GH#149 (rjonesbsink, 2026-09-18): this used to be a bare top-level
+ * assignment to this same variable name, read back in the two functions
+ * below via PHP's own `global` keyword naming it. `require`/`require_once`
+ * executes in the CALLING scope, so the first caller to pull this file in
+ * from inside a function body (api/config-admin.php and api/par.php both
+ * do) made that top-level assignment local to THAT function instead of the
+ * true global scope — every other caller's own `global` read of it then
+ * saw an undefined variable, and every date token silently fell through to
+ * the "unknown token, leave as literal text" branch. A function call has no
+ * such scope sensitivity, so this is now the one source of truth.
+ */
+function _incnum_date_tokens(): array
+{
+    return [
+        'YYYY' => 'Y',
+        'YY'   => 'y',
+        'MM'   => 'm',
+        'DD'   => 'd',
+        'HH'   => 'H',
+        'JJJ'  => 'z+1',  // PHP z is 0-indexed; we add 1 and zero-pad to 3
+        'UU'   => 'W',
+    ];
+}
 
 /**
  * Render the template. PURE — no DB side effects.
  */
 function incnum_render(string $template, int $sequence, ?int $timestamp = null): string
 {
-    global $INCNUM_DATE_TOKENS;
+    $INCNUM_DATE_TOKENS = _incnum_date_tokens();
     if ($timestamp === null) $timestamp = time();
 
     // First pass: stash escape sequences so they don't get interpreted
@@ -172,7 +188,7 @@ function incnum_render(string $template, int $sequence, ?int $timestamp = null):
  */
 function incnum_validate(string $template): array
 {
-    global $INCNUM_DATE_TOKENS;
+    $INCNUM_DATE_TOKENS = _incnum_date_tokens();
 
     $out = [
         'valid'        => true,

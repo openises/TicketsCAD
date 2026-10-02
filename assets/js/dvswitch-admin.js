@@ -123,6 +123,9 @@
             + '      <i class="bi bi-arrow-clockwise"></i></button>'
             + '    <button class="btn btn-xs btn-outline-danger dvs-delete" title="Delete">'
             + '      <i class="bi bi-trash"></i></button>'
+            + (enabled ? '' : (''
+            + '    <button class="btn btn-xs btn-outline-danger dvs-purge" title="Permanently Delete">'
+            + '      <i class="bi bi-trash3-fill"></i></button>'))
             + '  </td>'
             + '</tr>';
     }
@@ -135,6 +138,10 @@
             tr.querySelector('.dvs-test').addEventListener('click', function () { openTest(id); });
             tr.querySelector('.dvs-rotate').addEventListener('click', function () { rotateToken(id); });
             tr.querySelector('.dvs-delete').addEventListener('click', function () { deleteChannel(id); });
+            var purgeBtn = tr.querySelector('.dvs-purge');
+            if (purgeBtn) {
+                purgeBtn.addEventListener('click', function () { purgeChannel(id); });
+            }
         });
     }
 
@@ -295,6 +302,26 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 action: 'channel_delete',
+                csrf_token: csrf(),
+                id: id,
+            }),
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            if (d.error) { alert(d.error); return; }
+            loadChannels();
+        });
+    }
+
+    function purgeChannel(id) {
+        // GH#140 — only ever offered once the row is already disabled
+        // (soft-deleted); the server refuses otherwise regardless of what
+        // the button does.
+        if (!confirm('Permanently delete this channel? This cannot be undone -- '
+            + 'its call history and station-ID log entries will be removed too.')) return;
+        fetch('api/dvswitch.php', {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'channel_purge',
                 csrf_token: csrf(),
                 id: id,
             }),

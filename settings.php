@@ -3248,13 +3248,17 @@ foreach ($personnelSections as $sec) {
                                     <option value="usgs_topo">USGS — Topographic (US only)</option>
                                     <option value="usgs_imagery">USGS — Imagery (satellite, US only)</option>
                                     <option value="usgs_imagery_topo">USGS — Imagery + Topo (US only)</option>
-                                    <option value="cartodb_positron">CartoDB — Positron (light)</option>
-                                    <option value="cartodb_dark">CartoDB — Dark Matter</option>
                                     <option value="esri_street">Esri — Street</option>
                                     <option value="esri_sat">Esri — World Imagery (satellite)</option>
                                     <option value="esri_topo">Esri — Topographic</option>
                                 </optgroup>
                                 <optgroup label="Requires API key">
+                                    <!-- GH#150 (2026-09-21): CARTO now requires a free key for
+                                         raster basemaps.cartocdn.com tiles -- moved out of the
+                                         "no key" group above. See help.php's Tile Providers
+                                         section for how to get one. -->
+                                    <option value="cartodb_positron">CartoDB — Positron (light)</option>
+                                    <option value="cartodb_dark">CartoDB — Dark Matter</option>
                                     <option value="mapbox">Mapbox</option>
                                     <option value="custom">Custom URL (Azure Maps, etc.)</option>
                                 </optgroup>

@@ -307,7 +307,26 @@ if ($method === 'PATCH') {
     $primaryRequestedId  = $primaryFieldPresent ? $fields['primary_responder_id'] : null;
     unset($fields['primary_responder_id']);
 
-    if (empty($fields) && !$primaryFieldPresent) {
+    // GH#146 (rjonesbsink, 2026-09-15) -- status (and disposition_id) are
+    // dedicated actions too, same reasoning as primary_responder_id above: a
+    // status change runs real business logic (the close cascade, the
+    // scheduled-date requirement, the disposition-required-on-close
+    // enforcement gate) that a raw column UPDATE would skip entirely, so it
+    // routes through the SAME incident_update_status_internal() /
+    // incident_set_disposition_internal() functions the internal UI's
+    // update_status / set_disposition actions already use (api/incident-
+    // update.php), rather than silently riding along inside the generic
+    // field whitelist -- which is exactly how it was silently dropped
+    // before this fix (docs/EXTERNAL-API.md's own PATCH example used it).
+    $statusFieldPresent = array_key_exists('status', $fields);
+    $statusRequested    = $statusFieldPresent ? $fields['status'] : null;
+    unset($fields['status']);
+
+    $dispositionFieldPresent = array_key_exists('disposition_id', $fields);
+    $dispositionRequested    = $dispositionFieldPresent ? $fields['disposition_id'] : null;
+    unset($fields['disposition_id']);
+
+    if (empty($fields) && !$primaryFieldPresent && !$statusFieldPresent && !$dispositionFieldPresent) {
         ext_api_error('validation_failed', 422, ['errors' => ['no fields to update']]);
     }
 
@@ -369,6 +388,83 @@ if ($method === 'PATCH') {
                     $ticketId);
             }
         } catch (Exception $e) { /* SSE non-fatal */ }
+    }
+
+    // GH#146 -- status, mirroring api/incident-update.php's update_status
+    // action exactly: same gate, same writer, same audit-activity naming
+    // (close/reopen/update) so the SAME webhook mappings
+    // (incident.closed/incident.reopened) fire for an external-API-driven
+    // status change as for a dispatcher-driven one. A disposition_id sent
+    // ALONGSIDE a close (status=1) is handled by incident_update_status_
+    // internal() itself, same as the internal endpoint -- not double-
+    // processed by the standalone disposition branch below.
+    if ($statusFieldPresent) {
+        if (!rbac_can('action.close_incident')) {
+            ext_api_error('forbidden_rbac', 403, ['required' => 'action.close_incident']);
+        }
+        $newStatus = (int) $statusRequested;
+        $bookedDate = trim((string) ($input['booked_date'] ?? $fields['booked_date'] ?? ''));
+        $dispositionForClose = $dispositionFieldPresent ? (int) $dispositionRequested : null;
+
+        $priorStatus = (int) db_fetch_value(
+            "SELECT status FROM `{$prefix}ticket` WHERE id = ?", [$ticketId]);
+
+        $statusResult = incident_update_status_internal($ticketId, $newStatus, $userId,
+            ['booked_date' => $bookedDate, 'disposition_id' => $dispositionForClose]);
+        if (!empty($statusResult['errors'])) {
+            ext_api_error('validation_failed', 422, ['errors' => $statusResult['errors']]);
+        }
+        $fieldsChanged[] = 'status';
+        if ($dispositionFieldPresent && $newStatus === 1) {
+            $fieldsChanged[] = 'disposition_id';
+            $dispositionFieldPresent = false; // already handled above -- skip the standalone branch below
+        }
+
+        $statusLabels = [1 => 'Closed', 2 => 'Open', 3 => 'Scheduled'];
+        $auditActivity = ($newStatus === 1) ? 'close' : (($newStatus === 2 && $priorStatus === 1) ? 'reopen' : 'update');
+        audit_log('incident', $auditActivity, 'ticket', $ticketId,
+            "External API changed status on incident #{$ticketId}: "
+                . ($statusLabels[$priorStatus] ?? 'Unknown') . ' -> ' . ($statusLabels[$newStatus] ?? $newStatus),
+            [
+                'token_id'         => $GLOBALS['__ext_api_token_id'] ?? null,
+                'old_status'       => $priorStatus,
+                'new_status'       => $newStatus,
+                'cleared_assigns'  => (int) ($statusResult['cleared_assigns'] ?? 0),
+                'reset_responders' => (int) ($statusResult['reset_responders'] ?? 0),
+                'via_external_api' => true,
+            ]
+        );
+
+        try {
+            require_once __DIR__ . '/../../../inc/sse.php';
+            if (function_exists('sse_publish_for_incident')) {
+                $incNum = function_exists('incnum_display') ? incnum_display($ticketId) : null;
+                sse_publish_for_incident(($newStatus === 1) ? 'incident:close' : 'incident:update',
+                    ['ticket_id' => $ticketId, 'incident_number' => $incNum, 'new_status' => $newStatus,
+                     'status_label' => $statusLabels[$newStatus] ?? null, 'via' => 'external_api'],
+                    $ticketId);
+            }
+        } catch (Exception $e) { /* SSE non-fatal */ }
+    }
+
+    // GH#146 -- disposition_id as its OWN action, for setting/changing the
+    // disposition on an incident that ISN'T closing in the same request
+    // (mirrors api/incident-update.php's separate set_disposition action,
+    // gated the same way). When status=1 was ALSO sent above, that branch
+    // already handled it and cleared this flag.
+    if ($dispositionFieldPresent) {
+        if (!rbac_can('action.edit_incident')) {
+            ext_api_error('forbidden_rbac', 403, ['required' => 'action.edit_incident']);
+        }
+        $dispId = ($dispositionRequested !== null && $dispositionRequested !== '') ? (int) $dispositionRequested : null;
+        $dispResult = incident_set_disposition_internal($ticketId, $dispId, $userId, true);
+        if (!empty($dispResult['errors'])) {
+            ext_api_error('validation_failed', 422, ['errors' => $dispResult['errors']]);
+        }
+        $fieldsChanged[] = 'disposition_id';
+        // incident_set_disposition_internal() audits itself (matching
+        // incident_set_primary_internal()'s convention) -- no separate
+        // audit_log() call needed here.
     }
 
     $primaryResult = null;

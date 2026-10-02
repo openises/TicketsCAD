@@ -326,6 +326,29 @@ if (rbac_can('action.send_chat') && (is_admin() || rbac_can('action.manage_membe
                     <i class="bi bi-volume-up"></i>
                 </button>
 
+                <!-- Zello Widget Toggle — added 2026-09-08 alongside the
+                     widget's own CSS/template/JS globalization (see the
+                     comment above). The dashboard's own .ctrl-btn[data-
+                     action="zello"] button (app.js) and the command bar
+                     (command-bar.js) already toggle Zello via the SAME
+                     EventBus 'zello:toggle' event -- this reuses that one
+                     proven mechanism rather than adding a second,
+                     competing path (radio-widget.js's own docblock names
+                     the exact double-toggle bug that caused: two
+                     independent open/close paths firing on one click). No
+                     new listener needed in zello-widget.js; it already
+                     subscribes to this event. -->
+                <?php if (is_admin() || (function_exists('rbac_can') && rbac_can('action.zello_receive'))): ?>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="navZelloToggleBtn" title="Zello" aria-label="Open Zello widget">
+                    <i class="bi bi-megaphone"></i>
+                </button>
+                <script>
+                    document.getElementById('navZelloToggleBtn').addEventListener('click', function () {
+                        if (window.EventBus) { window.EventBus.emit('zello:toggle'); }
+                    });
+                </script>
+                <?php endif; ?>
+
                 <!-- Radio Widget Toggle — moved out of the dashboard's
                      Communications panel so the widget is reachable from
                      every page (Eric's 2026-06-16 request). The widget's
@@ -334,6 +357,80 @@ if (rbac_can('action.send_chat') && (is_admin() || rbac_can('action.manage_membe
                 <button type="button" class="btn btn-sm btn-outline-secondary" data-action="radio" title="Radio (DMR)" aria-label="Open radio widget">
                     <i class="bi bi-broadcast"></i>
                 </button>
+                <?php endif; ?>
+
+                <!-- Phone Widget Toggle (Phase 153, 2026-09-08) — browser-
+                     native WebRTC calling. Gated on screen.call_queue, the
+                     existing Phase 149 "works the phone" permission, since
+                     placing/receiving calls is the same operator population. -->
+                <?php if (is_admin() || (function_exists('rbac_can') && rbac_can('screen.call_queue'))): ?>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="navPhoneToggleBtn" title="Phone" aria-label="Open phone widget">
+                    <i class="bi bi-telephone"></i>
+                </button>
+                <script>
+                    document.getElementById('navPhoneToggleBtn').addEventListener('click', function () {
+                        if (window.EventBus) { window.EventBus.emit('phone:toggle'); }
+                        else if (window.PhoneWidget) { window.PhoneWidget.toggle(); }
+                    });
+                </script>
+                <?php endif; ?>
+
+                <!-- Simulselect group-transmit widget (2026-09-08, unification
+                     plan step 3, specs/phase-152-comms-console-v2/tasks.md).
+                     Gated on screen.console -- the same permission api/
+                     console-audio-prefs.php itself requires, and the same
+                     one that gates the full Console page this reuses state
+                     with. A separate, NEW, additive control per the
+                     3-persona design review's unanimous verdict: this NEVER
+                     touches the Zello/Radio widgets' own PTT buttons (those
+                     stay frozen), it only adds a second transmit path,
+                     driven by assets/js/console-audio.js's existing
+                     simulselect mechanism (already built for the full
+                     Console page) now reachable from any page. data-can-tx
+                     mirrors console.php's own $can_tx computation --
+                     console-simulselect-widget.js has no other way to know
+                     the operator's TX permission on a page that isn't
+                     console.php. -->
+                <?php if (is_admin() || (function_exists('rbac_can') && rbac_can('screen.console'))): ?>
+                <div class="dropdown" id="simulselectWidget" data-can-tx="<?php echo rbac_can('action.console_tx') ? '1' : '0'; ?>">
+                    <button type="button" class="btn btn-sm btn-outline-secondary position-relative" id="navSimulselectBtn"
+                            data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                            title="Group transmit (Simulselect)" aria-label="Group transmit">
+                        <i class="bi bi-broadcast-pin"></i>
+                        <span class="badge bg-danger rounded-pill d-none position-absolute top-0 start-100 translate-middle" id="navSimulselectBadge">0</span>
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end shadow p-2" id="navSimulselectPanel" style="width:280px">
+                        <!-- 2026-09-08 (Eric's request) -- ONLY this inner
+                             content div detaches, not the outer Bootstrap
+                             .dropdown-menu wrapper: Bootstrap's own Popper-
+                             based dropdown positioning JS expects to keep
+                             managing that wrapper's DOM relationship to the
+                             toggle button, and moving it into a different
+                             window would fight that. Detaching the content
+                             leaves an empty (but still Bootstrap-valid)
+                             dropdown behind, which is closed via
+                             navSimulselectBtn.disabled while detached (see
+                             console-simulselect-widget.js) so there's
+                             nothing confusing to reopen. -->
+                        <div id="simulselectPanelContent">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <div class="small text-body-secondary">Select channels to transmit on together, from any page.</div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 ms-2" id="simulselectDetach" title="Detach into its own window" aria-label="Detach group transmit into its own window">
+                                    <i class="bi bi-box-arrow-up-right"></i>
+                                </button>
+                            </div>
+                            <div id="simulselectChannelList">
+                                <div class="text-center text-body-secondary py-2 small">Loading&hellip;</div>
+                            </div>
+                            <div class="mt-2 pt-2 border-top">
+                                <div class="small text-body-secondary mb-1" id="simulselectTargetReadout">No channels selected.</div>
+                                <button type="button" class="btn btn-danger btn-sm w-100" id="simulselectPttBtn" disabled>
+                                    <i class="bi bi-mic-fill me-1"></i>Push to Talk
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <?php endif; ?>
 
                 <!-- Notification Tray -->
@@ -1059,6 +1156,36 @@ if (!preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/', $__pttC
      globally (same pattern as radio-widget.css just below). -->
 <link rel="stylesheet" href="assets/css/call-alert.css?v=<?php echo file_exists(__DIR__ . '/../assets/css/call-alert.css') ? filemtime(__DIR__ . '/../assets/css/call-alert.css') : newui_version(); ?>">
 
+<!-- Shared "detach into a real window" utility (2026-09-08, Eric's
+     request) -- used by the Zello widget, the Radio widget, and the
+     Simulselect widget below, each via their own "Detach" button. Must
+     load before all three. See the file's own docblock for exactly what
+     it can and can't do (a real OS-level always-on-top window via the
+     Document Picture-in-Picture API where the browser supports it;
+     otherwise an honest, non-always-on-top popup fallback). -->
+<script src="assets/js/window-detach.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/window-detach.js') ? filemtime(__DIR__ . '/../assets/js/window-detach.js') : newui_version(); ?>"></script>
+
+<!-- Zello Widget — moved from index.php/console.php's own ad-hoc,
+     per-page includes on 2026-09-08 (Eric's live report: console.php had
+     forgotten the CSS link entirely, and index.php carried its OWN
+     duplicated copy of #tpl-zello-widget that had already drifted out of
+     sync with inc/zello-widget-template.php once, GH#137). Radio got this
+     exact treatment on 2026-06-16 for the same "should survive page
+     navigation" reason -- this closes the gap for Zello. The proxy-port
+     meta tag moves here too: it was only ever rendered by the two pages
+     that manually included the widget, so any OTHER page reached via this
+     navbar would have silently fallen back to the hardcoded 8090 default
+     regardless of the real zello_proxy_port setting. Same 1024-65535
+     validation + 8090 fallback as proxy/zello-proxy.php's own read. -->
+<?php
+$__zelloProxyPort = (int) (function_exists('get_variable') ? (get_variable('zello_proxy_port') ?: 8090) : 8090);
+if ($__zelloProxyPort < 1024 || $__zelloProxyPort > 65535) { $__zelloProxyPort = 8090; }
+?>
+<meta name="zello-proxy-port" content="<?php echo e((string) $__zelloProxyPort); ?>">
+<link rel="stylesheet" href="assets/css/zello-widget.css?v=<?php echo file_exists(__DIR__ . '/../assets/css/zello-widget.css') ? filemtime(__DIR__ . '/../assets/css/zello-widget.css') : newui_version(); ?>">
+<?php include_once __DIR__ . '/zello-widget-template.php'; ?>
+<script src="assets/js/zello-widget.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/zello-widget.js') ? filemtime(__DIR__ . '/../assets/js/zello-widget.js') : newui_version(); ?>"></script>
+
 <!-- Radio Widget — moved from index.php so it's reachable from every
      page (Eric's 2026-06-16 request: widget should survive page
      navigation). The JS handles permission-gating on toggle. -->
@@ -1093,6 +1220,12 @@ if (!preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/', $__pttC
                         title="Mute incoming audio" aria-label="Mute incoming audio"
                         aria-pressed="false">
                     <i class="bi bi-volume-up-fill"></i>
+                </button>
+                <!-- 2026-09-08 (Eric's request) -- see assets/js/window-
+                     detach.js's own docblock; same mechanism as the Zello
+                     widget's own Detach button. -->
+                <button class="btn btn-sm btn-outline-secondary" id="radioDetach" title="Detach into its own window" aria-label="Detach Radio into its own window">
+                    <i class="bi bi-box-arrow-up-right"></i>
                 </button>
                 <button class="btn btn-sm btn-outline-secondary" id="radioMinimize" title="Minimize" aria-label="Minimize Radio">
                     <i class="bi bi-dash"></i>
@@ -1175,6 +1308,41 @@ if (!preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/', $__pttC
     </div>
 </template>
 <script src="assets/js/radio-widget.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/radio-widget.js') ? filemtime(__DIR__ . '/../assets/js/radio-widget.js') : newui_version(); ?>"></script>
+
+<!-- Phone Widget (Phase 153, 2026-09-08) — browser-native WebRTC calling.
+     Same globalized shape as Zello/Radio above: CSS + template + script
+     loaded once here, reachable from every page. JsSIP has no official
+     browser/UMD build in its npm package (no browser/unpkg/jsdelivr
+     package.json fields as of 3.10.1) -- assets/vendor/jssip/ is a bundle
+     built locally with esbuild; see that directory's PROVENANCE.txt. Must
+     load before phone-widget.js. -->
+<script src="assets/vendor/jssip/jssip-3.10.1.min.js?v=<?php echo file_exists(__DIR__ . '/../assets/vendor/jssip/jssip-3.10.1.min.js') ? filemtime(__DIR__ . '/../assets/vendor/jssip/jssip-3.10.1.min.js') : newui_version(); ?>"></script>
+<link rel="stylesheet" href="assets/css/phone-widget.css?v=<?php echo file_exists(__DIR__ . '/../assets/css/phone-widget.css') ? filemtime(__DIR__ . '/../assets/css/phone-widget.css') : newui_version(); ?>">
+<?php include_once __DIR__ . '/phone-widget-template.php'; ?>
+<script src="assets/js/phone-widget.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/phone-widget.js') ? filemtime(__DIR__ . '/../assets/js/phone-widget.js') : newui_version(); ?>"></script>
+
+<?php
+// Console select/monitor/mute/volume/simulselect pipeline -- moved from
+// console.php's own per-page includes on 2026-09-08 (unification plan
+// step 1/3, specs/phase-152-comms-console-v2/tasks.md) so the simulselect
+// widget just below can use it from any page, not just the full Console
+// page. console.php keeps its own registerChannels()/load() calls (its
+// strip bank still owns the full per-channel Select/Monitor/Mute/Volume
+// UI); this just makes the SAME underlying state reachable from a second,
+// smaller surface. Order matters: logic (pure functions) before audio
+// (DOM/network glue, reads window.ConsoleAudioLogic at load time) before
+// mic (the browser-leg session -- reads window.ConsoleWorkstation.
+// getToken() if present, but degrades fine without it; console-
+// workstation.js itself stays console.php-only, it has no role here).
+// None of these three files touch the DOM directly (verified before this
+// move -- see tests/test_console_audio_state.php's own structural guard),
+// so loading them on every page is safe.
+?>
+<script src="assets/js/console-audio-logic.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/console-audio-logic.js') ? filemtime(__DIR__ . '/../assets/js/console-audio-logic.js') : newui_version(); ?>"></script>
+<script src="assets/js/console-audio.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/console-audio.js') ? filemtime(__DIR__ . '/../assets/js/console-audio.js') : newui_version(); ?>"></script>
+<script src="assets/js/console-mic.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/console-mic.js') ? filemtime(__DIR__ . '/../assets/js/console-mic.js') : newui_version(); ?>"></script>
+<script src="assets/js/console-simulselect-widget.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/console-simulselect-widget.js') ? filemtime(__DIR__ . '/../assets/js/console-simulselect-widget.js') : newui_version(); ?>"></script>
+
 <!-- Shared map-defaults loader (one canonical source for all Leaflet map initializers) -->
 <script src="assets/js/map-defaults.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/map-defaults.js') ? filemtime(__DIR__ . '/../assets/js/map-defaults.js') : newui_version(); ?>"></script>
 <!-- Per-user map layer visibility. Loaded here, globally, for the same reason
