@@ -135,6 +135,15 @@ is rejected → the trunk is disabled → the PBX credentials are rejected → t
 PBX connection fails. Exit code 0 means every link works. Run it again any
 time something stops working.
 
+It tells the three ways of being refused apart (bridge 1.1.1 and later): only
+TicketsCAD's own answer, `bad bearer`, means the token is wrong. A 401 saying
+the header did not arrive means something in the path is removing it. Any other
+401 or 403 — a page from Cloudflare, nginx or a firewall — was never
+TicketsCAD's decision, and the message says what answered. A token pasted into
+`bridge.ini` with quote marks or spaces around it is cleaned before use, and the
+Setup window's placeholder (`PASTE-THE-TRUNK-TOKEN-HERE`) is caught before the
+network is tried.
+
 ### 3CX, step by step
 
 **First, check your licence.** 3CX's Call Control API — the only 3CX feature
@@ -236,7 +245,10 @@ gets built next — or run Asterisk/FreePBX in front of 3CX.
 |---|---|---|
 | Bridge column says **Waiting for bridge** | Bridge never started, or `ticketscad_url`/`bearer_token` is wrong | Run `--check` |
 | **Silent 12 min** | It was running, then stopped or lost its network | Restart it; check its log |
-| `--check`: *TicketsCAD rejected the bearer token* | Token mistyped, or rotated | Copy it exactly, or **Rotate Token** and paste the new one |
+| `--check`: *bearer_token still says PASTE-THE-TRUNK-TOKEN-HERE* | The Setup window did not hold the token (a trunk's token is shown only once) | Click **Rotate Token** on the trunk; the Setup window that opens has the new token filled in |
+| `--check`: *TicketsCAD rejected the bearer token (HTTP 403, answer: bad bearer)* | TicketsCAD itself received the token and does not know it: mistyped, rotated, or a different TicketsCAD installation than `ticketscad_url` points at | Check the address, or **Rotate Token** and use the Setup window |
+| `--check`: *the Authorization header did not arrive* (HTTP 401) | A web server or proxy between the bridge and TicketsCAD removes the header; the token has not been checked | Make it pass the `Authorization` header through to TicketsCAD |
+| `--check`: *HTTP 403 (or 401) … not TicketsCAD's own answer*, naming Cloudflare or a web server | A firewall, a Cloudflare bot rule or a reverse proxy blocked the request before TicketsCAD saw it; the token has not been checked | Allow the bridge machine through, or exclude `/api/sip-ingest.php` from that firewall's bot rules; the message quotes what answered |
 | `--check`: *HTTP 404* | `ticketscad_url` has a path on the end | Folder that contains `login.php` only |
 | `--check`: *that trunk is DISABLED* | Trunk switched off | Enable it on the Inbound Calls page |
 | `--check`: *3CX rejected the API credentials* | Wrong Client ID or API key | Re-check Integrations → API; the key is shown once — create a new client if lost |

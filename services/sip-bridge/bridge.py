@@ -76,6 +76,7 @@ import argparse
 import configparser
 import json
 import logging
+import re
 import socket
 import sys
 import threading
@@ -83,7 +84,7 @@ import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-BRIDGE_VERSION = "1.1.0"
+BRIDGE_VERSION = "1.1.1"
 
 try:
     import requests
@@ -143,6 +144,19 @@ DEFAULT_CONFIG = {
 
 INGEST_PATH = "/api/sip-ingest.php"
 
+# What the Inbound Calls Setup window writes on the bearer_token line when it does not hold the token
+# (TicketsCAD shows a trunk's token only once, when it is created or rotated).
+PLACEHOLDER_TOKEN = "PASTE-THE-TRUNK-TOKEN-HERE"
+
+
+def clean_token(value):
+    """A pasted token with spaces or one pair of quote marks around it is still the same token; the quote
+    marks are not part of it. Left in, they make TicketsCAD answer 403 'bad bearer' for a correct token."""
+    token = (value or "").strip()
+    if len(token) >= 2 and token[0] == token[-1] and token[0] in ("'", '"'):
+        token = token[1:-1].strip()
+    return token
+
 
 def load_config(args):
     cfg = dict(DEFAULT_CONFIG)
@@ -173,6 +187,7 @@ def load_config(args):
     for key, value in overrides.items():
         if value is not None:
             cfg[key] = value
+    cfg["bearer_token"] = clean_token(cfg.get("bearer_token"))
     return cfg
 
 
@@ -590,6 +605,56 @@ def run_webhook_bridge(cfg, log, stop_event, status=None):
 #  Heartbeat (Phase 155)
 # ─────────────────────────────────────────────────────────────
 
+def _answer_snippet(resp, limit=140):
+    """The start of whatever answered, for an administrator: an HTML page's <title> if it has one, otherwise
+    its text with the tags removed. Never includes anything this bridge sent (the token is only ever in a
+    request header)."""
+    text = resp.text or ""
+    title = re.search(r"<title[^>]*>(.*?)</title>", text, re.IGNORECASE | re.DOTALL)
+    if title:
+        text = title.group(1)
+    text = re.sub(r"<[^>]+>", " ", text)
+    # It is printed to an administrator's terminal and came from a server we do not control: drop control
+    # characters (an ESC would start a terminal escape sequence) before anything else.
+    text = re.sub(r"[\x00-\x1f\x7f]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:limit] if text else "(empty)"
+
+
+def explain_http_rejection(resp, url):
+    """Words for an administrator when TicketsCAD's ingest address answers 401 or 403.
+
+    Only TicketsCAD itself says {"error": "bad bearer"} (403) or {"error": "Bearer token required"} (401). Any
+    other 401/403 -- a firewall, Cloudflare, a reverse proxy, a web-server rule -- was never TicketsCAD's
+    decision, and blaming the token for it sends the administrator after the wrong thing."""
+    status = resp.status_code
+    error = None
+    try:
+        body = resp.json()
+        if isinstance(body, dict):
+            error = body.get("error")
+    except ValueError:
+        pass
+
+    if status == 403 and error == "bad bearer":
+        return ("TicketsCAD rejected the bearer token (HTTP 403, answer: bad bearer). It received the token and "
+                "does not recognise it. Check that bearer_token in bridge.ini is the real token (not "
+                + PLACEHOLDER_TOKEN + ") with no extra characters, and that ticketscad_url is the same "
+                "TicketsCAD installation where the trunk was created. Or click Rotate Token on the Inbound Calls "
+                "page and use its Setup window, which fills in the new token.")
+    if status == 401 and error == "Bearer token required":
+        return ("TicketsCAD answered HTTP 401 (answer: Bearer token required): the Authorization header did not "
+                "arrive. Something between this machine and TicketsCAD is removing it -- some web-server and "
+                "proxy setups do. The token itself has not been checked yet.")
+
+    server = (resp.headers.get("Server") or "").strip()
+    cloudflare = "cloudflare" in server.lower() or "CF-RAY" in resp.headers
+    source = "Cloudflare" if cloudflare else ("a server identifying as '%s'" % server if server else "a web server or proxy")
+    return ("HTTP %d from %s, but not TicketsCAD's own answer -- %s is blocking the request before it reaches "
+            "TicketsCAD, so the token has not been checked. Ask whoever runs that firewall or proxy to allow "
+            "this machine to reach %s. It said: %s" % (status, url, source, INGEST_PATH, _answer_snippet(resp)))
+
+
 def send_heartbeat(cfg):
     """POST one heartbeat. Returns (ok, detail, reply_dict_or_None). Never
     raises. `detail` is phrased for an administrator."""
@@ -606,9 +671,7 @@ def send_heartbeat(cfg):
     except requests.RequestException as exc:
         return False, "cannot reach TicketsCAD at %s (%s)" % (url, exc), None
     if resp.status_code in (401, 403):
-        return False, ("TicketsCAD rejected the bearer token (HTTP %d). Copy the token exactly as it was "
-                       "shown when the trunk was created, or use Rotate Token on the Inbound Calls page "
-                       "and paste the new one." % resp.status_code), None
+        return False, explain_http_rejection(resp, url), None
     if resp.status_code == 404:
         return False, ("HTTP 404 from %s -- ticketscad_url should be the folder that contains login.php "
                        "(for example https://cad.example.org/newui), with no /api/... on the end." % url), None
@@ -667,6 +730,11 @@ def run_check(cfg):
     if not cfg.get("bearer_token"):
         say(False, "bearer_token is empty -- mint one in Settings > Communications & Integrations > "
                    "Inbound Calls (SIP/PBX), then paste it into bridge.ini")
+        return 1
+    if cfg["bearer_token"].upper().startswith("PASTE"):
+        say(False, "bearer_token still says %s -- replace it with the real token. TicketsCAD shows a trunk's "
+                   "token only once; if you no longer have it, click Rotate Token on the Inbound Calls page and "
+                   "use its Setup window, which writes the new token into bridge.ini for you" % PLACEHOLDER_TOKEN)
         return 1
     say(True, "bearer_token is set")
 

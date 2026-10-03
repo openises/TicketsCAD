@@ -2,10 +2,10 @@
     "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
     "bomFormat": "CycloneDX",
     "specVersion": "1.6",
-    "serialNumber": "urn:uuid:7cac98cd-c222-5931-8620-90cb9410bc50",
-    "version": 48,
+    "serialNumber": "urn:uuid:3400264b-2a1f-5dd6-b6dc-2552b2d0d404",
+    "version": 49,
     "metadata": {
-        "timestamp": "2026-10-03T03:16:10Z",
+        "timestamp": "2026-10-03T22:46:18Z",
         "lifecycles": [
             {
                 "phase": "pre-build"
@@ -52,7 +52,7 @@
         "properties": [
             {
                 "name": "ticketscad:content-digest",
-                "value": "91206f24beb1e19028828e7bb9c6f506951ec58295eb99459356a7a9d2cc1aa8"
+                "value": "f10721f440bd989ac202695d92d6b8c98fc9d6ee3f5c342a757790ee2225dee8"
             },
             {
                 "name": "ticketscad:standard",
@@ -3036,7 +3036,7 @@
             "type": "library",
             "bom-ref": "pkg:pypi/requests#python-services",
             "name": "requests",
-            "description": "Used by: assets/js/mesh-console.js, services/meshtastic/bridge.py, services/meshtastic/bridge_v2.py, services/meshtastic/requirements.txt, services/sip-bridge/bridge.py, services/sip-bridge/requirements.txt (+2 more)",
+            "description": "Used by: assets/js/mesh-console.js, services/meshtastic/bridge.py, services/meshtastic/bridge_v2.py, services/meshtastic/requirements.txt, services/sip-bridge/bridge.py, services/sip-bridge/requirements.txt (+3 more)",
             "scope": "required",
             "licenses": [
                 {

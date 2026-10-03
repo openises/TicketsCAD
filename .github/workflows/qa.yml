@@ -290,7 +290,7 @@ jobs:
         run: |
           set -e
           python3 -m pip install --quiet -r services/sip-bridge/requirements.txt
-          for t in test_threecx_tracker test_bridge_threecx_e2e test_bridge_config test_ami_tracker; do
+          for t in test_threecx_tracker test_bridge_threecx_e2e test_bridge_config test_ami_tracker test_bridge_diagnostics; do
             echo "── $t ──"
             python3 "services/sip-bridge/tests/$t.py"
           done
