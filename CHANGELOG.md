@@ -59,6 +59,14 @@ turns them on.
 
 ### Fixed
 
+- **The SIP/PBX bridge's `--check` blamed the token for every refusal.** It said "rejected the bearer
+  token" for any HTTP 401 or 403, including one from a firewall, Cloudflare or a reverse proxy that never
+  reached TicketsCAD. Bridge 1.1.1 says what actually answered: only TicketsCAD's own `bad bearer` means
+  the token is wrong, a 401 means the Authorization header never arrived, and anything else is named as a
+  block in front of TicketsCAD (with the page title and the path to allow through). It also catches the
+  Setup window's `PASTE-THE-TRUNK-TOKEN-HERE` placeholder before trying the network, and ignores quote
+  marks or spaces around a token pasted into `bridge.ini`. Update with `git pull`; `--check` then prints
+  `bridge 1.1.1`.
 - **Email-list recipients never worked** in notifications (the engine read a column that does not exist
   and the error was swallowed), `{incident_type}` was blank in every notification, and the severity and
   incident-type filters were ignored for "unit assigned".
