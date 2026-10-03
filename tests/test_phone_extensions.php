@@ -214,7 +214,8 @@ t('phone-widget.js resolves its own extension via my_extension, not any admin-on
 t('phone-widget.js reads the workstation token via window.ConsoleWorkstation (Phase 152\'s convention)',
     strpos($widgetJs, 'ConsoleWorkstation.getToken') !== false);
 t('phone-widget.js persists its open/closed state across navigation (Zello\'s own 2026-09-08 fix, applied from day one here)',
-    strpos($widgetJs, "localStorage.getItem('phone_widget_open')") !== false
+    (strpos($widgetJs, "storageGet('phone_widget_open')") !== false || strpos($widgetJs, "localStorage.getItem('phone_widget_open')") !== false)
+    && strpos($widgetJs, "storageSet('phone_widget_open', '1')") !== false
     && strpos($widgetJs, "wasOpen") !== false);
 
 $navbar = (string) @file_get_contents('inc/navbar.php');

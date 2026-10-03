@@ -41,6 +41,7 @@ require_once __DIR__ . '/config.php';
     <title>Public Incident Board</title>
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="assets/css/branding.css?v=<?php echo is_file(__DIR__ . '/assets/css/branding.css') ? filemtime(__DIR__ . '/assets/css/branding.css') : newui_version(); ?>">
     <!-- Leaflet's CSS/JS (~160 KB combined) is loaded ON DEMAND by
          pbInitMapIfNeeded() below, the first time a visitor toggles "Show
          map" — NOT unconditionally here. Value/mission review finding
@@ -82,6 +83,9 @@ require_once __DIR__ . '/config.php';
 </noscript>
 <div class="pb-wrap">
     <header class="pb-header mb-3">
+        <!-- GH#142 (Phase 155): the agency logo, filled in by pbApplyLogo() ONLY when
+             the API sends a logo_url of the exact capability shape. Empty otherwise. -->
+        <div id="pbLogoWrap" class="mb-2" style="display:none;"></div>
         <h1 id="pbTitle">Active Incidents</h1>
         <div id="pbStatus" class="text-body-secondary small" aria-live="off">Loading…</div>
     </header>
@@ -326,7 +330,28 @@ require_once __DIR__ . '/config.php';
         return null;
     }
 
+    /**
+     * GH#142 (Phase 155) -- the board header logo. PURE: returns the validated
+     * relative URL, or ''. The ONLY accepted shape is the capability URL
+     * api/branding-logo.php?k=<32 lowercase hex>; anything else (an absolute URL,
+     * a data: or javascript: URL, a path with ..) is dropped, so an upstream bug
+     * can never turn this into an arbitrary-image or script vector.
+     */
+    function pbLogoUrl(board) {
+        var u = board && board.logo_url;
+        if (typeof u !== 'string') return '';
+        return /^api\/branding-logo\.php\?k=[a-f0-9]{32}$/.test(u) ? u : '';
+    }
+
+    function pbLogoAlt(board) {
+        var a = board && board.logo_alt;
+        if (typeof a !== 'string') return '';
+        return a.length > 100 ? a.substring(0, 100) : a;
+    }
+
     var PublicBoardRender = {
+        logoUrl: pbLogoUrl,
+        logoAlt: pbLogoAlt,
         locationText: pbLocationText,
         metaText: pbMetaText,
         createCard: pbCreateCard,
@@ -364,7 +389,26 @@ require_once __DIR__ . '/config.php';
         while (el.firstChild) el.removeChild(el.firstChild);
     }
 
+    /** Set (or clear) the header logo with DOM methods only -- never innerHTML. */
+    function pbApplyLogo(board) {
+        var wrap = document.getElementById('pbLogoWrap');
+        if (!wrap) return;
+        pbClearChildren(wrap);
+        var url = pbLogoUrl(board);
+        if (!url) {
+            wrap.style.display = 'none';
+            return;
+        }
+        var img = document.createElement('img');
+        img.className = 'branding-logo branding-logo-light branding-size-public';
+        img.setAttribute('src', url);
+        img.setAttribute('alt', pbLogoAlt(board));
+        wrap.appendChild(img);
+        wrap.style.display = '';
+    }
+
     function pbRenderBoard(data) {
+        pbApplyLogo(data && data.board);
         var cardsEl = document.getElementById('pbCards');
         var emptyEl = document.getElementById('pbEmpty');
         if (!cardsEl) return;

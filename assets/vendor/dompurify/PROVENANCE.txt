@@ -1,0 +1,26 @@
+purify.min.js
+=============
+
+Source:  DOMPurify 3.4.16 (https://www.npmjs.com/package/dompurify), by Cure53 and
+         contributors. Dual licensed Apache-2.0 OR MPL-2.0 (both licence texts are in
+         this folder: LICENSE and LICENSE-MPL).
+Fetched: 2026-10-02, unmodified, from the npm tarball:
+             npm pack dompurify@3.4.16
+             tar -xzf dompurify-3.4.16.tgz
+             cp package/dist/purify.min.js  assets/vendor/dompurify/purify.min.js
+         npm integrity: sha512-sqo+pNp3qRhCIpbgRi1y8Tgk27Bo2Ry7w0dC1NBeNTdZChWjz9Xb/KOoZbRP/R6pQZ80Qw8YhXw13hWWBbMRnQ==
+         purify.min.js sha256: 2c90a9b46d6463f26038a29b686e82bc91de01fdac9d5229e7cfe3b360134ea2
+
+Why it is here: assets/js/sop.js renders author-written markdown with `marked` and
+assigned the result straight to innerHTML. `marked` does not sanitise, so
+<img onerror=...>, <script> and [x](javascript:...) reached the page; a user holding
+action.manage_sop (a broad grant) could run script in an administrator's browser.
+renderMarkdown() now passes everything through DOMPurify and, if DOMPurify is not
+loaded, falls back to escaped plain text (fail closed) rather than unsanitised HTML.
+
+Vendored, not loaded from a CDN, for the same two reasons as marked: groups run fully
+disconnected, and an unpinned CDN file changes our code without a commit here.
+
+To upgrade: `npm pack dompurify@<version>`, replace purify.min.js, update the version
+and hashes above and the SBOM entry in tools/generate-sbom.php, then run
+tests/test_gh_sop_xss.php.

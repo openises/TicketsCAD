@@ -312,13 +312,36 @@ function assign_set_rec_facility(int $assignId, int $facilityId, int $userId): v
  *                             Multi-Assign WARN gate (an operator has
  *                             already confirmed "assign anyway?"). Never
  *                             bypasses a hard BLOCK (dispatch level 2).
+ * @param array  $opts       GH#141 (Phase 155):
+ *                             'dispatch_now'     => true  skip the reservation
+ *                               branch and dispatch immediately even to a
+ *                               Scheduled incident (an explicit "send it now").
+ *                             'from_reservation' => int    set ONLY by
+ *                               assign_reservations_promote_one(): the
+ *                               reservation being promoted into this dispatch.
+ *                               Skips the reservation branch (it would otherwise
+ *                               just re-reserve).
+ *                             'notify'           => false  do NOT fire the `unit_assign`
+ *                               Notification Rules event (Phase 155, GH#144).
+ *                               incident_create_internal() passes this for each
+ *                               unit of a multi-unit create and fires ONE batched
+ *                               event after its loop, so a three-unit dispatch is
+ *                               one message, not three. Default: fire it.
  * @return array ['id' => <assignId>, 'errors' => []]
  *             or ['errors' => [...]]  (hard block, or a genuine failure)
  *             or ['errors' => [], 'needs_confirmation' => true, 'message' => ...]
  *               (WARN level reached and $force was false — caller should
  *               prompt and retry with $force = true; no row was created)
+ *             or ['id' => 0, 'reserved' => true, 'reservation_id' => N,
+ *                 'promotes_at' => ..., 'conflicts' => [...], 'errors' => []]
+ *               (GH#141: scheduled_assign_mode = 'reserve' and the incident is
+ *               Scheduled with its booked time still ahead -- the unit was
+ *               RESERVED, not dispatched: no assigns row, status untouched.
+ *               EVERY caller must handle this; id is 0, never a real
+ *               assignment. tests/test_gh141_callers_handle_reserved.php fails
+ *               a caller that does not.)
  */
-function assign_create_internal(int $ticketId, int $responderId, string $role, int $userId, bool $force = false): array {
+function assign_create_internal(int $ticketId, int $responderId, string $role, int $userId, bool $force = false, array $opts = []): array {
     if ($ticketId <= 0)    return ['errors' => ['Invalid ticket ID']];
     if ($responderId <= 0) return ['errors' => ['Invalid responder ID']];
 
@@ -367,6 +390,26 @@ function assign_create_internal(int $ticketId, int $responderId, string $role, i
     }
     if ($existing) {
         return ['errors' => ['Responder is already assigned to this incident']];
+    }
+
+    // GH#141 (Phase 155) — a unit assigned to a SCHEDULED incident whose booked
+    // time is still ahead is RESERVED, not dispatched, when the admin has set
+    // "Units assigned to Scheduled incidents" to reserve. Decided here, inside
+    // the one writer, so every caller (the dispatcher screen, the External API,
+    // and the units given to incident_create_internal()) behaves identically.
+    // 'immediate' (the default, and what an unmigrated install gets) falls
+    // straight through: today's behaviour, byte for byte. A reservation failure
+    // other than "already reserved" must never block dispatch, so a thrown error
+    // falls through to the ordinary path.
+    if (empty($opts['from_reservation']) && empty($opts['dispatch_now'])) {
+        try {
+            require_once __DIR__ . '/assign-reservations.php';
+            if (assign_reservation_mode() === 'reserve' && assign_reservation_wanted($ticketId)) {
+                return assign_reserve_internal($ticketId, $responderId, $role, $userId);
+            }
+        } catch (Throwable $e) {
+            error_log('[assignment-write] reservation branch failed, dispatching immediately: ' . $e->getMessage());
+        }
     }
 
     // GH#82 / GH#83 — dispatch-level + Multi-Assign gate. Runs AFTER the
@@ -462,8 +505,20 @@ function assign_create_internal(int $ticketId, int $responderId, string $role, i
         error_log('[assignment-write] auto primary-unit population: ' . $e->getMessage());
     }
 
+    // Phase 155 (GH#144) — Notification Rules: unit dispatched. Fired HERE, in the
+    // writer, so every dispatch path (incident page, the external API, units ticked
+    // on the New Incident form) notifies - the endpoint hook it replaces only ever
+    // covered api/incident-assign.php. Never throws; queues, never sends inline.
+    if (!isset($opts['notify']) || $opts['notify'] !== false) {
+        require_once __DIR__ . '/notification-hook.php';
+        notification_hook('unit_assign', [
+            'ticket_id' => $ticketId, 'responder_id' => $responderId, 'responder_name' => (string) $respName,
+        ]);
+    }
+
     return [
         'id'     => $assignId,
+        'responder_name' => (string) $respName,
         'errors' => [],
     ];
 }
@@ -490,6 +545,7 @@ function assign_update_status_internal(int $assignId, $newStatusInput, int $user
 
     $prefix = $GLOBALS['db_prefix'] ?? '';
     $now    = date('Y-m-d H:i:s');
+    $unitCleared = false;   // Phase 155: fire `unit_clear` once the whole update has succeeded
 
     // Normalize input: integer → numeric path, string → named path
     $newStatusId = 0;
@@ -644,6 +700,7 @@ function assign_update_status_internal(int $assignId, $newStatusInput, int $user
                 [$now, $clearStatus, $assignId]
             );
             _assign_log_action($ticketId, $respName . ' cleared', 23, $userId);
+            $unitCleared = true;
             // ONLY revert the responder's own overall status if no other
             // active assignments.
             if (!_assign_has_other_active($responderId, $assignId)) {
@@ -811,6 +868,16 @@ function assign_update_status_internal(int $assignId, $newStatusInput, int $user
 
     _assign_touch_ticket($ticketId);
 
+    // Phase 155 (GH#144) — Notification Rules: unit cleared. Only the explicit
+    // clear of ONE assignment; the incident-close cascade (incident_clear_stragglers)
+    // deliberately does not fire it - the Incident closed event covers that.
+    if ($unitCleared) {
+        require_once __DIR__ . '/notification-hook.php';
+        notification_hook('unit_clear', [
+            'ticket_id' => $ticketId, 'responder_id' => $responderId, 'responder_name' => (string) $respName,
+        ]);
+    }
+
     return [
         'status' => $newStatus,
         'errors' => [],
@@ -911,6 +978,12 @@ function assign_unassign_internal(int $assignId, int $userId): array {
     } catch (Throwable $e) {
         error_log('[assignment-write] primary-unit clear-on-unassign: ' . $e->getMessage());
     }
+
+    // Phase 155 (GH#144) — Notification Rules: unit removed from the incident.
+    require_once __DIR__ . '/notification-hook.php';
+    notification_hook('unit_clear', [
+        'ticket_id' => $ticketId, 'responder_id' => $responderId, 'responder_name' => (string) $respName,
+    ]);
 
     return [
         'unassigned' => true,

@@ -56,6 +56,25 @@ $canManageMajor = function_exists('rbac_can') ? rbac_can('action.link_major') : 
 // routine link-to-an-existing-event (action.link_major). See
 // specs/phase-86-major-events/changes.md.
 $canCreateMajorEvent = function_exists('rbac_can') ? rbac_can('action.create_major_event') : false;
+
+// GH#142 (Phase 155) — print THIS incident's owning organization's letterhead
+// (not the viewer's) when the viewer is allowed to see the incident at all; the
+// navbar reads $branding_print_org_id. The visibility check matters: without it
+// "?id=N" on an incident the viewer cannot open would still print the owner's
+// logo and so disclose which organization owns incident N.
+$branding_print_org_id = 0;
+if (!empty($_GET['id'])) {
+    require_once __DIR__ . '/inc/org-scope.php';
+    require_once __DIR__ . '/inc/branding.php';
+    if (org_can_see_ticket((int) $_GET['id'])) {
+        $branding_print_org_id = branding_incident_org_id((int) $_GET['id']);
+    }
+}
+// GH#148 (Phase 155) -- towing / roadside dispatch. OFF by default on every install: with the feature off (or the
+// tables missing, or the caller lacking action.dispatch_vendor) this page gains NOTHING -- no button, no card, no
+// dialog markup, no stylesheet, no script tag, no request. Deliberately rbac_can() alone (never `|| is_admin()`).
+require_once __DIR__ . '/inc/vendor-dispatch.php';
+$vendorDispatchOn = function_exists('rbac_can') && rbac_can('action.dispatch_vendor') && vendor_enabled();
 ?>
 <!DOCTYPE html>
 <html lang="<?php echo e(i18n_lang()); ?>" data-bs-theme="<?php echo $bs_theme; ?>">
@@ -73,6 +92,9 @@ $canCreateMajorEvent = function_exists('rbac_can') ? rbac_can('action.create_maj
     <!-- App CSS -->
     <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo newui_version(); ?>">
     <link rel="stylesheet" href="assets/css/incident-detail.css?v=<?php echo newui_version(); ?>">
+<?php if ($vendorDispatchOn): ?>
+    <link rel="stylesheet" href="assets/css/vendor-dispatch.css?v=<?php echo asset_v('assets/css/vendor-dispatch.css'); ?>">
+<?php endif; ?>
 
     <!-- Print CSS -->
     <link rel="stylesheet" href="assets/css/print.css" media="print">
@@ -168,17 +190,30 @@ $canCreateMajorEvent = function_exists('rbac_can') ? rbac_can('action.create_maj
                     title="Share this incident with another organization">
                 <i class="bi bi-share me-1"></i>Share&hellip;
             </button>
-            <?php if (is_admin() || (function_exists('rbac_can') && rbac_can('action.dispatch_unit'))): ?>
-            <!-- Phase 153 (2026-09-08) — mock AllStar relay. Simulates
-                 calling a responder over ham radio: relays a short spoken
-                 incident summary to the mock AllStar node and reports
-                 back real, measured proof of audible delivery (duration +
-                 RMS), not just a bare success flag. RBAC reuses
-                 action.dispatch_unit (this is a dispatch action, not a new
-                 capability area) -- api/allstar-relay.php re-checks it. -->
+            <?php
+            // Phase 153 built this as a MOCK: it relays a spoken incident summary to a
+            // plain Asterisk TEST node and measures the recording that comes back. It is
+            // not AllStarLink and no radio is involved. Phase 155 (GH#108 S5) stopped it
+            // advertising otherwise: the button exists only where an administrator has
+            // switched the test relay on (allstar_relay_enabled, default OFF), is gated
+            // on the SAME permission the endpoint re-checks (action.dispatch_unit, no
+            // is_admin() fallback -- Super Admin passes rbac_can() on its own), and is
+            // labelled for what it is.
+            require_once __DIR__ . '/inc/allstar-relay.php';
+            if (function_exists('rbac_can') && rbac_can('action.dispatch_unit') && allstar_relay_enabled()):
+            ?>
             <button type="button" class="btn btn-sm btn-outline-warning" id="btnAllstarRelay"
-                    title="Relay a spoken summary of this incident to the AllStar node (simulates calling a responder)">
-                <i class="bi bi-broadcast-pin me-1"></i>AllStar Relay
+                    title="Send a spoken summary of this incident to the SIMULATED test node (a test of the relay path; no radio, no AllStar node is involved)">
+                <i class="bi bi-broadcast-pin me-1"></i>Relay test page
+            </button>
+            <?php endif; ?>
+            <?php if ($vendorDispatchOn): ?>
+            <!-- GH#148 (Phase 155) -- dispatch a towing / roadside company. Hidden until assets/js/vendor-dispatch.js
+                 has loaded api/vendor-dispatch.php?action=config for THIS incident and it answered 200 (a viewer who
+                 can see the incident but not change it gets a 403 there, and never sees the button). -->
+            <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="btnVendorDispatch"
+                    title="<?php echo e(t('vendor.btn.dispatch_title', 'Dispatch a towing or roadside-assistance company for this incident')); ?>">
+                <i class="bi bi-truck me-1"></i><?php echo e(t('vendor.btn.dispatch', 'Tow / Roadside')); ?>
             </button>
             <?php endif; ?>
             <a href="index.php" class="btn btn-sm btn-outline-secondary">
@@ -292,7 +327,7 @@ $canCreateMajorEvent = function_exists('rbac_can') ? rbac_can('action.create_maj
                     <div class="card-body py-2 small">
                         <!-- Display mode -->
                         <div id="descDisplay">
-                            <div id="incidentDesc" class="mb-2" style="white-space: pre-wrap;">—</div>
+                            <div id="incidentDesc" class="mb-2" style="white-space: pre-wrap; overflow-wrap: anywhere;">—</div>
                             <div id="incidentAffected" class="text-body-secondary d-none">
                                 <strong>Affected:</strong> <span id="affectedText"></span>
                             </div>
@@ -845,11 +880,44 @@ $canCreateMajorEvent = function_exists('rbac_can') ? rbac_can('action.create_maj
                              renderPrimaryUnitBanner() in assets/js/incident-detail.js. -->
                         <div id="primaryUnitBanner" class="px-2 pt-2 d-none"></div>
 
+                        <!-- GH#141 (Phase 155) -- units RESERVED for this Scheduled
+                             incident: committed for later, NOT dispatched, so they are
+                             deliberately not part of the assigned list below. Hidden when
+                             there are none (the default on every install) -- see
+                             renderReservations() in assets/js/incident-detail.js. -->
+                        <div id="reservedUnitsPanel" class="border-bottom px-2 py-2 d-none" aria-live="polite">
+                            <div class="d-flex align-items-center small fw-semibold mb-1">
+                                <i class="bi bi-clock me-1"></i>Reserved units
+                                <span class="badge text-bg-info ms-2" id="reservedCount">0</span>
+                                <span class="ms-2 fw-normal text-body-secondary">not dispatched yet</span>
+                            </div>
+                            <div id="reservedUnitsList"></div>
+                        </div>
+
                         <div id="assignmentsList">
                             <div class="text-center text-body-secondary py-3 small">Loading...</div>
                         </div>
                     </div>
                 </div>
+
+<?php if ($vendorDispatchOn): ?>
+                <!-- GH#148 (Phase 155) -- Towing / Roadside card. Hidden until vendor-dispatch.js confirms this caller
+                     may dispatch for this incident. One row per dispatch; "Manage" opens the dialog. -->
+                <div class="card mb-3 d-none" id="vendorDispatchCard">
+                    <div class="card-header d-flex align-items-center py-1">
+                        <i class="bi bi-truck me-2"></i>
+                        <span class="fw-semibold small"><?php echo e(t('vendor.card.title', 'Towing / Roadside')); ?></span>
+                        <span class="badge bg-primary ms-auto" id="vendorDispatchCount">0</span>
+                        <button type="button" class="btn btn-sm btn-outline-primary ms-2 py-0" id="btnVendorDispatchCard"
+                                aria-label="<?php echo e(t('vendor.btn.dispatch_title', 'Dispatch a towing or roadside-assistance company for this incident')); ?>">
+                            <i class="bi bi-plus-lg me-1"></i><?php echo e(t('vendor.btn.new', 'New')); ?>
+                        </button>
+                    </div>
+                    <div class="card-body p-0" id="vendorDispatchList">
+                        <div class="text-center text-body-secondary py-2 small"><?php echo e(t('vendor.loading', 'Loading...')); ?></div>
+                    </div>
+                </div>
+<?php endif; ?>
 
                 <!-- Major Incident link (2026-06 — proper dispatcher entry
                      point: attach THIS incident to a parent major incident,
@@ -1036,6 +1104,8 @@ $canCreateMajorEvent = function_exists('rbac_can') ? rbac_can('action.create_maj
     </div>
 </div>
 
+<?php if ($vendorDispatchOn) { include __DIR__ . '/inc/vendor-dispatch-modal.php'; } ?>
+
 <!-- CSRF token for JS -->
 <input type="hidden" id="csrfToken" value="<?php echo e($csrf); ?>">
 
@@ -1078,7 +1148,30 @@ window.INCDETAIL_DISPOSITION_NONE = <?php echo json_encode(t('incdetail.disposit
          must load BEFORE incident-detail.js so window.TCADStatusExtraDataPrompt
          exists the first time a status change needs it. */ ?>
 <script src="assets/js/status-extra-data-prompt.js?v=<?php echo asset_v('assets/js/status-extra-data-prompt.js'); ?>"></script>
+<script src="assets/js/future-chip.js?v=<?php echo asset_v('assets/js/future-chip.js'); ?>"></script>
 <script src="assets/js/incident-detail.js?v=<?php echo asset_v('assets/js/incident-detail.js'); ?>"></script>
+<?php if ($vendorDispatchOn): ?>
+<?php /* GH#148 (Phase 155) -- towing / roadside dispatch. Loads AFTER incident-detail.js; captions an agency can rename
+         (Settings > Translations) are threaded through as one object so the script needs no per-string round trip. */ ?>
+<script>
+window.VENDOR_STR = <?php echo json_encode([
+    'status_open'      => t('vendor.status.open', 'OPEN'),
+    'status_assigned'  => t('vendor.status.assigned', 'ASSIGNED'),
+    'status_on_scene'  => t('vendor.status.on_scene', 'ON SCENE'),
+    'status_completed' => t('vendor.status.completed', 'COMPLETED'),
+    'status_cancelled' => t('vendor.status.cancelled', 'CANCELLED'),
+    'status_goa'       => t('vendor.status.goa', 'GONE ON ARRIVAL'),
+    'next_up'          => t('vendor.next_up', 'NEXT UP'),
+    'log_call'         => t('vendor.log_call', 'Log call'),
+    'call'             => t('vendor.call', 'Call'),
+    'calling'          => t('vendor.calling', 'calling…'),
+    'manage'           => t('vendor.manage', 'Manage'),
+    'no_company'       => t('vendor.no_company', 'No company yet'),
+    'card_empty'       => t('vendor.card.empty', 'No towing or roadside calls on this incident yet.'),
+], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP); ?>;
+</script>
+<script src="assets/js/vendor-dispatch.js?v=<?php echo asset_v('assets/js/vendor-dispatch.js'); ?>"></script>
+<?php endif; ?>
 <?php /* Phase 131 — prefills the activity-log box when the operator arrived
          here from a net check-in (?net_entry=N). No-op otherwise. */ ?>
 <script src="assets/js/net-prefill.js?v=<?php echo asset_v('assets/js/net-prefill.js'); ?>"></script>

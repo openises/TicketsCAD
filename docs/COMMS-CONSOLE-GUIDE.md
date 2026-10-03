@@ -214,6 +214,29 @@ troubleshooting) for a $2-5 Digispark-based USB gamepad pedal, plus
 purchasing guidance for an off-the-shelf alternative if you'd rather not
 build one.
 
+## 8b. Digital voice bridge strips (listen-only)
+
+If an administrator has created a **digital voice bridge** channel (a P25 / DMR /
+analog talkgroup carried in by a bridge program — Settings > Digital Voice Bridges),
+its strip looks a little different:
+
+- The strip says **Listen-only · P25 · TG 9001** (its mode and talkgroup). There is
+  **no PTT button** on it, and no foot switch can key it: in this version these channels
+  cannot transmit.
+- Tick **Listen** on the strip to hear it through the audio matrix, then use **Sel /
+  Mon / Mute / Volume** as on any other strip. You do **not** need Console Transmit
+  permission to listen, and your browser is not asked for the microphone unless you
+  do hold it.
+- An **RX** lamp next to the status light lights while audio is arriving. It is
+  labelled, so it does not depend on colour. The status light itself stays grey
+  (*unknown*) unless the administrator has connected the optional link check; a quiet
+  channel never turns it green.
+- Patches go **out** of these channels (their audio to another channel); a patch **into**
+  one is refused.
+
+Setup, limits, and DVMProject's usage guidelines are in
+`docs/DIGITAL-VOICE-USRP.md`.
+
 ## 9. Who can do what (RBAC summary)
 
 | Action | Permission | Default holders |
@@ -223,6 +246,7 @@ build one.
 | Create a cross-class patch | `action.patch_cross_class` | Org Admin and above |
 | Manage positions (admin) | `action.manage_positions` | Org Admin and above |
 | Manage the full audio matrix | `action.manage_matrix` | Org Admin and above |
+| Create/edit digital voice bridge channels, acknowledge the DVMProject statement | `action.manage_voice_bridges` | Org Admin and above |
 | Toggle acoustic-discovery install-wide | `action.manage_config` | Super Admin only |
 | Design shared console views | `console.design` | Org Admin and above |
 | Build a personal console view | *(none — any `screen.console` holder)* | Everyone |

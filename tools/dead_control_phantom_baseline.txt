@@ -92,27 +92,6 @@ phantom:mesh_packet_log.rssi
 phantom:mesh_packet_log.snr
 phantom:mesh_packet_log.src_node
 
-# --- notification_rules: MARK, not a tool limitation — inc/notification-
-#     engine.php genuinely reads every one of these columns (a fully
-#     functional rule engine) but there is no admin UI/API to create a
-#     row (settings.php's "Notification Rules" panel is prose-only,
-#     "will be configurable..."). The SAME feature gap the settings-key
-#     side of this audit already documents — see
-#     tools/dead_control_settings_baseline.txt (no entry needed there;
-#     that check found no data-key control for it since one was never
-#     built). Code comment added at inc/notification-engine.php's top.
-phantom:notification_rules.active
-phantom:notification_rules.body_template
-phantom:notification_rules.channel
-phantom:notification_rules.created_by
-phantom:notification_rules.email_list_id
-phantom:notification_rules.event_type
-phantom:notification_rules.incident_type_filter
-phantom:notification_rules.name
-phantom:notification_rules.recipients
-phantom:notification_rules.severity_filter
-phantom:notification_rules.subject_template
-
 # --- personnel: NO WRITER ANYWHERE — confirmed via a full sweep of both
 #     this tree and the legacy tickets/ tree (only CREATE TABLE, never
 #     INSERT). api/responders.php:313-316 already states outright "there
@@ -274,10 +253,16 @@ phantom:log.mileage
 phantom:log.rec_facility
 phantom:log.responder_id
 
-# --- MARK: user.phone_m -- inc/notification-engine.php:325 resolves an
-#     SMS recipient by numeric user id via `SELECT id, email, phone_m AS
-#     cell FROM user`, but phone_m is never written anywhere -- confirmed
-#     via exhaustive grep. api/profile.php (the only user-profile editor)
+# --- MARK: user.phone_m -- Phase 155 (GH#144) UPDATE: the symptom below is
+#     RESOLVED without a profile field - inc/notification-engine.php's
+#     notification_user_contacts() now resolves an SMS number as the first
+#     usable of phone_m, phone_p, then the linked roster member's cell, and a
+#     user with none is logged as SKIPPED with the reason. phone_m itself is
+#     still never written (nothing edits it), so the phantom stands; the
+#     original description follows. (Was: inc/notification-engine.php
+#     resolved an SMS recipient by numeric user id via `SELECT id, email,
+#     phone_m AS cell FROM user`, but phone_m is never written anywhere --
+#     confirmed via exhaustive grep. api/profile.php (the only user-profile editor)
 #     only has phone_p (aliased `phone`); there is no UI field anywhere
 #     for a distinct "mobile/SMS number" on a `user` account. Any
 #     notification rule targeting a specific user by id for SMS silently

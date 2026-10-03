@@ -2021,6 +2021,51 @@ foreach ($personnelSections as $sec) {
                     <span id="primaryUnitModeStatus" class="align-self-center small text-success"></span>
                 </div>
             </form>
+
+            <!-- ── Units assigned to Scheduled incidents — GH#141 (Phase 155) ── -->
+            <!-- Its own <form> and save handler, like the two above. -->
+            <form id="scheduledAssignForm" class="mt-4 pt-3 border-top">
+                <div class="settings-group">
+                    <div class="settings-group-title">Units assigned to Scheduled incidents</div>
+                    <p class="text-body-secondary small mb-2">
+                        What happens when a dispatcher assigns a unit to a Scheduled incident whose
+                        booked time has not arrived yet. <strong>Dispatch immediately</strong> (the
+                        default, and how it has always worked) marks the unit Dispatched on the spot.
+                        <strong>Reserve until the booked time</strong> commits the unit to the
+                        incident <em>without</em> dispatching it: the unit stays Available for
+                        other calls, the incident shows a &ldquo;Reserved units&rdquo; list, and the
+                        unit is dispatched automatically when the incident goes Open &mdash; or
+                        earlier, by the lead time below. If the unit is busy on another call at that
+                        moment (and is not set to Multi-Assign) the reservation is held for a
+                        dispatcher instead of double-booking it.
+                    </p>
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-5">
+                            <label for="scheduledAssignModeSelect" class="form-label form-label-sm">When a unit is assigned</label>
+                            <select class="form-select form-select-sm" id="scheduledAssignModeSelect">
+                                <option value="immediate">Dispatch immediately (default)</option>
+                                <option value="reserve">Reserve until the booked time</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="scheduledAssignLeadMinutes" class="form-label form-label-sm">Lead time (minutes)</label>
+                            <input type="number" class="form-control form-control-sm" id="scheduledAssignLeadMinutes"
+                                   min="0" max="1440" step="1" value="0" disabled>
+                        </div>
+                        <div class="col-md-4 text-body-secondary small">
+                            Reserve mode only. Dispatch the reserved units this many minutes
+                            <em>before</em> the booked time (0&ndash;1440; 0 = at the booked time).
+                            Runs from the background-job timer &mdash; see System Health.
+                        </div>
+                    </div>
+                </div>
+                <div class="d-flex gap-2 mt-3">
+                    <button type="submit" class="btn btn-sm btn-success">
+                        <i class="bi bi-check-lg me-1"></i>Save Scheduled-Incident Assignment Setting
+                    </button>
+                    <span id="scheduledAssignStatus" class="align-self-center small text-success"></span>
+                </div>
+            </form>
         </div>
         <script>
         (function () {
@@ -2059,6 +2104,56 @@ foreach ($personnelSections as $sec) {
                     .catch(function () {
                         document.getElementById('primaryUnitModeStatus').textContent = 'Network error saving.';
                         document.getElementById('primaryUnitModeStatus').className = 'align-self-center small text-danger';
+                    });
+                });
+            }
+            // GH#141 (Phase 155) -- Units assigned to Scheduled incidents.
+            var saForm = document.getElementById('scheduledAssignForm');
+            if (saForm) {
+                var saMode = document.getElementById('scheduledAssignModeSelect');
+                var saLead = document.getElementById('scheduledAssignLeadMinutes');
+                var saStatus = document.getElementById('scheduledAssignStatus');
+                var saSyncLead = function () { saLead.disabled = (saMode.value !== 'reserve'); };
+                saMode.addEventListener('change', saSyncLead);
+                fetch('api/config-admin.php?section=settings', { credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        var s = (data && data.settings) || {};
+                        saMode.value = (s.scheduled_assign_mode === 'reserve') ? 'reserve' : 'immediate';
+                        saLead.value = String(parseInt(s.scheduled_assign_lead_minutes, 10) || 0);
+                        saSyncLead();
+                    })
+                    .catch(function () { /* leave the defaults (Dispatch immediately, 0) */ });
+                saForm.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+                    var lead = parseInt(saLead.value, 10);
+                    if (isNaN(lead) || lead < 0) lead = 0;
+                    if (lead > 1440) lead = 1440;
+                    fetch('api/config-admin.php?section=settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ csrf_token: csrf, settings: {
+                            scheduled_assign_mode: saMode.value,
+                            scheduled_assign_lead_minutes: String(lead)
+                        } })
+                    })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        if (data && data.saved !== undefined) {
+                            saStatus.textContent = 'Saved.';
+                            saStatus.className = 'align-self-center small text-success';
+                            saLead.value = String(lead);
+                        } else {
+                            saStatus.textContent = 'Save failed: ' + ((data && data.error) || 'unknown');
+                            saStatus.className = 'align-self-center small text-danger';
+                        }
+                        setTimeout(function () { saStatus.textContent = ''; }, 4000);
+                    })
+                    .catch(function () {
+                        saStatus.textContent = 'Network error saving.';
+                        saStatus.className = 'align-self-center small text-danger';
                     });
                 });
             }
@@ -7110,16 +7205,8 @@ foreach ($personnelSections as $sec) {
             </div>
         </div>
 
-        <!-- ── Notifications ─────────────────────────────────────── -->
-        <div class="config-panel" id="panel-notifications">
-            <div class="config-panel-title">
-                <i class="bi bi-bell text-warning"></i> Notification Rules
-            </div>
-            <p class="text-body-secondary small mb-2">Configure which events trigger notifications, who receives them, and through which channels (email, SMS, push).</p>
-            <div class="alert alert-info small">
-                <i class="bi bi-info-circle me-1"></i>Notification rules will be configurable per incident severity, type, and region. Each rule can target email groups, individual users, or SMS recipients.
-            </div>
-        </div>
+        <?php // Phase 155 (GH#144): the Notification Rules panel (markup in an include so this file stays reviewable; JS: assets/js/notification-rules.js). ?>
+        <?php include NEWUI_ROOT . '/inc/notification-rules-panel.php'; ?>
 
         <!-- ── Web Push Notifications (Phase 96 admin, 2026-06-28) ───── -->
         <div class="config-panel" id="panel-push-notifications">
@@ -7261,6 +7348,7 @@ foreach ($personnelSections as $sec) {
                 <i class="bi bi-diagram-3 text-warning"></i> Message Routing
             </div>
             <p class="text-body-secondary small mb-2">Bridge messages between protocols (Meshtastic, Zello, DMR, Chat, SMS, Email). Routes evaluate all matching rules and forward messages to destination channels.</p>
+            <p class="text-body-secondary small mb-2">To email, text or page <em>people</em> when something happens in the CAD, use <a href="#notifications">Notification Rules</a> instead. Using Slack or push in both will notify twice.</p>
 
             <!-- Enabled delivery channels -->
             <div class="card mb-3" id="enabledChannelsCard">
@@ -7741,35 +7829,8 @@ foreach ($personnelSections as $sec) {
         </div>
 
         <!-- ── Email Lists ───────────────────────────────────────── -->
-        <div class="config-panel" id="panel-email-lists">
-            <div class="config-panel-title">
-                <i class="bi bi-people text-info"></i> Email Distribution Lists
-            </div>
-            <p class="text-body-secondary small mb-2">Create named groups of email recipients for notifications. Lists can include_once members, external contacts, or a mix.</p>
-
-            <div class="alert alert-info py-2 small">
-                <i class="bi bi-info-circle me-1"></i>
-                <strong>How lists are used:</strong> on the Incident form and PAR-overdue events, dispatchers can target "to:&lt;list name&gt;" instead of typing addresses. The Notification Rules panel can also route specific events to a list — e.g. "send every new SHELTER incident to <em>red-cross-ops</em>".
-                <details class="mt-2">
-                    <summary class="fw-semibold">Recipient types supported</summary>
-                    <ul class="mb-0 mt-2">
-                        <li><strong>Member</strong> — references a row in <code>member</code> by id. Email is read from <code>member.email</code> at send time, so changing a member's email auto-updates every list they're on.</li>
-                        <li><strong>Constituent</strong> — references the <code>constituents</code> address book.</li>
-                        <li><strong>Inline address</strong> — a plain RFC 5322 string for external recipients not in your roster.</li>
-                        <li><strong>Sub-list</strong> — another distribution list (one level of nesting; cycles are detected and rejected).</li>
-                    </ul>
-                </details>
-            </div>
-
-            <div class="d-flex gap-2 mb-2 align-items-center">
-                <button type="button" class="btn btn-sm btn-success" id="btnNewEmailList"><i class="bi bi-plus-lg me-1"></i>New List</button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnImportEmailList"><i class="bi bi-upload me-1"></i>Import CSV</button>
-                <input type="text" class="form-control form-control-sm ms-auto" placeholder="Filter lists…" id="emailListFilter" style="max-width:240px;" aria-label="Filter email lists">
-            </div>
-            <div id="emailListsBody">
-                <div class="text-body-secondary p-3 small">Loading lists…</div>
-            </div>
-        </div>
+        <?php // Phase 155 (GH#145): the Email Lists panel + its modals live in an include; JS: assets/js/email-lists-admin.js. ?>
+        <?php include NEWUI_ROOT . '/inc/email-lists-panel.php'; ?>
 
         <!-- ── SMS Configuration ─────────────────────────────────── -->
         <div class="config-panel" id="panel-sms-config">
@@ -8065,6 +8126,7 @@ foreach ($personnelSections as $sec) {
                 <i class="bi bi-link-45deg text-info"></i> Webhooks / Event Subscriptions
             </div>
             <p class="text-body-secondary small mb-2">Configure outbound webhooks that fire when events occur in the system (new incident, unit status change, etc.).</p>
+            <p class="text-body-secondary small mb-2">Webhooks are for other software. To notify <em>people</em> (email, text, a Slack or Telegram channel), use <a href="#notifications">Notification Rules</a>.</p>
 
             <!-- Toolbar -->
             <div class="d-flex justify-content-between align-items-center mb-2">
@@ -8146,11 +8208,25 @@ foreach ($personnelSections as $sec) {
                                 <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="incident.created" id="whEvt1"><label class="form-check-label small" for="whEvt1">incident.created</label></div></div>
                                 <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="incident.updated" id="whEvt2"><label class="form-check-label small" for="whEvt2">incident.updated</label></div></div>
                                 <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="incident.closed" id="whEvt3"><label class="form-check-label small" for="whEvt3">incident.closed</label></div></div>
+                                <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="incident.reopened" id="whEvt10"><label class="form-check-label small" for="whEvt10">incident.reopened</label></div></div>
+                                <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="incident.status_changed" id="whEvt9"><label class="form-check-label small" for="whEvt9" title="Fires once for every real status change: Closed, Open, Scheduled, in any direction, from any route (dispatcher, scheduled activation, auto-close, Major Incident close, External API)">incident.status_changed</label></div></div>
+                                <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="incident.deleted" id="whEvt11"><label class="form-check-label small" for="whEvt11">incident.deleted</label></div></div>
                                 <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="responder.status_changed" id="whEvt4"><label class="form-check-label small" for="whEvt4">responder.status_changed</label></div></div>
                                 <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="assign.created" id="whEvt5"><label class="form-check-label small" for="whEvt5">assign.created</label></div></div>
                                 <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="assign.removed" id="whEvt6"><label class="form-check-label small" for="whEvt6">assign.removed</label></div></div>
                                 <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="incident.note_added" id="whEvt7"><label class="form-check-label small" for="whEvt7">incident.note_added</label></div></div>
                                 <div class="col-6 col-md-4"><div class="form-check form-check-sm"><input class="form-check-input wh-evt" type="checkbox" value="incident.primary_changed" id="whEvt8"><label class="form-check-label small" for="whEvt8">incident.primary_changed</label></div></div>
+                            </div>
+                            <!-- GH#147: filters on a subscription that have no checkbox here (a
+                                 wildcard such as "incident.*", or an event a subscription made
+                                 through the External API / an older version carries). They are
+                                 remembered in this hidden field when the subscription is opened
+                                 and written back on save, so re-saving a subscription in this
+                                 form can never silently drop one. -->
+                            <input type="hidden" id="webhookOtherEvents" value="[]">
+                            <div class="form-text small d-none" id="webhookOtherEventsNote">
+                                <span id="webhookOtherEventsText"></span>
+                                <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline" id="btnClearOtherEvents">Remove these</button>
                             </div>
                         </div>
                         <div class="d-flex gap-2 mt-3">
@@ -10726,6 +10802,10 @@ sudo apt-get update && sudo apt-get install -y analog-bridge mmdvm-bridge md380-
 <script src="assets/js/languages-admin.js?v=<?php echo asset_v('assets/js/languages-admin.js'); ?>"></script>
 <!-- Phase 73k — DVSwitch DMR admin panel -->
 <script src="assets/js/dvswitch-admin.js?v=<?php echo asset_v('assets/js/dvswitch-admin.js'); ?>"></script>
+<!-- Phase 155 (GH#144) - Notification Rules panel -->
+<script src="assets/js/notification-rules.js?v=<?php echo asset_v('assets/js/notification-rules.js'); ?>"></script>
+<!-- Phase 155 (GH#145) - Email Lists panel -->
+<script src="assets/js/email-lists-admin.js?v=<?php echo asset_v('assets/js/email-lists-admin.js'); ?>"></script>
 
 <!-- 2FA Settings Panel JS -->
 <script>

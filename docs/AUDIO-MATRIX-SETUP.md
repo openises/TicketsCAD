@@ -25,6 +25,9 @@ channel:
   and this doc does not walk you through flipping it — see
   `specs/phase-114-audio-matrix/changes.md` decision 5 for that cutover's
   own safety framing. Nothing here requires it.
+- **The USRP legs** (`dvmproject` / `usrp_bridge`) — one UDP socket per
+  digital voice bridge channel, **listen-only**; see "Digital voice bridges"
+  below. Inert unless an administrator creates such a channel.
 - **The dispatcher intercom** (`intercom_dd:main`) needs neither leg — it
   carries audio via an internal reflector, so it works the moment the
   service is running with the browser leg live.
@@ -114,9 +117,76 @@ discipline the Patch Matrix page already uses for routes.
 Delete a stream the same way, from its edit modal — this stops it and
 removes any patches routed through it immediately.
 
+### Listening to an AllStar node or repeater (receive only)
+
+TicketsCAD has **no AllStarLink integration**: it cannot connect to, listen on or
+key an AllStar node. If a node or repeater you care about **already publishes its
+audio as an HTTP stream** (an Icecast/Broadcastify-style URL — many repeater
+owners and linked-node operators provide one), you can **listen** to it today by
+adding that stream as a Public Audio Stream channel exactly as described above. It
+is **receive only**: there is nothing to transmit back, no PTT, and no foot switch
+applies. It needs everything this guide's installer provides — the audio-matrix
+service running, `ffmpeg` on that host, and the browser leg reachable from the
+operators' browsers — and it does **not** need, and is not, an AllStarLink node.
+
+Keying a repeater from the console would need a private AllStarLink node and a new
+voice leg in the matrix. That is not built and has no date; see
+[PHONE-TELEPHONY-GUIDE.md](PHONE-TELEPHONY-GUIDE.md#what-is-not-available) for what
+the incident page's **Relay test page** button is (a simulated test, not AllStar).
+
 If the matrix service is unreachable when you save, the change is
 refused outright (not silently queued) so the admin UI can never disagree
 with what's actually running.
+
+## Digital voice bridges (DVMProject / USRP) — listen-only
+
+A third kind of leg, the **generic USRP leg** (`legs/usrp.py`), carries a
+P25 / DMR / analog talkgroup that a **bridge program you install yourself**
+(DVMProject's `dvmbridge`, DVSwitch's Analog_Bridge, AllStar's `chan_usrp`)
+exchanges with the matrix as 8 kHz audio over UDP in the *USRP* format.
+TicketsCAD bundles no codec and no DVMProject software and speaks no radio-
+network protocol. **This version is listen-only: the leg never transmits.**
+
+Managed from **Settings → Communications & Integrations → Digital Voice
+Bridges** (`voice-bridges-admin.php`, permission `action.manage_voice_bridges`,
+Super Admin + Org Admin). Like Stream Channels, saving applies to the running
+service immediately and is refused (and rolled back) if the service cannot
+accept it. The full guide — what is and is not tested, DVMProject's usage
+guidelines, the fields, network safety, the optional FNE status check — is
+`docs/DIGITAL-VOICE-USRP.md`.
+
+What the service side needs from you:
+
+- Nothing in the JSON config file. The channel rows are in `comm_channels`
+  (adapter `dvmproject` or `usrp_bridge`, `config_json` carrying the addresses
+  and ports); the service builds the leg from the row at boot and the control
+  plane attaches it live afterwards (`POST /channels/leg`).
+- A free **UDP** port per channel (default 34001, 34002, …) on the *listen
+  address* (default `127.0.0.1`). The leg binds it **exclusively**: a second
+  channel on the same port fails to start and says so.
+- For a `dvmproject` channel the usage-policy acknowledgment
+  (`settings.dvm_policy_ack`) — checked by the service itself at boot, not just
+  by the admin page: an unacknowledged DVMProject row is loaded but its socket
+  is **not** bound and a WARNING says why.
+- `php_base_url` (above) if you want the strip's **RX** lamp to light on other
+  operators' screens: the leg reports *audio started/stopped* to
+  `api/matrix-channel-state.php`, which publishes `comm:rx_state`.
+
+Checking it (the control plane's per-leg view needs the bearer token):
+
+```bash
+TOKEN=$(sudo python3 -c "import json;print(json.load(open('/etc/ticketscad-audio-matrix.conf'))['control_token'])")
+curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18092/legs
+sudo ss -lunp | grep python        # the listen port should be bound ONLY while a channel is enabled
+```
+
+Each entry reports `running`, `receiving`, `listen_only: true`, frame/call
+counters, datagrams dropped for the wrong source (`rx_dropped_source`) and how
+much audio was routed **into** the channel and discarded
+(`tx_frames_blocked`, which should stay 0: a patch into these channels is
+refused when you create it).
+
+Nothing binds a socket on an install that has no such channel: no rows, no leg.
 
 ## Install (Debian/Ubuntu, from the deployed webroot)
 
@@ -223,12 +293,16 @@ it. A red disconnect banner means the browser leg isn't reachable — re-check
 | Route/workstation-mute changes in the admin UI silently fail | `matrix_control_token` in the `settings` table doesn't match `control_token` in the conf file — re-run `configure-php-settings.php <conf-path>` |
 | `/health` doesn't respond | Service crashed at boot — check `journalctl`; the most common cause is a missing/unreadable `/etc/ticketscad-audio-matrix.conf` or a DB the config can't reach |
 | DMR "Matrix Audio" connects but carries no real radio audio | Expected while `dmr.mode` is `"off"` — that toggle is the separate live-RF cutover, not part of this setup |
+| A digital voice bridge row says *NOT attached in the audio-matrix service* | The service skipped it at boot — read `journalctl -u ticketscad-audio-matrix` for the WARNING (unacknowledged DVMProject statement, a bad address/port, a UDP port already in use) — then re-save the channel to attach it live |
+| Digital voice bridge attached but never *receiving* | The bridge is not sending to the channel's listen address:port, or sends from an address other than its *Bridge address* (counted in `rx_dropped_source`); see `docs/DIGITAL-VOICE-USRP.md` |
 | Dispatcher intercom carries no audio | Confirm the service actually restarted after the Phase 152 `intercom_dd` reflector-leg fix (`services/audio-matrix/legs/reflector.py`) — a service still running the pre-fix code has no leg on that channel at all |
 
 ## See also
 
 - `docs/COMMS-CONSOLE-GUIDE.md` — the operator-facing feature guide this
   service powers.
+- `docs/DIGITAL-VOICE-USRP.md` — digital voice bridges (DVMProject / USRP),
+  listen-only.
 - `specs/phase-114-audio-matrix/changes.md` — the matrix core's own design
   decisions (single-hop routing, the DMR-leg safety framing, topology).
 - `specs/phase-152-comms-console-v2/tasks.md` — the full build record,

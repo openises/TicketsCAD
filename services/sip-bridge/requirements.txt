@@ -1,10 +1,19 @@
-# TicketsCAD Inbound SIP/PBX Call Bridge (Phase 149)
+# TicketsCAD Inbound SIP/PBX Call Bridge (Phase 149, 3CX mode added Phase 155)
 #
 # Everything else the bridge uses (socket, http.server, configparser,
 # threading, json, argparse) is Python 3 standard library -- deliberately
-# kept to one real dependency, matching this project's existing
-# stdlib-first preference for bridge processes (see
-# services/meshtastic/bridge.py's own optional-import pattern for the
-# heavier SDKs it needs for ITS protocols; this bridge's two protocols,
-# AMI and generic webhook, need nothing beyond an HTTP client).
+# kept to a minimum, matching this project's existing stdlib-first
+# preference for bridge processes (see services/meshtastic/bridge.py's own
+# optional-import pattern for the heavier SDKs it needs for ITS protocols).
+#
+# requests: the HTTP client every mode uses to talk to TicketsCAD (and, in
+# mode = threecx, to 3CX's token and REST endpoints).
 requests>=2.32.5
+#
+# websockets: ONLY needed for mode = threecx (the 3CX Call Control API is a
+# WebSocket). Imported lazily, so the AMI and webhook modes never need it.
+# Same pin as services/audio-matrix/requirements.txt -- one vetted version
+# across the project, and a raw RFC 6455 client (handshake, frame masking,
+# pings, close codes) is exactly what this project's
+# browser-audio-to-voice-service playbook says not to hand-roll.
+websockets>=15.0.1

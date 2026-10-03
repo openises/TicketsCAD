@@ -1179,6 +1179,17 @@ if ($section === 'settings') {
                 $value = (string) $iv;
             }
 
+            // GH#141 (Phase 155) — Settings → Incident Lifecycle → "Units assigned to
+            // Scheduled incidents". The mode is an enum (anything but 'reserve' is
+            // 'immediate', today's behaviour) and the lead is whole minutes 0-1440.
+            // Clamped HERE rather than rejected so the rest of a multi-key save
+            // still goes through; inc/assign-reservations.php's readers clamp the
+            // same way, so a bad value written any other route is harmless too.
+            if ($key === 'scheduled_assign_mode' || $key === 'scheduled_assign_lead_minutes') {
+                require_once __DIR__ . '/../inc/assign-reservations.php';
+                $value = assign_reservation_normalize_setting($key, $value);
+            }
+
             try {
                 // Upsert via ON DUPLICATE KEY UPDATE (requires unique index on name)
                 db_query(

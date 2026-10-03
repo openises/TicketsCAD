@@ -78,9 +78,9 @@ $vapidOk     = ($vapidPub !== '' && $vapidPriv !== '');
 // `composer install`, push worked, but this line still read "not detected"
 // 2026-07-14). Load the autoloader if present, then confirm; fall back to the
 // filesystem so the answer never depends on autoloader state.
-if (!class_exists('Minishlink\\WebPush\\WebPush')
-    && is_file(__DIR__ . '/../vendor/autoload.php')) {
-    require_once __DIR__ . '/../vendor/autoload.php';
+if (!class_exists('Minishlink\\WebPush\\WebPush')) {
+    require_once __DIR__ . '/../inc/vendor-autoload.php';
+    newui_require_vendor_autoload();
 }
 $libOk       = class_exists('Minishlink\\WebPush\\WebPush')
     || is_dir(__DIR__ . '/../vendor/minishlink/web-push');

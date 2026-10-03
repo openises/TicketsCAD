@@ -322,12 +322,43 @@ if ($method === 'PATCH') {
     $statusRequested    = $statusFieldPresent ? $fields['status'] : null;
     unset($fields['status']);
 
+    // GH#147: `booked_date` is status=3's companion value, not a generic field.
+    // It used to be left in $fields, where incident_update_fields_internal()
+    // rejected the whole request ("no whitelisted fields") -- so scheduling an
+    // incident through this endpoint, which the docs describe, never worked.
+    // Pulled out here when a status is present; without a status it stays
+    // where it was (dropped as an unknown field, exactly as before).
+    $bookedFromFields = null;
+    if ($statusFieldPresent && array_key_exists('booked_date', $fields)) {
+        $bookedFromFields = $fields['booked_date'];
+        unset($fields['booked_date']);
+    }
+
     $dispositionFieldPresent = array_key_exists('disposition_id', $fields);
     $dispositionRequested    = $dispositionFieldPresent ? $fields['disposition_id'] : null;
     unset($fields['disposition_id']);
 
     if (empty($fields) && !$primaryFieldPresent && !$statusFieldPresent && !$dispositionFieldPresent) {
         ext_api_error('validation_failed', 422, ['errors' => ['no fields to update']]);
+    }
+
+    // GH#147 (F7) -- EVERY refusal that can be decided before the first write
+    // is decided here. This handler used to save the generic fields (and audit
+    // and publish them), THEN discover that the caller lacked
+    // action.close_incident for `status` and answer 403 -- so the response said
+    // "refused" while the rest of the request had already been applied. The
+    // permission checks for the dedicated actions now come first; the value
+    // checks (status is 1/2/3, a close can satisfy the disposition rule, the
+    // primary-unit feature is on) come after the ticket is known, still before
+    // any write.
+    if ($statusFieldPresent && !rbac_can('action.close_incident')) {
+        ext_api_error('forbidden_rbac', 403, ['required' => 'action.close_incident']);
+    }
+    if ($dispositionFieldPresent && !rbac_can('action.edit_incident')) {
+        ext_api_error('forbidden_rbac', 403, ['required' => 'action.edit_incident']);
+    }
+    if ($primaryFieldPresent && !rbac_can('action.set_primary_unit')) {
+        ext_api_error('forbidden_rbac', 403, ['required' => 'action.set_primary_unit']);
     }
 
     // Pre-check the ticket exists so we return a clean 404 instead of
@@ -358,7 +389,44 @@ if ($method === 'PATCH') {
     $userId = (int) ($_SESSION['user_id'] ?? 0);
     if ($userId <= 0) ext_api_error('auth_user_missing', 500);
 
+    // GH#147 (F7) -- value validation for the dedicated actions, still BEFORE
+    // any write (see the RBAC block above for the story).
+    $newStatus = null;
+    $bookedDate = '';
+    $dispositionForClose = null;
+    if ($statusFieldPresent) {
+        $sr = $statusRequested;
+        if (is_string($sr) && ctype_digit($sr)) $sr = (int) $sr;
+        if (!is_int($sr) || !in_array($sr, [1, 2, 3], true)) {
+            ext_api_error('validation_failed', 422,
+                ['errors' => ['status must be 1 (Closed), 2 (Open) or 3 (Scheduled)']]);
+        }
+        $newStatus = $sr;
+        $bookedDate = trim((string) ($bookedFromFields ?? $input['booked_date'] ?? ''));
+        $dispositionForClose = $dispositionFieldPresent ? (int) $dispositionRequested : null;
+        $pre = incident_status_change_preflight($ticketId, $newStatus, [
+            'booked_date' => $bookedDate, 'disposition_id' => $dispositionForClose]);
+        if (!empty($pre)) {
+            ext_api_error('validation_failed', 422, ['errors' => $pre]);
+        }
+    }
+    if ($dispositionFieldPresent && !($statusFieldPresent && $newStatus === 1)
+        && $dispositionRequested !== null && $dispositionRequested !== '' && (int) $dispositionRequested > 0) {
+        $dErr = incident_disposition_validation_error((int) $dispositionRequested);
+        if ($dErr !== null) {
+            ext_api_error('validation_failed', 422, ['errors' => [$dErr]]);
+        }
+    }
+    if ($primaryFieldPresent) {
+        $pm = get_variable('primary_unit_mode');
+        if ($pm === 'off' || $pm === false) {
+            ext_api_error('primary_unit_disabled', 409,
+                ['errors' => ['Primary unit tracking is not enabled on this install']]);
+        }
+    }
+
     $fieldsChanged = [];
+    $statusChanged = null;      // null = no status in the request; bool = whether it really changed
 
     if (!empty($fields)) {
         try {
@@ -391,60 +459,76 @@ if ($method === 'PATCH') {
     }
 
     // GH#146 -- status, mirroring api/incident-update.php's update_status
-    // action exactly: same gate, same writer, same audit-activity naming
-    // (close/reopen/update) so the SAME webhook mappings
+    // action exactly: same gate (checked above), same writer, same
+    // audit-activity naming (close/reopen/update) so the SAME webhook mappings
     // (incident.closed/incident.reopened) fire for an external-API-driven
     // status change as for a dispatcher-driven one. A disposition_id sent
     // ALONGSIDE a close (status=1) is handled by incident_update_status_
     // internal() itself, same as the internal endpoint -- not double-
     // processed by the standalone disposition branch below.
+    //
+    // GH#147 -- the writer is compare-and-set: a request for the status the
+    // incident ALREADY has is a no-op (problemend is not re-stamped, nothing is
+    // audited, no incident.closed re-fires -- an RMS that retried a close used
+    // to silently overwrite the real close time), and the writer itself emits
+    // the incident.status_changed event, once, for a REAL change.
     if ($statusFieldPresent) {
-        if (!rbac_can('action.close_incident')) {
-            ext_api_error('forbidden_rbac', 403, ['required' => 'action.close_incident']);
-        }
-        $newStatus = (int) $statusRequested;
-        $bookedDate = trim((string) ($input['booked_date'] ?? $fields['booked_date'] ?? ''));
-        $dispositionForClose = $dispositionFieldPresent ? (int) $dispositionRequested : null;
-
-        $priorStatus = (int) db_fetch_value(
-            "SELECT status FROM `{$prefix}ticket` WHERE id = ?", [$ticketId]);
-
-        $statusResult = incident_update_status_internal($ticketId, $newStatus, $userId,
-            ['booked_date' => $bookedDate, 'disposition_id' => $dispositionForClose]);
+        $statusResult = incident_update_status_internal($ticketId, $newStatus, $userId, [
+            'booked_date'    => $bookedDate,
+            'disposition_id' => $dispositionForClose,
+            'source'         => 'external_api',
+            'actor_type'     => 'api_token',
+            'token_id'       => $GLOBALS['__ext_api_token_id'] ?? null,
+        ]);
         if (!empty($statusResult['errors'])) {
             ext_api_error('validation_failed', 422, ['errors' => $statusResult['errors']]);
         }
-        $fieldsChanged[] = 'status';
+        $statusChanged = !empty($statusResult['status_changed']);
+        $priorStatus   = (int) ($statusResult['old_status'] ?? 0);
         if ($dispositionFieldPresent && $newStatus === 1) {
             $fieldsChanged[] = 'disposition_id';
             $dispositionFieldPresent = false; // already handled above -- skip the standalone branch below
         }
 
-        $statusLabels = [1 => 'Closed', 2 => 'Open', 3 => 'Scheduled'];
-        $auditActivity = ($newStatus === 1) ? 'close' : (($newStatus === 2 && $priorStatus === 1) ? 'reopen' : 'update');
-        audit_log('incident', $auditActivity, 'ticket', $ticketId,
-            "External API changed status on incident #{$ticketId}: "
-                . ($statusLabels[$priorStatus] ?? 'Unknown') . ' -> ' . ($statusLabels[$newStatus] ?? $newStatus),
-            [
-                'token_id'         => $GLOBALS['__ext_api_token_id'] ?? null,
-                'old_status'       => $priorStatus,
-                'new_status'       => $newStatus,
-                'cleared_assigns'  => (int) ($statusResult['cleared_assigns'] ?? 0),
-                'reset_responders' => (int) ($statusResult['reset_responders'] ?? 0),
-                'via_external_api' => true,
-            ]
-        );
+        $statusLabels = incident_status_labels();
+        if ($statusChanged) {
+            $fieldsChanged[] = 'status';
+            $auditActivity = ($newStatus === 1) ? 'close' : (($newStatus === 2 && $priorStatus === 1) ? 'reopen' : 'update');
+            audit_log('incident', $auditActivity, 'ticket', $ticketId,
+                "External API changed status on incident #{$ticketId}: "
+                    . ($statusLabels[$priorStatus] ?? 'Unknown') . ' -> ' . ($statusLabels[$newStatus] ?? $newStatus),
+                [
+                    'token_id'         => $GLOBALS['__ext_api_token_id'] ?? null,
+                    'old_status'       => $priorStatus,
+                    'new_status'       => $newStatus,
+                    'cleared_assigns'  => (int) ($statusResult['cleared_assigns'] ?? 0),
+                    'reset_responders' => (int) ($statusResult['reset_responders'] ?? 0),
+                    'via_external_api' => true,
+                ]
+            );
 
-        try {
-            require_once __DIR__ . '/../../../inc/sse.php';
-            if (function_exists('sse_publish_for_incident')) {
-                $incNum = function_exists('incnum_display') ? incnum_display($ticketId) : null;
-                sse_publish_for_incident(($newStatus === 1) ? 'incident:close' : 'incident:update',
-                    ['ticket_id' => $ticketId, 'incident_number' => $incNum, 'new_status' => $newStatus,
-                     'status_label' => $statusLabels[$newStatus] ?? null, 'via' => 'external_api'],
-                    $ticketId);
-            }
-        } catch (Exception $e) { /* SSE non-fatal */ }
+            try {
+                require_once __DIR__ . '/../../../inc/sse.php';
+                if (function_exists('sse_publish_for_incident')) {
+                    $incNum = function_exists('incnum_display') ? incnum_display($ticketId) : null;
+                    sse_publish_for_incident(($newStatus === 1) ? 'incident:close' : 'incident:update',
+                        ['ticket_id' => $ticketId, 'incident_number' => $incNum, 'new_status' => $newStatus,
+                         'status_label' => $statusLabels[$newStatus] ?? null, 'via' => 'external_api'],
+                        $ticketId);
+                }
+            } catch (Exception $e) { /* SSE non-fatal */ }
+        } elseif (!empty($statusResult['rescheduled'])) {
+            // 3 -> 3 with a new booked_date: no status change, but the booked time moved.
+            $fieldsChanged[] = 'booked_date';
+            audit_log('incident', 'update', 'ticket', $ticketId,
+                "External API rescheduled incident #{$ticketId}",
+                [
+                    'token_id'         => $GLOBALS['__ext_api_token_id'] ?? null,
+                    'fields_changed'   => ['booked_date'],
+                    'via_external_api' => true,
+                ]
+            );
+        }
     }
 
     // GH#146 -- disposition_id as its OWN action, for setting/changing the
@@ -453,9 +537,6 @@ if ($method === 'PATCH') {
     // gated the same way). When status=1 was ALSO sent above, that branch
     // already handled it and cleared this flag.
     if ($dispositionFieldPresent) {
-        if (!rbac_can('action.edit_incident')) {
-            ext_api_error('forbidden_rbac', 403, ['required' => 'action.edit_incident']);
-        }
         $dispId = ($dispositionRequested !== null && $dispositionRequested !== '') ? (int) $dispositionRequested : null;
         $dispResult = incident_set_disposition_internal($ticketId, $dispId, $userId, true);
         if (!empty($dispResult['errors'])) {
@@ -469,9 +550,6 @@ if ($method === 'PATCH') {
 
     $primaryResult = null;
     if ($primaryFieldPresent) {
-        if (!rbac_can('action.set_primary_unit')) {
-            ext_api_error('forbidden_rbac', 403, ['required' => 'action.set_primary_unit']);
-        }
         $primaryRespId = (int) $primaryRequestedId;
         $primaryResult = incident_set_primary_internal($ticketId, $primaryRespId > 0 ? $primaryRespId : null,
             $userId, 'manual', true);
@@ -502,10 +580,17 @@ if ($method === 'PATCH') {
         } catch (Exception $e) { /* SSE non-fatal */ }
     }
 
-    ext_api_response([
+    $patchResponse = [
         'id'             => $ticketId,
         'fields_changed' => $fieldsChanged,
-    ]);
+    ];
+    // GH#147: when the request carried a status, say plainly whether it really
+    // changed -- a retry of a close answers 200 with status_changed:false
+    // rather than pretending it closed the incident a second time.
+    if ($statusChanged !== null) {
+        $patchResponse['status_changed'] = $statusChanged;
+    }
+    ext_api_response($patchResponse);
 }
 
 // ═══════════════════════════════════════════════════════════════

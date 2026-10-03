@@ -16,6 +16,8 @@
  */
 
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/phone-match.php';       // Phase 155 (GH#108 S3): the one phone-number matcher
+require_once __DIR__ . '/phone-extensions.php';  // phone_internal_constituents_enabled()
 
 if (!function_exists('inbound_calls_normalize_ts')) {
 
@@ -143,37 +145,76 @@ if (!function_exists('inbound_calls_normalize_ts')) {
     /**
      * Phase 153 (2026-09-08) — Eric: "I want the caller ID from that
      * workstation to be in the constituents." Look up an existing
-     * constituent by phone (reusing api/constituents.php's own digit-
-     * normalization convention so this NEVER disagrees with what the
-     * dispatcher's own manual phone-blur lookup in new-incident.js would
-     * find) and return its id; if none exists, create a bare record (phone
-     * number only -- contact defaults to the number itself, never a
-     * fabricated name) so the caller has a real Constituents entry from
-     * the moment the phone rings, not only if an incident happens to be
+     * constituent by phone and return its id; if none exists, create a bare
+     * record (phone number only -- contact defaults to the number itself,
+     * never a fabricated name) so the caller has a real Constituents entry
+     * from the moment the phone rings, not only if an incident happens to be
      * created from the call.
+     *
+     * Phase 155 (GH#108 S3) rewrote the matching and fixed two findings:
+     *   F7 -- the old three-REPLACE LIKE never stripped a closing parenthesis,
+     *         a dot or a plus sign, so a real carrier's "+16125551234" never
+     *         matched a stored "(612) 555-1234" and every call created a
+     *         duplicate. Matching is now phone_digits_match_sql()
+     *         (inc/phone-match.php), STRICT mode: the same code
+     *         api/constituents.php uses for the manual lookup, so the two can
+     *         no longer disagree.
+     *   F6 -- a call FROM one of our own extensions (101, a workstation) never
+     *         produced a Constituent, because the four-digit minimum that
+     *         guards the manual lookup swallowed three-digit extensions. A
+     *         caller that IS a phone_extensions row is now matched exactly on
+     *         the extension number and, the first time, created with the
+     *         extension's label as its name ("Desk 1 (ext 101)" -- a real
+     *         label, not a fabricated person). An agency that does not want its
+     *         own desks in the public contact list turns that off
+     *         (phone_internal_constituents, Settings > Phone Extensions) and a
+     *         call from an extension then resolves to nothing. The four-digit
+     *         minimum is unchanged for everyone who is NOT one of our extensions.
      */
     function _p153_resolve_constituent(?string $callerNumber): ?int
     {
         if (!$callerNumber) return null;
         $prefix = _p149_prefix();
-        $digits = preg_replace('/\D/', '', $callerNumber);
-        if (strlen($digits) < 4) return null; // matches new-incident.js's own minimum-digits gate
-        $like = '%' . $digits . '%';
+        $digits = phone_digits($callerNumber);
+        if ($digits === '') return null;
+
+        $ext = null;
+        try {
+            $ext = db_fetch_one(
+                "SELECT `label`, `extension` FROM `{$prefix}phone_extensions` WHERE `extension` = ? LIMIT 1",
+                [$digits]
+            ) ?: null;
+        } catch (Throwable $e) {
+            $ext = null; // phone_extensions may not exist yet on an unmigrated install
+        }
+
+        if ($ext) {
+            if (!function_exists('phone_internal_constituents_enabled') || !phone_internal_constituents_enabled()) {
+                return null;
+            }
+            $minDigits = 1;
+            $contact = trim((string) $ext['label']) !== ''
+                ? trim((string) $ext['label']) . ' (ext ' . $ext['extension'] . ')'
+                : 'Extension ' . $ext['extension'];
+            $phone = (string) $ext['extension'];
+        } else {
+            $minDigits = 4; // matches new-incident.js's own minimum-digits gate
+            $contact = $callerNumber;
+            $phone = $callerNumber;
+        }
+
+        $match = phone_digits_match_sql(phone_constituent_columns(), $digits, 'resolve', $minDigits);
+        if ($match === null) return null;
         try {
             $existing = db_fetch_one(
-                "SELECT id FROM `{$prefix}constituents`
-                  WHERE REPLACE(REPLACE(REPLACE(`phone`, '-', ''), ' ', ''), '(', '') LIKE ?
-                     OR REPLACE(REPLACE(REPLACE(`phone_2`, '-', ''), ' ', ''), '(', '') LIKE ?
-                     OR REPLACE(REPLACE(REPLACE(`phone_3`, '-', ''), ' ', ''), '(', '') LIKE ?
-                     OR REPLACE(REPLACE(REPLACE(`phone_4`, '-', ''), ' ', ''), '(', '') LIKE ?
-                  LIMIT 1",
-                [$like, $like, $like, $like]
+                "SELECT id FROM `{$prefix}constituents` WHERE " . $match['sql'] . " ORDER BY id LIMIT 1",
+                $match['params']
             );
             if ($existing) return (int) $existing['id'];
 
             db_query(
                 "INSERT INTO `{$prefix}constituents` (`contact`, `phone`) VALUES (?, ?)",
-                [$callerNumber, $callerNumber]
+                [$contact, $phone]
             );
             return (int) db_insert_id();
         } catch (Throwable $e) {
@@ -205,6 +246,32 @@ if (!function_exists('inbound_calls_normalize_ts')) {
         }
     }
 
+    /**
+     * Phase 155 (GH#108 S4): the call(s) the PBX knows by this id, newest
+     * first, across every trunk. The browser phone only knows the PBX's own
+     * id for the call (the X-Call-Linkedid the reference dial plan puts on the
+     * INVITE), not the inbound_calls.id the banner uses, and ids are only
+     * unique per trunk, so the caller filters the result by what the user may
+     * see. Never throws: a missing table is "no such call".
+     *
+     * @return array<int, array<string,mixed>>
+     */
+    function inbound_calls_find_by_provider_any_trunk(string $providerCallId, int $limit = 5): array
+    {
+        $prefix = _p149_prefix();
+        try {
+            return db_fetch_all(
+                "SELECT * FROM `{$prefix}inbound_calls`
+                  WHERE `provider_call_id` = ?
+                  ORDER BY `ringing_at` DESC, `id` DESC
+                  LIMIT " . max(1, min(20, $limit)),
+                [$providerCallId]
+            );
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
     /** The SSE-broadcast payload shape (plan.md §6's "hard structural
      *  limit" -- caller_number/called_number/trunk_label/mute_bypass/
      *  timestamps only, NEVER a constituent match or history summary).
@@ -233,6 +300,12 @@ if (!function_exists('inbound_calls_normalize_ts')) {
         }
         return [
             'call_id'        => (int) $call['id'],
+            // Phase 155 (GH#108 S4): the PBX's own id for the call. Routing
+            // information, not caller identity (so it does not cross FR-26's
+            // line): it lets a banner Answer tell the browser phone WHICH
+            // ringing leg to pick up, and lets the phone's own Answer find
+            // this row (api/inbound-calls.php claim_by_provider).
+            'provider_call_id' => (string) ($call['provider_call_id'] ?? ''),
             'trunk_id'       => (int) $call['trunk_id'],
             'trunk_label'    => (string) ($trunk['label'] ?? ''),
             'caller_number'  => $call['caller_number'],
@@ -256,6 +329,57 @@ if (!function_exists('inbound_calls_normalize_ts')) {
             'mute_bypass'    => !empty($trunk['mute_bypass_enabled']),
             'ringing_at'     => $call['ringing_at'],
         ];
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // A0. Bridge heartbeat (Phase 155)
+    // ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Stamp "the bridge for this trunk is alive right now". A quiet phone
+     * line and a dead bridge are indistinguishable from call traffic alone,
+     * so the bridge sends {"event":"heartbeat"} on a timer and the admin page
+     * reads the result. Schema-resilient: an install that has not yet run
+     * sql/run_phase155_pbx_trunk_heartbeat.php logs and returns false rather
+     * than failing the request (a heartbeat must never break ingest).
+     *
+     * `updated_at = updated_at` suppresses the column's ON UPDATE CURRENT_
+     * TIMESTAMP so a heartbeat every 30s does not masquerade as a config
+     * change.
+     */
+    function inbound_trunk_record_heartbeat(int $trunkId, ?string $info): bool
+    {
+        $prefix = _p149_prefix();
+        $clean = null;
+        if ($info !== null) {
+            $clean = substr(trim((string) preg_replace('/[^\x20-\x7E]/', '', $info)), 0, 120);
+            if ($clean === '') { $clean = null; }
+        }
+        try {
+            db_query(
+                "UPDATE `{$prefix}pbx_trunks`
+                    SET `last_heartbeat_at` = NOW(), `bridge_info` = ?, `updated_at` = `updated_at`
+                  WHERE `id` = ?",
+                [$clean, $trunkId]
+            );
+            return true;
+        } catch (Throwable $e) {
+            error_log('[inbound-calls heartbeat] trunk=' . $trunkId . ' failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Pure classification used by the admin page and its tests:
+     *   'never'     -- no heartbeat has ever been recorded (bridge not yet
+     *                  started, or an older bridge that predates heartbeats)
+     *   'connected' -- heard from within $freshSeconds (bridge beats every 30s)
+     *   'silent'    -- has connected before but has gone quiet
+     */
+    function inbound_trunk_connection_state(?int $heartbeatAgeSeconds, int $freshSeconds = 120): string
+    {
+        if ($heartbeatAgeSeconds === null) { return 'never'; }
+        return $heartbeatAgeSeconds <= $freshSeconds ? 'connected' : 'silent';
     }
 
     // ─────────────────────────────────────────────────────────────────

@@ -7,9 +7,21 @@
  * Manages responder assignments on existing incidents.
  * Three actions via JSON body 'action' field:
  *
- *   assign        { ticket_id, responder_id }
+ *   assign        { ticket_id, responder_id, [force], [dispatch_now] }
  *   update_status { ticket_id, assign_id, new_status }  (responding|on_scene|clear)
  *   unassign      { ticket_id, assign_id }
+ *
+ * GH#141 (Phase 155) -- units reserved for a Scheduled incident:
+ *   assign        may answer {reserved: true, reservation_id, promotes_at, ...}
+ *                 instead of dispatching, when scheduled_assign_mode = reserve
+ *                 and the incident is Scheduled with its booked time ahead.
+ *                 `dispatch_now: true` bypasses that and dispatches at once.
+ *   release_reservation       { reservation_id }
+ *   dispatch_reservation_now  { reservation_id, [force] }
+ *                 Both derive the incident from the reservation ROW; any
+ *                 ticket_id the client sends is ignored (the Phase 142
+ *                 revoke-IDOR lesson: never trust a client id that names a
+ *                 different object than the one you authorize against).
  *
  * 2026-06-28 — Phase 94 Stage 4j refactor: delegates SQL/business logic
  * to inc/assignment-write.php helpers (assign_create_internal,
@@ -23,6 +35,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/audit.php';
 require_once __DIR__ . '/../inc/assignment-write.php';
+require_once __DIR__ . '/../inc/assign-effects.php';      // GH#141: assign_emit_created_effects()
 require_once __DIR__ . '/../inc/incident-write.php';
 
 $prevDisplay = ini_get('display_errors');
@@ -49,6 +62,21 @@ if (empty($input['csrf_token']) || !csrf_verify($input['csrf_token'])) {
 $prefix    = $GLOBALS['db_prefix'] ?? '';
 $action    = trim($input['action'] ?? '');
 $ticket_id = (int) ($input['ticket_id'] ?? 0);
+
+// GH#141: for the two reservation actions the incident is whatever the
+// RESERVATION ROW says it belongs to -- never the client's ticket_id. Every
+// check below (existence, org scope) then authorizes against that real
+// incident, so a caller cannot release or dispatch another organization's
+// reservation by pairing its id with an incident of their own.
+$reservationRow = null;
+if ($action === 'release_reservation' || $action === 'dispatch_reservation_now') {
+    require_once __DIR__ . '/../inc/assign-reservations.php';
+    $reservationRow = assign_reservation_get((int) ($input['reservation_id'] ?? 0));
+    if (!$reservationRow) {
+        json_error('Reservation not found', 404);
+    }
+    $ticket_id = (int) $reservationRow['ticket_id'];
+}
 
 if ($ticket_id <= 0) {
     json_error('Invalid ticket ID');
@@ -129,7 +157,10 @@ if ($action === 'assign') {
     // "Assign anyway?" confirmation resubmits with force:true.
     $force = !empty($input['force']);
 
-    $result = assign_create_internal($ticket_id, $responder_id, $role, (int) $current_user_id, $force);
+    // GH#141 -- `dispatch_now` skips the reservation branch and dispatches at
+    // once, even to a Scheduled incident.
+    $result = assign_create_internal($ticket_id, $responder_id, $role, (int) $current_user_id, $force,
+        !empty($input['dispatch_now']) ? ['dispatch_now' => true] : []);
 
     // WARN level, not yet confirmed — NOT an error. Same response shape
     // api/unit-assignments.php already uses for its own confirm-and-retry
@@ -164,49 +195,36 @@ if ($action === 'assign') {
         json_error($first, 500);
     }
 
+    // GH#141 -- the unit was RESERVED for a Scheduled incident, not dispatched:
+    // id is 0 and there is no assigns row. Auditing `incident|assign|assigns`
+    // here would announce an assign.created webhook with assign_id 0 for a
+    // dispatch that has not happened (the reservation writer already wrote its
+    // own, deliberately non-webhook audit row and the SSE refresh).
+    if (!empty($result['reserved'])) {
+        $when = '';
+        if (!empty($result['promotes_at'])) {
+            $when = ' -- it will be dispatched automatically at ' . substr((string) $result['promotes_at'], 0, 16);
+        }
+        ini_set('display_errors', $prevDisplay);
+        json_response([
+            'success'        => true,
+            'reserved'       => true,
+            'reservation_id' => (int) $result['reservation_id'],
+            'promotes_at'    => $result['promotes_at'] ?? null,
+            'conflicts'      => $result['conflicts'] ?? [],
+            'message'        => $respName . ' reserved for incident #' . $ticket_id . $when,
+        ]);
+    }
+
     $assign_id = (int) $result['id'];
 
-    // Canonical webhook-eligible event: 'incident|assign|assigns' →
-    // assign.created (matches inc/webhooks.php canonical entry —
-    // replaces the legacy 'incident|assign|responder' alias).
-    audit_log('incident', 'assign', 'assigns', $assign_id,
-        "Assigned '{$respName}' to incident #{$ticket_id}",
-        [
-            'ticket_id'    => $ticket_id,
-            'responder_id' => $responder_id,
-            'assign_id'    => $assign_id,
-        ]);
-
+    // GH#141: the audit row (-> assign.created), the SSE refresh, the OwnTracks
+    // config push and the notification rules now live in ONE function, shared
+    // with the promotion of a reservation at the booked time (which has no HTTP
+    // request behind it). Behaviour here is unchanged.
     require_once __DIR__ . '/../inc/sse.php';
-    sse_publish_for_incident('responder:assign',
-        ['ticket_id' => $ticket_id, 'responder' => $respName, 'action' => 'assign'],
-        $ticket_id);
-
-    // Phase 52b — push tightened OwnTracks config (5min stationary,
-    // 30s moving) to everyone assigned to this unit. Best-effort; if
-    // the helper file or table is missing we just skip. The
-    // OT_CONFIG_LIBRARY_ONLY guard prevents the included file from
-    // re-dispatching against this request's $_GET/$_POST.
-    try {
-        if (!defined('OT_CONFIG_LIBRARY_ONLY')) define('OT_CONFIG_LIBRARY_ONLY', 1);
-        require_once __DIR__ . '/owntracks-config.php';
-        if (function_exists('_ot_recompute_for_responder')) {
-            _ot_recompute_for_responder($responder_id, (int) ($_SESSION['user_id'] ?? 0) ?: null);
-        }
-    } catch (Throwable $e) { /* swallow — never block an assignment for a config push */ }
-
-    // ── Fire notification rules (best-effort) ──
-    try {
-        require_once __DIR__ . '/../inc/notification-engine.php';
-        notification_check('unit_assign', [
-            'ticket_id'      => $ticket_id,
-            'scope'          => $ticket['scope'] ?? '',
-            'responder_id'   => $responder_id,
-            'responder_name' => $respName,
-        ]);
-    } catch (Exception $e) {
-        error_log('Notification engine error on unit assign: ' . $e->getMessage());
-    }
+    assign_emit_created_effects($ticket_id, $responder_id, $assign_id, $respName,
+        ['scope' => (string) ($ticket['scope'] ?? '')]);
 
     ini_set('display_errors', $prevDisplay);
     json_response([
@@ -214,6 +232,47 @@ if ($action === 'assign') {
         'assign_id' => $assign_id,
         'message'   => $respName . ' assigned to incident #' . $ticket_id,
     ]);
+}
+
+// ══════════════════════════════════════════════════════════════
+// ACTION: release_reservation / dispatch_reservation_now  (GH#141)
+// ══════════════════════════════════════════════════════════════
+// Same file-level gates as every action here: action.assign_unit, CSRF, and the
+// org-scope check above -- run against the incident the RESERVATION belongs to.
+// No new permission: reserving, releasing and dispatching a reservation are all
+// "assign a unit".
+elseif ($action === 'release_reservation') {
+    $res = assign_reservation_release((int) $reservationRow['id'], (int) $current_user_id, 'released by a dispatcher');
+    ini_set('display_errors', $prevDisplay);
+    if (empty($res['released'])) {
+        json_error((string) ($res['errors'][0] ?? 'Could not release the reservation'), 409);
+    }
+    json_response([
+        'success' => true,
+        'message' => 'Reservation for ' . _ia_responder_name((int) $reservationRow['responder_id']) . ' released',
+    ]);
+}
+
+elseif ($action === 'dispatch_reservation_now') {
+    $p = assign_reservations_promote_one((int) $reservationRow['id'], !empty($input['force']), (int) $current_user_id);
+    ini_set('display_errors', $prevDisplay);
+    $uname = _ia_responder_name((int) $reservationRow['responder_id']);
+    if (!empty($p['promoted'])) {
+        json_response(['success' => true, 'assign_id' => (int) $p['assign_id'],
+                       'message' => $uname . ' dispatched to incident #' . $ticket_id]);
+    }
+    // The gate's WARN level: same answer shape as a normal assign, so the
+    // browser's confirm-and-resubmit pattern is identical.
+    if (!empty($p['blocked']) && empty($p['hard_block']) && empty($input['force'])) {
+        json_response(['needs_confirmation' => true, 'message' => (string) $p['message']]);
+    }
+    if (!empty($p['blocked'])) {
+        json_error((string) $p['message'], 409);       // a hard block: force cannot bypass it
+    }
+    if (!empty($p['skipped'])) {
+        json_error('Reservation is ' . str_replace('already_', '', (string) $p['skipped']) . ' and cannot be dispatched', 409);
+    }
+    json_error((string) ($p['errors'][0] ?? 'Could not dispatch the reservation'), 500);
 }
 
 // ══════════════════════════════════════════════════════════════

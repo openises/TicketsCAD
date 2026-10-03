@@ -11,7 +11,7 @@
  *
  * config_json: {
  *   voice    — the Aura model, e.g. 'aura-2-thalia-en' (overridable per app)
- *   key_ref  — filename under ../keys/tts/ holding the API key
+ *   key_ref  — filename in the TTS key directory (inc/tts/keys.php) holding the API key
  *   endpoint — override (default https://api.deepgram.com/v1/speak)
  *   encoding — 'linear16' (default) | 'mulaw' | 'alaw'
  * }

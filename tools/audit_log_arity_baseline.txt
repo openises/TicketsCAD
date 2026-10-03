@@ -1,0 +1,10 @@
+# tools/audit_log_arity.php -- verified false positives only.
+#
+# One entry per line: "relative/path.php:LINE  reason" (one call) or
+# "relative/path.php  reason" (every finding in that file). The reason is
+# mandatory: an entry with no reasoning is a finding someone chose not to read.
+#
+# Empty on purpose. Every finding the first run produced was a real defect and was
+# fixed (api/aprs-license-accept.php, api/messaging-send.php, api/mesh.php,
+# api/map-layer-prefs.php, api/auth.php and eight inc/ files). A stale entry (one
+# that no longer matches anything) fails the run, so this list cannot rot.

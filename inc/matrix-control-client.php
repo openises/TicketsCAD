@@ -232,4 +232,47 @@ function matrix_control_apply_http_stream_delete(string $channelKey) {
     return matrix_control_request('DELETE', '/channels/http_stream?' . http_build_query(['channel_id' => $channelKey]));
 }
 
+/**
+ * Phase 155 (GH#151/GH#129) — hot-attach (or re-attach after an edit) the
+ * generic USRP leg for a digital-voice-bridge channel, no service restart.
+ * $config is inc/voice-bridge-channels.php's vbc_leg_config() (bridge_host,
+ * bridge_tx_port, listen_host, listen_port, framing, rx_hang_ms). Fails
+ * CLOSED like the http_stream and route functions above: a channel row with
+ * no live leg is a strip that silently never carries audio.
+ */
+function matrix_control_apply_leg_create(string $channelKey, string $label, string $regClass, string $adapter, array $config) {
+    return matrix_control_request('POST', '/channels/leg', [
+        'channel_id' => $channelKey,
+        'name'       => $label,
+        'reg_class'  => $regClass,
+        'adapter'    => $adapter,
+        'config'     => $config,
+    ]);
+}
+
+/** Detach a USRP-family leg: stops it, frees its UDP port and removes the
+ *  channel (and its patches) from the live matrix. */
+function matrix_control_apply_leg_delete(string $channelKey) {
+    return matrix_control_request('DELETE', '/channels/leg?' . http_build_query(['channel_id' => $channelKey]));
+}
+
+/**
+ * Per-leg health from the running service (GET /legs, bearer-protected).
+ * Returns ['ok'=>bool, 'legs'=>array keyed by channel key, 'error'=>?string].
+ * ok=false with a message when the service is unconfigured, unreachable, or
+ * too old to know /legs (501/404) — callers show that as "unknown", never as
+ * "no legs".
+ */
+function matrix_control_legs() {
+    $r = matrix_control_request('GET', '/legs');
+    if (!$r['ok']) {
+        return ['ok' => false, 'legs' => [], 'error' => $r['error']];
+    }
+    $byKey = [];
+    foreach ((is_array($r['body']) ? ($r['body']['legs'] ?? []) : []) as $leg) {
+        if (is_array($leg) && isset($leg['channel_id'])) { $byKey[(string) $leg['channel_id']] = $leg; }
+    }
+    return ['ok' => true, 'legs' => $byKey, 'error' => null];
+}
+
 }

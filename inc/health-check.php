@@ -2008,6 +2008,35 @@ function health_check_keys(): array
             $summary = 'Keys are outside every web root this install can see (' . $active . ')';
         }
 
+        // Text-to-speech API keys. They used to live in
+        // NEWUI_ROOT/keys/tts, inside the web root, and this row — the one place
+        // an administrator already looks for "are my secrets published?" — said
+        // nothing about them. Folded in here rather than given a row of its own:
+        // the answer is the same question asked of the same kind of file, and
+        // the Status page, the CLI and the API all already render this array.
+        // $feSeverity is kept so the RSA/2FA move instructions below are only
+        // shown when THEY are the problem.
+        $feSeverity = $severity;
+        $ttsKeys    = null;
+        try {
+            require_once __DIR__ . '/tts/keys.php';
+            $ttsKeys = tts_keys_exposure();
+        } catch (Throwable $e) {
+            $ttsKeys = null;   // never let a secondary check hide the primary one
+        }
+        if (is_array($ttsKeys) && ($ttsKeys['severity'] ?? 'ok') !== 'ok') {
+            $rank = ['ok' => 0, 'warn' => 1, 'critical' => 2];
+            if (($rank[$ttsKeys['severity']] ?? 0) > ($rank[$severity] ?? 0)) {
+                $severity = $ttsKeys['severity'];
+            }
+            foreach ($ttsKeys['notes'] as $ttsNote) {
+                $notes[] = $ttsNote;
+            }
+            if ($feSeverity === 'ok') {
+                $summary = $ttsKeys['summary'];
+            }
+        }
+
         $blind = '';
         if (empty($probe['checked'])) {
             $blind = 'Not proved either way: ' . ($probe['reason'] ?? 'the HTTP self-test could not run')
@@ -2038,7 +2067,12 @@ function health_check_keys(): array
             'blind_spot'   => $blind,
             'severity'     => $severity,
             'summary'      => $summary,
-            'remedy'       => $severity === 'ok' ? '' : health_keys_move_remedy($active),
+            'tts'          => $ttsKeys,
+            'remedy'       => trim(
+                ($feSeverity === 'ok' ? '' : health_keys_move_remedy($active))
+                . (($feSeverity !== 'ok' && is_array($ttsKeys) && ($ttsKeys['remedy'] ?? '') !== '') ? "\n\n" : '')
+                . ((is_array($ttsKeys) && ($ttsKeys['severity'] ?? 'ok') !== 'ok') ? (string) $ttsKeys['remedy'] : '')
+            ),
         ];
     } catch (Throwable $e) {
         return ['checked' => false, 'severity' => 'ok',
@@ -2603,6 +2637,82 @@ function health_check_matrix_regulatory(): array
     } catch (Throwable $e) {
         return ['checked' => false, 'error' => 'matrix regulatory scan failed',
                 'violations' => [], 'severity' => 'unknown'];
+    }
+}
+
+/**
+ * Phase 155 (GH#151/GH#129) — digital voice bridge links.
+ *
+ * Reports on every ENABLED digital voice bridge channel (adapter dvmproject /
+ * usrp_bridge): is its leg actually attached in the running audio-matrix
+ * service, and — only when the optional FNE REST status check is configured
+ * AND the channel has an FNE peer ID — is its peer connected to the FNE.
+ *
+ * Honest by construction: an install with no such channels reports 'ok' with
+ * a note (a feature not in use is not a fault); REST not configured is 'ok'
+ * with the note that link state is unknown (never 'connected'); a leg missing
+ * from the service, a peer that is down/degraded, or a REST endpoint that
+ * cannot be reached is 'warn' — these are optional radio links, not an
+ * install-breaking fault, so never 'critical'.
+ */
+function health_check_dvm_fne(): array
+{
+    try {
+        if (!function_exists('db_fetch_all')) {
+            return ['checked' => false, 'severity' => 'ok', 'error' => 'database not available in this context'];
+        }
+        require_once __DIR__ . '/voice-bridge-channels.php';
+        try {
+            $rows = array_values(array_filter(vbc_list(), function ($r) { return (int) $r['enabled'] === 1; }));
+        } catch (Throwable $e) {
+            return ['checked' => true, 'severity' => 'ok', 'channels' => 0, 'issues' => [],
+                    'note' => 'comm_channels not queryable on this install'];
+        }
+        if (!$rows) {
+            return ['checked' => true, 'severity' => 'ok', 'channels' => 0, 'issues' => [],
+                    'note' => 'no digital voice bridge channels are enabled on this install'];
+        }
+
+        $issues = [];
+        require_once __DIR__ . '/matrix-control-client.php';
+        $legs = matrix_control_legs();
+        if ($legs['ok']) {
+            foreach ($rows as $r) {
+                if (!isset($legs['legs'][$r['channel_key']])) {
+                    $issues[] = $r['label'] . ': enabled, but no leg is attached in the audio-matrix service '
+                              . '(its UDP port is not bound; check the service log, then re-save the channel)';
+                }
+            }
+        } else {
+            $issues[] = 'The audio-matrix service could not be asked about these channels: ' . $legs['error'];
+        }
+
+        require_once __DIR__ . '/dvm-fne-rest.php';
+        $restOn = dvm_fne_rest_configured();
+        $linkNote = '';
+        if (!$restOn) {
+            $linkNote = 'FNE REST is not configured, so link state reads "unknown" (never "connected" by assumption)';
+        } else {
+            foreach ($rows as $r) {
+                $peer = (int) ($r['config']['fne']['peer_id'] ?? 0);
+                if ($r['adapter'] !== 'dvmproject' || $peer <= 0) { continue; }
+                $res = dvm_fne_peer_state_cached($peer);
+                if ($res['state'] !== 'connected') {
+                    $issues[] = $r['label'] . ': FNE link ' . $res['state']
+                              . ($res['reason'] !== '' ? ' (' . $res['reason'] . ')' : '');
+                }
+            }
+        }
+
+        return [
+            'checked'  => true,
+            'severity' => $issues ? 'warn' : 'ok',
+            'channels' => count($rows),
+            'issues'   => $issues,
+            'note'     => $linkNote,
+        ];
+    } catch (Throwable $e) {
+        return ['checked' => false, 'severity' => 'ok', 'error' => 'digital voice bridge check failed'];
     }
 }
 
@@ -3396,6 +3506,7 @@ function health_check_all(): array
         $teamMembership = health_check_team_membership_reconciliation();
         $httpsEnforcement = health_check_https_enforcement();
         $matrixRegulatory = health_check_matrix_regulatory();
+        $dvmFne = health_check_dvm_fne();
 
         $critical = 0;
         $warn     = 0;
@@ -3437,7 +3548,7 @@ function health_check_all(): array
             $warn++;
         }
         foreach ([$backups, $keys, $exposure, $geocoding, $geocodeCacheWritable, $tileCacheWritable,
-                  $publicBoard, $teamMembership, $httpsEnforcement, $matrixRegulatory] as $sec) {
+                  $publicBoard, $teamMembership, $httpsEnforcement, $matrixRegulatory, $dvmFne] as $sec) {
             if (($sec['severity'] ?? '') === 'critical') {
                 $critical++;
             } elseif (($sec['severity'] ?? '') === 'warn') {
@@ -3477,6 +3588,7 @@ function health_check_all(): array
             'team_membership' => $teamMembership,
             'https_enforcement' => $httpsEnforcement,
             'matrix_regulatory' => $matrixRegulatory,
+            'dvm_fne'      => $dvmFne,
             'summary'      => ['critical' => $critical, 'warn' => $warn, 'unknown' => $unknown],
         ];
     } catch (Throwable $e) {

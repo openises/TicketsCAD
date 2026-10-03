@@ -73,9 +73,10 @@ release is tagged `vX.Y.Z` at the commit that replaced the tree, so the tree at
 the newest reachable `v*` tag is, byte for byte, what was last published.
 
 **Tagging a release is therefore part of publishing it, not a flourish.** An
-untagged release leaves the next one with no baseline — and the check then
-*refuses* rather than guessing, which is the correct failure but an avoidable
-one.
+untagged release made by hand leaves the next one with no baseline — and the
+check then *refuses* rather than guessing, which is the correct failure but an
+avoidable one. (An untagged *sync* made by `tools/publish-sync.sh` is covered
+differently: see [Keeping public main in step](#keeping-public-main-in-step).)
 
 When the check finds something, it prints each affected path, whether the file
 would be overwritten or deleted, which public commits touched it, and an excerpt
@@ -203,3 +204,88 @@ right place and it is where review happens. Two things are worth knowing:
 
 Step 5 is what gives the *next* release a baseline. Skipping it does not break
 this release; it breaks the check that protects the one after it.
+
+---
+
+## Keeping public main in step
+
+A fix verified on a hosted beta must reach public `main`, and a reporter must
+not be told it is fixed before it has. A standing rule ("sync every verified fix
+at once") depends on someone remembering it every time; a rule is a streak, not
+a gate. So the property is enforced mechanically, by three small pieces.
+
+### 1. One command, and a record of what it published
+
+```
+bash tools/publish-sync.sh                      # snapshot, replace, commit; stops before pushing
+bash tools/publish-sync.sh --push               # ...and push, then wait for CI on the EXACT commit
+bash tools/publish-sync.sh --release=v4.2.28 --push   # also date the changelog and tag
+```
+
+It runs `tools/release-snapshot.sh` **unmodified** (the SBOM gates, the scrub,
+the secret scan, the staged-tree test run and the divergence gate all apply),
+replaces the public tree, restores the public-authoritative `CHANGELOG.md`,
+prepends one bullet per newly published fix under `[Unreleased]`, and commits
+with two trailers:
+
+```
+Dev-Commit: <full sha of the dev commit that was staged>
+Fixes-Included: GH#146 GH#149
+```
+
+A trailer lives in the commit *message*, not the tree, so the full-tree replace
+and the divergence check (which compares trees) are unaffected. It never pushes
+without `--push`, never tags without `--release`, refuses a dirty or off-`main`
+clone, and refuses changelog text that matches the snapshot's infra/PII scan
+(that scan reads the tree, and the changelog is restored after it). `--push`
+waits for CI **by the commit it pushed**, never "the latest run", and treats a
+commit that never got a run (an Actions outage loses the event) as a failure
+rather than a pass.
+
+### 2. Measuring the distance
+
+```
+php tools/sync-lag-check.php                    # how far behind is public main?
+php tools/sync-lag-check.php --issue=143        # may I tell this reporter it is fixed?
+```
+
+The newest public commit carrying a `Dev-Commit` trailer is "what the public
+repository has". Only dev commits that touch a path the snapshot **publishes**
+count (the exclusion list is read from `tools/release-snapshot.sh`, so a commit
+that edits only `specs/` is not unpublished work). Exit codes: `0` in step,
+`1` over `SYNC_WARN_HOURS` (default 24), `2` over `SYNC_FAIL_HOURS` (72), `4`
+cannot determine (no public data, no baseline: gates treat it as *not* synced).
+
+`--issue=N` is the gate for the comment "fixed": it exits `0` only if **every**
+publishable dev commit naming `GH#N` is an ancestor of the last published dev
+commit. `1` means not yet published; `3` means no publishable commit names that
+issue at all, so nothing can be claimed. **Until it exits 0, post nothing about
+a fix**: a plain "confirmed and being worked on" is allowed, a sentence that
+says it is available is not.
+
+Until the first trailer commit exists, `tools/sync-lag-baseline.txt` (or
+`--baseline=<sha>`) says which dev commit public `main` is believed to carry.
+Delete the file once a `publish-sync` commit has been published.
+
+### 3. Where it shows up
+
+- `tools/deploy.sh` prints the same report as a banner before deploying
+  (informational: the hosts are legitimately ahead while a fix is being verified).
+  `DEPLOY_REQUIRE_SYNCED=1` makes it refuse instead, and fail closed when the lag
+  cannot be determined.
+- The private community inbox lists a failing lag the hour it crosses the
+  threshold, so a three-week backlog is caught on day two.
+
+### The divergence baseline and untagged syncs
+
+`tools/release-divergence-check.php` now takes, as the baseline, the **newer of**
+the newest reachable `v*` tag and the newest public commit carrying a
+`Dev-Commit` trailer. Before this, every file an untagged sync had touched
+differed from the last tag and was reported as a public-only change that
+publishing would revert: every one of those findings was dev having moved
+*forward*, and the release needed an exact-count `--allow-revert=N` override. An
+override that is needed every time stops meaning anything and buries a genuine
+outside change among the false ones. A real
+outside change made *after* a sync commit still stops the release
+(`tests/test_release_divergence_guard.php` covers both directions). Using
+`--allow-revert=N` as a routine step is a sign something is wrong, not a habit.

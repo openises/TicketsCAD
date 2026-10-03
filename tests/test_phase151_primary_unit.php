@@ -56,7 +56,10 @@ $extApi = file_get_contents(__DIR__ . '/../api/external/v1/incidents.php');
 t("api/external/v1/incidents.php: PATCH extracts primary_responder_id as a dedicated action",
     strpos($extApi, "array_key_exists('primary_responder_id', \$fields)") !== false);
 t("api/external/v1/incidents.php: primary write checks action.set_primary_unit",
-    (bool) preg_match("/primaryFieldPresent\\)\\s*\\{\\s*\n\\s*if \(!rbac_can\('action\.set_primary_unit'\)\)/", $extApi));
+    // GH#147 (F7) moved this check up with the other dedicated-action permission
+    // checks so that a 403 is decided BEFORE any field is saved: the shape is now
+    // `if ($primaryFieldPresent && !rbac_can(...))` ahead of the ticket lookup.
+    (bool) preg_match("/if \\(\\\$primaryFieldPresent && !rbac_can\\('action\\.set_primary_unit'\\)\\) \\{\\s*\n\\s*ext_api_error\\('forbidden_rbac', 403/", $extApi));
 t("api/external/v1/incidents.php: GET flows primary_responder_name via a schema-resilient join",
     strpos($extApi, 'primary_responder_name') !== false);
 

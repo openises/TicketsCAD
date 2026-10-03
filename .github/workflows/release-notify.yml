@@ -1,0 +1,54 @@
+name: release-notify
+
+# When a release is published, tell each reporter whose issue it names:
+# "Included in release vX.Y.Z". One short comment from the Actions bot per
+# issue, once per release, capped. See tools/release-notify.php.
+#
+# WHY: a fix can ship and the person who asked for it never hear. People who
+# file occasionally run no confirm-and-close loop of their own, and anyone who
+# moves only on tagged releases (Docker, ZIP installs) learns nothing from a
+# quiet main branch.
+#
+# SECURITY SHAPE: the release notes are read by the script from the event
+# payload file; nothing from them is interpolated into a command, and nothing
+# from them is copied into the comment (only issue NUMBERS and a validated tag).
+# No pull_request_target, no secrets, two token scopes.
+#
+# Settings are repository variables, all optional (docs/COMMUNITY-OPERATIONS.md):
+#   RELEASE_NOTIFY_ENABLED, RELEASE_NOTIFY_MAX, RELEASE_NOTIFY_PRERELEASES
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read   # checkout, and reading CHANGELOG.md at the tag
+  issues: write    # the comments
+
+concurrency:
+  group: release-notify-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    name: tell the reporters
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+
+      - name: Comment "Included in release" on each issue the release names
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTIFY_ENABLED: ${{ vars.RELEASE_NOTIFY_ENABLED }}
+          RELEASE_NOTIFY_MAX: ${{ vars.RELEASE_NOTIFY_MAX }}
+          RELEASE_NOTIFY_PRERELEASES: ${{ vars.RELEASE_NOTIFY_PRERELEASES }}
+        run: php tools/release-notify.php

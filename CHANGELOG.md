@@ -5,6 +5,82 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+**Administrators, after updating:** run `php sql/run_migrations.php`, then create the one-minute
+`ticketscad-scheduled-incidents` timer described under "Scheduled-incident activation" in
+`docs/MAINTENANCE-RUNBOOK.md` (Windows installs get it from `tools\run-scheduled-jobs.bat`). Nothing
+else is switched on for you: the new features below are off, empty, or opt-in until an administrator
+turns them on.
+
+### Added
+
+- **Notification Rules** (Settings → Communications & Integrations → Notification Rules, Super Admin
+  only). Choose an event (incident created or closed, severity raised, unit dispatched or cleared, and
+  others), who is told (a user, a roster member, an address or phone number, an email list, a Slack or
+  Telegram channel), the channel (email, text, chat, push) and a message with fields such as
+  `{incident_type}` and `{street}`. A review panel shows the exact message and every delivery it would
+  make, including the ones it would skip and why. Deliveries are queued and sent by the existing
+  one-minute job, with a delivery log. Includes an Active911 template. Guide: `docs/NOTIFICATION-RULES.md`.
+- **Email distribution lists** can now hold Members, Contacts, typed addresses and other lists from the
+  Manage modal (searchable pickers, keyboard friendly), with a preview of what a list expands to.
+- **Agency logo and branding** (Settings → Application — Presentation → Agency Logo & Branding): your
+  logo on the sign-in screen, as a letterhead on printed pages and ICS forms, optionally in the top bar
+  and on the public incident board; a separate image for dark backgrounds; per-organization logos. PNG
+  or JPEG (WebP where PHP can decode it); SVG is refused. Guide: `docs/AGENCY-BRANDING.md`.
+- **Scheduled calls, reserve mode.** Settings → Incident Lifecycle → "Units assigned to Scheduled
+  incidents": keep today's behaviour (dispatch immediately, the default) or reserve the unit until the
+  booked time, then dispatch it automatically (optionally a set number of minutes early). A unit that is
+  busy at that moment is held for a dispatcher instead of being double-booked.
+- **`incident.status_changed` webhook**, with its own subscription checkbox.
+- **Towing and roadside rotation list** (Settings → Resources → Service Providers; off until enabled):
+  companies, rotation lists, an append-only ledger of every call and its outcome, and a dispatch dialog
+  on the incident page. Guide: `docs/VENDOR-DISPATCH-GUIDE.md`.
+- **Community operations tooling for maintainers** (`SUPPORT.md`, `docs/COMMUNITY-OPERATIONS.md`): an
+  acknowledgement bot with an away switch, label definitions as code, and a gate that reports how far the
+  public repository lags the development tree.
+- A 3CX mode for the inbound-call bridge (`services/sip-bridge`), a bridge "connected" indicator, a setup
+  dialog that writes `bridge.ini`, and a Send test call button. It needs 3CX's Call Control API (3CX AI
+  Edition) and has been tested against a simulator of 3CX only.
+
+### Changed
+
+- Scheduled incidents become Open in one atomic, timer-driven step instead of as a side effect of
+  somebody loading the incident list, so a booked time now means something to the External API, the
+  mobile screen and the incident page too. Closing a Major Incident now clears its units and fires the
+  same events as any other close.
+- **Notifications fire from the code that changes the thing**, so a unit dispatched from the New
+  Incident form or the External API notifies just like one dispatched from the incident page.
+- The incident page's **AllStar Relay** test button is now off unless an administrator enables it, and it
+  no longer ships with lab host names as defaults.
+- The browser phone registers in the Console and in a Phone window that keeps ringing while you work in
+  other tabs, answering needs one click, and callers are matched to Contacts however their number is
+  written.
+- Text-to-speech API keys are stored outside the web root, beside the other keys; running the migrations
+  moves any key found in the old place.
+
+### Fixed
+
+- **Email-list recipients never worked** in notifications (the engine read a column that does not exist
+  and the error was swallowed), `{incident_type}` was blank in every notification, and the severity and
+  incident-type filters were ignored for "unit assigned".
+- Assigning a unit from the incident page ignored the double-booking confirmation and assigned nothing.
+- `incident:primary_changed` was published but never reached a browser.
+- Database backups wrote text such as `1e5` unquoted, which a restore turned into a number; ENUM values,
+  decimals and timestamps could also change on a round trip. Dumps now carry per-table content
+  fingerprints, and `php tools/restore.php --verify --file <archive>` checks them.
+- The APRS licence acceptance never wrote its audit row, and several other `audit_log()` calls had the
+  wrong shape; a test now guards the call shape.
+- The About page linked a Google Group that does not exist; it now links open-source-cad.
+- SOP pages: tables wider than the screen scroll horizontally, and the stylesheet and script links are
+  versioned so a cached copy cannot hide a fix.
+
+### Security
+
+- **SOP pages sanitise rendered markdown** (DOMPurify). Anyone allowed to edit SOP pages could previously
+  run script in an administrator's browser; the page now refuses to render if the sanitiser does not load.
+- Seven endpoints that changed state without checking a CSRF token now check it, and a test fails if a
+  new state-changing endpoint is added without one.
+- Text-to-speech API keys no longer sit inside the web root (see Changed).
+
 ## [4.2.27] — 2026-09-02
 
 ### Added

@@ -21,7 +21,7 @@
  * Headers: Authorization: Bearer <matrix_control_token>
  * Body (JSON):
  *   {
- *     "event": "channel_state" | "tx_state",
+ *     "event": "channel_state" | "tx_state" | "rx_state",
  *     "channel_id": "<matrix channel id, e.g. browser:501>",
  *     "channel_key": "<same value, kept for API-response-shape symmetry
  *                      with the other matrix-*.php endpoints>",
@@ -29,7 +29,11 @@
  *     // channel_state only:
  *     "state": "connected" | "disconnected",
  *     // tx_state only:
- *     "tx": "started" | "ended"
+ *     "tx": "started" | "ended",
+ *     // rx_state only (Phase 155, GH#151/GH#129 -- audio began/stopped
+ *     // arriving FROM a digital voice bridge; channel_id is that channel's
+ *     // comm_channels.channel_key, e.g. dvm:p25-tg1):
+ *     "rx": "started" | "ended"
  *   }
  *
  * Fires comm:channel_state / comm:tx_state as an 'entitled' SSE event
@@ -128,6 +132,39 @@ if ($event === 'tx_state') {
         'channel_id' => $channelId,
         'label'      => $label,
         'tx'         => $tx,
+    ], null, 'entitled', null);
+    header('Content-Type: application/json');
+    echo json_encode(['ok' => true, 'published' => $ok]);
+    exit;
+}
+
+if ($event === 'rx_state') {
+    // Phase 155 (GH#151/GH#129): the generic USRP leg reports that audio
+    // started/stopped arriving from a bridge. Unlike the browser-leg events
+    // above, the channel is a real comm_channels row, so the answer is also
+    // stored (last_rx_at, for the strip's "last heard" line) and the SSE
+    // payload carries the numeric comm_channels id the console strips key on.
+    // Restricted to the digital-voice-bridge adapters: this shared token must
+    // not be a way to write state onto an arbitrary channel.
+    $rx = (string) ($input['rx'] ?? '');
+    if ($rx !== 'started' && $rx !== 'ended') {
+        matrix_channel_state_error("rx must be 'started' or 'ended'");
+    }
+    require_once __DIR__ . '/../inc/channel_registry.php';
+    require_once __DIR__ . '/../inc/voice-bridge-channels.php';
+    $prefix = $GLOBALS['db_prefix'] ?? '';
+    $ch = db_fetch_one("SELECT id, adapter, label FROM `{$prefix}comm_channels` WHERE channel_key = ?", [$channelId]);
+    if (!$ch || !vbc_is_voice_bridge_adapter($ch['adapter'])) {
+        matrix_channel_state_error('Unknown digital voice channel', 404);
+    }
+    if ($rx === 'started') {
+        channel_state_set((int) $ch['id'], ['last_rx_at' => date('Y-m-d H:i:s')]);
+    }
+    $ok = sse_publish('comm:rx_state', [
+        'channel_id'  => (int) $ch['id'],
+        'channel_key' => $channelId,
+        'label'       => $ch['label'],
+        'rx'          => $rx,
     ], null, 'entitled', null);
     header('Content-Type: application/json');
     echo json_encode(['ok' => true, 'published' => $ok]);

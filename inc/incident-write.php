@@ -243,13 +243,29 @@ function incident_create_internal(array $input, int $userId): array {
     // Delegate to the same helper here so the two dispatch paths
     // behave identically.
     $assign_ids = $input['assign_responders'] ?? [];
+    $assignedUnitNames = [];   // Phase 155: for the ONE batched unit_assign notification below
     if (is_array($assign_ids) && $assign_ids) {
         require_once __DIR__ . '/assignment-write.php';
         foreach ($assign_ids as $rid) {
             $rid = (int) $rid;
             if ($rid > 0) {
                 try {
-                    assign_create_internal($ticket_id, $rid, '', $userId);
+                    // $opts['notify'] = false: a dispatch of three units is ONE notification
+                    // (fired after this loop with {units}/{unit_count}), not three.
+                    //
+                    // GH#141 (Phase 155): for a SCHEDULED incident created with
+                    // units, assign_create_internal() may RESERVE the unit
+                    // instead of dispatching it (scheduled_assign_mode =
+                    // reserve): the answer then has `reserved` true and id 0.
+                    // Nothing more is needed here -- the reservation writer
+                    // already logged it on the new incident, and the unit is
+                    // dispatched when the booked time arrives. A reservation
+                    // that cannot be made (errors) must not fail the create.
+                    $ar = assign_create_internal($ticket_id, $rid, '', $userId, false, ['notify' => false]);
+                    if (!empty($ar['reserved'])) {
+                        continue;
+                    }
+                    if (!empty($ar['id'])) $assignedUnitNames[] = (string) ($ar['responder_name'] ?? '');
                 } catch (Throwable $e) {
                     // assigns table may differ on very old installs;
                     // don't fail the incident create just because one
@@ -372,6 +388,22 @@ function incident_create_internal(array $input, int $userId): array {
                 'assigned_count'  => is_array($assignIds) ? count($assignIds) : 0,
                 'incident_number' => $incidentNumber,
             ]);
+    }
+
+    // ── Notification Rules (Phase 155, GH#144) ──
+    // Fired HERE, in the shared writer, so every create path notifies: the New
+    // Incident form, the external API, a message turned into an incident. The
+    // endpoint-level hook this replaces covered only api/incident-create.php.
+    // Order: the incident, then (if it is high-alert) the high-alert event, then
+    // ONE batched dispatch event for the units that were assigned on the way in.
+    // notification_hook() never throws and queues rather than sending inline.
+    require_once __DIR__ . '/notification-hook.php';
+    notification_hook('incident_create', ['ticket_id' => $ticket_id]);
+    if (severity_is_high_alert($severity)) {
+        notification_hook('severity_high', ['ticket_id' => $ticket_id]);
+    }
+    if ($assignedUnitNames) {
+        notification_hook('unit_assign', ['ticket_id' => $ticket_id, 'units' => $assignedUnitNames]);
     }
 
     return [
@@ -602,6 +634,16 @@ function incident_update_fields_internal(int $ticketId, array $fields, int $user
     $params[] = $now;
     $params[] = $ticketId;
 
+    // Phase 155 (GH#144): remember the severity BEFORE the update, so a rise INTO a
+    // High-alert level can fire the `severity_high` notification afterwards.
+    $oldSeverity = null;
+    if (in_array('severity', $changed, true)) {
+        try {
+            $ov = db_fetch_value("SELECT `severity` FROM `{$prefix}ticket` WHERE `id` = ?", [$ticketId]);
+            if ($ov !== false && $ov !== null) $oldSeverity = (int) $ov;
+        } catch (Exception $e) { /* severity is a core column; if unreadable, no escalation event */ }
+    }
+
     try {
         db_query(
             "UPDATE `{$prefix}ticket` SET " . implode(', ', $sets) . " WHERE `id` = ?",
@@ -620,6 +662,20 @@ function incident_update_fields_internal(int $ticketId, array $fields, int $user
             [$ticketId, $now, 'Updated: ' . implode(', ', $changed), $userId, $now]
         );
     } catch (Exception $e) { /* action table differs on legacy installs */ }
+
+    // Phase 155 (GH#144) — Notification Rules: an incident RAISED to a High-alert
+    // severity fires `severity_high`, the same event creating one at that level
+    // fires. Not on a re-save of a level that was already high-alert.
+    if ($oldSeverity !== null) {
+        try {
+            $nv = db_fetch_value("SELECT `severity` FROM `{$prefix}ticket` WHERE `id` = ?", [$ticketId]);
+            if ($nv !== false && $nv !== null && severity_is_high_alert((int) $nv)
+                && !severity_is_high_alert($oldSeverity)) {
+                require_once __DIR__ . '/notification-hook.php';
+                notification_hook('severity_high', ['ticket_id' => $ticketId]);
+            }
+        } catch (Exception $e) { /* never block the edit */ }
+    }
 
     return ['id' => $ticketId, 'fields_changed' => $changed, 'errors' => []];
 }
@@ -804,6 +860,33 @@ function incident_clear_stragglers(int $ticketId, int $userId, array $opts = [])
 }
 
 /**
+ * Phase 155 (GH#147) -- the existence / active check for a disposition id, as a
+ * pure read with no side effects, so the writer (incident_set_disposition_
+ * internal) and the External API's pre-write preflight ask the SAME question
+ * and cannot disagree.
+ *
+ * @return string|null  an error message, or null when the id may be assigned
+ */
+function incident_disposition_validation_error(int $dispositionId): ?string {
+    $prefix = $GLOBALS['db_prefix'] ?? '';
+    try {
+        $row = db_fetch_one(
+            "SELECT `id`, `active` FROM `{$prefix}ticket_disposition` WHERE `id` = ?",
+            [$dispositionId]
+        );
+    } catch (Exception $e) {
+        return 'disposition lookup failed: ' . $e->getMessage();
+    }
+    if ($row === null) {
+        return 'Selected disposition does not exist.';
+    }
+    if ((int) $row['active'] !== 1) {
+        return 'Selected disposition is retired and cannot be newly assigned.';
+    }
+    return null;
+}
+
+/**
  * Set (or clear) an incident's disposition — independent of any status
  * change. Per spec.md's "Resolved Q2" and plan.md §4: dispositions are
  * "settable at any time, not only at close." Extracted as its own
@@ -874,22 +957,9 @@ function incident_set_disposition_internal(int $ticketId, ?int $dispositionId, i
     $newId = ($dispositionId !== null && $dispositionId > 0) ? $dispositionId : null;
 
     if ($newId !== null) {
-        try {
-            $row = db_fetch_one(
-                "SELECT `id`, `active` FROM `{$prefix}ticket_disposition` WHERE `id` = ?",
-                [$newId]
-            );
-        } catch (Exception $e) {
-            return ['updated' => false, 'disposition_id' => null,
-                    'errors' => ['disposition lookup failed: ' . $e->getMessage()]];
-        }
-        if ($row === null) {
-            return ['updated' => false, 'disposition_id' => null,
-                    'errors' => ['Selected disposition does not exist.']];
-        }
-        if ((int) $row['active'] !== 1) {
-            return ['updated' => false, 'disposition_id' => null,
-                    'errors' => ['Selected disposition is retired and cannot be newly assigned.']];
+        $dispErr = incident_disposition_validation_error($newId);
+        if ($dispErr !== null) {
+            return ['updated' => false, 'disposition_id' => null, 'errors' => [$dispErr]];
         }
     }
 
@@ -1055,6 +1125,230 @@ function incident_set_primary_internal(int $ticketId, ?int $responderId, int $us
 }
 
 /**
+ * Phase 155 (GH#147, the F7 ordering fix) -- decide, WITHOUT writing anything,
+ * whether incident_update_status_internal() would refuse this request.
+ *
+ * Why it exists: the External API's PATCH handles several things in one request
+ * (generic fields, status, disposition, primary unit). It used to write the
+ * generic fields first and only then discover that the caller lacked
+ * action.close_incident (a 403) or that closing needs a disposition (a 422) --
+ * so the response said "refused" while the other fields had already been saved
+ * and audited. Every refusal that can be decided up front now is, before the
+ * first write, using this function plus the endpoint's own RBAC checks.
+ *
+ * Mirrors the writer's own gates exactly (same helper for the disposition
+ * check; the same disposition_required_on_close rule, honouring
+ * skip_disposition_check), and treats a same-status request as acceptable
+ * (the writer will no-op it) so a repeat close of an already-closed incident
+ * is not suddenly refused for lacking a disposition.
+ *
+ * @return string[] error messages; empty = the writer would accept it
+ */
+function incident_status_change_preflight(int $ticketId, int $newStatus, array $extra = []): array {
+    if ($ticketId <= 0) return ['invalid ticket_id'];
+    if (!in_array($newStatus, [1, 2, 3], true)) return ['status must be 1 (Closed), 2 (Open) or 3 (Scheduled)'];
+    $prefix = $GLOBALS['db_prefix'] ?? '';
+
+    try {
+        $cur = db_fetch_one("SELECT `status`, `disposition_id` FROM `{$prefix}ticket`
+                              WHERE `id` = ? AND (`deleted_at` IS NULL OR `deleted_at` = '0000-00-00 00:00:00')", [$ticketId]);
+    } catch (Exception $e) {
+        return ['status lookup failed: ' . $e->getMessage()];
+    }
+    if (!$cur) return ['ticket not found'];
+    $old = (int) $cur['status'];
+
+    if ($newStatus === 3) {
+        if (trim((string) ($extra['booked_date'] ?? '')) === '') {
+            return ['booked_date is required for scheduled status'];
+        }
+        return [];
+    }
+    if ($newStatus === 1) {
+        $dRaw = $extra['disposition_id'] ?? null;
+        $dId  = ($dRaw !== null && $dRaw !== '') ? (int) $dRaw : null;
+        if ($dId !== null && $dId > 0) {
+            $err = incident_disposition_validation_error($dId);
+            if ($err !== null) return [$err];
+        }
+        // The required-disposition gate fires only on a real close.
+        if ($old !== 1 && empty($extra['skip_disposition_check'])
+            && get_variable('disposition_required_on_close') === '1') {
+            $has = ($dId !== null && $dId > 0)
+                || (!empty($cur['disposition_id']) && (int) $cur['disposition_id'] > 0);
+            if (!$has) return ['A disposition is required to close this incident.'];
+        }
+    }
+    return [];
+}
+
+/**
+ * Phase 155 (GH#147) -- the one definition of the three ticket.status values'
+ * display labels. Before this every status path carried its own copy of
+ * ['1'=>'Closed','2'=>'Open','3'=>'Scheduled'] (api/incident-update.php,
+ * api/external/v1/incidents.php, and now the event emitter), which is how a
+ * label drifts between what a dispatcher sees and what an integrator's
+ * webhook says. Keys are ints.
+ *
+ * @return array<int,string>
+ */
+function incident_status_labels(): array {
+    return [1 => 'Closed', 2 => 'Open', 3 => 'Scheduled'];
+}
+
+/**
+ * Phase 155 (GH#147) -- name a status transition for the webhook payload.
+ * 'closed' (any -> 1), 'reopened' (1 -> 2), 'activated' (3 -> 2, a Scheduled
+ * incident becoming Open), 'scheduled' (any -> 3). Stable strings: they are
+ * part of the integrator contract in docs/WEBHOOKS-INTEGRATOR-GUIDE.md.
+ */
+function incident_status_transition_name(int $old, int $new): string {
+    if ($new === 1) return 'closed';
+    if ($new === 3) return 'scheduled';
+    return ($old === 1) ? 'reopened' : 'activated';
+}
+
+/**
+ * Phase 155 (GH#147) -- emit the machine-readable "an incident's status really
+ * changed" audit row, which the webhook allowlist maps to
+ * `incident.status_changed` (inc/webhooks.php).
+ *
+ * WHY ITS OWN ROW, from a single place. audit_log() maps one row to at most one
+ * webhook event, and the legacy rows (close / reopen / update) must keep
+ * producing incident.closed / .reopened / .updated byte-for-byte for existing
+ * subscribers. A dedicated `incident|status_change|ticket` row is the
+ * companion: written by the status WRITER, so no caller (UI, External API,
+ * auto-close, scheduled activation, Major Incident close) can forget it and no
+ * path can word its payload differently.
+ *
+ * The payload is deliberately ids, labels and timestamps ONLY -- never scope,
+ * address, description or any patient field. A security-labelled incident's
+ * restricted text must not leak into a subscriber's inbox because someone
+ * ticked a box; the summary is built from the case number alone.
+ *
+ * @param int   $old  status before (1 Closed, 2 Open, 3 Scheduled)
+ * @param int   $new  status after
+ * @param array $ctx  source           'ui' | 'external_api' | 'auto_close' |
+ *                                     'scheduled_activation' | 'major_incident_close'
+ *                    actor_type       'user' | 'api_token' | 'system'
+ *                    actor_id/name    override (defaults to the session user)
+ *                    token_id         External API token id
+ *                    cleared_assigns, reset_responders   (close only)
+ * @return bool true if the row was written. NEVER throws -- a logging failure
+ *              must not fail the transition it describes (same convention as
+ *              incident_set_primary_internal()).
+ */
+function incident_status_change_emit(int $ticketId, int $old, int $new, array $ctx = []): bool {
+    try {
+        if (!function_exists('audit_log') && is_file(__DIR__ . '/audit.php')) {
+            require_once __DIR__ . '/audit.php';
+        }
+        if (!function_exists('audit_log')) return false;
+
+        $prefix = $GLOBALS['db_prefix'] ?? '';
+        $labels = incident_status_labels();
+        $source = (string) ($ctx['source'] ?? 'internal');
+
+        $actorType = (string) ($ctx['actor_type'] ?? '');
+        if ($actorType === '') {
+            if ($source === 'external_api') {
+                $actorType = 'api_token';
+            } elseif (in_array($source, ['auto_close', 'scheduled_activation'], true)
+                      || (int) ($_SESSION['user_id'] ?? 0) <= 0) {
+                $actorType = 'system';
+            } else {
+                $actorType = 'user';
+            }
+        }
+
+        $actor = null;               // null = audit_log reads the session (a human, or a token's bound user)
+        $actorId = null;
+        $actorName = null;
+        if ($actorType === 'system') {
+            $actor = AUDIT_ACTOR_SYSTEM;
+            $actorName = 'System';
+        } else {
+            $actorId   = isset($ctx['actor_id']) ? (int) $ctx['actor_id'] : (int) ($_SESSION['user_id'] ?? 0);
+            $actorName = isset($ctx['actor_name']) ? (string) $ctx['actor_name'] : (string) ($_SESSION['user'] ?? '');
+            if ($actorId <= 0) $actorId = null;
+            if (isset($ctx['actor_id']) || isset($ctx['actor_name'])) {
+                $actor = ['id' => $actorId, 'name' => $actorName];
+            }
+        }
+
+        $number = function_exists('incnum_display') ? incnum_display($ticketId) : ('#' . $ticketId);
+
+        $details = [
+            'ticket_id'        => $ticketId,
+            'incident_number'  => $number,
+            'old_status'       => $old,
+            'new_status'       => $new,
+            'old_status_label' => $labels[$old] ?? 'Unknown',
+            'new_status_label' => $labels[$new] ?? 'Unknown',
+            'transition'       => incident_status_transition_name($old, $new),
+            'source'           => $source,
+            'actor_type'       => $actorType,
+            'actor_id'         => $actorId,
+            'actor_name'       => $actorName,
+        ];
+
+        // Row-derived extras. One cheap SELECT; each column read here is one
+        // this file already writes, and a failure degrades to "field absent",
+        // never an error.
+        try {
+            $row = db_fetch_one(
+                "SELECT `booked_date`, `problemend`, `disposition_id` FROM `{$prefix}ticket` WHERE `id` = ?",
+                [$ticketId]);
+        } catch (Throwable $e) {
+            $row = null;
+        }
+        if ($row) {
+            if (($old === 3 || $new === 3) && !empty($row['booked_date'])
+                && strpos((string) $row['booked_date'], '0000-00-00') !== 0) {
+                $details['booked_date'] = (string) $row['booked_date'];
+            }
+            if ($new === 1) {
+                if (!empty($row['problemend']) && strpos((string) $row['problemend'], '0000-00-00') !== 0) {
+                    $details['problemend'] = (string) $row['problemend'];
+                }
+                $details['disposition'] = null;
+                if (!empty($row['disposition_id']) && (int) $row['disposition_id'] > 0) {
+                    try {
+                        $d = db_fetch_one(
+                            "SELECT `id`, `code`, `status_val` FROM `{$prefix}ticket_disposition` WHERE `id` = ?",
+                            [(int) $row['disposition_id']]);
+                        if ($d) {
+                            $details['disposition'] = [
+                                'id'    => (int) $d['id'],
+                                'code'  => (string) ($d['code'] ?? ''),
+                                'label' => (string) ($d['status_val'] ?? ''),
+                            ];
+                        }
+                    } catch (Throwable $e) { /* disposition table absent -- leave null */ }
+                }
+            }
+        }
+        if ($new === 1) {
+            $details['cleared_assigns']  = (int) ($ctx['cleared_assigns'] ?? 0);
+            $details['reset_responders'] = (int) ($ctx['reset_responders'] ?? 0);
+        }
+        if (!empty($ctx['token_id'])) {
+            $details['token_id'] = (int) $ctx['token_id'];
+        }
+        $details['via_external_api'] = ($source === 'external_api');
+
+        return audit_log('incident', 'status_change', 'ticket', $ticketId,
+            "Status transition on incident {$number}: " . ($labels[$old] ?? 'Unknown')
+                . ' → ' . ($labels[$new] ?? 'Unknown'),
+            $details, AUDIT_INFO, $actor);
+    } catch (Throwable $e) {
+        error_log('[incident-write] incident_status_change_emit failed for ticket '
+            . $ticketId . ': ' . $e->getMessage());
+        return false;
+    }
+}
+
+/**
  * Change an incident's status — handles the three legal transitions
  * (1=Closed, 2=Open, 3=Scheduled) with all the side-effects
  * api/incident-update.php's update_status branch used to do inline:
@@ -1073,10 +1367,26 @@ function incident_set_primary_internal(int $ticketId, ?int $responderId, int $us
  * Caller is responsible for:
  *   - CSRF or bearer auth
  *   - rbac_can('action.close_incident') check
- *   - Pre-fetching the ticket row for "already-in-status" / "not-found"
- *     guards — this helper does NOT re-query for the current status
- *     (so the caller can short-circuit those checks with its own
- *     friendlier error messages).
+ *   - Friendlier error text for "not found" / "already in that status": the
+ *     helper now reads the current status ITSELF (Phase 155, GH#147) so it can
+ *     tell a real change from a repeat, but callers may still pre-check for a
+ *     nicer message.
+ *
+ * Phase 155 (GH#147) -- COMPARE-AND-SET. The helper reads the status it is
+ * leaving and issues `UPDATE ... WHERE id = ? AND status = <old>`, requiring
+ * exactly one affected row:
+ *   - same status requested (1->1, 2->2): a NO-OP. Nothing is written, in
+ *     particular `problemend` is NOT re-stamped (an External API client that
+ *     retried a close used to silently overwrite the real close time) and no
+ *     event fires. 3->3 with a booked_date only reschedules.
+ *   - lost race (another process moved the status first): also a no-op,
+ *     `noop_reason = 'concurrent'`; nothing is emitted by the loser.
+ *   - a real change: the helper (and ONLY the helper) writes the
+ *     `incident|status_change|ticket` audit row -- see
+ *     incident_status_change_emit() -- so `incident.status_changed` fires
+ *     exactly once per real change from every caller.
+ * Callers that write their own legacy close / reopen / update audit row and SSE
+ * must gate them on `status_changed`.
  *
  * @param int   $ticketId        Ticket id to mutate
  * @param int   $newStatus       1=Closed, 2=Open, 3=Scheduled
@@ -1092,17 +1402,32 @@ function incident_set_primary_internal(int $ticketId, ?int $responderId, int $us
  *                                   (close only) — skips the
  *                                   disposition_required_on_close
  *                                   enforcement gate. ONLY
- *                                   inc/auto_close.php's sweep sets this
- *                                   (see that call site) — a background
- *                                   close with no human present must not
+ *                                   inc/auto_close.php's sweep and the
+ *                                   Major-Incident cascade set this (see
+ *                                   those call sites) — a close with no
+ *                                   human choosing a disposition must not
  *                                   start silently failing the moment an
  *                                   admin turns the setting on (Phase 129
  *                                   PAR lesson). Every other caller gets
  *                                   the real gate. A disposition_id
  *                                   passed alongside this flag is still
  *                                   validated and written normally.
+ *                                 ['source' => string]  Phase 155 -- who
+ *                                   caused it: 'ui' | 'external_api' |
+ *                                   'auto_close' | 'scheduled_activation' |
+ *                                   'major_incident_close'. Goes into the
+ *                                   incident.status_changed payload.
+ *                                 ['actor_type' => 'user'|'api_token'|'system',
+ *                                  'actor_id' => int, 'actor_name' => string,
+ *                                  'token_id' => int]  Phase 155 -- see
+ *                                   incident_status_change_emit().
  * @return array {
  *   'updated'           => bool   true on a real status flip
+ *   'status_changed'    => bool   Phase 155 -- same as 'updated' (named for the callers)
+ *   'old_status'        => int|null  the status it left (null if unknown)
+ *   'noop'              => bool   Phase 155 -- true when nothing was written
+ *   'noop_reason'       => string 'unchanged' | 'concurrent' (only when noop)
+ *   'rescheduled'       => bool   Phase 155 -- 3->3 booked_date change
  *   'cleared_assigns'   => int    rows in `assigns` marked cleared (close only)
  *   'reset_responders'  => int    responders flipped back to Available (close only)
  *   'errors'            => string[] Validation/DB errors
@@ -1114,21 +1439,84 @@ function incident_set_primary_internal(int $ticketId, ?int $responderId, int $us
 function incident_update_status_internal(int $ticketId, int $newStatus, int $userId, array $extra = []): array {
     static $validStatuses = [1, 2, 3]; // Closed, Open, Scheduled
 
+    // Every return shape carries the same keys so a caller never has to
+    // isset() its way through the result.
+    $blank = ['updated' => false, 'status_changed' => false, 'old_status' => null,
+              'noop' => false, 'noop_reason' => '', 'rescheduled' => false,
+              'cleared_assigns' => 0, 'reset_responders' => 0, 'errors' => []];
+
     if ($ticketId <= 0) {
-        return ['updated' => false, 'cleared_assigns' => 0, 'reset_responders' => 0,
-                'errors' => ['invalid ticket_id']];
+        return array_merge($blank, ['errors' => ['invalid ticket_id']]);
     }
     if (!in_array($newStatus, $validStatuses, true)) {
-        return ['updated' => false, 'cleared_assigns' => 0, 'reset_responders' => 0,
-                'errors' => ['invalid status: must be 1, 2, or 3']];
+        return array_merge($blank, ['errors' => ['invalid status: must be 1, 2, or 3']]);
     }
 
     $prefix = $GLOBALS['db_prefix'] ?? '';
     $now = date('Y-m-d H:i:s');
     $clearedAssigns = 0;
     $resetResponders = 0;
+    $rescheduled = false;
+
+    // Phase 155 (GH#144): the status BEFORE, so the Notification Rules event fires
+    // only on a real change (the external API re-sending {status:1} for an
+    // already-closed incident must not re-notify).
+    $oldStatus = null;
+    try {
+        $os = db_fetch_value("SELECT `status` FROM `{$prefix}ticket` WHERE `id` = ?", [$ticketId]);
+        if ($os !== false && $os !== null) $oldStatus = (int) $os;
+    } catch (Exception $e) { /* unreadable: no event */ }
 
     try {
+        // The status we are leaving. A ticket that does not exist is an
+        // error now (it used to "succeed" against zero rows).
+        // A soft-deleted incident is "not found" to a status change too: the
+        // wastebasket is the only way back, never a stray Close/Reopen/Activate.
+        $cur = db_fetch_one("SELECT `status`, `booked_date` FROM `{$prefix}ticket`
+                              WHERE `id` = ? AND (`deleted_at` IS NULL OR `deleted_at` = '0000-00-00 00:00:00')", [$ticketId]);
+        if (!$cur) {
+            return array_merge($blank, ['errors' => ['ticket not found']]);
+        }
+        $oldStatus = (int) $cur['status'];
+        $blank['old_status'] = $oldStatus;
+
+        // ── Same status requested ──
+        if ($oldStatus === $newStatus) {
+            if ($newStatus === 3) {
+                // The one same-status case with something to do: move the
+                // booked time of a Scheduled incident without activating it.
+                $booked = trim((string) ($extra['booked_date'] ?? ''));
+                if ($booked === '') {
+                    return array_merge($blank, ['errors' => ['booked_date is required for scheduled status']]);
+                }
+                if ($booked !== (string) ($cur['booked_date'] ?? '')) {
+                    $stmt = db_query(
+                        "UPDATE `{$prefix}ticket` SET `booked_date` = ?, `updated` = ? WHERE `id` = ? AND `status` = 3",
+                        [$booked, $now, $ticketId]
+                    );
+                    $rescheduled = ($stmt->rowCount() === 1);
+                }
+                return array_merge($blank, ['noop' => !$rescheduled, 'noop_reason' => 'unchanged',
+                                            'rescheduled' => $rescheduled]);
+            }
+            // Re-close / re-open: nothing to flip. A disposition that rode
+            // along with a repeat close is still honoured (that is what the
+            // caller meant), but the disposition-required gate is skipped --
+            // nothing is being closed -- and problemend is left alone.
+            if ($newStatus === 1) {
+                $dRaw = $extra['disposition_id'] ?? null;
+                $dId  = ($dRaw !== null && $dRaw !== '') ? (int) $dRaw : null;
+                if ($dId !== null && $dId > 0) {
+                    $dr = incident_set_disposition_internal($ticketId, $dId, $userId);
+                    if (empty($dr['updated'])) {
+                        return array_merge($blank, ['errors' => !empty($dr['errors'])
+                            ? $dr['errors'] : ['Selected disposition is invalid.']]);
+                    }
+                }
+            }
+            return array_merge($blank, ['noop' => true, 'noop_reason' => 'unchanged']);
+        }
+
         if ($newStatus === 1) {
             // ── Phase 132 Step 2 (GH #16) — disposition validate/write +
             // enforcement gate, BEFORE any status mutation. ──
@@ -1149,10 +1537,9 @@ function incident_update_status_internal(int $ticketId, int $newStatus, int $use
             if ($dispositionIdInput !== null) {
                 $dispResult = incident_set_disposition_internal($ticketId, $dispositionIdInput, $userId);
                 if (empty($dispResult['updated'])) {
-                    return ['updated' => false, 'cleared_assigns' => 0, 'reset_responders' => 0,
-                            'errors' => !empty($dispResult['errors'])
-                                ? $dispResult['errors']
-                                : ['Selected disposition is invalid.']];
+                    return array_merge($blank, ['errors' => !empty($dispResult['errors'])
+                        ? $dispResult['errors']
+                        : ['Selected disposition is invalid.']]);
                 }
             }
 
@@ -1160,9 +1547,10 @@ function incident_update_status_internal(int $ticketId, int $newStatus, int $use
             // (plan.md §5: an open incident with no disposition is a
             // normal state even with enforcement on). Skipped only when
             // the caller sets 'skip_disposition_check' — ONLY
-            // inc/auto_close.php's sweep does this (see that call site):
-            // a background close with no human present must not start
-            // silently failing every sweep the instant an admin turns
+            // inc/auto_close.php's sweep and the Major-Incident cascade
+            // do this (see those call sites):
+            // a background close with no human present must not
+            // start silently failing every sweep the instant an admin turns
             // this setting on (Phase 129 PAR lesson — a disabled/gated
             // feature must not silently break unrelated housekeeping).
             $skipDispositionCheck = !empty($extra['skip_disposition_check']);
@@ -1175,16 +1563,20 @@ function incident_update_status_internal(int $ticketId, int $newStatus, int $use
                 $hasDisposition = ($curDispositionId !== null && $curDispositionId !== false
                     && (int) $curDispositionId > 0);
                 if (!$hasDisposition) {
-                    return ['updated' => false, 'cleared_assigns' => 0, 'reset_responders' => 0,
-                            'errors' => ['A disposition is required to close this incident.']];
+                    return array_merge($blank, ['errors' => ['A disposition is required to close this incident.']]);
                 }
             }
 
             // ── Closing: stamp problemend + cascade-clear assignments ──
-            db_query(
-                "UPDATE `{$prefix}ticket` SET `status` = 1, `problemend` = ?, `updated` = ? WHERE `id` = ?",
-                [$now, $now, $ticketId]
+            // Compare-and-set on the status we read above: exactly one
+            // concurrent caller owns the transition.
+            $stmt = db_query(
+                "UPDATE `{$prefix}ticket` SET `status` = 1, `problemend` = ?, `updated` = ? WHERE `id` = ? AND `status` = ?",
+                [$now, $now, $ticketId, $oldStatus]
             );
+            if ($stmt->rowCount() !== 1) {
+                return array_merge($blank, ['noop' => true, 'noop_reason' => 'concurrent']);
+            }
 
             $cascade = incident_clear_stragglers($ticketId, $userId);
             $clearedAssigns  = (int) $cascade['cleared_assigns'];
@@ -1202,35 +1594,101 @@ function incident_update_status_internal(int $ticketId, int $newStatus, int $use
             if (function_exists('auto_close_clear_on_close')) {
                 auto_close_clear_on_close($ticketId);
             }
+
+            // Phase 155 (GH#141): a reservation on a call that just closed can
+            // never be promoted -- cancel it, with the reason on the record.
+            _incident_reservation_hook('cancel', $ticketId, $userId);
         } elseif ($newStatus === 2) {
-            // ── Reopening: clear problemend ──
-            db_query(
-                "UPDATE `{$prefix}ticket` SET `status` = 2, `problemend` = NULL, `updated` = ? WHERE `id` = ?",
-                [$now, $ticketId]
+            // ── Reopening / activating: clear problemend ──
+            $stmt = db_query(
+                "UPDATE `{$prefix}ticket` SET `status` = 2, `problemend` = NULL, `updated` = ? WHERE `id` = ? AND `status` = ?",
+                [$now, $ticketId, $oldStatus]
             );
+            if ($stmt->rowCount() !== 1) {
+                return array_merge($blank, ['noop' => true, 'noop_reason' => 'concurrent']);
+            }
+            // Phase 155 (GH#141): a Scheduled incident made Open by hand
+            // (rather than by its booked time arriving) must still dispatch
+            // the units reserved for it.
+            if ($oldStatus === 3) {
+                _incident_reservation_hook('promote', $ticketId, $userId);
+            }
         } elseif ($newStatus === 3) {
             // ── Scheduling: requires booked_date in $extra ──
             $booked = trim((string) ($extra['booked_date'] ?? ''));
             if ($booked === '') {
-                return ['updated' => false, 'cleared_assigns' => 0, 'reset_responders' => 0,
-                        'errors' => ['booked_date is required for scheduled status']];
+                return array_merge($blank, ['errors' => ['booked_date is required for scheduled status']]);
             }
-            db_query(
-                "UPDATE `{$prefix}ticket` SET `status` = 3, `booked_date` = ?, `updated` = ? WHERE `id` = ?",
-                [$booked, $now, $ticketId]
+            $stmt = db_query(
+                "UPDATE `{$prefix}ticket` SET `status` = 3, `booked_date` = ?, `updated` = ? WHERE `id` = ? AND `status` = ?",
+                [$booked, $now, $ticketId, $oldStatus]
             );
+            if ($stmt->rowCount() !== 1) {
+                return array_merge($blank, ['noop' => true, 'noop_reason' => 'concurrent']);
+            }
         }
     } catch (Exception $e) {
-        return ['updated' => false, 'cleared_assigns' => 0, 'reset_responders' => 0,
-                'errors' => ['status update failed: ' . $e->getMessage()]];
+        return array_merge($blank, ['errors' => ['status update failed: ' . $e->getMessage()]]);
     }
 
-    return [
-        'updated'          => true,
+    // Phase 155 (GH#147): exactly one status_change row per REAL change, from
+    // the one place every status path funnels through.
+    incident_status_change_emit($ticketId, $oldStatus, $newStatus, [
+        'source'           => (string) ($extra['source'] ?? 'internal'),
+        'actor_type'       => $extra['actor_type'] ?? '',
+        'actor_id'         => $extra['actor_id']   ?? null,
+        'actor_name'       => $extra['actor_name'] ?? null,
+        'token_id'         => $extra['token_id']   ?? null,
         'cleared_assigns'  => $clearedAssigns,
         'reset_responders' => $resetResponders,
-        'errors'           => [],
-    ];
+    ]);
+
+    // Phase 155 (GH#144) — Notification Rules: closed / reopened / rescheduled.
+    // Fired from the writer so the dispatcher's Close, the external API's PATCH and
+    // the automatic close all notify; the endpoint-level hook it replaces covered
+    // only api/incident-update.php. A close is its own event; reopen and schedule
+    // share `incident_status`.
+    if ($oldStatus !== null && $oldStatus !== $newStatus) {
+        $labels = [1 => 'Closed', 2 => 'Open', 3 => 'Scheduled'];
+        require_once __DIR__ . '/notification-hook.php';
+        notification_hook($newStatus === 1 ? 'incident_close' : 'incident_status', [
+            'ticket_id' => $ticketId, 'old_status' => $oldStatus, 'new_status' => $newStatus,
+            'old_status_label' => $labels[$oldStatus] ?? (string) $oldStatus,
+            'new_status_label' => $labels[$newStatus] ?? (string) $newStatus,
+        ]);
+    }
+
+    return array_merge($blank, [
+        'updated'          => true,
+        'status_changed'   => true,
+        'cleared_assigns'  => $clearedAssigns,
+        'reset_responders' => $resetResponders,
+    ]);
+}
+
+/**
+ * Phase 155 (GH#141) -- run a reservation hook from the status writer without
+ * making the writer depend on the reservation feature. A missing file, a
+ * missing table or any error must never block or fail a status change, so
+ * every failure is logged and swallowed here (an unpromoted reservation is
+ * visible and recoverable; a failed close is not).
+ *
+ * @param string $what 'cancel' (the incident closed) | 'promote' (it became Open)
+ */
+function _incident_reservation_hook(string $what, int $ticketId, int $userId): void {
+    try {
+        if (!function_exists('assign_reservations_cancel_for_ticket') && is_file(__DIR__ . '/assign-reservations.php')) {
+            require_once __DIR__ . '/assign-reservations.php';
+        }
+        if ($what === 'cancel' && function_exists('assign_reservations_cancel_for_ticket')) {
+            assign_reservations_cancel_for_ticket($ticketId, 'incident closed', $userId);
+        } elseif ($what === 'promote' && function_exists('assign_reservations_promote_for_ticket')) {
+            assign_reservations_promote_for_ticket($ticketId, $userId);
+        }
+    } catch (Throwable $e) {
+        error_log('[incident-write] reservation hook (' . $what . ') failed for ticket '
+            . $ticketId . ': ' . $e->getMessage());
+    }
 }
 
 /**

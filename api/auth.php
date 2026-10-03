@@ -16,6 +16,13 @@ require_once __DIR__ . '/../inc/api_guard.php';
 api_guard_install();
 
 require_once __DIR__ . '/../config.php';
+// The four authentication-failure audit events below (session_expired,
+// tfa_enroll_required, rbac_unmigrated, no_roles) are each written behind
+// function_exists('audit_log'). Nothing on this path loaded inc/audit.php, so every one of
+// those guards was false and none of those events was ever recorded, on any install. The
+// log of who was turned away is exactly the one that should not depend on what the
+// endpoint happened to include before it.
+require_once __DIR__ . '/../inc/audit.php';
 require_once __DIR__ . '/../inc/security-headers.php';
 require_once __DIR__ . '/../inc/session-manager.php';
 // Phase 104e (a beta tester GH #6) — pick the mobile session profile if

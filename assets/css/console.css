@@ -53,6 +53,23 @@
 .console-led-down      { background: var(--bs-danger);  box-shadow: 0 0 4px var(--bs-danger); }
 .console-led-unknown   { background: var(--bs-secondary); opacity: 0.6; }
 
+/* Phase 155 — RX lamp (audio arriving from a digital voice bridge). Hidden
+   until lit; carries the word "RX" so it never depends on colour alone. */
+.console-rx-lamp {
+    display: none;
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: 3px;
+    color: var(--bs-success-text-emphasis);
+    background: var(--bs-success-bg-subtle);
+    border: 1px solid var(--bs-success);
+}
+.console-rx-lamp-on { display: inline-block; }
+.console-listen-only-note { font-weight: 600; }
+
 .console-strip-reg {
     font-size: 0.62rem;
     font-weight: 600;

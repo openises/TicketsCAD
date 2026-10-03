@@ -25,6 +25,13 @@ var EventBus = (function () {
     // SSE event types the server can send
     var SSE_TYPES = [
         'incident:new', 'incident:update', 'incident:close', 'incident:note',
+        // Phase 151 (GH#138) -- the primary/responsible unit changed on an incident.
+        // Published by api/incident-assign.php and api/external/v1/incidents.php, but
+        // this type was never listed, so no browser ever received it and a second
+        // dispatcher's open incident page never refreshed. (An event type absent from
+        // this array is invisible to every consumer -- tests/test_sse_types_wired.php
+        // now fails on a new one.)
+        'incident:primary_changed',
         // Phase 142 (GH#70 Phase 2) — cross-org share grant/revoke. An event
         // type absent from this array is invisible to EVERY consumer no
         // matter how correctly the backend publishes it — see
@@ -65,6 +72,11 @@ var EventBus = (function () {
         // shape as comm:route_expiring above — the strip's "disconnected"
         // visual and TX lamp don't exist yet.
         'comm:channel_state', 'comm:tx_state',
+        // Phase 155 (GH#151/GH#129) — audio began/stopped arriving from a
+        // digital voice bridge (api/matrix-channel-state.php, fired by
+        // services/audio-matrix/legs/usrp.py). Drives the strip's RX lamp in
+        // assets/js/console.js.
+        'comm:rx_state',
         // Console rebuild — the patch rail's live feed (api/matrix.php's
         // create/update/delete/renew/group_create/group_break actions).
         'comm:route_created', 'comm:route_updated', 'comm:route_removed',
@@ -72,7 +84,18 @@ var EventBus = (function () {
         // Adjacent-transmit-mute acoustic proximity auto-discovery
         // (assets/js/console-beacon.js) -- broadcast to every OTHER
         // connected console session when someone starts a search.
-        'comm:beacon_request'
+        'comm:beacon_request',
+        // GH#148 (Phase 155) -- towing / roadside dispatch changed on an incident (a call was
+        // logged, an outcome recorded, a status or ETA changed, an entry voided). Published by
+        // inc/vendor-dispatch.php's vendor_after_commit(), consumed by assets/js/vendor-dispatch.js
+        // to refresh the incident page's Towing / Roadside card and open dialog. An event type
+        // absent from this array is invisible to EVERY consumer (tests/test_vendor_wiring.php).
+        'vendor:dispatch',
+        // Phase 155 (GH#144) -- an administrator changed a Notification Rule or the
+        // delivery settings (api/notification-rules.php, published admin-scope), so a
+        // second administrator's open Notification Rules table refreshes
+        // (assets/js/notification-rules.js).
+        'notification_rules:changed'
     ];
 
     function parseJSON(str) {

@@ -412,6 +412,18 @@ if (!empty($resp_ids)) {
     } catch (Exception $e) { /* non-fatal */ }
 }
 
+// GH#141 (Phase 155) -- what each unit is committed to LATER (a reservation on a
+// Scheduled incident, or a dispatch to one whose booked time is still ahead).
+// ONE batched read for the whole list, never one per row; an install without the
+// feature's schema just gets [] for every unit.
+$futureByResponder = [];
+try {
+    require_once __DIR__ . '/../inc/assign-reservations.php';
+    $futureByResponder = unit_future_commitments(array_map(function ($r) { return (int) $r['id']; }, $rows));
+} catch (Throwable $e) {
+    $futureByResponder = [];
+}
+
 $responders = [];
 foreach ($rows as $row) {
     $id = (int) $row['id'];
@@ -576,6 +588,8 @@ foreach ($rows as $row) {
         'excl_zone'          => (float) ($row['excl_zone'] ?? 0),
         'active_assignments' => (int) $row['active_assignments'],
         'assigned_tickets'   => $assigns[$id] ?? [],
+        // GH#141 -- future commitments (reserved / scheduled-dispatched), see above.
+        'future'             => $futureByResponder[$id] ?? [],
         // Phase 115 (#64) — the unit's current event zone (from its active
         // assignment), so the Units queue can filter by zone. null = no zone.
         'current_zone'       => $zoneByResponder[$id] ?? null,

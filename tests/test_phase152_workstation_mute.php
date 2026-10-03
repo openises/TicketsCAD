@@ -305,8 +305,13 @@ t('console.php renders the workstation bar container', strpos($page, 'id="consol
 $navbarSrc = (string) @file_get_contents(__DIR__ . '/../inc/navbar.php');
 t('console-mic.js is present (now via inc/navbar.php, loaded globally)',
     strpos($navbarSrc, 'assets/js/console-mic.js') !== false);
-t('console-workstation.js is still present on console.php itself',
-    strpos($page, 'assets/js/console-workstation.js') !== false);
+// Phase 155 (GH#108 S1): the workstation identity helper moved into the
+// navbar too (the Phone widget needs the token on every page); console.php
+// reaches it through inc/navbar.php rather than carrying a second copy.
+t('console-workstation.js reaches console.php through inc/navbar.php (loaded once, for every page)',
+    strpos($page, '<script src="assets/js/console-workstation.js') === false
+    && strpos($page, 'inc/navbar.php') !== false
+    && substr_count($navbarSrc, '<script src="assets/js/console-workstation.js') === 1);
 
 echo "\n=== $pass passed, $fail failed ===\n";
 exit($fail > 0 ? 1 : 0);

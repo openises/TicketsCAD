@@ -556,17 +556,24 @@
         }
         var msg = 'Close this major incident?';
         if (linkedOpen > 0) {
+            // Phase 155 (Decision 5): the cascade now uses the standard close, so
+            // it also releases the units assigned to those incidents.
             msg += '\n\nThis will also CLOSE ' + linkedOpen + ' linked open incident' +
-                (linkedOpen === 1 ? '' : 's') + ' (status Open → Closed).';
+                (linkedOpen === 1 ? '' : 's') + ' (status Open → Closed) and release the units assigned to ' +
+                (linkedOpen === 1 ? 'it' : 'them') + '.';
         }
         msg += '\n\nThis cannot be undone from this screen.';
         if (!confirm(msg)) return;
 
         postAction({ action: 'close', major_id: id }, function (data) {
             var n = (data && typeof data.closed_tickets !== 'undefined') ? data.closed_tickets : 0;
+            // Phase 155: linked incidents the caller's organization may not
+            // change are left open and reported (never closed silently) --
+            // show that as a warning, not a plain success.
+            var leftOpen = (data && data.left_open_tickets) ? parseInt(data.left_open_tickets, 10) : 0;
             showAlert('detailAlertArea',
                 (data && data.message) || ('Major incident closed. ' + n + ' linked ticket(s) also closed.'),
-                'success');
+                leftOpen > 0 ? 'warning' : 'success');
             loadDetail(id);
         }, 'detailAlertArea');
     }

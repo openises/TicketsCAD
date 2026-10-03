@@ -13,6 +13,9 @@
 #   3f. tools/dead_control_audit.php             (a control/column ↔ anything that reads it)
 #   3g. tools/rbac_exclusion_leak_audit.php      (admin-only exclusion list ↔ real role grants)
 #   3h. tools/ai_attribution_audit.php           (commit history + tracked files ↔ AI-attribution signatures)
+#   3i. tests/test_github_workflows_safety.php   (workflow YAML ↔ injection/privilege rules; only when a workflow is staged)
+#   3j. tools/audit_log_arity.php                (every audit_log() call ↔ the function's real signature, and inc/audit.php actually loaded)
+#   3k. tools/csrf_coverage_audit.php            (every session-authenticated api/ write ↔ a csrf_verify() guard that dominates it)
 #   4. tools/gen_schema_manifest.php --check     (manifest ↔ what the code writes)
 #   5. tools/generate-sbom.php --check/--verify  (SBOM ↔ dependencies + signature)
 #
@@ -196,6 +199,50 @@ if [ -f tools/ai_attribution_audit.php ]; then
         echo "✗ AI-attribution audit found a signature in tracked files or commit history:"
         echo "$OUT" | tail -20
         FAILED=1
+    fi
+fi
+
+# ── 3i. GitHub Actions workflow safety (static, only when a workflow is staged) ──
+# Phase 155. The community workflows read text strangers wrote and hold a token
+# that can write to issues; a ${{ }} expression in a run: line, a
+# pull_request_target trigger or a stray write scope cannot be seen by running
+# anything locally and arrives as a red CI email (or worse, as an injection)
+# after the push. Costs about two seconds, so it runs only when a file under
+# .github/workflows/ is part of the commit. Mirrors the full-suite run in CI.
+if git diff --cached --name-only --diff-filter=ACM | grep -q '^\.github/workflows/' \
+   && [ -f tests/test_github_workflows_safety.php ]; then
+    OUT="$("$PHP" tests/test_github_workflows_safety.php 2>&1)"
+    if [ $? -ne 0 ]; then
+        echo "✗ a workflow under .github/workflows/ fails the safety gate:"
+        echo "$OUT" | grep -E '^\[FAIL\]' | head -10
+        FAILED=1
+    fi
+fi
+
+# ── 3j / 3k. Tokenizing static gates (no database; run when PHP is staged) ─────
+# Phase 155. Both read the code, not a list of files someone remembered:
+#   3j  audit_log() reached a TypeError (an Error, which catch (Exception) cannot see) or was
+#       never loaded, so a legal-trail row, every message send, and a mesh-bridge delete's
+#       success response were silently lost.
+#   3k  api/organizations.php, api/rbac.php (grant_role!) and five more endpoints changed state
+#       with no CSRF token check; the per-file CSRF tests only knew the files already known.
+# About four seconds each, so they run only when a .php file is part of the commit.
+if [ -n "$STAGED_PHP" ]; then
+    if [ -f tools/audit_log_arity.php ]; then
+        OUT="$("$PHP" tools/audit_log_arity.php 2>&1)"
+        if [ $? -ne 0 ]; then
+            echo "✗ audit_log() arity/reachability gate found a call that cannot work:"
+            echo "$OUT" | tail -15
+            FAILED=1
+        fi
+    fi
+    if [ -f tools/csrf_coverage_audit.php ]; then
+        OUT="$("$PHP" tools/csrf_coverage_audit.php 2>&1)"
+        if [ $? -ne 0 ]; then
+            echo "✗ CSRF coverage gate found a state change no csrf_verify() guard dominates:"
+            echo "$OUT" | tail -25
+            FAILED=1
+        fi
     fi
 fi
 

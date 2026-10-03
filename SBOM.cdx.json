@@ -2,10 +2,10 @@
     "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
     "bomFormat": "CycloneDX",
     "specVersion": "1.6",
-    "serialNumber": "urn:uuid:139c1975-d178-502e-bf3d-8bbc176a703d",
-    "version": 46,
+    "serialNumber": "urn:uuid:7cac98cd-c222-5931-8620-90cb9410bc50",
+    "version": 48,
     "metadata": {
-        "timestamp": "2026-09-07T21:51:24Z",
+        "timestamp": "2026-10-03T03:16:10Z",
         "lifecycles": [
             {
                 "phase": "pre-build"
@@ -52,7 +52,7 @@
         "properties": [
             {
                 "name": "ticketscad:content-digest",
-                "value": "8cf9c6108b60f4c920198cf50c3c9db49e13368f24b99b910d34e74f47efc96a"
+                "value": "91206f24beb1e19028828e7bb9c6f506951ec58295eb99459356a7a9d2cc1aa8"
             },
             {
                 "name": "ticketscad:standard",
@@ -3036,7 +3036,7 @@
             "type": "library",
             "bom-ref": "pkg:pypi/requests#python-services",
             "name": "requests",
-            "description": "Used by: assets/js/mesh-console.js, services/meshtastic/bridge.py, services/meshtastic/bridge_v2.py, services/meshtastic/requirements.txt, services/sip-bridge/bridge.py, services/sip-bridge/requirements.txt",
+            "description": "Used by: assets/js/mesh-console.js, services/meshtastic/bridge.py, services/meshtastic/bridge_v2.py, services/meshtastic/requirements.txt, services/sip-bridge/bridge.py, services/sip-bridge/requirements.txt (+2 more)",
             "scope": "required",
             "licenses": [
                 {
@@ -3110,7 +3110,7 @@
             "type": "library",
             "bom-ref": "pkg:pypi/websockets#python-services",
             "name": "websockets",
-            "description": "Used by: services/audio-matrix/install.sh, services/audio-matrix/requirements.txt",
+            "description": "Used by: services/audio-matrix/install.sh, services/audio-matrix/requirements.txt, services/sip-bridge/requirements.txt",
             "scope": "required",
             "purl": "pkg:pypi/websockets",
             "externalReferences": [
@@ -3280,6 +3280,58 @@
                 {
                     "name": "ticketscad:note",
                     "value": "The webfont binaries carry no embedded version string; their version is that of the stylesheet that references them."
+                },
+                {
+                    "name": "ticketscad:unknown",
+                    "value": "Component Dependency Relationship"
+                },
+                {
+                    "name": "ticketscad:unknown-reason",
+                    "value": "The onward dependencies of this component are not stated: it is not described by any lockfile in this repository, so the SBOM author has no evidence of what it itself depends on. Its relationship TO this application is recorded — the application depends on it."
+                }
+            ]
+        },
+        {
+            "type": "library",
+            "bom-ref": "pkg:npm/dompurify@3.4.16#vendored-frontend",
+            "name": "DOMPurify",
+            "publisher": "Cure53 and contributors",
+            "version": "3.4.16",
+            "scope": "required",
+            "hashes": [
+                {
+                    "alg": "SHA-256",
+                    "content": "2c90a9b46d6463f26038a29b686e82bc91de01fdac9d5229e7cfe3b360134ea2"
+                }
+            ],
+            "licenses": [
+                {
+                    "expression": "Apache-2.0 OR MPL-2.0"
+                }
+            ],
+            "purl": "pkg:npm/dompurify@3.4.16",
+            "externalReferences": [
+                {
+                    "type": "vcs",
+                    "url": "https://github.com/cure53/DOMPurify"
+                }
+            ],
+            "properties": [
+                {
+                    "name": "ticketscad:file",
+                    "value": "assets/vendor/dompurify/purify.min.js sha256:2c90a9b46d6463f26038a29b686e82bc91de01fdac9d5229e7cfe3b360134ea2"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "pkg:npm/dompurify@3.4.16"
+                },
+                {
+                    "name": "ticketscad:identifier",
+                    "value": "sha256:2c90a9b46d6463f26038a29b686e82bc91de01fdac9d5229e7cfe3b360134ea2 (assets/vendor/dompurify/purify.min.js)"
+                },
+                {
+                    "name": "ticketscad:note",
+                    "value": "HTML sanitiser applied to author-written markdown in the SOP viewer, revision view and editor preview (assets/js/sop.js renderMarkdown()). Added to close a stored cross-site-scripting finding: marked does not sanitise its output. Vendored unmodified from the npm tarball; see assets/vendor/dompurify/PROVENANCE.txt."
                 },
                 {
                     "name": "ticketscad:unknown",
@@ -3880,6 +3932,7 @@
                 "pkg:pypi/websockets#python-services",
                 "pkg:npm/bootstrap@5.3.3#vendored-frontend",
                 "pkg:npm/bootstrap-icons@1.11.3#vendored-frontend",
+                "pkg:npm/dompurify@3.4.16#vendored-frontend",
                 "pkg:npm/gridstack@10.3.1#vendored-frontend",
                 "pkg:npm/leaflet@1.9.4#vendored-frontend",
                 "pkg:npm/leaflet-openweathermap#vendored-frontend",

@@ -46,7 +46,14 @@
     // Only adapters the audio-matrix has a real leg for today. Zello is
     // deliberately absent — see the file docblock. intercom_dd is present
     // for the opposite reason: it has NO other leg to fall back to.
-    var MATRIX_ADAPTERS = { dmr_bm: true, dmr_local: true, intercom_dd: true };
+    // dvmproject / usrp_bridge (Phase 155, GH#151/GH#129): digital voice
+    // bridges served by the generic USRP leg. Listen-only in this release.
+    // tests/test_voice_bridge_wiring.php keeps this map in step with the
+    // adapter catalog (inc/channel_registry.php) so the two cannot drift.
+    var MATRIX_ADAPTERS = {
+        dmr_bm: true, dmr_local: true, intercom_dd: true,
+        dvmproject: true, usrp_bridge: true
+    };
 
     var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
 
@@ -302,6 +309,16 @@
                     console.warn('[console-mic] matrix_ws_url is not configured on this install -- Matrix Audio/Join Intercom cannot connect until an admin sets it. See docs/AUDIO-MATRIX-SETUP.md, "Expose the browser leg".');
                 }
                 notifyConnState('failed');
+                return;
+            }
+            // Phase 155: an operator who cannot transmit (no action.console_tx)
+            // is never asked for the microphone — they can only listen, and
+            // listening needs no capture. The page's own TX permission, not a
+            // per-call guess, decides: this one connection is shared by every
+            // strip, so it must never be opened mic-less for someone who can
+            // transmit (their PTT would then send silence).
+            if (document.body.getAttribute('data-can-tx') !== '1') {
+                openWs();
                 return;
             }
             navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {

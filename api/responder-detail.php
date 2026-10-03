@@ -406,9 +406,21 @@ try {
     $notes = [];
 }
 
+// GH#141 (Phase 155) -- this unit's FUTURE commitments (reservations on
+// Scheduled incidents, and dispatches to one whose booked time is still ahead).
+$futureCommitments = [];
+try {
+    require_once __DIR__ . '/../inc/assign-reservations.php';
+    $fc = unit_future_commitments([$id]);
+    $futureCommitments = $fc[$id] ?? [];
+} catch (Throwable $e) {
+    $futureCommitments = [];
+}
+
 json_response([
     'responder'          => $result_responder,
     'active_assignments' => $active_assignments,
+    'future'             => $futureCommitments,
     'recent_assignments' => $recent_assignments,
     'stats'              => $stats,
     'member_id'          => $member_id,

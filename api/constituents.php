@@ -12,6 +12,7 @@
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
+require_once __DIR__ . '/../inc/phone-match.php';
 
 $prevDisplay = ini_get('display_errors');
 ini_set('display_errors', '0');
@@ -122,24 +123,24 @@ function handleGet() {
     }
 
     // Phone lookup (used during incident creation)
+    //
+    // Phase 155 (GH#108 S3): matching is phone_digits_match_sql() -- the same
+    // code the ringing-call resolver uses (inc/inbound-calls.php), so the two
+    // can no longer disagree about whether "+16125551234" is "(612) 555-1234".
+    // 'search' mode is the lenient superset (a typed seven-digit local number
+    // still finds a stored ten-digit one). Fewer than four digits is still a
+    // no-op, as before.
     if (!empty($_GET['phone'])) {
-        $phone = trim($_GET['phone']);
-        // Strip non-digits for flexible matching
-        $digits = preg_replace('/\D/', '', $phone);
-        if (strlen($digits) < 4) {
+        $match = phone_digits_match_sql(phone_constituent_columns(), trim((string) $_GET['phone']), 'search');
+        if ($match === null) {
             json_response(['constituents' => []]);
         }
-        $pattern = '%' . $digits . '%';
-        // Clean phone fields of non-digits for comparison
         try {
             $rows = db_fetch_all(
                 "SELECT * FROM " . db_table('constituents') . "
-                 WHERE REPLACE(REPLACE(REPLACE(`phone`, '-', ''), ' ', ''), '(', '') LIKE ?
-                    OR REPLACE(REPLACE(REPLACE(`phone_2`, '-', ''), ' ', ''), '(', '') LIKE ?
-                    OR REPLACE(REPLACE(REPLACE(`phone_3`, '-', ''), ' ', ''), '(', '') LIKE ?
-                    OR REPLACE(REPLACE(REPLACE(`phone_4`, '-', ''), ' ', ''), '(', '') LIKE ?
+                 WHERE " . $match['sql'] . "
                  LIMIT 10",
-                [$pattern, $pattern, $pattern, $pattern]
+                $match['params']
             );
         } catch (Exception $e) {
             $rows = [];

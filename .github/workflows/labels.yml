@@ -1,0 +1,62 @@
+name: labels
+
+# Keep the repository's labels in step with .github/labels.json.
+#
+# Labels are what a reporter sees of a decision ("planned", "on hold", "fixed in
+# main"), so they are a reviewed file, not clicks. The triage bot only ADDS
+# labels that already exist; this is what makes them exist.
+#
+# Creates missing labels and corrects drift on the labels marked "sync".
+# NEVER deletes or renames a label (tools/sync-labels.php says why).
+#
+# Runs when the definitions change on the default branch, and on demand.
+# Manual runs are a dry run unless "apply" is ticked.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/labels.json'
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Apply the changes (untick for a dry run that only prints the plan)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read   # checkout
+  issues: write    # create / edit labels
+
+concurrency:
+  group: labels
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: sync labels
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+
+      # The only expression here is a boolean input, passed through env: and
+      # compared as text inside the shell; it is never part of a command line.
+      - name: Sync labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPLY: ${{ github.event_name == 'push' || inputs.apply }}
+        run: |
+          if [ "$APPLY" = "true" ]; then
+            php tools/sync-labels.php --apply
+          else
+            php tools/sync-labels.php
+          fi

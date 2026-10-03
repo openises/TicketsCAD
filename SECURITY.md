@@ -220,8 +220,8 @@ administrator creates it:
 | `deepgram` | `https://api.deepgram.com/v1/speak` | the text to be spoken |
 | `openai_compat` | whatever endpoint you configure — documented for a local server such as Kokoro, but it will accept `https://api.openai.com/v1` | the text to be spoken |
 
-Each needs you to add an engine row **and** place an API key file under
-`keys/tts/`. Neither is seeded, so a stock install synthesises speech entirely
+Each needs you to add an engine row **and** an API key, which TicketsCAD stores in a
+file under the `keys/tts/` directory beside the 2FA keys — outside the web root. Neither is seeded, so a stock install synthesises speech entirely
 offline.
 
 ### Other services TicketsCAD can contact
@@ -435,6 +435,9 @@ php tests/test_security_f003_fileupload.php      # legacy file-upload
 php tests/test_security_f004_idor.php            # IDOR triplet
 php tests/test_security_f007_sse_visibility.php  # SSE per-user filter
 php tests/test_security_csrf_bundle.php          # CSRF on writes
+php tests/test_api_csrf_coverage.php             # EVERY api/ write is behind a token check (derived from the code)
+php tests/test_audit_log_arity.php               # every audit_log() call can run and is shaped right
+php tests/test_backup_value_fidelity.php         # a backup restores every value, and the drill can tell
 php tests/test_pre_release_fixes.php             # regression bundle
 ```
 

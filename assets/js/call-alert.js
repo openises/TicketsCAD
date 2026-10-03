@@ -121,6 +121,33 @@
     }
 
     /**
+     * Phase 155 (GH#108 S4) -- ONE Answer. Clicking Answer here claims the call,
+     * but the audio rings in the browser phone (a different page or window of
+     * this browser) and used to need a second Answer click there. Tell the
+     * phone, by the PBX's own id for the call, to pick up that leg. Sent two
+     * ways because the phone may be in another window (BroadcastChannel) or on
+     * this very page (a window event, for a browser with no BroadcastChannel).
+     * The phone ignores it unless it holds a still-ringing INVITE for exactly
+     * this id, so a call with no browser leg is unaffected.
+     */
+    function notifyPhoneAnswered(id) {
+        var call = calls[id];
+        var providerId = call && call.provider_call_id;
+        if (!providerId) return;
+        var msg = { type: 'answer', provider_call_id: String(providerId), call_id: id };
+        try {
+            if (typeof window.BroadcastChannel === 'function') {
+                var bc = new window.BroadcastChannel('ticketscad-phone');
+                bc.postMessage(msg);
+                setTimeout(function () { try { bc.close(); } catch (e) { /* already closed */ } }, 500);
+            }
+        } catch (e) { /* no BroadcastChannel: the window event below still reaches this page */ }
+        try {
+            window.dispatchEvent(new window.CustomEvent('ticketscad:phone-answer', { detail: msg }));
+        } catch (e) { /* very old browser: the phone just needs its own Answer click */ }
+    }
+
+    /**
      * Claim (Answer) a ringing call. On success, opens a NEW browser tab
      * for the New Incident prefill (spec.md FR-20) — never navigates the
      * current tab, so unsaved work is never at risk.
@@ -128,6 +155,7 @@
     function claimCall(id) {
         postAction('claim', { id: id }).then(function (res) {
             if (res && res.success) {
+                notifyPhoneAnswered(id);
                 window.open('new-incident.php?call_id=' + encodeURIComponent(id), '_blank');
             } else if (res) {
                 showToast(res.reason === 'already_claimed'
@@ -149,6 +177,7 @@
     function reassignCall(id) {
         postAction('reassign', { id: id }).then(function (res) {
             if (res && res.success) {
+                notifyPhoneAnswered(id);
                 window.open('new-incident.php?call_id=' + encodeURIComponent(id), '_blank');
             } else if (res && res.reason === 'grace_window_elapsed') {
                 forceReclaimCall(id, false);
@@ -180,6 +209,7 @@
         }
         postAction('force_reclaim', { id: id, reason: reason }).then(function (res) {
             if (res && res.success) {
+                notifyPhoneAnswered(id);
                 window.open('new-incident.php?call_id=' + encodeURIComponent(id), '_blank');
             } else if (res) {
                 showToast('Could not reclaim that call (' + (res.reason || 'unknown') + ')');
@@ -411,6 +441,9 @@
             claimed_by: payload.claimed_by,
             claimed_by_name: payload.claimed_by_name,
             stale: !!payload.stale,
+            // Phase 155 (GH#108 S4): the PBX's own id, so Answer can also pick
+            // up the matching ringing leg in the browser phone.
+            provider_call_id: payload.provider_call_id || (calls[id] ? calls[id].provider_call_id : ''),
             mute_bypass: !!payload.mute_bypass,
             ringing_at: payload.ringing_at || (calls[id] ? calls[id].ringing_at : null)
         };
@@ -563,6 +596,7 @@
     // Exposed for tests/manual debugging only.
     window.CallAlert = {
         _calls: calls,
+        _notifyPhoneAnswered: notifyPhoneAnswered,
         _missedCalls: missedCalls,
         _render: render,
         _moveHighlight: moveHighlight,

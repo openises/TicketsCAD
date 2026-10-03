@@ -683,6 +683,7 @@ function responder_set_status_internal(
 
     $actionLogged  = 0;
     $timestampsSet = 0;
+    $clearedNow    = [];   // Phase 155: tickets whose assignment THIS call actually cleared
     try {
         // GH#116 — scoping this SELECT to the one targeted assignment is
         // what scopes every downstream side effect below (the action-log
@@ -872,6 +873,7 @@ function responder_set_status_internal(
                                 [$statusId, (int) $oa['id']]
                             );
                             $timestampsSet++;
+                            $clearedNow[] = (int) $oa['ticket_id'];
                         } else {
                             db_query(
                                 "UPDATE `{$prefix}assigns` SET `status_id` = ? WHERE `id` = ?",
@@ -939,6 +941,20 @@ function responder_set_status_internal(
             }
         }
     } catch (Exception $e) { /* assigns lookup non-fatal */ }
+
+    // Phase 155 (GH#144) — Notification Rules: unit cleared, from the unit-status
+    // path (the /s command, the status modal, the mobile app). One event per
+    // assignment this call really cleared; never for an assignment that was
+    // already cleared. Never throws; queues rather than sending inline.
+    if ($clearedNow) {
+        require_once __DIR__ . '/notification-hook.php';
+        $__unitName = trim((string) ($responder['handle'] ?: $responder['name']));
+        foreach (array_unique($clearedNow) as $__tid) {
+            notification_hook('unit_clear', [
+                'ticket_id' => $__tid, 'responder_id' => $responderId, 'responder_name' => $__unitName,
+            ]);
+        }
+    }
 
     // Issue #13 (a beta tester 2026-07-05) — real-time cross-client refresh. A status
     // change (from the desktop status modal, the /s command, OR the mobile app —

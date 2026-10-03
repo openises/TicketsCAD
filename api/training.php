@@ -178,11 +178,13 @@ function handlePost() {
     $input = json_decode(file_get_contents('php://input'), true);
     if (!$input) json_error('Invalid JSON body');
 
+    // CSRF. This used to carry a note saying a check was deliberately left out because
+    // roster.js did not send a token. That is the reverse of the right order: the caller was
+    // fixed to send one (csrf_token in the body) and the endpoint now insists.
+    csrf_require($input);
+
     // RBAC enforcement (specs/rbac-enforcement-2026-06).
     // Writes require action.manage_members; reads (GET) stay open to viewers.
-    // NOTE: CSRF intentionally NOT added here — the roster.js caller does not
-    // send a token and the spec excludes roster.js from caller updates. Add a
-    // CSRF check only when the caller is updated to send window.CSRF_TOKEN.
     if (!rbac_can('action.manage_members')) {
         json_error('Insufficient permissions: manage members', 403);
     }

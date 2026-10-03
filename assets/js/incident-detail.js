@@ -46,26 +46,26 @@
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  ALLSTAR RELAY (Phase 153, 2026-09-08)
+    //  RELAY TEST PAGE (Phase 153, 2026-09-08; made honest in Phase 155)
     //
-    //  Simulates calling a responder over ham radio: relays a spoken
-    //  summary of this incident to the mock AllStar node and reports
-    //  back real, measured proof (duration + RMS), not a bare success
-    //  flag. A real transmission takes ~20-30 seconds end to end
-    //  (synthesis, delivery, and the audio genuinely playing out in real
-    //  time on the far end) -- the button is disabled with a progress
-    //  message for the duration of the call so a dispatcher doesn't
-    //  double-fire it.
+    //  Sends a spoken summary of this incident to a SIMULATED test node
+    //  (a plain Asterisk server -- no radio, no AllStar node) and reports
+    //  back measured proof the audio arrived (duration + RMS). A real
+    //  run takes ~20-30 seconds end to end (synthesis, delivery, and the
+    //  audio genuinely playing out in real time on the test node), so the
+    //  button is disabled with a progress message for the duration so it
+    //  cannot be double-fired. The server answers 404 and renders no
+    //  button at all unless an administrator switched the feature on.
     // ═══════════════════════════════════════════════════════════════
     function initAllstarRelay(ticketId) {
         var btn = document.getElementById('btnAllstarRelay');
-        if (!btn) return; // not permitted -> server omitted the button
+        if (!btn) return; // switched off, or not permitted -> server omitted the button
 
         btn.addEventListener('click', function () {
             var original = btn.innerHTML;
             btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Relaying&hellip; (~20-30s)';
-            showAlert('Relaying a spoken summary of this incident to the AllStar node&hellip; this genuinely plays out in real time, so it takes about 20-30 seconds.', 'info');
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Sending&hellip; (~20-30s)';
+            showAlert('Sending a spoken summary of this incident to the SIMULATED test node&hellip; it plays out in real time, so it takes about 20-30 seconds. No radio is involved. You can keep working.', 'info');
 
             fetch('api/allstar-relay.php?action=trigger', {
                 method: 'POST',
@@ -79,20 +79,20 @@
                   if (res.status >= 200 && res.status < 300 && res.data) {
                       var d = res.data;
                       if (d.ok) {
-                          showAlert('AllStar relay delivered and verified: <strong>' + d.duration_sec.toFixed(1)
-                              + 's</strong> of genuinely audible audio (RMS ' + d.rms.toFixed(4) + ') recorded on the relay node ('
-                              + escHtml(d.recording_name) + ').', 'success');
+                          showAlert('Test page delivered and verified: <strong>' + d.duration_sec.toFixed(1)
+                              + 's</strong> of audible audio (RMS ' + d.rms.toFixed(4) + ') recorded on the simulated test node ('
+                              + escHtml(d.recording_name) + '). This tests the relay path only; nothing went to a radio.', 'success');
                       } else {
-                          showAlert('AllStar relay completed, but the recorded audio looked too quiet/short to trust ('
-                              + d.duration_sec.toFixed(1) + 's, RMS ' + d.rms.toFixed(4) + '). Check the relay node.', 'warning');
+                          showAlert('The test page completed, but the recorded audio looked too quiet/short to trust ('
+                              + d.duration_sec.toFixed(1) + 's, RMS ' + d.rms.toFixed(4) + '). Check the test node.', 'warning');
                       }
                   } else {
-                      showAlert('AllStar relay failed: ' + escHtml((res.data && res.data.error) || 'unknown error'), 'danger');
+                      showAlert('The test page failed: ' + escHtml((res.data && res.data.error) || 'unknown error'), 'danger');
                   }
               }).catch(function () {
                   btn.disabled = false;
                   btn.innerHTML = original;
-                  showAlert('AllStar relay failed: request error.', 'danger');
+                  showAlert('The test page failed: request error.', 'danger');
               });
         });
     }
@@ -1137,6 +1137,7 @@
                 renderProtocol(data.incident);
                 renderAssignments(data.assignments);
                 renderPrimaryUnitBanner(data.incident, data.primary_candidates || []);
+                renderReservations(data.reservations || [], data.reservation_settings || {});
                 renderActions(data.actions);
                 // GH#121 — defensive ordering, matching GH#98/GH#118's
                 // fix for the same class of defect: a throw inside
@@ -1240,6 +1241,7 @@
                 incidentData = data;
                 renderAssignments(data.assignments);
                 renderPrimaryUnitBanner(data.incident, data.primary_candidates || []);
+                renderReservations(data.reservations || [], data.reservation_settings || {});
                 renderActions(data.actions);
                 renderHeader(data.incident);
                 renderTimeStatus(data.incident);
@@ -1493,6 +1495,8 @@
                 + icon
                 + '<span class="fw-semibold me-1">' + escHtml(r.handle || '') + '</span>'
                 + '<span class="text-body-secondary small">' + escHtml(r.name || '') + '</span>'
+                // GH#141: "free, but spoken for at 18:00" -- see assets/js/future-chip.js.
+                + (window.TCADFutureChip && r.future && r.future.length ? ' ' + window.TCADFutureChip.html(r.future) : '')
                 + '</td>'
                 + '<td class="text-end">' + distCell + '</td>'
                 + '<td class="text-end">'
@@ -1814,7 +1818,13 @@
     }
 
     // ── API: Assign responder ──
-    function assignResponder(responderId) {
+    // GH#82/GH#83: the server may answer a double-booking WARN with
+    // needs_confirmation (not an error). That MUST be asked of the dispatcher and
+    // resubmitted with force -- this handler used to fall through to the success
+    // path and show the warning text as a green "assigned" message while nothing
+    // had been assigned. Same confirm-and-resubmit shape as app.js's
+    // _submitDispatchAssignment() and unit-actions.js.
+    function assignResponder(responderId, force) {
         var ticketId = getIncidentId();
         if (!ticketId) return;
 
@@ -1822,20 +1832,33 @@
         assignBtn.disabled = true;
         assignBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Assigning...';
 
+        var payload = {
+            action: 'assign',
+            ticket_id: ticketId,
+            responder_id: responderId,
+            csrf_token: getCsrfToken()
+        };
+        if (force) payload.force = true;
+
         fetch('api/incident-assign.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'assign',
-                ticket_id: ticketId,
-                responder_id: responderId,
-                csrf_token: getCsrfToken()
-            })
+            body: JSON.stringify(payload)
         })
         .then(function (r) { return r.json(); })
         .then(function (data) {
             assignBtn.innerHTML = '<i class="bi bi-plus-lg me-1"></i>Assign';
             assignBtn.disabled = true;
+
+            if (data.needs_confirmation) {
+                // Nothing was assigned yet; keep the picked unit selected so the
+                // dispatcher can confirm or back out without searching again.
+                assignBtn.disabled = false;
+                if (window.confirm(data.message || 'This unit is already committed. Assign it anyway?')) {
+                    assignResponder(responderId, true);
+                }
+                return;
+            }
 
             if (data.error) {
                 showAlert(escHtml(data.error), 'danger');
@@ -1845,6 +1868,25 @@
             // Clear search
             document.getElementById('responderSearch').value = '';
             selectedResponderId = null;
+
+            // GH#141 -- the unit was RESERVED for this Scheduled incident, not
+            // dispatched (Settings -> Incident Lifecycle: "Reserve until the
+            // booked time"). Say so plainly: a green "assigned" here would be a
+            // lie -- the unit is still Available and nothing was dispatched.
+            if (data.reserved) {
+                var resMsg = data.message || 'Unit reserved.';
+                var near = data.conflicts || [];
+                if (near.length) {
+                    var labels = [];
+                    for (var ci = 0; ci < near.length; ci++) {
+                        labels.push(near[ci].incident_number + ' (' + String(near[ci].booked_date || '').substring(0, 16) + ')');
+                    }
+                    resMsg += ' Note: this unit is also reserved for ' + labels.join(', ') + ' around the same time.';
+                }
+                showAlert(escHtml(resMsg), near.length ? 'warning' : 'info');
+                refreshIncident();
+                return;
+            }
 
             showAlert(escHtml(data.message), 'success');
             refreshIncident();
@@ -3009,6 +3051,138 @@
     }
 
     /**
+     * GH#141 (Phase 155) -- the "Reserved units" list: units committed to this
+     * (Scheduled) incident that have NOT been dispatched. Rendered from
+     * api/incident-detail.php's `reservations` (never from `assignments` -- a
+     * reservation is deliberately not an assignment). Hidden entirely when there
+     * are none, which is every incident on an install that leaves
+     * "Units assigned to Scheduled incidents" at its default.
+     *
+     * Three live shapes, each readable at a glance:
+     *   pending, not yet due  "Reserved -- dispatches 2026-10-04 18:00"
+     *   pending, due          "DUE -- not yet dispatched"  (the time came and
+     *                         nothing has promoted it yet: shown LOUDLY rather
+     *                         than silently absent -- derived by the database
+     *                         clock, not by a job having flipped a flag)
+     *   blocked               "HELD for a dispatcher" + the reason (the unit was
+     *                         busy at the booked time and is not Multi-Assign)
+     * Each live row has native-button Dispatch now / Release. The last few
+     * finished reservations are listed muted underneath, with their outcome.
+     */
+    function renderReservations(list, settings) {
+        var panel = document.getElementById('reservedUnitsPanel');
+        var host = document.getElementById('reservedUnitsList');
+        var badge = document.getElementById('reservedCount');
+        if (!panel || !host) return;
+        list = list || [];
+        if (!list.length) {
+            panel.classList.add('d-none');
+            host.innerHTML = '';
+            return;
+        }
+        panel.classList.remove('d-none');
+
+        var live = [];
+        var done = [];
+        for (var i = 0; i < list.length; i++) {
+            if (list[i].live) live.push(list[i]);
+            else done.push(list[i]);
+        }
+        if (badge) badge.textContent = String(live.length);
+
+        function unitLabel(r) { return r.responder_handle || r.responder_name || ('unit #' + r.responder_id); }
+        function shortTime(t) { return t ? String(t).substring(0, 16) : ''; }
+
+        var html = '';
+        for (var j = 0; j < live.length; j++) {
+            var r = live[j];
+            var label = unitLabel(r);
+            var stateBadge;
+            if (r.state === 'blocked') {
+                stateBadge = '<span class="badge text-bg-danger"><i class="bi bi-exclamation-triangle me-1"></i>HELD for a dispatcher</span>';
+            } else if (r.due) {
+                stateBadge = '<span class="badge text-bg-warning"><i class="bi bi-alarm me-1"></i>DUE &mdash; not yet dispatched</span>';
+            } else {
+                stateBadge = '<span class="badge text-bg-info"><i class="bi bi-clock me-1"></i>Reserved &mdash; dispatches ' + escHtml(shortTime(r.promotes_at)) + '</span>';
+            }
+            html +=
+                '<div class="reserved-row border-bottom py-1" data-reservation-id="' + r.id + '">' +
+                '<div class="d-flex align-items-center flex-wrap gap-2 small">' +
+                '<span class="fw-semibold">' + escHtml(label) + '</span>' +
+                (r.role ? '<span class="text-body-secondary">(' + escHtml(r.role) + ')</span>' : '') +
+                stateBadge +
+                '<span class="ms-auto d-flex gap-1">' +
+                '<button type="button" class="btn btn-outline-primary btn-sm py-0 px-2" data-reservation-act="dispatch" ' +
+                'aria-label="Dispatch ' + escHtml(label) + ' now">Dispatch now</button>' +
+                '<button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" data-reservation-act="release" ' +
+                'aria-label="Release reservation for ' + escHtml(label) + '">Release</button>' +
+                '</span></div>' +
+                (r.state === 'blocked' && r.outcome_note
+                    ? '<div class="small text-danger-emphasis mt-1">' + escHtml(r.outcome_note) + '</div>' : '') +
+                '</div>';
+        }
+        for (var k = 0; k < done.length; k++) {
+            var d = done[k];
+            html += '<div class="small text-body-secondary py-1"><i class="bi bi-' +
+                (d.state === 'promoted' ? 'check-circle' : 'x-circle') + ' me-1"></i>' +
+                escHtml(unitLabel(d)) + ' &mdash; reservation ' + escHtml(d.state) +
+                (d.closed_at ? ' ' + escHtml(shortTime(d.closed_at)) : '') +
+                (d.outcome_note ? ' (' + escHtml(d.outcome_note) + ')' : '') + '</div>';
+        }
+        host.innerHTML = html;
+
+        if (!host.getAttribute('data-wired')) {
+            host.setAttribute('data-wired', '1');
+            host.addEventListener('click', function (ev) {
+                var btn = ev.target;
+                while (btn && btn !== host && !(btn.getAttribute && btn.getAttribute('data-reservation-act'))) btn = btn.parentNode;
+                if (!btn || btn === host) return;
+                var row = btn;
+                while (row && row !== host && !(row.getAttribute && row.getAttribute('data-reservation-id'))) row = row.parentNode;
+                if (!row || row === host) return;
+                reservationAction(btn.getAttribute('data-reservation-act'), parseInt(row.getAttribute('data-reservation-id'), 10), btn, false);
+            });
+        }
+    }
+
+    function reservationAction(act, reservationId, btn, force) {
+        var ticketId = getIncidentId();
+        if (!ticketId || !reservationId) return;
+        if (act === 'release' && !window.confirm('Release this reservation? The unit will no longer be committed to this incident.')) return;
+        var payload = {
+            action: act === 'dispatch' ? 'dispatch_reservation_now' : 'release_reservation',
+            ticket_id: ticketId,                 // ignored by the server: it uses the reservation's own incident
+            reservation_id: reservationId,
+            csrf_token: getCsrfToken()
+        };
+        if (force) payload.force = true;
+        if (btn) btn.disabled = true;
+        fetch('api/incident-assign.php', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (btn) btn.disabled = false;
+            if (data.needs_confirmation) {
+                if (window.confirm(data.message || 'This unit is already committed. Dispatch it anyway?')) {
+                    reservationAction(act, reservationId, btn, true);
+                }
+                return;
+            }
+            if (data.error) { showAlert(escHtml(data.error), 'danger'); return; }
+            showAlert(escHtml(data.message || 'Done.'), 'success');
+            refreshIncident();
+        })
+        .catch(function (err) {
+            if (btn) btn.disabled = false;
+            showAlert('Failed: ' + escHtml(err.message), 'danger');
+        });
+    }
+
+    /**
      * Phase 151 (GH#138) — the "Primary: <handle> [change]" banner above
      * the assignments table. Hidden entirely when primary_unit_mode is
      * 'off' (renders nothing, per spec.md's off-mode success criterion —
@@ -3180,7 +3354,7 @@
 
             html += '<div class="list-group-item py-2 px-3 action-entry" style="border-left: 3px solid ' + borderColor + ';">' +
                 '<div class="d-flex justify-content-between">' +
-                '<span class="small fw-semibold"><i class="bi ' + icon + ' me-1"></i>' + escHtml(ac.description) + '</span>' +
+                '<span class="small fw-semibold text-break"><i class="bi ' + icon + ' me-1"></i>' + escHtml(ac.description) + '</span>' +
                 '<small class="text-body-secondary text-nowrap ms-2">' + formatDateTime(ac.date) + '</small>' +
                 '</div>' +
                 (ac.user_name ? '<small class="text-body-secondary">' + escHtml(ac.user_name) + '</small>' : '') +
@@ -4567,7 +4741,9 @@
             // re-renders shared_from_org_id/can_manage_sharing and the
             // shares-modal's own contents (if open) from fresh data — no
             // new client logic needed beyond these two array entries.
-            'incident:shared', 'incident:unshared'
+            'incident:shared', 'incident:unshared',
+            // Phase 151 (GH#138) -- another dispatcher set/cleared the primary unit.
+            'incident:primary_changed'
         ];
         events.forEach(function (e) {
             EventBus.on(e, function (payload) {

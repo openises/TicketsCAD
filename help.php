@@ -199,6 +199,25 @@ $help_categories = [
 '
             ],
             [
+                'slug'  => 'towing-roadside',
+                'title' => 'Towing and Roadside Dispatch',
+                'body'  => '
+<p>When a unit on scene needs a tow truck, a locksmith or another roadside company, use the <strong>Tow / Roadside</strong> button on the incident (or <strong>New</strong> on the <strong>Towing / Roadside</strong> card). It works on <em>every</em> incident type. If you do not see it, the feature is turned off or your role does not include it (ask an administrator; see <a href="documentation/?doc=VENDOR-DISPATCH-GUIDE" target="_blank" rel="noopener">the full guide</a>).</p>
+<ol>
+    <li>Choose the <strong>service needed</strong> (Tow, Lockout, Jumpstart, Tire Change, or whatever your agency added).</li>
+    <li>The list shows who is <strong>NEXT UP</strong> in your rotation. Press <strong>Log call</strong> (or <strong>Call</strong>). The call is <strong>recorded first</strong>, then dialled if click-to-dial is on. If another dispatcher called the same company a moment earlier you are told who is next now, and nothing is recorded.</li>
+    <li>Under <strong>Calls awaiting an outcome</strong> press <strong>Accepted</strong> (enter the ETA), <strong>Declined</strong>, <strong>No answer</strong> or <strong>Unavailable</strong>.</li>
+    <li>Add the <strong>vehicle</strong> and <strong>plate</strong>. For a tow, pick a <strong>destination</strong>: the company&apos;s yard, a facility on file, or type an address. A typed address never blocks you.</li>
+    <li>Use <strong>Read to the driver</strong> to read out the pickup, vehicle, destination and reference (for example <code>26-0123-T1</code>); <strong>Copy</strong> puts it on the clipboard.</li>
+</ol>
+<h6>Calling out of order</h6>
+<p>Pick a company that is not next and you are asked for a <strong>reason</strong> (earlier company did not answer, owner or driver requested it, closest truck, special equipment). That call is recorded as an override and does <strong>not</strong> use up that company&apos;s turn. Tick <strong>The driver or owner requested this company</strong> when that is the case. A company that is on no list can be typed in under <strong>Another company</strong>.</p>
+<h6>Afterwards</h6>
+<p><strong>Manage</strong> on the card row lets you mark <strong>On scene</strong>, <strong>Completed</strong>, <strong>Company withdrew</strong>, <strong>Gone on arrival</strong>, update the <strong>ETA</strong>, add a note, or <strong>Void</strong> an entry made by mistake (your own within 15 minutes; a supervisor any time). Every step is also written to the incident log.</p>
+<p><strong>Administrators:</strong> Settings &gt; Resources &gt; <strong>Service Providers (Towing)</strong> holds the companies, the rotation lists, the service types, the history (with a CSV download) and the settings. The service types and the settings apply to every agency on the install, so only a Super Admin can change them.</p>
+'
+            ],
+            [
                 'slug'  => 'incident-detail',
                 'title' => 'The Incident Detail View',
                 'body'  => '
@@ -603,6 +622,51 @@ geocoder. If that matters for your deployment, host geocoding internally.</p>
 '
             ],
             [
+                'slug'  => 'notification-rules',
+                'title' => 'Notification Rules (alerts by email, text and chat)',
+                'body'  => '
+<p>A <strong>notification rule</strong> tells people when something happens in the CAD: <em>when</em> a unit is dispatched (or a new incident is created, an incident is closed, a high-alert incident appears...), <em>send</em> this message by email, text, chat, push, or to a Slack/Telegram channel. Only a <strong>Super Admin</strong> can create or change rules, because they send mail and texts as the agency.</p>
+<p>Open <strong>Settings &gt; Communications &amp; Integrations &gt; Notification Rules</strong>.</p>
+<h6>Making a rule</h6>
+<ol>
+    <li>Choose <strong>New rule</strong>, or <strong>From template</strong> (Active911 StandardA or Cadpage, email supervisors on a high-alert incident, post every new incident to Slack).</li>
+    <li><strong>When</strong> &mdash; pick the event; optionally narrow it to one severity level or incident type.</li>
+    <li><strong>Who and where</strong> &mdash; pick the channel, then add people, email addresses, mobile numbers or an email list. A warning icon means that person has no address or number on file for the channel.</li>
+    <li><strong>Message</strong> &mdash; leave blank for the default, or write your own. Field buttons like <code>{street}</code> insert values; <code>{street|clean}</code> strips semicolons and line breaks for one-line formats.</li>
+    <li><strong>Review</strong> shows the message and every delivery it would make, and which it would skip, without sending anything.</li>
+    <li><strong>Send a test to me</strong>, then <strong>Save</strong>.</li>
+</ol>
+<h6>Good to know</h6>
+<ul>
+    <li><strong>Only the first time for each incident</strong> pages once per call instead of once per unit dispatched.</li>
+    <li>Messages go into a queue and are sent by the scheduled job within a minute; a failed delivery is retried until it is too late to matter, then marked Expired. The <strong>Delivery log</strong> shows what happened to every message and why.</li>
+    <li>A high-alert incident always gets through, whatever a person\'s preferences or quiet hours say.</li>
+    <li>A security label on an incident can block or delay a rule\'s message, the same way it does for Message Routing.</li>
+    <li><strong>Send a test to the real recipients</strong> asks first &mdash; a pager or Active911 address pages real devices.</li>
+</ul>
+<p><strong>Not the same as:</strong> Message Routing (copies traffic between channels and radios) or Webhooks (sends events to other software).</p>
+<p>See the <a href="documentation/?doc=NOTIFICATION-RULES" target="_blank">Notification Rules guide</a> for the Active911 recipes, the list of events and fields, and troubleshooting.</p>
+'
+            ],
+            [
+                'slug'  => 'email-lists',
+                'title' => 'Email Distribution Lists',
+                'body'  => '
+<p>An <strong>email list</strong> is a named group of recipients that a <a href="documentation/?doc=NOTIFICATION-RULES" target="_blank">Notification Rule</a> can send to. Notification Rules are the only thing that reads a list, and the list is read each time the rule fires. Super Admin only: <strong>Settings &gt; Communications &amp; Integrations &gt; Email Lists</strong>.</p>
+<h6>Adding people</h6>
+<p>Choose <strong>Manage</strong>, pick <strong>Member</strong>, <strong>Contact</strong>, <strong>Sub-list</strong> or <strong>Email address</strong>, then search and press <strong>Enter</strong>. A member or contact with no email address can still be added (the button says so) and is marked <em>No email address</em> with a link to fix the record.</p>
+<h6>What the window tells you</h6>
+<ul>
+    <li>The top line says how many unique addresses the list resolves to right now, and what needs attention.</li>
+    <li>Entries with a problem are listed first, each with a status: no email, deleted member, archived sub-list, a loop, skipped because of the member\'s status, or opted out of email.</li>
+    <li><strong>Preview recipients</strong> shows exactly who would receive a message, and who would not and why.</li>
+</ul>
+<h6>List options</h6>
+<p>Choose which member statuses are left out (Suspended and Retired by default, when your install has them), and whether a member or contact with no email may be added at all.</p>
+<p>More detail in the <a href="documentation/?doc=NEWUI-USER-GUIDE#managing-email-distribution-lists" target="_blank">user guide</a>.</p>
+'
+            ],
+            [
                 'slug'  => 'comms-console',
                 'title' => 'Communications Console',
                 'body'  => '
@@ -617,6 +681,34 @@ geocoder. If that matters for your deployment, host geocoding internally.</p>
 <p><strong>Personal views:</strong> any dispatcher can build their own layout too &mdash; click <strong>My Views</strong> (shown instead of Design Views if you don&rsquo;t hold the admin permission) to open the same designer scoped to your own views. Build from scratch or clone an existing shared/personal view. Mark a personal view <strong>Shared</strong> to let other operators clone it for themselves &mdash; it never becomes a tab on their console automatically.</p>
 <p>Access requires the <code>screen.console</code> permission; transmitting requires <code>action.console_tx</code>; authoring <em>shared</em> views requires <code>console.design</code>. Your own personal views need no extra permission.</p>
 <p>An <strong>AMATEUR</strong> badge on a channel strip means FCC station-ID rules apply &mdash; see the <a href="documentation/?doc=FCC-STATION-ID-COMPLIANCE" target="_blank">FCC station-ID compliance guide</a> for the radio widget&rsquo;s countdown, Monitoring ID, and End conversation controls.</p>
+'
+            ],
+            [
+                'slug'  => 'browser-phone',
+                'title' => 'Browser Phone',
+                'body'  => '
+<p>If your administrator has connected a phone system (an Asterisk PBX), you can place and answer calls from the browser with a headset &mdash; nothing to install. Click the <i class="bi bi-telephone"></i> <strong>phone</strong> button in the navigation bar. On the <strong>Console</strong> it opens the floating phone; on any other page it opens the <strong>Phone window</strong>, a small window that <em>keeps ringing while you work in other tabs</em>. Open it once at the start of a shift and leave it open. Your phone only receives calls while one of these is open &mdash; moving between ordinary pages does not keep it registered.</p>
+<ul>
+    <li><strong>Answering:</strong> an incoming call shows the caller with <strong>Answer</strong> focused &mdash; press <kbd>Enter</kbd>. When the phone system tags the call, answering here <em>also</em> claims it in the ringing-call banner and opens the New Incident form in a new tab (and clicking <strong>Answer</strong> in the banner answers the audio in the phone) &mdash; one click either way.</li>
+    <li><strong>Dialing:</strong> type a number and press <kbd>Enter</kbd>, use the keypad, or the general-number button.</li>
+    <li><strong>The footer line</strong> tells you what is wrong in words: a blocked microphone, a page that is not secure (https), a certificate this browser has not yet trusted, a wrong password, a lost connection.</li>
+    <li><strong>Not bound?</strong> Open the Console and click <strong>Phone token</strong> in the workstation bar, and give the token to an administrator to bind to your extension.</li>
+</ul>
+<p>Callers are looked up (and added) in <strong>Contacts</strong> however their number is written, so a repeat caller finds their history. The incident page&rsquo;s optional <strong>Relay test page</strong> button is a <em>simulated</em> test of the relay path, not AllStarLink &mdash; it is off unless an administrator enables it. See the <a href="documentation/?doc=PHONE-TELEPHONY-GUIDE" target="_blank">Browser Phone guide</a> for setup and what has and has not been verified.</p>
+'
+            ],
+            [
+                'slug'  => 'digital-voice-bridges',
+                'title' => 'Digital Voice Bridges (P25 / DMR)',
+                'body'  => '
+<p>If your administrator has connected one, a <strong>digital voice bridge</strong> channel brings a P25, DMR or analog talkgroup onto the Console from a bridge program (for example DVMProject&rsquo;s <code>dvmbridge</code>). It appears as an ordinary channel strip with one difference: <strong>it is listen-only</strong>.</p>
+<ul>
+    <li>The strip says <strong>Listen-only &middot; P25 &middot; TG &hellip;</strong> and has <strong>no PTT button</strong>. Nothing you press can transmit on it.</li>
+    <li>Tick <strong>Listen</strong> on the strip to hear it. You do not need Console Transmit permission to listen, and your browser is not asked for the microphone unless you hold that permission.</li>
+    <li>The <strong>RX</strong> lamp lights while audio is arriving. The status light stays grey (<em>unknown</em>) unless the optional network link check is connected &mdash; a quiet channel is never shown as connected.</li>
+    <li>Its audio can be patched <em>out</em> to other channels; nothing can be patched <em>into</em> it.</li>
+</ul>
+<p><strong>Administrators:</strong> open <strong>Settings &gt; Communications &amp; Integrations &gt; Digital Voice Bridges</strong> (permission <code>action.manage_voice_bridges</code>). A DVMProject channel needs a recorded acknowledgment of the DVMProject usage-policy statement first &mdash; DVMProject&rsquo;s own guidelines say its software is not intended for public-safety or dispatch use, and the decision to use it is yours. The statement is shown on that page. TicketsCAD bundles no DVMProject software and no vocoder. This feature has been tested against simulators only, not a live DVMProject network. See the <a href="documentation/?doc=DIGITAL-VOICE-USRP" target="_blank">Digital Voice Bridges guide</a>.</p>
 '
             ],
             [
@@ -847,6 +939,33 @@ detail an internet lookup service is told about who is querying (the User-Agent)
 '
             ],
             [
+                'slug'  => 'agency-logo',
+                'title' => 'Agency Logo & Branding',
+                'body'  => '
+<p>Show <strong>your agency&rsquo;s own logo</strong> instead of the generic radio-tower icon, and as a letterhead on what you print. Nothing changes until a logo is uploaded.</p>
+<p>Set it up at <strong>Settings &rarr; Application &mdash; Presentation &rarr; Agency Logo &amp; Branding</strong>. The page needs the <em>Manage Agency Branding</em> permission (Super Admin), or <em>Manage Own Org&rsquo;s Logo</em> (Org Admin, your own organization only).</p>
+<ol>
+    <li>Choose a <strong>PNG or JPEG</strong> file (up to 2 MB) in the <strong>For light backgrounds</strong> slot and click <strong>Upload</strong>. SVG is not accepted &mdash; export your logo as a PNG.</li>
+    <li>Check the <strong>Live preview</strong>: the sign-in card (with a Day/Night toggle), the top bar and a printed page. Nothing is saved until you click Upload or Save.</li>
+    <li>Optional: add a second image <strong>For dark backgrounds</strong>. Without one, dark theme puts your logo on a white plate.</li>
+    <li>Optional: under <strong>Where it appears</strong>, turn individual places on or off and pick sizes, then click <strong>Save settings</strong>.</li>
+</ol>
+<table class="table table-sm table-bordered">
+    <thead><tr><th>Where</th><th>What shows</th></tr></thead>
+    <tbody>
+        <tr><td>Sign-in screen</td><td>The install-wide logo instead of the icon (off switch available).</td></tr>
+        <tr><td>Printed pages and reports</td><td>A letterhead at the top of the page, replacing the small &ldquo;Tickets CAD &mdash; Printed&rdquo; text line (or above it, if you choose).</td></tr>
+        <tr><td>ICS forms (print / PDF)</td><td>The letterhead of the organization that owns the incident.</td></tr>
+        <tr><td>Public incident board</td><td>The logo above the board title.</td></tr>
+        <tr><td>Top bar</td><td>Off by default; opt in to replace the product mark.</td></tr>
+    </tbody>
+</table>
+<p>On a multi-organization install, each organization can have its own logo; one without a logo uses its parent organization&rsquo;s, then the install-wide logo. An Org Admin can only change their own organization&rsquo;s logo.</p>
+<p>The uploaded image is re-encoded on the server: hidden metadata (such as camera location tags) is removed and the stored copy is kept under 256 KB.</p>
+<p>See the <a href="documentation/?doc=AGENCY-BRANDING" target="_blank">Agency Logo &amp; Branding guide</a> for every setting, the permissions and troubleshooting.</p>
+'
+            ],
+            [
                 'slug'  => 'automatic-backups',
                 'title' => 'Automatic Backups',
                 'body'  => '
@@ -1027,6 +1146,28 @@ two-factor enrollment is permanently unrecoverable.
     <li>Fails soft: if the auto-close helper errors, the underlying status change still commits. A misconfigured grace window can never block a legitimate close.</li>
     <li>Safety re-check: even if the sweeper hits a ticket whose scheduled time passed, it re-verifies "no active assigns remain" before closing. A re-dispatch that skipped the cancel path is still respected.</li>
 </ul>
+'
+            ],
+            [
+                'slug'  => 'scheduled-incidents',
+                'title' => 'Scheduled incidents and reserved units',
+                'body'  => '
+<p>An incident can be <strong>Scheduled</strong> for a future date and time. It waits as Scheduled and becomes <strong>Open by itself when its booked time arrives</strong>, even if nobody has a dispatch board open &mdash; a background job (<code>scheduled_incidents_tick</code>, every minute) does it. Install its timer from <em>docs/MAINTENANCE-RUNBOOK.md</em>; <strong>Settings &rarr; System Health &rarr; File &amp; Code Health &rarr; Scheduled background jobs</strong> shows whether it is running and turns red only when something is actually waiting on it.</p>
+
+<h6>Units assigned to Scheduled incidents</h6>
+<p>Setting: <strong>Config &gt; Configuration &gt; Incident Lifecycle &rarr; Units assigned to Scheduled incidents</strong>.</p>
+<ul>
+    <li><strong>Dispatch immediately</strong> (default): assigning a unit marks it Dispatched at once, exactly as before.</li>
+    <li><strong>Reserve until the booked time</strong>: the unit is <em>reserved</em> &mdash; committed but not dispatched, still Available for other calls. The incident page lists it under <strong>Reserved units</strong>, and the unit shows a clock chip with the incident and the time. It is dispatched automatically at the booked time, or <strong>Lead time</strong> minutes earlier (0&ndash;1440).</li>
+</ul>
+
+<h6>What a reservation can say</h6>
+<ul>
+    <li><strong>Reserved &mdash; dispatches &hellip;</strong>: waiting. <em>Dispatch now</em> sends it at once; <em>Release</em> cancels it.</li>
+    <li><strong>DUE &mdash; not yet dispatched</strong>: the time has come but nothing has dispatched the unit (the timer is late or missing). The unit is <em>not</em> falsely marked Dispatched. Click <em>Dispatch now</em> and check System Health.</li>
+    <li><strong>HELD for a dispatcher</strong>: the unit was busy on another call at the booked time (and is not Multi-Assign), or its status is <em>Unavailable</em>. It is never double-booked and never retried automatically; the reason is shown. <em>Dispatch now</em> asks you to confirm, except for an Unavailable status, which no one can force.</li>
+</ul>
+<p>Closing the incident cancels its reservations. Mark a unit <strong>Multi-Assign</strong> and it is dispatched at the booked time without waiting for a decision. Over the External API a reserved assignment answers <code>201 {"reserved": true, "reservation_id": &hellip;}</code> with no assignment id; <code>"dispatch_now": true</code> bypasses it.</p>
 '
             ],
             [
@@ -1361,7 +1502,7 @@ mid-tier.lan</code></pre>
                 'body'  => '
 <p>The complete list of event types TicketsCAD can fire (canonical allowlist in <code>inc/webhooks.php</code> :: <code>_audit_to_webhook_event()</code>). Audit rows that do NOT match a tuple in this map fire NO webhook — even if a future feature adds them. By design.</p>
 <ul>
-    <li><strong>Incidents:</strong> <code>incident.created</code>, <code>incident.updated</code>, <code>incident.closed</code>, <code>incident.reopened</code>, <code>incident.deleted</code>, <code>incident.note_added</code></li>
+    <li><strong>Incidents:</strong> <code>incident.created</code>, <code>incident.updated</code>, <code>incident.closed</code>, <code>incident.reopened</code>, <code>incident.deleted</code>, <code>incident.note_added</code>, <code>incident.primary_changed</code>, <code>incident.status_changed</code> (fires once for every real status change &mdash; Closed, Open or Scheduled, from any route including a Scheduled incident becoming Open at its booked time &mdash; with the old and new status, who or what caused it, and the disposition on a close)</li>
     <li><strong>Assignments:</strong> <code>assign.created</code>, <code>assign.removed</code></li>
     <li><strong>Responders:</strong> <code>responder.created</code>, <code>responder.updated</code>, <code>responder.deleted</code>, <code>responder.status_changed</code></li>
     <li><strong>Members:</strong> <code>member.created</code>, <code>member.updated</code>, <code>member.deleted</code>, <code>member.status_changed</code>, <code>member.location_updated</code></li>

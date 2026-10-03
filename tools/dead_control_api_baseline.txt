@@ -250,3 +250,12 @@ apikey:was_stale
 # reads response.session_token / response.ws_url.
 apikey:session_token
 apikey:ws_url
+
+# --- Phase 155 (2026-10-02): read by a PYTHON consumer this audit does not scan.
+# api/sip-ingest.php's heartbeat reply carries trunk_enabled so the bridge
+# process (services/sip-bridge/bridge.py -- run_heartbeat() and run_check())
+# can warn "this trunk is DISABLED in TicketsCAD" instead of the administrator
+# seeing a silent dead end. The audit's JS-only reader scan cannot see it; the
+# key is exercised end-to-end by services/sip-bridge/tests/test_bridge_threecx_e2e.py
+# (mock reply) and tests/test_phase155_sip_bridge_status.php (real endpoint).
+apikey:trunk_enabled

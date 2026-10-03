@@ -67,6 +67,12 @@
 
 require_once __DIR__ . '/backup.php';
 
+// This file calls audit_log() and used to rely on its caller having loaded inc/audit.php;
+// every call site sat behind function_exists('audit_log'), so on a request path that had
+// not loaded it the audit row was silently never written. Loaded here so it cannot depend on
+// what the caller happened to include. (tools/audit_log_arity.php gates this.)
+require_once __DIR__ . '/audit.php';
+
 const BACKUP_DEFAULT_INTERVAL_HOURS = 24;
 const BACKUP_DEFAULT_RETENTION      = 7;
 /** 0 = no age-based expiry; keep purely by count. */
@@ -1057,19 +1063,45 @@ function backup_extract_sql(string $archive): ?string {
     return is_string($sql) && $sql !== '' ? $sql : null;
 }
 
+/**
+ * Drop the comment lines a statement chunk BEGINS with, and return what follows.
+ *
+ * The dump is split on `;` at end of line, so a chunk is "the comments that precede a statement,
+ * then the statement". The splitter used to discard any chunk whose first characters were `--`,
+ * which threw away the STATEMENT together with its comment: the dump's `DROP TABLE IF EXISTS` for
+ * every table (it sits directly under the `-- Table:` banner), so restoring onto an existing
+ * database failed on every table ("Table already exists", "Duplicate entry '1' for key 'PRIMARY'")
+ * and left the old rows in place; and the header's own `SET NAMES / SET SQL_MODE / SET time_zone`,
+ * which share a chunk with the header comments, never ran. A chunk that is ONLY comments gives ''.
+ */
+function backup_strip_leading_comments(string $chunk): string {
+    $s = ltrim($chunk);
+    while ($s !== '' && strncmp($s, '--', 2) === 0) {
+        $nl = strpos($s, "\n");
+        if ($nl === false) return '';
+        $s = ltrim(substr($s, $nl + 1));
+    }
+    return $s;
+}
+
 /** Apply a dump to an already-open PDO handle. Returns [applied, errors, firstErrors]. */
 function backup_apply_sql(PDO $pdo, string $sql, int $maxReportedErrors = 3): array {
     $applied = 0; $errors = 0; $reported = [];
     try { $pdo->exec('SET FOREIGN_KEY_CHECKS=0'); } catch (Throwable $e) {}
     foreach (preg_split('/;\s*[\r\n]+/', $sql) as $stmt) {
-        $stmt = trim($stmt);
-        if ($stmt === '' || str_starts_with($stmt, '--') || str_starts_with($stmt, '/*')) continue;
+        $stmt = backup_strip_leading_comments($stmt);
+        // /*!40000 ALTER TABLE ... KEYS */ is a MyISAM tuning hint (InnoDB ignores it), so it is skipped.
+        if ($stmt === '' || str_starts_with($stmt, '/*')) continue;
         try { $pdo->exec($stmt); $applied++; }
         catch (Throwable $e) {
             $errors++;
             if (count($reported) < $maxReportedErrors) $reported[] = substr($e->getMessage(), 0, 160);
         }
     }
+    // The dump's header turns autocommit off and its last statement is COMMIT; a truncated dump has no
+    // COMMIT, so end the transaction here and leave the connection the way it was found.
+    try { $pdo->exec('COMMIT'); } catch (Throwable $e) {}
+    try { $pdo->exec('SET AUTOCOMMIT = 1'); } catch (Throwable $e) {}
     try { $pdo->exec('SET FOREIGN_KEY_CHECKS=1'); } catch (Throwable $e) {}
     return [$applied, $errors, $reported];
 }
@@ -1091,7 +1123,11 @@ function backup_apply_sql(PDO $pdo, string $sql, int $maxReportedErrors = 3): ar
  * The live database is only ever READ (row counts, for comparison). The scratch
  * database is always dropped, including on failure.
  *
- * @return array ok, scratch, applied, errors, tables, counts[], compare[], detail
+ * Phase 155: it ALSO recomputes every table's content fingerprint from the restored rows and compares
+ * it with the one the dump carries ('fidelity' in the result), so a restore that changed values
+ * without raising an error no longer passes.
+ *
+ * @return array ok, scratch, applied, errors, tables, counts[], compare[], fidelity, detail
  */
 function backup_drill(string $archive, string $adminUser, string $adminPass,
                       array $countTables = ['member', 'ticket', 'responder', 'facilities']): array {
@@ -1101,7 +1137,7 @@ function backup_drill(string $archive, string $adminUser, string $adminPass,
     // healthy backup — the same class of misleading message this phase exists to
     // remove. Only a conclusive run may condemn a backup.
     $out = ['ok' => false, 'conclusive' => false, 'scratch' => null, 'applied' => 0,
-            'errors' => 0, 'tables' => 0, 'counts' => [], 'compare' => [], 'detail' => ''];
+            'errors' => 0, 'tables' => 0, 'counts' => [], 'compare' => [], 'fidelity' => null, 'detail' => ''];
 
     [$vok, $vdetail] = backup_verify($archive);
     if (!$vok) {
@@ -1180,10 +1216,24 @@ function backup_drill(string $archive, string $adminUser, string $adminPass,
 
         $restoredRows = array_sum(array_map(static fn($v) => (int) $v, $out['counts']));
         $out['conclusive'] = true;   // the restore actually ran — this verdict is real
-        $out['ok'] = ($out['tables'] > 0 && $errors === 0);
-        $out['detail'] = $out['ok']
-            ? "restored {$applied} statements into {$out['tables']} tables, {$restoredRows} rows across sampled tables"
-            : "restore produced {$errors} error(s): " . implode(' | ', $reported);
+
+        // CONTENT, not just counts. A restore that ran without a SQL error and brought back the right
+        // number of rows can still have changed every value in them (1e5 read back as 100000, an
+        // ENUM('0','1') value as its neighbour, every TIMESTAMP shifted by the server's zone). Each
+        // table in the dump carries a fingerprint of the values it was written from; recompute it
+        // from the RESTORED rows and compare. (Phase 155 -- see the note above backup_sql_literal().)
+        $out['fidelity'] = backup_verify_digests($pdo, $sql);
+        $fidelityBad = !empty($out['fidelity']['mismatched']) || !empty($out['fidelity']['missing']);
+
+        $out['ok'] = ($out['tables'] > 0 && $errors === 0 && !$fidelityBad);
+        if ($out['ok']) {
+            $out['detail'] = "restored {$applied} statements into {$out['tables']} tables, {$restoredRows} rows across sampled tables; "
+                . backup_digest_summary($out['fidelity']);
+        } elseif ($errors > 0) {
+            $out['detail'] = "restore produced {$errors} error(s): " . implode(' | ', $reported);
+        } else {
+            $out['detail'] = 'the restore ran cleanly but ' . backup_digest_summary($out['fidelity']);
+        }
     } catch (Throwable $e) {
         $out['detail'] = 'drill failed: ' . $e->getMessage();
     } finally {

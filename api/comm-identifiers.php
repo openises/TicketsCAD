@@ -158,6 +158,10 @@ function handlePost() {
     $input = json_decode($raw, true) ?: [];
     $action = $input['action'] ?? '';
 
+    // CSRF. Every action below changes state (communication modes, and every member's
+    // callsigns/phones/radio ids) and none of them checked a token.
+    csrf_require($input);
+
     // ── Comm Mode CRUD (admin only) ─────────────────────────────
 
     if ($action === 'save_mode') {

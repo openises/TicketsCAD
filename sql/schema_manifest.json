@@ -57,6 +57,17 @@
             "callsign",
             "note"
         ],
+        "assign_reservations": [
+            "active_key",
+            "closed_at",
+            "outcome_note",
+            "promoted_assign_id",
+            "reserved_by",
+            "responder_id",
+            "role",
+            "state",
+            "ticket_id"
+        ],
         "assigns": [
             "as_of",
             "clear",
@@ -93,6 +104,19 @@
             "status",
             "triggered_by",
             "triggered_by_user_id"
+        ],
+        "branding_logos": [
+            "asset_key",
+            "byte_size",
+            "data_b64",
+            "height",
+            "mime",
+            "org_id",
+            "sha256",
+            "uploaded_by",
+            "uploaded_by_name",
+            "variant",
+            "width"
         ],
         "bridge_tokens": [
             "bridge_id",
@@ -317,6 +341,7 @@
             "ref_id"
         ],
         "email_lists": [
+            "archived_at",
             "created_by",
             "description",
             "name",
@@ -985,12 +1010,16 @@
             "channel",
             "error",
             "event_type",
+            "queue_id",
             "recipient",
             "rule_id",
             "sent_at",
             "status",
             "subject",
             "ticket_id"
+        ],
+        "notification_rules": [
+            "active"
         ],
         "org_relationships": [
             "access_tier",
@@ -1089,8 +1118,10 @@
         ],
         "pbx_trunks": [
             "bearer_token",
+            "bridge_info",
             "enabled",
             "label",
+            "last_heartbeat_at",
             "mute_bypass_enabled",
             "org_id",
             "reassign_grace_seconds",
@@ -1104,6 +1135,8 @@
             "priority",
             "route_id",
             "scheduled_send_at",
+            "send_error",
+            "sent_at",
             "status",
             "subject",
             "target",
@@ -1551,6 +1584,87 @@
             "secret_encrypted",
             "user_id"
         ],
+        "vendor_dispatch_ledger": [
+            "actor_ip",
+            "actor_name",
+            "actor_user_id",
+            "consumed_turn",
+            "detail",
+            "dispatch_id",
+            "eta_minutes",
+            "event_at",
+            "event_type",
+            "expected_head_provider_id",
+            "list_id",
+            "provider_id",
+            "provider_name",
+            "provider_phone",
+            "reason",
+            "ref_event_id",
+            "selection_method"
+        ],
+        "vendor_dispatches": [
+            "assigned_at",
+            "closed_at",
+            "created_by_name",
+            "dest_facility_id",
+            "dest_text",
+            "eta_minutes",
+            "list_id",
+            "notes",
+            "ordinal",
+            "org_id",
+            "plate",
+            "plate_state",
+            "provider_id",
+            "provider_name",
+            "provider_phone",
+            "service_label",
+            "service_type_id",
+            "status",
+            "ticket_id",
+            "ticket_ref",
+            "tow_reason",
+            "vehicle_desc"
+        ],
+        "vendor_providers": [
+            "contact_name",
+            "hours_note",
+            "is_active",
+            "name",
+            "notes",
+            "org_id",
+            "phone",
+            "phone_alt",
+            "service_area",
+            "suspend_reason",
+            "suspended_until",
+            "yard_facility_id"
+        ],
+        "vendor_rotation_lists": [
+            "description",
+            "is_active",
+            "is_default",
+            "mode",
+            "name",
+            "org_id",
+            "service_type_id",
+            "sort_order"
+        ],
+        "vendor_rotation_members": [
+            "added_at",
+            "list_id",
+            "position",
+            "provider_id",
+            "removed_at"
+        ],
+        "vendor_service_types": [
+            "code",
+            "is_active",
+            "label",
+            "needs_destination",
+            "sort_order"
+        ],
         "warnings": [
             "_by",
             "_from",
@@ -1683,9 +1797,11 @@
         "ai_pending_responses",
         "allocates",
         "aprs_watchlist",
+        "assign_reservations",
         "assigns",
         "atak_unbound_uids",
         "audit_log_purges",
+        "branding_logos",
         "bridge_tokens",
         "capacity_categories",
         "captions",
@@ -1863,6 +1979,12 @@
         "user_roles",
         "user_screen_prefs",
         "user_tfa",
+        "vendor_dispatch_ledger",
+        "vendor_dispatches",
+        "vendor_providers",
+        "vendor_rotation_lists",
+        "vendor_rotation_members",
+        "vendor_service_types",
         "warnings",
         "weather_alert_areas",
         "weather_alert_dispatch",
@@ -1879,8 +2001,8 @@
     "_meta": {
         "generated_by": "tools/gen_schema_manifest.php",
         "purpose": "columns this code writes to + tables it references; checked by inc/schema-verify.php",
-        "tables": 168,
-        "columns": 1337,
-        "required_tables": 200
+        "tables": 177,
+        "columns": 1433,
+        "required_tables": 208
     }
 }

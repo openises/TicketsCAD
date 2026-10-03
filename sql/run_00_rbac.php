@@ -414,6 +414,40 @@ $perms = [
     ['action.patch_create',      'Create Patch / Coupling',          'action'],
     ['action.patch_cross_class', 'Create Cross-Class Patch',         'action'],
     ['action.manage_positions',  'Manage Console Positions (Admin)', 'action'],
+
+    // Phase 155 (2026-10-02, GH#151/GH#129) -- digital voice bridge channels.
+    // Mirrors sql/rbac.sql. Tier 1 (see the admin_only UPDATE below); the
+    // Dispatcher mapping in THIS file is a named allow-list that never names
+    // it, so it is withheld from Dispatcher by construction (and added to the
+    // Dispatcher repair-DELETE defensively, per this file's own lesson).
+    ['action.manage_voice_bridges', 'Manage Digital Voice Bridges (Admin)', 'action'],
+    // GH#142 (Phase 155) -- agency logo and branding. Mirrors sql/rbac.sql's
+    // INSERT for these two codes. TWO permissions split by blast radius (the
+    // Phase 138/140 template): action.manage_branding is tier 2 (Super Admin
+    // only, added to the Org Admin NOT-IN exclusion and repair DELETEs below);
+    // action.manage_branding_org is tier 1 (reaches Org Admin by being ABSENT
+    // from that exclusion). Dispatcher/Operator/Read-Only/Field Unit mappings in
+    // THIS file are allow-lists that name neither code, so both are correctly
+    // withheld there with no edit needed. Neither gate may fall back to
+    // `is_admin()`.
+    ['action.manage_branding',     'Manage Agency Branding (install-wide)', 'action'],
+    ['action.manage_branding_org', "Manage Own Org's Logo",                'action'],
+    // GH#148 (Phase 155, 2026-10-02) -- towing / roadside vendor dispatch.
+    // Mirrors sql/rbac.sql's own INSERT. action.dispatch_vendor is tier 0
+    // (named in the Dispatcher ALLOW-list below); action.manage_vendors is
+    // tier 1 (see the admin_only UPDATE block below -- Dispatcher is denied it
+    // simply by never naming it in that allow-list, plus the repair-DELETEs).
+    ['action.dispatch_vendor',   'Dispatch Towing / Roadside Vendor', 'action'],
+    ['action.manage_vendors',    'Manage Towing / Roadside Vendors',  'action'],
+    // Phase 155 (2026-10-02, GH#144) -- Notification Rules authoring. ONE code,
+    // admin_only TIER 2 (Super Admin only): a rule mails/texts incident details
+    // to arbitrary recipients across EVERY organization and the table has no
+    // org column, so there is no org-scoped variant to hand an Org Admin.
+    // Mirrors sql/rbac.sql's own INSERT; named in the tier-2 UPDATE below, the
+    // Org Admin exclusion + both repair DELETEs, and the Dispatcher repair
+    // DELETEs. Dispatcher's mapping in THIS file is an allow-list that does not
+    // name it, so it is withheld there by construction.
+    ['action.manage_notification_rules', 'Manage Notification Rules (install-wide)', 'action'],
 ];
 
 $pInserted = 0;
@@ -491,7 +525,9 @@ try {
         'action.manage_audit_retention', 'action.manage_dispositions',
         'action.manage_public_board', 'action.manage_ics_form_types',
         'action.manage_org_routing', 'action.manage_org_routing_org',
-        'action.manage_org_relationships'
+        'action.manage_org_relationships',
+        'action.manage_branding',
+        'action.manage_notification_rules'
     )");
     db_query("UPDATE `{$prefix}permissions` SET admin_only = 1 WHERE code IN (
         'action.manage_users', 'action.delete_incident', 'action.import_data',
@@ -499,8 +535,12 @@ try {
         'action.delete_ics_form', 'action.delete_equipment_log',
         'action.manage_public_board_org', 'action.manage_ics_form_types_org',
         'action.manage_matrix', 'action.manage_calls',
+        'action.manage_branding_org',
         'action.create_major_event', 'action.manage_major_event_command',
-        'action.patch_cross_class', 'action.manage_positions'
+        'action.patch_cross_class', 'action.manage_positions',
+        'action.manage_voice_bridges',
+        -- GH#148 (Phase 155): rotation-list management is tier 1
+        'action.manage_vendors'
     )");
     // Propagate onto each code's canonical alias partner in BOTH
     // directions (sql/run_rbac_v2.php's A8 step may already have created
@@ -555,7 +595,9 @@ try {
                                     'action.manage_audit_retention', 'action.manage_dispositions',
                                     'action.manage_public_board', 'action.manage_ics_form_types',
                                     'action.manage_org_routing', 'action.manage_org_routing_org',
+                                    'action.manage_branding',
                                     'screen.facility_portal', 'action.facility_self_report',
+                                    'action.manage_notification_rules',
                                     'action.manage_org_relationships')
                 AND `admin_only` <= 1");
     echo "[OK] Org Admin permissions mapped\n";
@@ -587,7 +629,8 @@ try {
                                   'action.manage_audit_retention', 'action.manage_dispositions',
                                   'action.manage_public_board', 'action.manage_ics_form_types',
                                   'action.manage_org_routing', 'action.manage_org_routing_org',
-                                  'action.manage_org_relationships',
+                                  'action.manage_org_relationships', 'action.manage_branding',
+                                  'action.manage_notification_rules',
                                   'screen.facility_portal', 'action.facility_self_report')");
     db_query("DELETE rp FROM `{$prefix}role_permissions` rp
               JOIN `{$prefix}permissions` canon ON canon.id = rp.permission_id
@@ -597,7 +640,8 @@ try {
                                     'action.manage_audit_retention', 'action.manage_dispositions',
                                     'action.manage_public_board', 'action.manage_ics_form_types',
                                     'action.manage_org_routing', 'action.manage_org_routing_org',
-                                    'action.manage_org_relationships',
+                                    'action.manage_org_relationships', 'action.manage_branding',
+                                    'action.manage_notification_rules',
                                     'screen.facility_portal', 'action.facility_self_report')");
     echo "[OK] Org Admin canonical-alias privilege leak repaired (if any)\n";
 } catch (Exception $e) {}
@@ -632,7 +676,11 @@ try {
                                -- Phase 152 (2026-09-07): tier 0, Dispatcher-default per plan.md's
                                -- RBAC section. action.patch_cross_class/action.manage_positions
                                -- deliberately absent -- withheld by never being named here.
-                               'action.patch_create'))
+                               'action.patch_create',
+                               -- GH#148 (Phase 155, 2026-10-02): tier 0, Dispatcher-default.
+                               -- action.manage_vendors is deliberately absent -- withheld from
+                               -- Dispatcher by never being named here (and by the repair below).
+                               'action.dispatch_vendor'))
                 AND `admin_only` = 0");
     echo "[OK] Dispatcher permissions mapped\n";
 } catch (Exception $e) {}
@@ -667,12 +715,16 @@ try {
     db_query("DELETE `{$prefix}role_permissions` FROM `{$prefix}role_permissions`
               JOIN `{$prefix}permissions` p ON p.id = `{$prefix}role_permissions`.`permission_id`
               WHERE `{$prefix}role_permissions`.`role_id` = 3
-                AND p.`code` IN ('action.manage_calls', 'action.patch_cross_class', 'action.manage_positions')");
+                AND p.`code` IN ('action.manage_calls', 'action.patch_cross_class', 'action.manage_positions', 'action.manage_voice_bridges',
+                                  'action.manage_branding', 'action.manage_branding_org', 'action.manage_vendors',
+                                  'action.manage_notification_rules')");
     db_query("DELETE rp FROM `{$prefix}role_permissions` rp
               JOIN `{$prefix}permissions` canon ON canon.id = rp.permission_id
               JOIN `{$prefix}permissions` old_p ON old_p.deprecated_alias_of = canon.code
               WHERE rp.role_id = 3
-                AND old_p.code IN ('action.manage_calls', 'action.patch_cross_class', 'action.manage_positions')");
+                AND old_p.code IN ('action.manage_calls', 'action.patch_cross_class', 'action.manage_positions', 'action.manage_voice_bridges',
+                                    'action.manage_branding', 'action.manage_branding_org', 'action.manage_vendors',
+                                    'action.manage_notification_rules')");
     echo "[OK] Dispatcher canonical-alias privilege leak repaired (if any)\n";
 } catch (Exception $e) {}
 

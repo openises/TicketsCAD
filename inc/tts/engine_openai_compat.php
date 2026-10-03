@@ -13,7 +13,7 @@
  *               https://api.openai.com/v1). '/audio/speech' is appended.
  *   model     — e.g. 'kokoro', 'tts-1', 'playai-tts'
  *   voice     — default voice (overridable per application)
- *   key_ref   — filename under ../keys/tts/ holding the API key (blank for a
+ *   key_ref   — filename in the TTS key directory (inc/tts/keys.php) holding the API key (blank for a
  *               local no-auth server)
  *   format    — request format we ask the server for; we always want raw PCM.
  *               Defaults to 'pcm' (OpenAI + Kokoro return s16le). ffmpeg then

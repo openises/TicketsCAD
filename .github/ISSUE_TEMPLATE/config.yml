@@ -24,6 +24,20 @@ contact_links:
       account of the external services TicketsCAD can contact — including the
       optional AI features, which are off by default.
 
+  - name: Ask a general question, or see what others have done (Google Group)
+    url: https://groups.google.com/g/open-source-cad
+    about: >-
+      For quick questions, "has anyone done this?", and sharing what you built.
+      No GitHub account is needed to read it. For a bug or a specific request,
+      use an issue form instead so it is tracked.
+
+  - name: How support works, and what to expect
+    url: https://github.com/openises/TicketsCAD/blob/main/SUPPORT.md
+    about: >-
+      Where to ask, how soon to expect a reply, and what the project does not
+      promise. Every new issue also gets an automatic acknowledgement within
+      minutes.
+
   - name: Installing, upgrading, and administering TicketsCAD
     url: https://github.com/openises/TicketsCAD/blob/main/docs/INDEX.md
     about: >-

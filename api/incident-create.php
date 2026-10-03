@@ -73,11 +73,10 @@ if (!empty($errors)) {
     json_response(['errors' => $errors], 422);
 }
 
-// ── Pre-fetch incident type row for response (protocol) + auto-severity ──
-// (Same SELECT shape as the pre-refactor flow — preserves the notification
-// context value for $type_row['name'] which was never populated by the
-// query before this refactor. Don't add the `type` column here without a
-// matching update to the notification-engine rules tests.)
+// ── Pre-fetch incident type row for the response (protocol) ──
+// (Phase 155: this used to feed the notification context too - and read
+// `$type_row['name']`, a column that does not exist. Notifications now load
+// the incident themselves in inc/notification-engine.php.)
 $in_types_id = (int) ($input['in_types_id'] ?? 0);
 $type_row = null;
 if ($in_types_id > 0) {
@@ -131,29 +130,11 @@ if ($majorId > 0 && function_exists('rbac_can') && rbac_can('action.link_major')
     }
 }
 
-// ── Capture values used by audit/SSE/notifications ──
-// GH#87 — mirrors incident_create_internal()'s own severity_clamp() calls
-// exactly (both the input clamp and the re-clamp on the type override) so
-// this endpoint's notification/SSE context always agrees with what was
-// actually written to `ticket.severity`.
-require_once __DIR__ . '/../inc/severity.php';
-$scope         = trim((string) ($input['scope'] ?? ''));
-$signal        = trim((string) ($input['signal'] ?? ''));
-$severity      = severity_clamp($input['severity'] ?? 0);
-if ($type_row && (int) $type_row['set_severity'] > 0) {
-    $severity = severity_clamp($type_row['set_severity']); // mirror auto-set inside helper
-}
-$status        = (int) ($input['status'] ?? 2);
-if (!in_array($status, [1, 2, 3], true)) $status = 2;
-$street        = trim((string) ($input['street'] ?? ''));
-$city          = trim((string) ($input['city'] ?? ''));
-$assign_ids    = $input['assign_responders'] ?? [];
-$patientCount  = (int) ($result['patient_count'] ?? 0);
-
 // GH #8 (2026-07-14): the incident|create|ticket audit — which drives the
 // webhook + Web Push fan-out — now lives INSIDE incident_create_internal() so
 // every create path fires it consistently. Do NOT re-audit it here or the push
-// double-fires. (SSE + notification rules below are still this endpoint's job.)
+// double-fires. (The SSE event below is still this endpoint's job; notification
+// rules fire from the writer too - see the note further down.)
 
 ini_set('display_errors', $prevDisplay);
 
@@ -166,32 +147,14 @@ sse_publish_for_incident('incident:new', [
     'severity'  => $input['severity'] ?? 0
 ], $ticket_id);
 
-// ── Fire notification rules (best-effort) ──
-try {
-    require_once __DIR__ . '/../inc/notification-engine.php';
-    $notifContext = [
-        'ticket_id'    => $ticket_id,
-        'scope'        => $scope,
-        'severity'     => $severity,
-        'in_types_id'  => $in_types_id,
-        'incident_type' => $type_row['name'] ?? '',
-        'street'       => $street,
-        'city'         => $city,
-    ];
-    notification_check('incident_create', $notifContext);
-
-    // Also fire severity_high event for high-severity incidents.
-    // GH#88 — replaces a hardcoded `>= 2` with the admin-configurable
-    // is_high_alert flag (inc/severity.php), so this fires for whichever
-    // level(s) an agency has actually flagged as escalation-worthy,
-    // not just "the level historically numbered 2."
-    if (severity_is_high_alert($severity)) {
-        notification_check('severity_high', $notifContext);
-    }
-} catch (Exception $e) {
-    // Notification failure must never block incident creation
-    error_log('Notification engine error on incident create: ' . $e->getMessage());
-}
+// ── Notification rules (Phase 155, GH#144) ──
+// NOT fired here any more. incident_create / severity_high / the batched
+// unit_assign now fire from incident_create_internal() itself (inc/incident-write.php)
+// so the external API and message-to-incident paths notify too, and the context is
+// loaded from the ticket row instead of being rebuilt here (this block read
+// `$type_row['name']` - a column that does not exist - so {incident_type} was blank
+// in every notification). Do NOT call notification_check()/notification_hook() here
+// or every rule fires twice.
 
 // ── Return success ──
 // Phase 99p (Eric beta 2026-06-29) — toast uses the case number,

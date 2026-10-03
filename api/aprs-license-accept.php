@@ -30,6 +30,11 @@ header('Content-Type: application/json; charset=utf-8');
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
+// Loaded here, not assumed: neither auth.php nor rbac.php loads it, so a
+// `function_exists('audit_log')` guard around the call below was FALSE on this
+// request path and the legal-trail row was silently never written.
+require_once __DIR__ . '/../inc/audit.php';
+require_once __DIR__ . '/../inc/client-ip.php';
 
 if (!is_admin()) {
     http_response_code(403);
@@ -63,7 +68,7 @@ $prefix    = $GLOBALS['db_prefix'] ?? '';
 $userName  = (string) ($_SESSION['user'] ?? 'unknown');
 $userId    = (int) ($_SESSION['user_id'] ?? 0);
 $now       = date('Y-m-d H:i:s');
-$ipAddr    = $_SERVER['REMOTE_ADDR'] ?? '';
+$ipAddr    = client_ip();
 
 try {
     // Upsert both settings rows.
@@ -78,20 +83,30 @@ try {
         );
     }
 
-    // Audit-log entry — legal trail. Captures user + IP + UA.
-    if (function_exists('audit_log')) {
-        audit_log(
-            'settings|aprs|license_attestation',
-            "FCC Amateur Radio license attestation accepted by {$userName} (user_id={$userId})",
-            [
-                'user_id'    => $userId,
-                'user_name'  => $userName,
-                'ip'         => $ipAddr,
-                'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? '',
-                'accepted_at'=> $now,
-            ]
-        );
-    }
+    // Audit-log entry -- legal trail. audit_log() records the acting user, the
+    // trusted-proxy-aware client address and the time itself; the details carry
+    // the rest (user agent, and the address as the app saw it).
+    //
+    // The arguments are ($category, $activity, $targetType, $targetId, $summary,
+    // $details, $severity). The previous call passed a pipe-joined "category" and
+    // put the details array in the $targetType slot, which is a TypeError -- and a
+    // TypeError is an Error, not an Exception, so audit_log()'s own catch could
+    // not see it. HIGH severity: this is a legal attestation, not routine traffic.
+    audit_log(
+        'config',
+        'accept',
+        'aprs_license_attestation',
+        $userId,
+        "FCC Amateur Radio license attestation accepted by {$userName} (user_id={$userId})",
+        [
+            'user_id'     => $userId,
+            'user_name'   => $userName,
+            'ip'          => $ipAddr,
+            'user_agent'  => substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 256),
+            'accepted_at' => $now,
+        ],
+        AUDIT_HIGH
+    );
 
     echo json_encode([
         'ok'           => true,

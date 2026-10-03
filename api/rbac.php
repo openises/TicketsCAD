@@ -389,6 +389,13 @@ if ($method === 'GET') {
 if ($method === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true) ?: [];
     $action = $input['action'] ?? '';
+    // CSRF. This endpoint creates, edits and deletes roles, replaces a role's permission set
+    // and GRANTS and REVOKES roles to users -- the whole Roles & Permissions editor -- and
+    // it carried no CSRF check: any page a signed-in administrator visited could POST
+    // grant_role at it and hand the attacker's account Super Admin. One guard before the
+    // first action covers all of them (roles.js sends the X-CSRF-Token header, config.js
+    // and roles-matrix.js a csrf_token body field; csrf_require() accepts either).
+    csrf_require($input);
     // Phase 99u-2 followup (Eric beta 2026-06-30): $prefix wasn't defined
     // at this scope, so anything using `{$prefix}roles` upstream of the
     // legacy line-521 init was silently building queries against an

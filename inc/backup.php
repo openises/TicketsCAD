@@ -161,6 +161,279 @@ function backup_harden_dir(string $dir): void
     served_dir_harden($dir, 'Database backups', false);
 }
 
+// ── How a stored value becomes SQL text, and how a dump proves it survived ───────────────
+//
+// Until Phase 155 backup_dump_sql() decided how to write a value by LOOKING AT IT: anything
+// is_numeric() that did not start with "0" or contain "+" was written bare. That is value-sniffing,
+// and a value's content says nothing about the column it lives in. Reproduced through the real dump
+// and the real restore (backup_apply_sql), a VARCHAR/CHAR/TEXT cell holding
+//
+//     1e5            came back as   100000
+//     " 7 "          came back as   7
+//     -0             came back as   0
+//     .5             came back as   0.5
+//     111...1e5      came back as   1.111111111111111e70
+//
+// (a hex key such as 12e45678, which is a valid number to PHP, hits the same path), and an
+// ENUM('0','1','2') cell holding '1' came back as '0': an unquoted number written into an ENUM is an
+// INDEX, not a value. Found in the same round trip, all silent:
+//
+//   * a DOUBLE column lost its last digits (PHP turns a float into text with the ini setting
+//     `precision`, 14 by default, so 3.141592653589793 was written as 3.1415926535898 -- every
+//     latitude and longitude in every backup);
+//   * every TIMESTAMP value shifted by the server's time-zone offset: the dump's header says
+//     `SET time_zone = '+00:00'` for the restore, but the connection that READ the values used the
+//     server's default zone, so a server that is not on UTC wrote local times that the restore then
+//     read as UTC;
+//   * restoring over an existing database failed on every table, because the splitter in
+//     backup_apply_sql() discarded any statement that began with a comment -- and the DROP TABLE that
+//     lets the dump replace a table sits right under one (see backup_strip_leading_comments()).
+//
+// The fix is TYPE-DRIVEN: the column's declared SQL type, never the value's spelling, decides how a
+// value is written. And the dump now carries its own proof: one fingerprint per table over every
+// stored value, which a restore drill (and tools/restore.php) recomputes from the RESTORED rows and
+// compares. A drill that only counted statements and rows passed a restore that had corrupted
+// every one of the cells above.
+
+/** Version of the per-table digest lines in the dump header; bump if the canonical form changes. */
+const BACKUP_DIGEST_FORMAT = 1;
+
+/**
+ * The storage class of a column, from its declared type (SHOW COLUMNS' `Type`).
+ *
+ *   int      TINYINT..BIGINT                        written bare, only if it is an integer
+ *   decimal  DECIMAL / NUMERIC                      written bare, only if it is a plain decimal
+ *   float    FLOAT / DOUBLE / REAL                  written as the shortest text that reads back equal
+ *   bit      BIT(n)                                 written as b'...'
+ *   binary   BLOB family, BINARY, VARBINARY         written as a hex literal
+ *   text     everything else (CHAR, VARCHAR, TEXT, ENUM, SET, DATE/TIME types, JSON, YEAR, ...)
+ *            ALWAYS quoted, whatever the content looks like
+ */
+function backup_column_kind(string $sqlType): string
+{
+    $t = strtolower(trim($sqlType));
+    if (preg_match('/^(tinyint|smallint|mediumint|int|integer|bigint)\b/', $t)) { return 'int'; }
+    if (preg_match('/^(decimal|numeric|dec|fixed)\b/', $t)) { return 'decimal'; }
+    if (preg_match('/^(double|real|float)\b/', $t)) { return 'float'; }
+    if (preg_match('/^bit\b/', $t)) { return 'bit'; }
+    if (preg_match('/^(tinyblob|blob|mediumblob|longblob|binary|varbinary)\b/', $t)) { return 'binary'; }
+    return 'text';
+}
+
+/**
+ * The shortest decimal text that reads back as exactly this float, whatever the php.ini
+ * `precision` / `serialize_precision` settings are (a plain (string) cast uses `precision`, which is
+ * 14 in the stock php.ini files, and silently drops digits).
+ */
+function backup_float_text(float $f): string
+{
+    for ($p = 1; $p <= 17; $p++) {
+        $s = sprintf('%.' . $p . 'g', $f);
+        if ((float) $s === $f) { return $s; }
+    }
+    return sprintf('%.17g', $f);
+}
+
+/**
+ * One cell as SQL text. $quote is the connection's string quoter (PDO::quote). Pure, so the whole
+ * matrix of kinds and awkward values can be tested without a database.
+ *
+ * @param mixed $val  as PDO returned it (null, int, float or string)
+ */
+function backup_sql_literal($val, string $kind, callable $quote): string
+{
+    if ($val === null) { return 'NULL'; }
+    switch ($kind) {
+        case 'int':
+            $s = (string) $val;
+            return preg_match('/^-?\d+$/', $s) ? $s : $quote($s);
+        case 'decimal':
+            // mysqlnd hands DECIMAL back as a string, exact; a float here would already be lossy.
+            $s = (string) $val;
+            return preg_match('/^-?\d+(\.\d+)?$/', $s) ? $s : $quote($s);
+        case 'float':
+            $s = is_float($val) ? backup_float_text($val)
+                : (is_numeric($val) ? backup_float_text((float) $val) : (string) $val);
+            return preg_match('/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/', $s) ? $s : $quote($s);
+        case 'bit':
+            if (is_int($val)) { return "b'" . decbin($val) . "'"; }
+            $s = (string) $val;
+            return $s === '' ? "b'0'" : '0x' . bin2hex($s);
+        case 'binary':
+            $s = (string) $val;
+            return $s === '' ? "''" : '0x' . bin2hex($s);
+        default:
+            return $quote((string) $val);
+    }
+}
+
+/**
+ * The columns of a table that can be stored, in table order: generated columns are excluded
+ * (MySQL computes them and refuses an explicit value; GH#53). `select` is the list to SELECT: a
+ * FLOAT is widened to DOUBLE in SQL (`col + 0e0`) because the server prints a FLOAT to six or seven
+ * digits in text and the exact value is what has to be dumped; everything else is selected as is.
+ * The SAME function builds the dump's SELECT and the verification's, so they can never disagree.
+ *
+ * @return array{names:string[], kinds:string[], list:string, select:string}
+ */
+function backup_table_columns(PDO $pdo, string $table): array
+{
+    $names = []; $kinds = []; $select = [];
+    $stmt = $pdo->query("SHOW COLUMNS FROM `{$table}`");
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $col) {
+        if (stripos($col['Extra'] ?? '', 'GENERATED') !== false) { continue; }
+        $field = (string) $col['Field'];
+        $type = (string) $col['Type'];
+        $q = '`' . str_replace('`', '``', $field) . '`';
+        $kind = backup_column_kind($type);
+        $names[] = $field;
+        $kinds[] = $kind;
+        $select[] = ($kind === 'float' && preg_match('/^float\b/i', $type)) ? "({$q} + 0e0)" : $q;
+    }
+    $list = $names ? '`' . implode('`, `', array_map(static fn($n) => str_replace('`', '``', $n), $names)) . '`' : '';
+    return ['names' => $names, 'kinds' => $kinds, 'list' => $list, 'select' => implode(', ', $select)];
+}
+
+/** One cell in the form the table fingerprint hashes. Independent of how PDO typed it. */
+function backup_canon_value($val, string $kind): string
+{
+    if ($val === null) { return 'N;'; }
+    switch ($kind) {
+        case 'float':
+            $c = backup_float_text((float) $val);
+            break;
+        case 'bit':
+            $hex = is_int($val) ? dechex($val) : ltrim(bin2hex((string) $val), '0');
+            $c = $hex === '' ? '0' : $hex;
+            break;
+        default:
+            $c = (string) $val;
+    }
+    return 'V' . strlen($c) . ':' . $c . ';';
+}
+
+/** A fresh table fingerprint. */
+function backup_fp_new(): array
+{
+    return ['rows' => 0, 'xor' => str_repeat("\0", 32), 'sum' => 0];
+}
+
+/**
+ * Fold one row into a fingerprint. The combination is ORDER-INDEPENDENT (an XOR lane plus a sum
+ * lane, so two identical rows cannot cancel out), because a table read back after a restore is not
+ * guaranteed to come out in the order it was dumped in.
+ *
+ * @param array $row    a FETCH_NUM row
+ * @param array $kinds  backup_table_columns()['kinds']
+ */
+function backup_fp_add(array &$fp, array $row, array $kinds): void
+{
+    $s = '';
+    foreach ($row as $i => $v) {
+        // Inlined for the common kinds: this runs once per cell of every row in the database, and a
+        // function call per cell doubled the dump's CPU time. Same canonical form as backup_canon_value().
+        if ($v === null) { $s .= 'N;'; continue; }
+        $k = $kinds[$i] ?? 'text';
+        if ($k === 'float' || $k === 'bit') { $s .= backup_canon_value($v, $k); continue; }
+        $c = (string) $v;
+        $s .= 'V' . strlen($c) . ':' . $c . ';';
+    }
+    $h = hash('sha256', $s, true);
+    $fp['rows']++;
+    $fp['xor'] ^= $h;
+    $fp['sum'] += (int) unpack('N', substr($h, 0, 4))[1];
+}
+
+/** The fingerprint as the hex string written into the dump. */
+function backup_fp_finish(array $fp): string
+{
+    return hash('sha256', $fp['rows'] . ':' . bin2hex($fp['xor']) . ':' . $fp['sum']);
+}
+
+/**
+ * The per-table fingerprints a dump carries: table => ['rows' => int, 'sha256' => hex]. A dump
+ * written before Phase 155 carries none and yields an empty array.
+ */
+function backup_parse_digests(string $sql): array
+{
+    $out = [];
+    if (preg_match_all('/^-- Digest: ([A-Za-z0-9_$]+) rows=(\d+) sha256=([0-9a-f]{64})\r?$/m', $sql, $m, PREG_SET_ORDER)) {
+        foreach ($m as $d) { $out[$d[1]] = ['rows' => (int) $d[2], 'sha256' => $d[3]]; }
+    }
+    return $out;
+}
+
+/**
+ * Recompute every table's fingerprint from the database $pdo points at (a restored copy) and
+ * compare it with the one the dump carries. This is what turns "the restore ran without a SQL
+ * error and the row counts look right" into "every stored value came back as it went in".
+ *
+ * Reads with the session time zone forced to UTC, the same as the dump did, and restores the
+ * connection's own setting afterwards.
+ *
+ * @return array{expected:int, checked:int, ok:string[], mismatched:array, missing:string[]}
+ */
+function backup_verify_digests(PDO $pdo, string $sql): array
+{
+    $expected = backup_parse_digests($sql);
+    $out = ['expected' => count($expected), 'checked' => 0, 'ok' => [], 'mismatched' => [], 'missing' => []];
+    if (!$expected) { return $out; }
+
+    $oldTz = null;
+    try { $oldTz = $pdo->query('SELECT @@session.time_zone')->fetchColumn(); } catch (Throwable $e) {}
+    try { $pdo->exec("SET time_zone = '+00:00'"); } catch (Throwable $e) {}
+    $wasBuffered = $pdo->getAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY);
+    $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);   // stream: a table can be hundreds of MB
+    try {
+        foreach ($expected as $table => $want) {
+            $stmt = null;
+            try {
+                $cols = backup_table_columns($pdo, $table);
+                if (!$cols['names']) { $out['missing'][] = $table; continue; }
+                $stmt = $pdo->query("SELECT {$cols['select']} FROM `{$table}`");   // $table matched [A-Za-z0-9_$]+ by the parser
+                $fp = backup_fp_new();
+                while ($row = $stmt->fetch(PDO::FETCH_NUM)) { backup_fp_add($fp, $row, $cols['kinds']); }
+                $stmt->closeCursor();
+            } catch (Throwable $e) {
+                // An unbuffered result left open would make every later query on this connection fail.
+                if ($stmt instanceof PDOStatement) { try { $stmt->closeCursor(); } catch (Throwable $e2) {} }
+                $out['missing'][] = $table;
+                continue;
+            }
+            $out['checked']++;
+            $got = backup_fp_finish($fp);
+            if ($fp['rows'] === $want['rows'] && hash_equals($want['sha256'], $got)) {
+                $out['ok'][] = $table;
+            } else {
+                $out['mismatched'][$table] = ['rows_expected' => $want['rows'], 'rows_actual' => $fp['rows'],
+                                              'expected' => $want['sha256'], 'actual' => $got];
+            }
+        }
+    } finally {
+        $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, $wasBuffered);
+        if ($oldTz !== null && $oldTz !== false) {
+            try { $pdo->exec("SET time_zone = " . $pdo->quote((string) $oldTz)); } catch (Throwable $e) {}
+        }
+    }
+    return $out;
+}
+
+/** A one-line summary of backup_verify_digests() for a log or a CLI report. */
+function backup_digest_summary(array $v): string
+{
+    if ($v['expected'] === 0) { return 'this backup carries no content fingerprints (written before Phase 155); only counts could be checked'; }
+    if (!$v['mismatched'] && !$v['missing']) {
+        return 'every value in ' . $v['checked'] . ' table(s) matches the dump\'s own fingerprint';
+    }
+    $bits = [];
+    foreach ($v['mismatched'] as $t => $d) {
+        $bits[] = $t . ' (rows ' . $d['rows_expected'] . ' dumped, ' . $d['rows_actual'] . ' restored; contents differ)';
+    }
+    foreach ($v['missing'] as $t) { $bits[] = $t . ' (could not be read back)'; }
+    return count($bits) . ' of ' . $v['expected'] . ' table(s) did NOT restore as dumped: ' . implode('; ', array_slice($bits, 0, 6))
+         . (count($bits) > 6 ? '; ...' : '');
+}
+
 /**
  * Generate a full SQL dump of the database to a file.
  * Uses unbuffered queries to stream rows without exhausting memory.
@@ -185,9 +458,15 @@ function backup_dump_sql(string $outputPath): bool
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_NUM,
         PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => false,
     ]);
+    // The header below tells the restore `SET time_zone = '+00:00'`, so the values written must BE
+    // UTC. This connection used to read in the server's default zone, which made every TIMESTAMP
+    // value shift by that offset on restore whenever the server was not on UTC (DATETIME columns
+    // are zone-less and were never affected).
+    $unbuffered->exec("SET time_zone = '+00:00'");
 
     // Use the regular connection for metadata queries
     $pdo = db();
+    $quote = static function (string $s) use ($pdo): string { return $pdo->quote($s); };
 
     // Header
     $version = $pdo->query("SELECT VERSION()")->fetchColumn();
@@ -199,6 +478,7 @@ function backup_dump_sql(string $outputPath): bool
     fwrite($fh, "-- MySQL Version: {$version}\n");
     fwrite($fh, "-- PHP Version: " . PHP_VERSION . "\n");
     fwrite($fh, "-- TicketsCAD Version: " . newui_version() . "\n");
+    fwrite($fh, "-- Digest-Format: " . BACKUP_DIGEST_FORMAT . " (one fingerprint per table over every stored value; a restore drill recomputes them)\n");
     fwrite($fh, "--\n\n");
 
     fwrite($fh, "SET NAMES utf8mb4;\n");
@@ -233,43 +513,29 @@ function backup_dump_sql(string $outputPath): bool
         // Row count
         $count = (int) $pdo->query("SELECT COUNT(*) FROM `{$table}`")->fetchColumn();
         if ($count === 0) {
-            fwrite($fh, "-- (empty table)\n\n");
+            fwrite($fh, "-- (empty table)\n");
+            fwrite($fh, "-- Digest: {$table} rows=0 sha256=" . backup_fp_finish(backup_fp_new()) . "\n\n");
             continue;
         }
 
-        // Get column metadata for BLOB detection. GENERATED columns (VIRTUAL or
-        // STORED -- e.g. user_roles.scope_key, teams.name, member.phone) are
-        // excluded: MySQL computes them and refuses an explicit INSERT value,
-        // and an INVISIBLE generated column additionally vanishes from a bare
-        // `SELECT *` while still being named by SHOW COLUMNS -- a column-count
-        // mismatch that made every dump containing one entirely unrestorable
-        // (SQLSTATE 21S01 "Column count doesn't match value count", or 3105 for
-        // a visible generated column). The SELECT below now names columns
-        // explicitly -- the same list used for the INSERT's column list -- so
-        // there is no reliance on `SELECT *`'s implicit visibility behaviour,
-        // which also differs between MySQL and MariaDB. Reported by
-        // @rjonesbsink, GitHub #53, with the exact reproduction and table list.
-        $colStmt = $pdo->query("SHOW COLUMNS FROM `{$table}`");
-        $columns = $colStmt->fetchAll(PDO::FETCH_ASSOC);
-        $colNames = [];
-        $blobCols = [];
-        foreach ($columns as $col) {
-            if (stripos($col['Extra'] ?? '', 'GENERATED') !== false) {
-                continue;
-            }
-            $idx = count($colNames);
-            $colNames[] = $col['Field'];
-            $type = strtolower($col['Type']);
-            if (strpos($type, 'blob') !== false || strpos($type, 'binary') !== false) {
-                $blobCols[$idx] = true;
-            }
-        }
-        if (empty($colNames)) {
+        // The storable columns, their storage classes, and the SELECT list. GENERATED columns
+        // (VIRTUAL or STORED -- e.g. user_roles.scope_key, teams.name, member.phone) are
+        // excluded: MySQL computes them and refuses an explicit INSERT value, and an INVISIBLE
+        // generated column additionally vanishes from a bare `SELECT *` while still being named
+        // by SHOW COLUMNS -- a column-count mismatch that made every dump containing one entirely
+        // unrestorable (SQLSTATE 21S01 "Column count doesn't match value count", or 3105 for a
+        // visible generated column). The SELECT names columns explicitly -- the same list used for
+        // the INSERT's column list -- so there is no reliance on `SELECT *`'s implicit visibility
+        // behaviour, which also differs between MySQL and MariaDB. Reported by @rjonesbsink,
+        // GitHub #53, with the exact reproduction and table list.
+        $cols = backup_table_columns($pdo, $table);
+        if (empty($cols['names'])) {
             fwrite($fh, "-- (no storable columns -- every column is generated)\n\n");
             continue;
         }
 
-        $colList = '`' . implode('`, `', $colNames) . '`';
+        $colList = $cols['list'];
+        $kinds = $cols['kinds'];
         fwrite($fh, "-- Dumping data for `{$table}` ({$count} rows)\n\n");
 
         // Disable keys for MyISAM performance
@@ -277,28 +543,22 @@ function backup_dump_sql(string $outputPath): bool
 
         // Stream rows with unbuffered query.
         // SQL injection: $table validated as [A-Za-z0-9_$]+ above (Sonar S2077);
-        // $colList is built only from names SHOW COLUMNS returned for this table.
-        $dataStmt = $unbuffered->query("SELECT {$colList} FROM `{$table}`"); // NOSONAR
+        // the select list is built only from names and types SHOW COLUMNS returned for this table.
+        $dataStmt = $unbuffered->query("SELECT {$cols['select']} FROM `{$table}`"); // NOSONAR
 
         $batchSize = 0;
         $maxBatch = 1048576; // 1 MB per INSERT statement
         $values = [];
         $rowNum = 0;
+        $fp = backup_fp_new();
 
         while ($row = $dataStmt->fetch(PDO::FETCH_NUM)) {
             $rowNum++;
+            backup_fp_add($fp, $row, $kinds);
             $escaped = [];
             foreach ($row as $idx => $val) {
-                if ($val === null) {
-                    $escaped[] = 'NULL';
-                } elseif (isset($blobCols[$idx])) {
-                    $escaped[] = strlen($val) > 0 ? '0x' . bin2hex($val) : "''";
-                } elseif (is_numeric($val) && !isset($blobCols[$idx]) && strpos($val, '0') !== 0 && strpos($val, '+') === false) {
-                    // Numeric value (but not zero-padded strings like zip codes)
-                    $escaped[] = $val;
-                } else {
-                    $escaped[] = $pdo->quote($val);
-                }
+                // TYPE-driven: what a column IS decides how it is written, never what the value looks like.
+                $escaped[] = backup_sql_literal($val, $kinds[$idx], $quote);
             }
             $rowStr = '(' . implode(',', $escaped) . ')';
             $rowLen = strlen($rowStr);
@@ -323,7 +583,10 @@ function backup_dump_sql(string $outputPath): bool
             fwrite($fh, "INSERT INTO `{$table}` ({$colList}) VALUES\n" . implode(",\n", $values) . ";\n");
         }
 
-        fwrite($fh, "/*!40000 ALTER TABLE `{$table}` ENABLE KEYS */;\n\n");
+        fwrite($fh, "/*!40000 ALTER TABLE `{$table}` ENABLE KEYS */;\n");
+        // The fingerprint of exactly the rows written above (not a second read of the live table,
+        // which may have changed since): what a restore must reproduce.
+        fwrite($fh, "-- Digest: {$table} rows={$fp['rows']} sha256=" . backup_fp_finish($fp) . "\n\n");
 
         // Free the unbuffered result set
         $dataStmt->closeCursor();

@@ -63,8 +63,13 @@ t('console.php no longer has a <script> tag for console-audio.js',
     strpos($consolePhp, '<script src="assets/js/console-audio.js') === false);
 t('console.php no longer has a <script> tag for console-mic.js',
     strpos($consolePhp, '<script src="assets/js/console-mic.js') === false);
-t('console.php keeps console-workstation.js (page-specific, no role in the smaller navbar widget)',
-    strpos($consolePhp, 'assets/js/console-workstation.js') !== false);
+// Phase 155 (GH#108 S1) reversed the 2026-09-08 decision to keep this
+// console-only: the Phone widget needs the workstation token on EVERY page
+// (it showed an empty token everywhere else), so inc/navbar.php now loads it
+// once for all pages and console.php no longer carries its own copy.
+t('console.php no longer loads console-workstation.js itself (inc/navbar.php does, once, for every page)',
+    strpos($consolePhp, '<script src="assets/js/console-workstation.js') === false
+    && substr_count($navbar, '<script src="assets/js/console-workstation.js') === 1);
 t('console.php keeps console-playback.js (page-specific — actually plays received matrix audio)',
     strpos($consolePhp, 'assets/js/console-playback.js') !== false);
 t('console.php keeps console.js itself (the full strip bank)', strpos($consolePhp, 'src="assets/js/console.js') !== false);

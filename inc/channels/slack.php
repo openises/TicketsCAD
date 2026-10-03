@@ -114,7 +114,7 @@ function _slack_send_webhook(array $config, $body, $channel) {
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
     curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_TIMEOUT, function_exists('notify_adapter_timeout') ? notify_adapter_timeout(10) : 10);
 
     $resp = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -145,7 +145,7 @@ function _slack_send_api(array $config, $body, $channel) {
         'Content-Type: application/json; charset=utf-8',
         'Authorization: Bearer ' . $token
     ]);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_TIMEOUT, function_exists('notify_adapter_timeout') ? notify_adapter_timeout(10) : 10);
 
     $resp = curl_exec($ch);
     curl_close($ch);

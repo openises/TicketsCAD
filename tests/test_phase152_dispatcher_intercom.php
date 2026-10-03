@@ -154,19 +154,23 @@ try {
 echo "\n--- 5. Frontend wiring: rides the browser leg like any other channel ---\n\n";
 $mjs = (string) @file_get_contents(__DIR__ . '/../assets/js/console-mic.js');
 t('ES5 style (no arrows/template literals/let/const)', !preg_match('/=>|`|\blet\s|\bconst\s/', $mjs));
+// Phase 155: the map gained dvmproject/usrp_bridge, so it is no longer one fixed
+// line; the intent (intercom_dd rides the browser leg like DMR) is unchanged.
+preg_match('/var MATRIX_ADAPTERS = \{([^}]*)\}/s', $mjs, $micMapM);
 t('console-mic.js treats intercom_dd as matrix-backed, riding the same browser leg as DMR — no new transport',
-    strpos($mjs, 'var MATRIX_ADAPTERS = { dmr_bm: true, dmr_local: true, intercom_dd: true };') !== false);
+    isset($micMapM[1]) && preg_match('/dmr_bm\s*:\s*true/', $micMapM[1]) && preg_match('/dmr_local\s*:\s*true/', $micMapM[1])
+    && preg_match('/intercom_dd\s*:\s*true/', $micMapM[1]));
 
 $ajs = (string) @file_get_contents(__DIR__ . '/../assets/js/console-audio.js');
 t('ES5 style (no arrows/template literals/let/const)', !preg_match('/=>|`|\blet\s|\bconst\s/', $ajs));
 t('console-audio.js treats intercom_dd as matrix-capable for gain application (not just DMR)',
-    strpos($ajs, "var isMatrixCapable = isRadio || meta.adapter === 'intercom_dd';") !== false);
+    strpos($ajs, "var isMatrixCapable = isRadio || meta.adapter === 'intercom_dd'") !== false);
 
 $cjs = (string) @file_get_contents(__DIR__ . '/../assets/js/console.js');
 t('ES5 style (no arrows/template literals/let/const)', !preg_match('/=>|`|\blet\s|\bconst\s/', $cjs));
 t('console.js relabels the toggle "Join Intercom" for this adapter, since there is no legacy widget to replace',
     strpos($cjs, "isIntercomDd = (ch.adapter === 'intercom_dd')") !== false
-    && strpos($cjs, "isIntercomDd ? 'Join Intercom' : 'Matrix Audio'") !== false);
+    && strpos($cjs, "isIntercomDd ? 'Join Intercom' : (listenOnlyMatrix ? 'Listen' : 'Matrix Audio')") !== false);
 t('console.js gives intercom_dd its own honest "no legacy widget" note instead of the generic Phase 114c placeholder',
     strpos($cjs, "'Turn on Join Intercom below to talk on this channel'") !== false);
 

@@ -154,6 +154,10 @@ $csrf     = csrf_token();
                     </div>
                     <h5 class="mb-1" id="unitName">--</h5>
                     <div class="text-body-secondary small" id="unitMeta">--</div>
+                    <!-- GH#141 (Phase 155): what this unit is committed to LATER (a
+                         reservation on a Scheduled incident, or a dispatch to one whose
+                         booked time is still ahead). Hidden when there is none. -->
+                    <div class="d-none mt-1 d-flex flex-wrap gap-1" id="futureCommitments" aria-label="Committed for later"></div>
                 </div>
             </div>
 
@@ -601,6 +605,7 @@ $csrf     = csrf_token();
 <!-- App JS -->
 <script src="assets/js/theme-manager.js?v=<?php echo asset_v('assets/js/theme-manager.js'); ?>"></script>
 <script src="assets/js/unit-actions.js?v=<?php echo asset_v('assets/js/unit-actions.js'); ?>"></script>
+<script src="assets/js/future-chip.js?v=<?php echo asset_v('assets/js/future-chip.js'); ?>"></script>
 <script src="assets/js/unit-detail.js?v=<?php echo asset_v('assets/js/unit-detail.js'); ?>"></script>
 
 <!-- Wire title-bar Dispatch/Status/Note buttons once unit data lands.

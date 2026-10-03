@@ -99,10 +99,12 @@ t('turning Matrix Audio OFF calls unlisten(), tearing the route down rather than
 
 echo "\n9. console.js: the Matrix Audio toggle is opt-in per strip, defaults to the launcher\n";
 t('isMatrixBacked/matrixAudioOn are derived from window.ConsoleMatrix + the per-channel state, never assumed', strpos($cjs, 'window.ConsoleMatrix.isMatrixBacked(ch.adapter)') !== false);
-t('a DMR strip is STILL a launcher unless Matrix Audio has been explicitly engaged', strpos($cjs, "(isMatrixBacked && !matrixAudioOn)") !== false);
+t('a DMR strip is STILL a launcher unless Matrix Audio has been explicitly engaged (Phase 155: a channel that cannot transmit is neither a launcher nor a PTT)',
+    strpos($cjs, "(isMatrixBacked && !matrixAudioOn && !listenOnlyMatrix)") !== false);
 t('the real PTT (matrixAudioOn branch) is held-down (mousedown/mouseup), not a click, matching every other real PTT in this app',
     strpos($cjs, 'mb.addEventListener(\'mousedown\', mbStart);') !== false && strpos($cjs, 'mb.addEventListener(\'mouseup\', mbStop);') !== false);
-t('the toggle checkbox is only offered when canTx (never to a listen-only operator)', strpos($cjs, 'if (isMatrixBacked && canTx) {') !== false);
+t('the toggle checkbox is only offered when canTx (never to a listen-only operator) -- except for a channel that cannot transmit at all (Phase 155 digital voice bridge), where there is nothing to withhold',
+    strpos($cjs, 'if (isMatrixBacked && (canTx || listenOnlyMatrix)) {') !== false);
 t('toggling calls ConsoleAudio.setMatrixAudio(), never a direct ConsoleMatrix call from the renderer', strpos($cjs, 'window.ConsoleAudio.setMatrixAudio(ch.id, want,') !== false);
 
 echo "\n10. console.js: persistent disconnect alarm + fast tx-confirmation tone (persona review #1)\n";

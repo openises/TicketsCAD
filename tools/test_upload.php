@@ -4,7 +4,7 @@ if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
 
 require __DIR__ . '/../config.php';
 require __DIR__ . '/../inc/rbac.php';
-require __DIR__ . '/../inc/audit.php';
+require_once __DIR__ . '/../inc/audit.php';
 
 $_SESSION = ['user_id' => 1, 'level' => 0, 'user' => 'admin'];
 $prefix = $GLOBALS['db_prefix'] ?? '';

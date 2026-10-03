@@ -1,0 +1,74 @@
+/**
+ * NewUI v4.0 - Agency Logo & Branding admin page (GH#142, Phase 155).
+ * Layout only. The logo classes themselves live in assets/css/branding.css so the
+ * preview panels render exactly what production renders.
+ */
+
+.br-thumbs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+.br-thumb {
+    width: 112px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+}
+.br-thumb img {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+}
+/* A checkerboard so transparency is visible, built from theme variables. */
+.br-thumb-checker {
+    background: repeating-conic-gradient(var(--bs-tertiary-bg) 0% 25%, var(--bs-body-bg) 0% 50%) 50% / 14px 14px;
+}
+.br-thumb-light { background-color: var(--bs-white); }
+.br-thumb-dark  { background-color: var(--bs-dark); }
+
+.br-slot + .br-slot {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--bs-border-color);
+}
+
+.br-preview-sticky {
+    position: sticky;
+    top: 5.5rem;
+}
+.br-preview-panel + .br-preview-panel {
+    margin-top: 1rem;
+}
+.br-preview-login {
+    min-height: 9rem;
+}
+.br-preview-page {
+    background-color: var(--bs-white);
+    color: var(--bs-black);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    padding: 0.75rem;
+}
+.br-preview-banner {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-align: center;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid currentColor;
+    margin-bottom: 0.5rem;
+}
+.br-org-row-selected {
+    background-color: var(--bs-primary-bg-subtle);
+}
+@media (max-width: 991.98px) {
+    .br-preview-sticky {
+        position: static;
+    }
+}

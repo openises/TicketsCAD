@@ -30,7 +30,7 @@ require_once __DIR__ . '/../inc/backup_schedule.php';
 function say(string $s): void { echo '[' . date('H:i:s') . "] $s\n"; }
 function fail(string $s): void { say('ERROR: ' . $s); exit(1); }
 
-$opts    = getopt('', ['file:', 'list', 'dry-run', 'yes', 'drill', 'admin-user:', 'admin-pass:', 'help']);
+$opts    = getopt('', ['file:', 'list', 'dry-run', 'yes', 'drill', 'verify', 'admin-user:', 'admin-pass:', 'help']);
 $dir     = backup_dir();
 
 if (isset($opts['help'])) {
@@ -46,7 +46,12 @@ if (isset($opts['help'])) {
        . "                     should not have), supplied per-run and never stored:\n"
        . "                       --admin-user <u> --admin-pass <p>\n"
        . "                     or the TCAD_ADMIN_USER / TCAD_ADMIN_PASS env vars.\n\n"
-       . "A safety backup of the CURRENT database is taken before anything is written.\n";
+       . "  --verify           re-check the CURRENT database against an archive's own\n"
+       . "                     per-table content fingerprints (needs --file). Read-only.\n"
+       . "                     Run it after a restore, with the web server stopped.\n\n"
+       . "A safety backup of the CURRENT database is taken before anything is written.\n"
+       . "Every restore and every drill ends by recomputing each table's fingerprint from\n"
+       . "the restored rows and comparing it with the one the backup carries.\n";
     exit(0);
 }
 
@@ -64,6 +69,30 @@ if (isset($opts['list'])) {
             $ok ? 'verified' : 'UNREADABLE (' . $detail . ')');
     }
     exit(0);
+}
+
+// ── --verify: does the CURRENT database still match this archive's fingerprints? ───
+// Read-only. After a restore it answers "did every value come back" without trusting a restore
+// that ran while the site was still serving requests (a table another request wrote to in the
+// meantime will differ, and that is not corruption).
+if (isset($opts['verify'])) {
+    $file = $opts['file'] ?? '';
+    if ($file === '') fail('--verify needs --file <archive>');
+    if (!is_file($file)) {
+        $alt = rtrim($dir, '/\\') . '/' . basename($file);
+        if (is_file($alt)) $file = $alt; else fail('no such file: ' . $file);
+    }
+    $vsql = backup_extract_sql($file);
+    if ($vsql === null) fail('could not read the SQL out of ' . $file);
+    $v = backup_verify_digests(db(), $vsql);
+    say('Archive: ' . $file);
+    say(backup_digest_summary($v));
+    if ($v['expected'] === 0) exit(2);
+    foreach ($v['mismatched'] as $t => $d) {
+        say(sprintf('  %-32s dumped %d row(s), now %d; contents differ', $t, $d['rows_expected'], $d['rows_actual']));
+    }
+    foreach ($v['missing'] as $t) say('  ' . $t . '  could not be read');
+    exit(($v['mismatched'] || $v['missing']) ? 1 : 0);
 }
 
 // ── --drill: prove a backup restores, without touching the live database ───
@@ -117,6 +146,9 @@ if (isset($opts['drill'])) {
         printf("    %-14s backup: %-8s live: %-8s%s\n", $t,
             $n === null ? 'n/a' : (string) $n,
             $live === null ? 'n/a' : (string) $live, $flag);
+    }
+    if (isset($r['fidelity']) && is_array($r['fidelity'])) {
+        say('Content check: ' . backup_digest_summary($r['fidelity']));
     }
     say('DRILL PASSED — this backup restores.');
     exit(0);
@@ -188,25 +220,32 @@ if ($safety['ok']) {
 
 say('Restoring… do not interrupt.');
 $pdo = db();
-$applied = 0; $errors = 0;
-try { $pdo->exec('SET FOREIGN_KEY_CHECKS=0'); } catch (Throwable $e) {}
 
-// Split on semicolons at end-of-line, which is how our dumps are written.
-$statements = preg_split('/;\s*[\r\n]+/', $sql);
-foreach ($statements as $stmt) {
-    $stmt = trim($stmt);
-    if ($stmt === '' || str_starts_with($stmt, '--') || str_starts_with($stmt, '/*')) continue;
-    try { $pdo->exec($stmt); $applied++; }
-    catch (Throwable $e) {
-        $errors++;
-        if ($errors <= 5) say('  statement failed: ' . substr($e->getMessage(), 0, 140));
-    }
-}
-try { $pdo->exec('SET FOREIGN_KEY_CHECKS=1'); } catch (Throwable $e) {}
+// The SAME applier the --drill uses (inc/backup_schedule.php), so what the drill proves is what a
+// real restore does. This used to be a private copy of the loop that discarded every statement
+// sitting under a comment -- including each table's DROP TABLE -- so a restore onto an existing
+// install failed on every table ("Table already exists", "Duplicate entry for key PRIMARY").
+[$applied, $errors, $reported] = backup_apply_sql($pdo, $sql, 5);
+foreach ($reported as $msg) { say('  statement failed: ' . $msg); }
 
 say('Applied ' . $applied . ' statement(s), ' . $errors . ' failed.');
 if ($errors > 0) {
     say('Some statements failed. The safety backup above still holds your pre-restore state.');
+    exit(1);
+}
+
+// Prove the VALUES came back, not just the rows: every table in the dump carries a fingerprint of
+// what it was written from; recompute it from what is in the database now.
+$fid = backup_verify_digests($pdo, $sql);
+say('Content check: ' . backup_digest_summary($fid));
+if (!empty($fid['mismatched']) || !empty($fid['missing'])) {
+    foreach ($fid['mismatched'] as $t => $d) {
+        say(sprintf('  %-32s dumped %d row(s), restored %d; contents differ', $t, $d['rows_expected'], $d['rows_actual']));
+    }
+    foreach ($fid['missing'] as $t) { say('  ' . $t . '  could not be read back'); }
+    say('The restore changed data it should have reproduced. The safety backup above still holds your pre-restore state.');
+    say('If the site was serving requests while this ran, a table another request wrote to in the meantime will differ');
+    say('without anything being wrong: stop the web server and run  php tools/restore.php --verify --file <archive>');
     exit(1);
 }
 say('Restore complete. Open TicketsCAD and confirm your data looks right.');

@@ -16,16 +16,30 @@
             <span class="phone-header-title">Phone</span>
             <span class="phone-header-extension"></span>
             <div class="phone-header-actions">
-                <button class="btn btn-sm btn-outline-secondary" id="phoneDetach" title="Detach into its own window" aria-label="Detach Phone into its own window">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="phoneOpenWindow" title="Open the Phone in its own window (it keeps ringing while you use other pages)" aria-label="Open the Phone in its own window">
+                    <i class="bi bi-window-stack"></i>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="phoneDetach" title="Detach into its own window" aria-label="Detach Phone into its own window">
                     <i class="bi bi-box-arrow-up-right"></i>
                 </button>
-                <button class="btn btn-sm btn-outline-secondary" id="phoneMinimize" title="Minimize" aria-label="Minimize Phone">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="phoneMinimize" title="Minimize" aria-label="Minimize Phone">
                     <i class="bi bi-dash"></i>
                 </button>
-                <button class="btn btn-sm btn-outline-secondary" id="phoneClose" title="Close" aria-label="Close Phone">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="phoneClose" title="Close" aria-label="Close Phone">
                     <i class="bi bi-x"></i>
                 </button>
             </div>
+        </div>
+
+        <!-- Phase 155 (GH#108 S1) -- on a page where this widget deliberately does
+             NOT register (phone_register_scope = phone_page), or while another
+             window of this browser holds the registration. Replaces the old
+             misleading "not bound" panel on those pages. -->
+        <div class="phone-elsewhere-panel d-none" id="phoneElsewherePanel">
+            <i class="bi bi-window-stack d-block mb-2" style="font-size:1.5rem"></i>
+            <div class="mb-2" id="phoneElsewhereText">The phone is active in your Console or Phone window.</div>
+            <a href="phone.php" class="btn btn-sm btn-outline-primary" id="phoneElsewhereLink" target="ticketscad_phone">
+                <i class="bi bi-telephone-fill me-1"></i>Open the Phone window</a>
         </div>
 
         <!-- Not bound to any extension yet -- shown instead of everything below. -->
@@ -36,8 +50,8 @@
                 administrator to bind it to an extension on the
                 <a href="phone-extensions-admin.php">Phone Extensions</a> page.</div>
             <div class="input-group input-group-sm">
-                <input type="text" class="form-control form-control-sm font-monospace" id="phoneMyToken" readonly>
-                <button class="btn btn-outline-secondary" type="button" id="phoneCopyToken"><i class="bi bi-clipboard"></i></button>
+                <input type="text" class="form-control form-control-sm font-monospace" id="phoneMyToken" readonly aria-label="This workstation's token">
+                <button class="btn btn-outline-secondary" type="button" id="phoneCopyToken" aria-label="Copy this workstation's token"><i class="bi bi-clipboard"></i></button>
             </div>
         </div>
 
@@ -49,8 +63,8 @@
                     <span id="phoneIncomingFrom">Incoming call…</span>
                 </div>
                 <div class="phone-incoming-actions">
-                    <button class="btn btn-success btn-sm" id="phoneAnswerBtn"><i class="bi bi-telephone-fill me-1"></i>Answer</button>
-                    <button class="btn btn-danger btn-sm" id="phoneDeclineBtn"><i class="bi bi-telephone-x-fill me-1"></i>Decline</button>
+                    <button type="button" class="btn btn-success btn-sm" id="phoneAnswerBtn"><i class="bi bi-telephone-fill me-1"></i>Answer</button>
+                    <button type="button" class="btn btn-danger btn-sm" id="phoneDeclineBtn"><i class="bi bi-telephone-x-fill me-1"></i>Decline</button>
                 </div>
             </div>
 
@@ -59,17 +73,17 @@
                 <div class="phone-incall-peer" id="phoneIncallPeer">—</div>
                 <div class="phone-incall-timer" id="phoneIncallTimer">00:00</div>
                 <div class="phone-incall-actions">
-                    <button class="btn btn-outline-secondary btn-sm" id="phoneMuteCallBtn" title="Mute microphone" aria-pressed="false">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="phoneMuteCallBtn" title="Mute microphone" aria-label="Mute microphone" aria-pressed="false">
                         <i class="bi bi-mic-fill"></i>
                     </button>
-                    <button class="btn btn-danger btn-sm" id="phoneHangupBtn"><i class="bi bi-telephone-x-fill me-1"></i>Hang Up</button>
+                    <button type="button" class="btn btn-danger btn-sm" id="phoneHangupBtn"><i class="bi bi-telephone-x-fill me-1"></i>Hang Up</button>
                 </div>
             </div>
 
             <!-- Dial pad -->
             <div class="phone-dialpad" id="phoneDialpad">
                 <input type="text" class="form-control form-control-sm font-monospace text-center mb-2"
-                       id="phoneDialInput" placeholder="Enter a number" inputmode="tel">
+                       id="phoneDialInput" placeholder="Enter a number" inputmode="tel" aria-label="Number to dial" autocomplete="off">
                 <div class="phone-dialpad-grid">
                     <button type="button" class="btn btn-outline-secondary phone-key" data-key="1">1</button>
                     <button type="button" class="btn btn-outline-secondary phone-key" data-key="2">2</button>
@@ -85,7 +99,7 @@
                     <button type="button" class="btn btn-outline-secondary phone-key" data-key="#">#</button>
                 </div>
                 <div class="d-flex gap-2 mt-2">
-                    <button type="button" class="btn btn-outline-secondary btn-sm flex-fill" id="phoneBackspaceBtn"><i class="bi bi-backspace"></i></button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm flex-fill" id="phoneBackspaceBtn" aria-label="Delete the last digit"><i class="bi bi-backspace"></i></button>
                     <button type="button" class="btn btn-success btn-sm flex-fill" id="phoneCallBtn"><i class="bi bi-telephone-fill me-1"></i>Call</button>
                 </div>
                 <button type="button" class="btn btn-outline-primary btn-sm w-100 mt-2 phone-general-btn d-none" id="phoneGeneralBtn">
@@ -94,7 +108,7 @@
             </div>
         </div>
 
-        <div class="phone-footer small text-body-secondary" id="phoneFooter">Not registered</div>
+        <div class="phone-footer small text-body-secondary" id="phoneFooter" role="status" aria-live="polite">Not registered</div>
         <div class="phone-resize-handle"></div>
     </div>
 </template>

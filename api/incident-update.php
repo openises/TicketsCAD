@@ -125,7 +125,9 @@ if (!org_can_mutate_ticket($ticket_id)) {
     json_error('Ticket not found', 404);
 }
 
-$status_labels = [1 => 'Closed', 2 => 'Open', 3 => 'Scheduled'];
+// Phase 155 (GH#147): the labels live in ONE place (inc/incident-write.php)
+// so what a dispatcher sees and what a webhook says cannot drift apart.
+$status_labels = incident_status_labels();
 
 // ══════════════════════════════════════════════════════════════
 // ACTION: add_note
@@ -234,11 +236,16 @@ elseif ($action === 'update_status') {
     $dispositionIdInput = ($dispositionIdRaw !== null && $dispositionIdRaw !== '')
         ? (int) $dispositionIdRaw : null;
 
+    // Phase 155 (GH#147): 'source' names who caused the change in the
+    // incident.status_changed payload. The writer is compare-and-set, so a
+    // second dispatcher who changed the same incident in the same instant
+    // gets a clean "already changed" answer below instead of a duplicate
+    // audit row, webhook and cascade.
     $result = incident_update_status_internal(
         $ticket_id,
         $new_status,
         (int) $current_user_id,
-        ['booked_date' => $booked, 'disposition_id' => $dispositionIdInput]
+        ['booked_date' => $booked, 'disposition_id' => $dispositionIdInput, 'source' => 'ui']
     );
     if (!empty($result['errors'])) {
         ini_set('display_errors', $prevDisplay);
@@ -253,6 +260,14 @@ elseif ($action === 'update_status') {
         json_error('Failed to update status: ' . $firstErr, 500);
     }
 
+    // Lost a race with another change to the same incident: nothing was
+    // written, so there is no action-log row, audit row, SSE or notification
+    // to produce. (Phase 155, GH#147.)
+    if (!empty($result['noop'])) {
+        ini_set('display_errors', $prevDisplay);
+        json_error('Incident status was just changed by someone else. Refresh and try again.', 409);
+    }
+
     // Per-incident action-log entry — action_type 10 = "status change"
     // (helper handles action_type=23 for the auto-clear-on-close row).
     try {
@@ -260,7 +275,10 @@ elseif ($action === 'update_status') {
         db_query(
             "INSERT INTO `{$prefix}action` (`ticket_id`, `date`, `description`, `user`, `action_type`, `updated`)
              VALUES (?, ?, ?, ?, 10, ?)",
-            [$ticket_id, $now, 'Status changed: ' . $old_label . ' → ' . $new_label, $current_user_id, $now]
+            // ASCII "->": action.description is latin1 on installs that began as a
+            // legacy v3 database, where a "→" made this INSERT fail (error 1366)
+            // and the catch below swallowed it -- the status line never appeared.
+            [$ticket_id, $now, 'Status changed: ' . $old_label . ' -> ' . $new_label, $current_user_id, $now]
         );
     } catch (Exception $e) { /* non-fatal */ }
 
@@ -287,22 +305,12 @@ elseif ($action === 'update_status') {
         ['ticket_id' => $ticket_id, 'incident_number' => $incNum, 'new_status' => $new_status, 'status_label' => $new_label],
         $ticket_id);
 
-    // ── Fire notification rules (best-effort) ──
-    try {
-        require_once __DIR__ . '/../inc/notification-engine.php';
-        $notifEvent = ($new_status === 1) ? 'incident_close' : 'incident_status';
-        notification_check($notifEvent, [
-            'ticket_id'        => $ticket_id,
-            'scope'            => $ticket['scope'] ?? '',
-            'severity'         => 0,
-            'old_status'       => $current_status,
-            'new_status'       => $new_status,
-            'old_status_label' => $old_label,
-            'new_status_label' => $new_label,
-        ]);
-    } catch (Exception $e) {
-        error_log('Notification engine error on status change: ' . $e->getMessage());
-    }
+    // ── Notification rules (Phase 155, GH#144) ──
+    // NOT fired here any more: incident_update_status_internal() fires
+    // incident_close / incident_status itself, so the external API's PATCH and the
+    // automatic close notify too. The hook that lived here hard-coded
+    // `'severity' => 0`, so a rule filtered to any severity could never match a
+    // close. Do NOT fire it again here.
 
     ini_set('display_errors', $prevDisplay);
     // Phase 99p — toast uses the case number, not the internal id.

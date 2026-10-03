@@ -182,6 +182,20 @@ function notify_clamp_timeout(int $configured, ?float $remaining, int $floor = 1
     return min($configured, $r);
 }
 
+/**
+ * The timeout an outbound ADAPTER should use for a send: its own configured
+ * value, clamped to whatever is left of the caller's wall-clock budget (none =
+ * unclamped). Phase 155 (GH#144): the Notification Rule deliveries run under a
+ * budget when they are attempted inline, and smtp / sms / slack / telegram
+ * used fixed 10-15 s timeouts that ignored it - the same defect push.php fixed
+ * on 2026-07-31. Adapters call this behind function_exists() so they still work
+ * when this file is not loaded.
+ */
+function notify_adapter_timeout(int $configured): int
+{
+    return notify_clamp_timeout($configured, notify_deadline_remaining());
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Circuit breaker
 // ─────────────────────────────────────────────────────────────────────────
@@ -674,11 +688,17 @@ function notify_queue_depth(?int $now = null): array
     $now    = $now ?? time();
     $prefix = $GLOBALS['db_prefix'] ?? '';
     $out    = ['pending' => 0, 'failed' => 0, 'oldest_age_s' => null, 'oldest_at' => null];
+    // Phase 155 (GH#144): Notification Rule deliveries (channel _notify_rule,
+    // inc/notification-delivery.php) are outbound notifications too, drained by
+    // the same sweep - counted here so the Status page and the tick's log line
+    // show the whole backlog, not just the fan-out half of it. The literal is
+    // the fallback for a caller that has not loaded notification-delivery.php.
+    $ruleCh = defined('NOTIFY_RULE_CHANNEL') ? NOTIFY_RULE_CHANNEL : '_notify_rule';
     try {
         $row = db_fetch_one(
             "SELECT COUNT(*) AS n, MIN(scheduled_send_at) AS oldest
                FROM `{$prefix}pending_routed_messages`
-              WHERE status = 'pending' AND channel = ?", [NOTIFY_FANOUT_CHANNEL]);
+              WHERE status = 'pending' AND channel IN (?, ?)", [NOTIFY_FANOUT_CHANNEL, $ruleCh]);
         $out['pending'] = (int) ($row['n'] ?? 0);
         if (!empty($row['oldest'])) {
             $out['oldest_at']    = (string) $row['oldest'];
@@ -687,7 +707,7 @@ function notify_queue_depth(?int $now = null): array
         }
         $out['failed'] = (int) db_fetch_value(
             "SELECT COUNT(*) FROM `{$prefix}pending_routed_messages`
-              WHERE status = 'failed' AND channel = ?", [NOTIFY_FANOUT_CHANNEL]);
+              WHERE status = 'failed' AND channel IN (?, ?)", [NOTIFY_FANOUT_CHANNEL, $ruleCh]);
     } catch (Exception $e) {
         // Table absent on a pre-migration install — report nothing waiting
         // rather than pretending to know.

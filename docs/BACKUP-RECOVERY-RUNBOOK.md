@@ -316,6 +316,37 @@ tar -tzf "$LATEST" | head -20
 
 The only way to know your backups work is to actually restore one. See [Recovery](#recovery) below.
 
+### What a restore drill proves: every VALUE, not just the rows
+
+A built-in backup is a SQL dump. Since Phase 155 each table in it also carries a **content
+fingerprint** -- a line like `-- Digest: member rows=214 sha256=...` over every value the table
+was written from (order-independent, so the order a restore reads rows back in does not matter).
+
+```bash
+php tools/restore.php --drill --admin-user root --admin-pass '...'   # restore into a scratch DB, then check
+php tools/restore.php --verify --file <archive>                      # re-check the LIVE database against an archive
+```
+
+* `--drill` restores into a throwaway database, **recomputes every table's fingerprint from the
+  restored rows, and fails if any differs** -- naming the table. A restore that applied without a SQL
+  error and brought back the right number of rows used to pass; it could still have changed values
+  (a VARCHAR holding `1e5` restored as `100000`, an `ENUM('0','1')` value as its neighbour, every
+  TIMESTAMP shifted by the server's UTC offset, the last digits of every latitude and longitude).
+  Those were fixed at the source in the same change; the fingerprint is what would catch the next one.
+* `--yes` (a real restore) ends with the same check against the live database.
+* `--verify --file <archive>` is read-only. **Run it with the web server stopped**: if the site was
+  serving requests while a restore ran, a table another request wrote to in the meantime (sessions,
+  audit rows, heartbeats) will differ without anything being wrong.
+* A backup written before Phase 155 has no fingerprints. It still drills (statements and row counts
+  only) and the report says it could not check content. Take a fresh backup to get fingerprints.
+* Verification re-reads every table once, so a drill takes roughly the restore time again on a very
+  large database (the FCC callsign reference tables are the usual reason).
+
+**Restoring onto an existing install now works.** `tools/restore.php --yes` used to fail on every
+table ("Table already exists", "Duplicate entry '1' for key 'PRIMARY'") because its statement
+splitter discarded each chunk that began with a comment -- including every table's `DROP TABLE IF
+EXISTS`. It now replaces the tables, as its dry-run text always said it would.
+
 ---
 
 ## Recovery

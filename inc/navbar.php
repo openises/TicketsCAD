@@ -28,6 +28,10 @@ require_once __DIR__ . '/i18n.php';
 // than inherited (idempotent).
 require_once __DIR__ . '/rbac.php';
 
+// GH#142 (Phase 155) -- agency logo and branding (opt-in top-bar mark + the
+// print letterhead config). Every helper degrades to "no logo" -- never throws.
+require_once __DIR__ . '/branding.php';
+
 // Phase 126 (2026-07-29) — the automatic-backup scheduler's only trigger on
 // installs without cron / Task Scheduler, which is most of them.
 //
@@ -143,7 +147,13 @@ function nav_btn($href, $icon, $label, $key, $active_page, $attrs = '') {
     <nav class="navbar navbar-expand-xl border-bottom nav-main" data-bs-theme="<?php echo $bs_theme; ?>" role="navigation" aria-label="Main navigation">
         <div class="container-fluid">
             <span class="navbar-brand d-flex align-items-center gap-2">
+                <?php // GH#142 (Phase 155): branding_navbar = agency swaps the product mark for the
+                      // viewer's agency logo; the default (product) and any viewer with no logo to
+                      // show keep the original mark below, unchanged. The About page is never touched.
+                $__brandNavbar = branding_navbar_brand_html();
+                if ($__brandNavbar !== '') { echo $__brandNavbar; } else { ?>
                 <img src="assets/logo-light.png" alt="Tickets" height="36" class="d-block">
+                <?php } ?>
                 <span class="fw-semibold">Tickets</span>
                 <small class="text-body-secondary d-none d-sm-inline">v<?php echo newui_version(); ?></small>
             </span>
@@ -370,7 +380,7 @@ if (rbac_can('action.send_chat') && (is_admin() || rbac_can('action.manage_membe
                 <script>
                     document.getElementById('navPhoneToggleBtn').addEventListener('click', function () {
                         if (window.EventBus) { window.EventBus.emit('phone:toggle'); }
-                        else if (window.PhoneWidget) { window.PhoneWidget.toggle(); }
+                        else if (window.PhoneWidget) { (window.PhoneWidget.toggleOrOpen || window.PhoneWidget.toggle)(); }
                     });
                 </script>
                 <?php endif; ?>
@@ -666,7 +676,7 @@ if (count($_navbar_langs) >= 2):
             // tone) both available, so it loads after both, same pattern
             // as audio-alerts.js itself needing EventBus first.
             setTimeout(function() {
-                loadGlobal('assets/js/call-alert.js?v=<?php echo newui_version(); ?>', '_navbar_callalert');
+                loadGlobal('assets/js/call-alert.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/call-alert.js') ? filemtime(__DIR__ . '/../assets/js/call-alert.js') : newui_version(); ?>', '_navbar_callalert');
             }, 350);
             // Phase 29B (2026-06-12) — PAR-overdue check fires through
             // the existing internal-messaging broadcast pattern (see
@@ -1152,6 +1162,22 @@ if (!preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/', $__pttC
 ?>
 <style>:root { --ptt-color: <?php echo $__pttColor; ?>; }</style>
 
+<?php
+// GH#142 (Phase 155) -- print letterhead + the agency logo styles. The JSON config is
+// emitted ONLY when printing branding is on and a logo applies (an install with no
+// logo gets no block at all); assets/js/print-letterhead.js builds the letterhead at
+// page load -- not lazily in beforeprint, where an image first requested can print
+// blank -- and also stamps data-print-date on every page (8 of the 11 pages that
+// load print.css never did). $branding_print_org_id is optionally set by a page that
+// knows which organization owns what it shows (incident-detail.php).
+$__brandPrintOrg = (isset($branding_print_org_id) && (int) $branding_print_org_id > 0) ? (int) $branding_print_org_id : null;
+echo branding_print_config_script($__brandPrintOrg);
+$__brandCss = __DIR__ . '/../assets/css/branding.css';
+$__brandJs  = __DIR__ . '/../assets/js/print-letterhead.js';
+?>
+<link rel="stylesheet" href="assets/css/branding.css?v=<?php echo file_exists($__brandCss) ? filemtime($__brandCss) : newui_version(); ?>">
+<script src="assets/js/print-letterhead.js?v=<?php echo file_exists($__brandJs) ? filemtime($__brandJs) : newui_version(); ?>"></script>
+
 <!-- Phase 149 — the persistent ringing-call banner's styling, loaded
      globally (same pattern as radio-widget.css just below). -->
 <link rel="stylesheet" href="assets/css/call-alert.css?v=<?php echo file_exists(__DIR__ . '/../assets/css/call-alert.css') ? filemtime(__DIR__ . '/../assets/css/call-alert.css') : newui_version(); ?>">
@@ -1319,6 +1345,13 @@ if ($__zelloProxyPort < 1024 || $__zelloProxyPort > 65535) { $__zelloProxyPort =
 <script src="assets/vendor/jssip/jssip-3.10.1.min.js?v=<?php echo file_exists(__DIR__ . '/../assets/vendor/jssip/jssip-3.10.1.min.js') ? filemtime(__DIR__ . '/../assets/vendor/jssip/jssip-3.10.1.min.js') : newui_version(); ?>"></script>
 <link rel="stylesheet" href="assets/css/phone-widget.css?v=<?php echo file_exists(__DIR__ . '/../assets/css/phone-widget.css') ? filemtime(__DIR__ . '/../assets/css/phone-widget.css') : newui_version(); ?>">
 <?php include_once __DIR__ . '/phone-widget-template.php'; ?>
+<!-- Phase 155 (GH#108 S1): the workstation token. The Phone widget needs it on
+     EVERY page to ask "which extension is bound to this browser" -- it used to
+     load only from console.php, so everywhere else the widget showed an empty
+     token and "not bound". One definition, here; console.php no longer loads
+     its own copy. -->
+<script src="assets/js/console-workstation.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/console-workstation.js') ? filemtime(__DIR__ . '/../assets/js/console-workstation.js') : newui_version(); ?>"></script>
+<script src="assets/js/phone-dial-logic.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/phone-dial-logic.js') ? filemtime(__DIR__ . '/../assets/js/phone-dial-logic.js') : newui_version(); ?>"></script>
 <script src="assets/js/phone-widget.js?v=<?php echo file_exists(__DIR__ . '/../assets/js/phone-widget.js') ? filemtime(__DIR__ . '/../assets/js/phone-widget.js') : newui_version(); ?>"></script>
 
 <?php

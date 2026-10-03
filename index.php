@@ -532,6 +532,7 @@ $__allowedWidgets = array_values(array_filter(
 <?php /* Phase 131 — net-control check-ins float above the widgets. Renders
          nothing without action.net_checkin. */ ?>
 <?php include_once NEWUI_ROOT . '/inc/net-checkin-widget.php'; ?>
+<script src="assets/js/future-chip.js?v=<?php echo asset_v('assets/js/future-chip.js'); ?>"></script>
 <script src="assets/js/app.js?v=<?php echo asset_v('assets/js/app.js'); ?>"></script>
 <!-- zello-widget.js + radio-widget.js both moved to inc/navbar.php so they load on every page -->
 <script src="assets/js/chat-widget.js?v=<?php echo asset_v('assets/js/chat-widget.js'); ?>"></script>

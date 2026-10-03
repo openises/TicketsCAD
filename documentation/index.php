@@ -317,6 +317,8 @@ function _build_sidebar(string $base, string $current): string
         'Integrations' => [
             ['DVSWITCH-ADMIN-GUIDE',        'DVSwitch DMR bridge'],
             ['FCC-STATION-ID-COMPLIANCE',   'FCC station-ID compliance'],
+            ['PHONE-TELEPHONY-GUIDE',       'Browser phone & relay test'],
+            ['INBOUND-SIP-CALLS',           'Inbound SIP/PBX calls'],
             ['MESH-BRIDGE-GUIDE',           'Meshtastic / MeshCore'],
             ['APRS-LISTENER-SETUP',         'APRS-IS listener'],
             ['OWNTRACKS-CONFIG-PUSH',       'OwnTracks config push'],

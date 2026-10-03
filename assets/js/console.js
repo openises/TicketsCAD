@@ -43,6 +43,13 @@
         }, 4000);
     }
 
+    // Phase 155 (GH#151/GH#129) — channel ids currently RECEIVING audio from
+    // a digital voice bridge (comm:rx_state). Kept here, not in the DOM, so
+    // a strip repaint (renderBank()) does not lose a lamp that is lit. A
+    // watchdog clears an entry whose 'ended' event never arrived (those
+    // notifications are best-effort), so a lamp can never stay lit for ever.
+    var RX_LAMP_WATCHDOG_MS = 10 * 60 * 1000;
+    var rxActive = {};           // channelId -> watchdog timer id
     var channels = [];           // last fetched channel list (enabled only)
     var channelsById = {};
     var views = [];              // shared views from the designer
@@ -396,11 +403,24 @@
         var led = el('span', 'console-led console-led-' + (ch.state || 'unknown'));
         led.title = 'Status: ' + (ch.state || 'unknown');
         head.appendChild(led);
+        // Phase 155 — RX lamp for channels that report audio arriving. Hidden
+        // by CSS until lit, and labelled "RX" so it never relies on colour.
+        if ((ch.capabilities || {}).voice_rx) {
+            var rxLamp = el('span', 'console-rx-lamp' + (rxActive[ch.id] ? ' console-rx-lamp-on' : ''), 'RX');
+            rxLamp.title = 'Receiving audio now';
+            rxLamp.setAttribute('role', 'status');
+            head.appendChild(rxLamp);
+        }
         strip.appendChild(head);
         if (show.sel) { strip.appendChild(buildSelectChrome(ch)); }
 
         if (ch.regulatory_class === 'amateur') {
-            var regBadge = el('div', 'console-strip-reg', 'AMATEUR — ID required');
+            // Phase 155: a matrix-backed channel that cannot transmit (a digital
+            // voice bridge in this release) has no station-ID obligation of its
+            // own, so "ID required" would mislead; say what it is instead.
+            var badgeListenOnly = !!(window.ConsoleMatrix && window.ConsoleMatrix.isMatrixBacked(ch.adapter))
+                && !(ch.capabilities || {}).voice_tx;
+            var regBadge = el('div', 'console-strip-reg', badgeListenOnly ? 'AMATEUR — listen-only' : 'AMATEUR — ID required');
             // Phase 148 — FCC 97.119 live status. Only dmr_bm channels carry
             // config.dmr_channel_id (see inc/channel_registry.php); the badge
             // stays static text for any other amateur adapter until it, too,
@@ -439,6 +459,22 @@
         // who never touches the toggle sees exactly today's behavior.
         var isMatrixBacked = !!(window.ConsoleMatrix && window.ConsoleMatrix.isMatrixBacked(ch.adapter));
         var matrixAudioOn = isMatrixBacked && !!audioState(ch.id).matrixAudio;
+        // Phase 155 (GH#151/GH#129): a matrix-backed channel that cannot
+        // transmit (a digital voice bridge in this release). Decided by the
+        // row's own capabilities, never by adapter name, so it stays right
+        // when a later release gives these channels voice_tx.
+        var listenOnlyMatrix = isMatrixBacked && !caps.voice_tx;
+        if (listenOnlyMatrix) {
+            // Say so in words (never colour alone) and say how to hear it —
+            // there is no legacy widget to launch. Shown whatever the strip's
+            // template: the auto "All Channels" view has no PTT block at all
+            // for a channel that cannot transmit.
+            var loMode = ch.config && ch.config.mode ? String(ch.config.mode).toUpperCase() : '';
+            var loTg = ch.config && ch.config.talkgroup ? ' · TG ' + ch.config.talkgroup : '';
+            controlsBox.appendChild(el('div', 'console-strip-note console-listen-only-note',
+                'Listen-only' + (loMode ? ' · ' + loMode : '') + loTg
+                + (matrixAudioOn ? '' : ' — turn on Listen below to hear it')));
+        }
 
         if (show.ptt && (caps.voice_tx || caps.voice_rx)) {
             // Phase 152 persona review (the veteran's addition): while a
@@ -455,7 +491,7 @@
             // today — anything else with voice capability but no adapter-
             // specific handler is an honest "not wired yet" note, same as
             // before.
-            var isLauncher = (ch.adapter === 'zello' || (isMatrixBacked && !matrixAudioOn));
+            var isLauncher = (ch.adapter === 'zello' || (isMatrixBacked && !matrixAudioOn && !listenOnlyMatrix));
             if (isLauncher) { strip.classList.add('console-strip-launcher'); strip.setAttribute('data-launcher', '1'); }
             // Phase 152 prerequisite #8 (console-hid.js, physical PTT) --
             // the ONE marker that means "a hardware pedal/hotkey press on
@@ -465,8 +501,8 @@
             // only channel also lacks data-launcher but is never a real
             // PTT target either) -- console-hid.js queries this attribute
             // directly rather than inferring eligibility from other state.
-            if (matrixAudioOn && canTx) { strip.setAttribute('data-real-ptt', '1'); }
-            if (matrixAudioOn) {
+            if (matrixAudioOn && canTx && !listenOnlyMatrix) { strip.setAttribute('data-real-ptt', '1'); }
+            if (matrixAudioOn && !listenOnlyMatrix) {
                 // Real, independent PTT over the browser-leg session — held
                 // down, not clicked, matching every other real PTT control
                 // in this app (simulselect, radio-widget.js's own button).
@@ -488,6 +524,11 @@
                     mb.addEventListener('touchcancel', mbStop);
                 }
                 controlsBox.appendChild(mb);
+            } else if (listenOnlyMatrix) {
+                // Nothing to add: the listen-only note is already on the strip
+                // (above), and the generic "arrives with the audio bus" note
+                // below would be wrong for a channel that is finished, just
+                // not able to transmit.
             } else if (ch.adapter === 'zello') {
                 var zb = el('button', 'btn btn-sm console-launcher-btn', null);
                 zb.type = 'button';
@@ -517,7 +558,7 @@
                 controlsBox.appendChild(el('div', 'console-strip-note',
                     'Voice controls arrive with the audio bus (Phase 114c+)'));
             }
-            if (!canTx) {
+            if (!canTx && !listenOnlyMatrix) {
                 controlsBox.appendChild(el('div', 'console-strip-note', 'Listen-only (no TX permission)'));
             }
         }
@@ -528,7 +569,7 @@
         // page load) and switches this ONE channel from the shared
         // singleton widget to its own independent route — see console-
         // audio.js's applyAudio() for why the two are mutually exclusive.
-        if (isMatrixBacked && canTx) {
+        if (isMatrixBacked && (canTx || listenOnlyMatrix)) {
             // intercom_dd has no legacy widget to be mutually exclusive
             // WITH (see console-audio.js's isMatrixCapable) — reworded so
             // the toggle reads as "join the party line", not "replace a
@@ -543,6 +584,10 @@
                 maInp.title = matrixAudioOn
                     ? 'You are joined to the dispatcher intercom — PTT/Monitor/Mute/Volume act on this channel'
                     : 'Join the dispatcher intercom (uses your microphone)';
+            } else if (listenOnlyMatrix) {
+                maInp.title = matrixAudioOn
+                    ? 'You are listening to this channel through the audio matrix — Monitor/Mute/Volume act on it'
+                    : 'Listen to this channel through the audio matrix (it cannot transmit)';
             } else {
                 maInp.title = matrixAudioOn
                     ? 'Independent matrix audio is ON for this strip — PTT/Monitor/Mute/Volume act on THIS channel alone'
@@ -558,7 +603,8 @@
                 });
             });
             maLbl.appendChild(maInp);
-            maLbl.appendChild(el('span', 'form-check-label small', isIntercomDd ? 'Join Intercom' : 'Matrix Audio'));
+            maLbl.appendChild(el('span', 'form-check-label small',
+                isIntercomDd ? 'Join Intercom' : (listenOnlyMatrix ? 'Listen' : 'Matrix Audio')));
             controlsBox.appendChild(maLbl);
         }
         // Recall tab's per-strip shortcut (plan.md: "a one-button
@@ -582,7 +628,7 @@
         // audio.js's docblock for the honest scope of what "real" means
         // while each adapter is still a singleton widget).
         if ((show.mon || show.mute || show.vol) && caps.voice_rx
-            && (ch.adapter === 'zello' || ch.adapter === 'dmr_bm' || ch.adapter === 'dmr_local')) {
+            && (ch.adapter === 'zello' || ch.adapter === 'dmr_bm' || ch.adapter === 'dmr_local' || listenOnlyMatrix)) {
             controlsBox.appendChild(buildAudioControlsBlock(ch, show));
         }
 
@@ -1092,6 +1138,32 @@
         });
     }
 
+    // Phase 155 (GH#151/GH#129) — comm:rx_state from api/matrix-channel-state.php:
+    // audio began/stopped arriving from a digital voice bridge. channel_id is
+    // the comm_channels id the strips are keyed on.
+    function paintRxLamp(channelId, on) {
+        var strips = bank.querySelectorAll('[data-channel-id="' + channelId + '"]');
+        for (var i = 0; i < strips.length; i++) {
+            var lamp = strips[i].querySelector('.console-rx-lamp');
+            if (lamp) { lamp.classList.toggle('console-rx-lamp-on', !!on); }
+        }
+    }
+
+    function onRxState(d) {
+        if (!d || d.channel_id === undefined || d.channel_id === null) { return; }
+        var id = String(d.channel_id);
+        if (rxActive[id]) { window.clearTimeout(rxActive[id]); delete rxActive[id]; }
+        if (d.rx === 'started') {
+            rxActive[id] = window.setTimeout(function () {
+                delete rxActive[id];
+                paintRxLamp(id, false);
+            }, RX_LAMP_WATCHDOG_MS);
+            paintRxLamp(id, true);
+        } else {
+            paintRxLamp(id, false);
+        }
+    }
+
     // Patch rail (Console rebuild) — console-patch-rail.js emits these
     // LOCAL (non-SSE) events on this same page; a light repaint, never a
     // full renderBank(), so this never disrupts another strip's open text
@@ -1104,6 +1176,8 @@
         if (window.EventBus) {
             window.EventBus.on('console:selection-clear', paintPatchState);
             window.EventBus.on('console:patches-changed', paintPatchState);
+            // Phase 155 — RX lamp for digital voice bridge channels.
+            window.EventBus.on('comm:rx_state', onRxState);
             return;
         }
         if (triesLeft > 0) { setTimeout(function () { waitForEventBusThen(triesLeft - 1); }, 100); }

@@ -818,7 +818,10 @@
                 + '<td>' + esc(r.name || '') + '</td>'
                 + '<td>' + esc(r.handle || '') + '</td>'
                 + '<td>' + esc(r.type_name || '') + '</td>'
-                + '<td' + statusStyle + '>' + esc(r.status_name || '') + '</td>'
+                + '<td' + statusStyle + '>' + esc(r.status_name || '')
+                // GH#141: committed-for-later chip (assets/js/future-chip.js); '' when none.
+                + (window.TCADFutureChip && r.future && r.future.length ? ' ' + window.TCADFutureChip.html(r.future) : '')
+                + '</td>'
                 + '<td>' + r.active_assignments + '</td>'
                 + '</tr>';
         }).join('');
@@ -3217,7 +3220,7 @@
             fetch('api/organizations.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'set_active_org', org_id: parseInt(orgId) })
+                body: JSON.stringify({ action: 'set_active_org', org_id: parseInt(orgId), csrf_token: _csrf() })
             })
             .then(function (res) { return res.json(); })
             .then(function (data) {

@@ -174,14 +174,12 @@ $active_page  = 'console';
      keeps its own registerChannels()/load() calls further down (via
      console.js) — the strip bank still owns the full per-channel Select/
      Monitor/Mute/Volume UI; only the shared underlying files moved.
-     console-workstation.js stays HERE (console.php-specific — it has no
-     role in the smaller navbar widget) even though it now loads AFTER
-     console-mic.js in document order; that's fine, because console-mic.js
-     only reads window.ConsoleWorkstation.getToken() at actual connect()
-     time (a later user action), never at script-load time, and by the
-     time any real connect() can happen every script on this page —
-     including this one — has already run. -->
-<script src="assets/js/console-workstation.js?v=<?php echo asset_v('assets/js/console-workstation.js'); ?>"></script>
+     console-workstation.js: since Phase 155 (GH#108 S1) it is loaded by
+     inc/navbar.php, once, on every page -- the Phone widget needs the
+     workstation token everywhere, not only here, and two definitions of the
+     same identity helper is exactly how the widget ended up with an empty
+     token on every other page. It is no longer loaded a second time from
+     this file; it is always defined before any script below runs. -->
 <script src="assets/js/console-playback.js?v=<?php echo asset_v('assets/js/console-playback.js'); ?>"></script>
 <!-- Acoustic proximity auto-discovery -- loads before console-workstation-
      panel.js, which calls window.ConsoleBeacon.setMyBeaconCode()/

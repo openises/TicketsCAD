@@ -140,7 +140,7 @@ $active_page = 'settings';
         </div>
         <div id="ttsEngFields"></div>
         <div class="mb-2" id="ttsEngKeyWrap">
-            <label class="form-label form-label-sm mb-0" for="ttsEngKey2">API key <span class="text-body-secondary">(stored server-side, 0640; leave blank to keep existing)</span></label>
+            <label class="form-label form-label-sm mb-0" for="ttsEngKey2">API key <span class="text-body-secondary">(stored in a file outside the web root, never in the database; leave blank to keep existing)</span></label>
             <input type="password" class="form-control form-control-sm" id="ttsEngKey2" autocomplete="off" placeholder="•••••••• (leave blank to keep)">
         </div>
         <div class="form-check form-switch">

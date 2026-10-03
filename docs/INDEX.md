@@ -48,6 +48,7 @@ We follow the [Diátaxis](https://diataxis.fr) framework: four kinds of document
 ### Installing and configuring
 
 - **[Installation checklist](INSTALLATION-CHECKLIST.md)** — blank Debian/Ubuntu VM → working dispatch, 60 minutes
+- **[Towing and roadside dispatch](VENDOR-DISPATCH-GUIDE.md)** — rotation lists for tow and roadside companies, the call ledger and the history export (off by default)
 - **[Quick install for evaluators](INSTALL.md)** — older single-file install notes
 - **Installing on a fresh VM (training module)** — the same path in tutorial form, on video in the training playlist
 - **[Upgrading from v3.44](UPGRADING-FROM-V3.md)** — legacy → v4 migration with rollback
@@ -55,14 +56,19 @@ We follow the [Diátaxis](https://diataxis.fr) framework: four kinds of document
 - **[RSA proxy install (Linux)](../proxy/INSTALL-LINUX.md)** — field-encryption proxy for HTTP deployments
 - **[Fresh install guide](INSTALL.md)** — end-to-end procedure for a blank-slate host
 - **[Windows + IIS install](INSTALL-WINDOWS-IIS.md)** — the four things that differ from the Debian/Apache guide: `OPENSSL_CONF`, `disable_functions`, MySQL 8.0 vs MariaDB, and `.htaccess` not being read
+- **[Agency logo and branding](AGENCY-BRANDING.md)** — your logo on the sign-in screen, as a print letterhead (pages, reports, ICS forms) and on the public board; per-organization logos, dark theme, permissions, and how the image is stored and served
 
 ### Integrations and field hardware
 
 - **[DMR Radio — end-to-end install](RADIO-DMR-INSTALL.md)** — start here to enable the radio feature; covers bridge install, proxy, Apache, dmr_channels row, RBAC, on-air verification
 - **[FCC station-ID compliance](FCC-STATION-ID-COMPLIANCE.md)** — the radio widget's §97.119 station-ID countdown, Monitoring ID / End conversation controls, per-channel enforcement levels, and what the software can and cannot do without speech-to-text
+- **[Browser phone, Phone window and the relay test](PHONE-TELEPHONY-GUIDE.md)** — place and answer calls from the browser through an Asterisk PBX, where the phone registers, supplying the PBX's existing password, one-click Answer, and what the incident page's *Relay test page* button is (a simulation, not AllStarLink)
+- **[Inbound SIP/PBX calls](INBOUND-SIP-CALLS.md)** — the ringing-call banner, claiming, the Asterisk / 3CX / webhook bridge
 - **[DVSwitch DMR bridge setup](DVSWITCH-ADMIN-GUIDE.md)** — Analog_Bridge + MMDVM_Bridge + md380-emu + Piper + Vosk (deeper architecture reference)
 - **[Radio AI — admin guide](RADIO-AI-ADMIN-GUIDE.md)** — Phase 85f Claude-on-amateur-radio: listener daemon, approval API, settings, security
 - **[Radio AI — operator guide](RADIO-AI-USER-GUIDE.md)** — review/approve/edit/reject AI-drafted voice responses; dry-run + auto-approve safeties
+- **[Digital voice bridges (DVMProject / USRP)](DIGITAL-VOICE-USRP.md)** — bring a P25 / DMR / analog talkgroup from a bridge program (`dvmbridge`, Analog_Bridge, `chan_usrp`) onto the console and the patch matrix; **listen-only**; DVMProject's usage guidelines, setup, field reference, network safety, optional FNE link status, and what has not been tested
+- **[Notification Rules](NOTIFICATION-RULES.md)** — email, text and chat alerts when things happen in the CAD: events, recipients, the delivery queue and log, Active911 recipes, troubleshooting
 - **[Meshtastic bridge](MESH-BRIDGE-GUIDE.md)** — LoRa mesh bridge service
 - **[APRS-IS persistent listener](APRS-LISTENER-SETUP.md)** — Python service replacing 5-minute polling
 - **[OwnTracks + Traccar location ingest](TRACCAR-SETUP.md)** — HTTP-direct, per-device tokens, "pick your path"
@@ -76,6 +82,8 @@ We follow the [Diátaxis](https://diataxis.fr) framework: four kinds of document
 - **[Backup + recovery runbook](BACKUP-RECOVERY-RUNBOOK.md)** — browser-download, filesystem-save, cron, restore
 - **Backups training module** — tutorial form, on video in the training playlist
 - **[Security policy](SECURITY-POLICY.md)** — security posture, key handling, incident response
+- **[Getting help, and what to expect](../SUPPORT.md)** — where to ask, how soon to expect a reply, what the project does not promise
+- **[Community operations](COMMUNITY-OPERATIONS.md)** — the acknowledgement bot, the away setting, labels, the status issue, release notices (for maintainers)
 - **[Access chain](ACCESS-CHAIN.md)** — auth, RBAC, and per-resource access model
 - **[Troubleshooting](TROUBLESHOOTING.md)** — symptom → cause → fix catalogue
 - **[Running without the internet](OFFLINE-OPERATION.md)** — what works, degrades and breaks offline; what happens when an upstream link fails mid-incident; offline map tiles and geocoding

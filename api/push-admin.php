@@ -214,7 +214,8 @@ if ($method === 'POST') {
             ]);
             exit;
         }
-        require_once $autoload;
+        require_once __DIR__ . '/../inc/vendor-autoload.php';
+        newui_require_vendor_autoload();
 
         if (!class_exists('Minishlink\\WebPush\\VAPID')) {
             http_response_code(500);

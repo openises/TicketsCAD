@@ -274,6 +274,40 @@ unconditionally on any install: zero cross-class (or any) patch-rail
 routes with an `expires_at` set means zero rows this sweep ever finds,
 the same genuine no-op-sweep shape as the other jobs on this list.
 
+**Scheduled-incident activation (Phase 155, GitHub #141 + #147).** A Scheduled
+incident becomes Open when its booked time arrives, and any unit *reserved* for it
+(see *Units assigned to Scheduled incidents* in `docs/NEWUI-USER-GUIDE.md`) is
+dispatched at that moment — or `scheduled_assign_lead_minutes` before it. Until
+this job existed the flip happened only as a side effect of somebody loading the
+incident list, so a booked time meant nothing to an External API consumer, a
+crew's phone, or a dispatcher sitting on an incident page. The job is
+`ticketscad-scheduled-incidents.service` running
+`/usr/bin/php /var/www/newui/tools/scheduled_incidents_tick.php`, with
+`ticketscad-scheduled-incidents.timer` pointing `Unit=` at it, every 60 seconds:
+
+```ini
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=60s
+AccuracySec=5s
+Persistent=true
+Unit=ticketscad-scheduled-incidents.service
+```
+
+The activation is a per-incident compare-and-set (`UPDATE ... WHERE status = 3 AND
+booked_date <= NOW()`), so it is safe for the timer, the lazy activation that still
+runs when anyone loads the incident list, and a second timer to all run at once:
+exactly one of them activates an incident, and exactly one audit row,
+`incident.status_changed` webhook and SSE refresh results. The audit rows name the
+**System** as the actor. Settings → System Health reports this job as *required*
+only when something is about to need it — a Scheduled incident booked within the
+next 24 hours (or already due), or a pending unit reservation — never merely
+because the feature exists, so an incident booked three months out does not turn
+the page red. A late or missing timer fails *visible*: a reservation whose time has
+come shows **DUE — not yet dispatched** on the incident page and the unit's chip,
+and the unit is not falsely marked Dispatched. Windows installs get it through
+`tools\run-scheduled-jobs.bat` automatically.
+
 #### If you use Web Push, SMS, e-mail, Slack or webhooks: run that one every 15 seconds
 
 Since 2026-07-31 the pending-message sweep also **sends the outbound
@@ -327,6 +361,11 @@ sudo systemctl enable --now ticketscad-inbound-calls-tick.timer
 # Safe to enable unconditionally, same reasoning -- a genuine no-op sweep
 # on any install with zero patch-rail routes carrying an expires_at:
 sudo systemctl enable --now ticketscad-matrix-expiry-warning.timer
+# Install this one on EVERY host (unlike the no-op sweeps above it does real work:
+# it makes a Scheduled incident Open at its booked time and dispatches reserved
+# units) -- the same activation still happens whenever someone loads the incident
+# list, but only this timer makes it happen with nobody watching:
+sudo systemctl enable --now ticketscad-scheduled-incidents.timer
 sudo systemctl list-timers --all | grep ticketscad
 sudo journalctl -u ticketscad-par-tick.service -n 20 --no-pager
 

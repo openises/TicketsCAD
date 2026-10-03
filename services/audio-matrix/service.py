@@ -87,6 +87,7 @@ from dmr import DmrLeg                                                     # noq
 from browser import BrowserLegServer, default_validate_session, make_state_notify_fn  # noqa: E402
 from reflector import ReflectorLeg                                         # noqa: E402
 from http_stream import HttpStreamLeg                                      # noqa: E402
+from usrp import UsrpLeg, UsrpConfigError                                 # noqa: E402
 # ^ safe to import even when `websockets` isn't installed — that import is
 # deferred inside BrowserLegServer._run_loop(), only reached if mode="live".
 
@@ -155,14 +156,152 @@ def _http_stream_url_from_config(config_json) -> Optional[str]:
     return url if isinstance(url, str) and url.strip() else None
 
 
+# ── generic USRP leg family (Phase 155, GH#151 + GH#129) ──────────────
+# Two adapter keys, ONE implementation: `dvmproject` (a DVMProject
+# `dvmbridge` joined to an FNE, P25/DMR/analog) and `usrp_bridge` (any other
+# USRP-speaking bridge: DVSwitch Analog_Bridge, AllStar chan_usrp). Both are
+# a UDP USRP leg (legs/usrp.py); only the label and the policy gate differ.
+# LISTEN-ONLY in this release — see legs/usrp.py. (The adapter keys are the
+# keys of LEG_BUILDERS below.)
+
+# A digital-voice bridge is a radio network, never `internal`/`pstn`: the
+# build refuses to put one at a class that would exempt it from the
+# cross-class patch guard (matrix_core._BLOCKED_PAIRS).
+USRP_ALLOWED_CLASSES = ("amateur", "commercial")
+
+
+def _config_dict(config_json) -> dict:
+    """Parse a comm_channels.config_json TEXT value into a dict ({} on a
+    missing or malformed value — the caller then fails validation with a
+    clear message rather than crashing the boot)."""
+    if isinstance(config_json, dict):
+        return config_json
+    if not config_json:
+        return {}
+    try:
+        cfg = json.loads(config_json)
+    except (TypeError, ValueError):
+        return {}
+    return cfg if isinstance(cfg, dict) else {}
+
+
+def _notify_fn_from_cfg(cfg: Optional[dict]):
+    base = str((cfg or {}).get("php_base_url") or "").strip()
+    if not base:
+        return None
+    return make_state_notify_fn(base, (cfg or {}).get("control_token", ""))
+
+
+def build_usrp_leg(core: MatrixCore, channel_key: str, label: str,
+                   config: dict, cfg: Optional[dict] = None) -> UsrpLeg:
+    """Validate a USRP-family channel's config and construct (NOT start) its
+    leg. Raises UsrpConfigError on anything the leg must not run with — the
+    PHP validator (inc/voice-bridge-channels.php) mirrors these rules, and
+    tests/test_voice_bridge_channels.php drives this very function with the
+    config the PHP side wrote, so the two cannot drift apart silently."""
+    config = config or {}
+    # The two values that decide WHICH socket is bound and WHO may speak into
+    # a radio channel's strip are never defaulted: a missing or malformed
+    # config_json must fail loudly, not quietly bind UDP 34001 for whichever
+    # channel happened to be loaded first.
+    for required in ("listen_port", "bridge_host"):
+        if config.get(required) in (None, ""):
+            raise UsrpConfigError("%s is required in the channel's config" % required)
+    if config.get("tx_enabled"):
+        # Not an error: a config written by a later release must not stop a
+        # listen-only service from booting. It is just never honoured.
+        LOG.warning("usrp channel %s: tx_enabled is set but this build is "
+                    "LISTEN-ONLY — transmit is not available", channel_key)
+    try:
+        hang_ms = int(config.get("rx_hang_ms", 400) or 400)
+    except (TypeError, ValueError):
+        raise UsrpConfigError("rx_hang_ms must be a number of milliseconds")
+    if hang_ms < 100 or hang_ms > 5000:
+        raise UsrpConfigError("rx_hang_ms must be between 100 and 5000")
+    kwargs = dict(
+        channel_id=channel_key,
+        bridge_host=config["bridge_host"],
+        tx_port=config.get("bridge_tx_port", 32001),
+        listen_host=config.get("listen_host", "127.0.0.1"),
+        listen_port=config["listen_port"],
+        framing=str(config.get("framing") or "usrp"),
+        rx_inactivity_ms=hang_ms,
+        label=label,
+    )
+    leg = UsrpLeg(core, notify_fn=_notify_fn_from_cfg(cfg), **kwargs)
+    leg.spec = kwargs   # lets a failed re-attach put the previous leg back
+    return leg
+
+
+LEG_BUILDERS = {
+    "dvmproject": build_usrp_leg,
+    "usrp_bridge": build_usrp_leg,
+}
+
+
+def _dvm_policy_acknowledged(db) -> bool:
+    """Has an admin recorded the DVMProject usage-policy acknowledgment
+    (settings.dvm_policy_ack, written by api/voice-bridge-channels.php)?
+    The PHP admin API refuses to create or enable a `dvmproject` channel
+    without it; checking again HERE, at the layer that actually opens a
+    socket, means a row flipped on by other means (a designer toggle, SQL, a
+    restore from a backup taken before the policy existed) still cannot
+    bring the leg up unacknowledged."""
+    cur = db.cursor(dictionary=True)
+    try:
+        cur.execute("SELECT value FROM settings WHERE name = 'dvm_policy_ack'")
+        row = cur.fetchone()
+    except Exception:  # noqa: BLE001 - no settings table => not acknowledged
+        return False
+    finally:
+        cur.close()
+    val = row.get("value") if isinstance(row, dict) else None
+    return bool(val and str(val).strip())
+
+
+def _attach_usrp_family_leg(db, core: MatrixCore, row: dict, key: str, rc: RegClass,
+                            cfg: Optional[dict], leg_registry: Optional[dict],
+                            policy_ack: dict) -> None:
+    """Attach (and start) the USRP-family leg for one comm_channels row, or
+    log WHY it was not attached. Never raises: one bad row must not stop the
+    service from booting with every other channel."""
+    adapter = row["adapter"]
+    if rc.value not in USRP_ALLOWED_CLASSES:
+        LOG.warning("%s channel %r has regulatory_class %r — a digital-voice bridge "
+                    "is a radio network and must be amateur or commercial; leg NOT "
+                    "attached", adapter, key, rc.value)
+        return
+    if adapter == "dvmproject":
+        if not policy_ack["known"]:
+            policy_ack["value"] = _dvm_policy_acknowledged(db)
+            policy_ack["known"] = True
+        if not policy_ack["value"]:
+            LOG.warning("dvmproject channel %r: the DVMProject usage-policy "
+                        "acknowledgment has not been recorded — leg NOT attached", key)
+            return
+    try:
+        leg = LEG_BUILDERS[adapter](core, key, row["label"],
+                                    _config_dict(row.get("config_json")), cfg)
+        leg.start_rx()
+    except (UsrpConfigError, OSError, ValueError) as e:
+        LOG.warning("%s channel %r: leg NOT attached — %s", adapter, key, e)
+        return
+    core.channel(key).leg = leg
+    if leg_registry is not None:
+        leg_registry[key] = leg
+    LOG.warning("%s leg LIVE (listen-only) on channel %s <- %s:%d (bridge %s)",
+                adapter, key, leg.listen_host, leg.listen_port, leg.bridge_host)
+
+
 def load_channels(db, core: MatrixCore, cfg: Optional[dict] = None,
-                   http_stream_registry: Optional[dict] = None) -> dict:
+                   http_stream_registry: Optional[dict] = None,
+                   leg_registry: Optional[dict] = None) -> dict:
     """Load enabled comm_channels into the matrix. Returns {channel_key: id}
     so routes can be resolved by the DB's integer ids.
 
     Every channel loads with leg=None by default — most get a real leg
     attached later (attach_dmr_leg(), attach_browser_leg()) if configured
-    live. Two adapters are the exception and get their leg attached
+    live. Three adapter families are the exception and get their leg attached
     RIGHT HERE, inline, because both are entirely self-contained from the
     DB row alone (no separate live/off toggle in the service config file):
 
@@ -173,6 +312,15 @@ def load_channels(db, core: MatrixCore, cfg: Optional[dict] = None,
         full "why" — this was a real, shipped-but-non-functional gap until
         that fix). Attached unconditionally — there is no legitimate "off"
         state for a pure hub channel.
+
+      * `dvmproject` / `usrp_bridge` (Phase 155) — the generic USRP leg
+        (legs/usrp.py), LISTEN-ONLY. Built from `config_json` like
+        http_stream; `enabled=0` is the off state. A `dvmproject` row also
+        needs the recorded usage-policy acknowledgment (see
+        _dvm_policy_acknowledged()). An invalid config, a refused class, a
+        missing acknowledgment or a UDP port already in use skips the leg
+        with a WARNING — the channel still loads, so routes validate and the
+        console shows it, but no socket is bound.
 
       * `http_stream` (2026-09-08, Eric: "I want to create multiple
         streams as needed") reads its URL from `config_json` (written by
@@ -188,6 +336,7 @@ def load_channels(db, core: MatrixCore, cfg: Optional[dict] = None,
     cur = db.cursor(dictionary=True)
     key_by_id = {}
     ffmpeg_path = (cfg or {}).get("ffmpeg_path", "ffmpeg")
+    policy_ack = {"known": False, "value": False}   # looked up lazily, once
     try:
         cur.execute(
             "SELECT id, channel_key, label, regulatory_class, adapter, config_json "
@@ -213,6 +362,9 @@ def load_channels(db, core: MatrixCore, cfg: Optional[dict] = None,
                     else:
                         LOG.warning("http_stream channel %r has no usable url in "
                                     "config_json — leg NOT attached", key)
+                elif row["adapter"] in LEG_BUILDERS:
+                    _attach_usrp_family_leg(db, core, row, key, rc, cfg,
+                                            leg_registry, policy_ack)
             except RouteError:
                 pass  # duplicate key — already added
     finally:
@@ -428,6 +580,71 @@ def make_http_stream_leg_factory(core: MatrixCore, cfg: dict, http_stream_regist
     return create, remove
 
 
+def make_leg_factory(core: MatrixCore, cfg: dict, leg_registry: dict):
+    """The (create, remove, health) closures the control plane calls to
+    hot-attach/detach a USRP-family leg WITHOUT a service restart — the
+    counterpart of make_http_stream_leg_factory(). Boot-time legs are
+    attached inline by load_channels(); this is for channels an admin adds,
+    edits or removes AFTER boot via api/voice-bridge-channels.php ->
+    matrix_control_apply_leg_create()/_delete() -> POST/DELETE
+    /channels/leg. `leg_registry` is the SAME dict load_channels() fills.
+
+    Re-creating on an existing channel (an edit) stops the old leg FIRST —
+    the old and new config may share a UDP port. If the new leg cannot
+    start, the previous one is put back so a rejected edit never leaves a
+    channel that was working silently dead."""
+
+    def create(channel_id: str, name: str, reg_class: str, adapter: str, config: dict):
+        builder = LEG_BUILDERS.get(adapter)
+        if builder is None:
+            raise ValueError("unknown leg adapter %r" % (adapter,))
+        if reg_class not in USRP_ALLOWED_CLASSES:
+            raise ValueError("regulatory class for a digital-voice bridge must be "
+                             "amateur or commercial, not %r" % (reg_class,))
+        rc = _REG[reg_class]
+        new_leg = builder(core, channel_id, name, config or {}, cfg)
+        old = leg_registry.pop(channel_id, None)
+        if old is not None:
+            old.stop()
+        try:
+            new_leg.start_rx()
+        except OSError as e:
+            if old is not None and getattr(old, "spec", None):
+                try:
+                    restored = UsrpLeg(core, notify_fn=_notify_fn_from_cfg(cfg), **old.spec)
+                    restored.spec = old.spec
+                    restored.start_rx()
+                    leg_registry[channel_id] = restored
+                    ch0 = core.channel(channel_id)
+                    if ch0 is not None:
+                        ch0.leg = restored
+                except Exception as e2:  # noqa: BLE001
+                    LOG.warning("could not restore previous leg on %s: %s", channel_id, e2)
+            raise ValueError("could not start leg: %s" % (e,))
+        ch = core.channel(channel_id)
+        if ch is None:
+            ch = core.add_channel(Channel(id=channel_id, name=name, reg_class=rc))
+        else:
+            ch.name = name
+            ch.reg_class = rc
+        ch.leg = new_leg
+        leg_registry[channel_id] = new_leg
+        LOG.warning("%s leg LIVE (hot-attached, listen-only) on channel %s <- %s:%d",
+                    adapter, channel_id, new_leg.listen_host, new_leg.listen_port)
+        return new_leg
+
+    def remove(channel_id: str) -> bool:
+        leg = leg_registry.pop(channel_id, None)
+        if leg is not None:
+            leg.stop()
+        return core.remove_channel(channel_id)
+
+    def health() -> list:
+        return [leg.health() for leg in list(leg_registry.values())]
+
+    return create, remove, health
+
+
 # ── audit sink ───────────────────────────────────────────────────────
 def make_audit_sink():
     def sink(event_type: str, detail: dict):
@@ -442,7 +659,8 @@ def main() -> int:
 
     core = MatrixCore(on_audit=make_audit_sink())
     http_stream_legs: dict = {}   # channel_key -> HttpStreamLeg, boot- AND hot-attached
-    key_by_id = load_channels(db, core, cfg, http_stream_legs)
+    usrp_legs: dict = {}          # channel_key -> UsrpLeg, boot- AND hot-attached
+    key_by_id = load_channels(db, core, cfg, http_stream_legs, usrp_legs)
     load_routes(db, core, key_by_id)
     load_workstation_mutes(db, core)
 
@@ -450,6 +668,8 @@ def main() -> int:
     browser_srv = attach_browser_leg(core, cfg)
     create_http_stream_leg, remove_http_stream_leg = make_http_stream_leg_factory(
         core, cfg, http_stream_legs)
+    create_usrp_leg, remove_usrp_leg, usrp_leg_health = make_leg_factory(
+        core, cfg, usrp_legs)
 
     ticks = {"n": 0}
     _orig_tick = core.tick
@@ -472,7 +692,10 @@ def main() -> int:
                                   get_ticks=lambda: ticks["n"],
                                   dev_insecure=dev_insecure,
                                   create_http_stream_leg=create_http_stream_leg,
-                                  remove_http_stream_leg=remove_http_stream_leg)
+                                  remove_http_stream_leg=remove_http_stream_leg,
+                                  create_leg=create_usrp_leg,
+                                  remove_leg=remove_usrp_leg,
+                                  get_leg_health=usrp_leg_health)
     except ControlPlaneConfigError as e:
         LOG.error(str(e))
         if leg is not None:
@@ -481,6 +704,8 @@ def main() -> int:
             browser_srv.stop()
         for hleg in http_stream_legs.values():
             hleg.stop()
+        for uleg in list(usrp_legs.values()):
+            uleg.stop()
         core.stop()
         try:
             db.close()
@@ -511,6 +736,8 @@ def main() -> int:
             browser_srv.stop()
         for hleg in http_stream_legs.values():
             hleg.stop()
+        for uleg in list(usrp_legs.values()):
+            uleg.stop()
         core.stop()
         srv.shutdown()
         try:

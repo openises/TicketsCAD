@@ -38,6 +38,7 @@ if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/pending-messages.php';
 require_once __DIR__ . '/../inc/scheduled-jobs.php';
+require_once __DIR__ . '/../inc/notification-engine.php';   // notification_log_purge() and the setting it reads (Phase 155)
 
 $t0 = microtime(true);
 $ts = date('Y-m-d H:i:s');
@@ -56,6 +57,12 @@ try {
         $detail .= ' notify_pending=' . $q['pending'];
         if ($q['oldest_age_s'] !== null) $detail .= ' oldest=' . $q['oldest_age_s'] . 's';
     }
+    // Phase 155 (GH#144): Settings -> Notification Rules -> Delivery settings promises
+    // "keep the delivery log N days". This is the ONLY caller of the purge, so a
+    // setting that nothing here ran would be an inert control. Cheap when there is
+    // nothing old (one indexed DELETE ... LIMIT); never touches a delivery still queued.
+    $purged = function_exists('notification_log_purge') ? notification_log_purge() : 0;
+    if ($purged > 0) $detail .= ' log_purged=' . $purged;
     echo "[{$ts}] pending_sweep: {$detail}\n";
     sched_job_record('pending_messages_tick', 'ok', $detail,
                      (int) round((microtime(true) - $t0) * 1000));

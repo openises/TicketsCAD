@@ -356,11 +356,11 @@ function matrix_route_validate($srcId, $dstId, $allowCrossClass, $excludeRouteId
     }
 
     $src = db_fetch_one(
-        "SELECT id, label, adapter, regulatory_class, enabled FROM `{$prefix}comm_channels` WHERE id = ?",
+        "SELECT id, label, adapter, regulatory_class, enabled, capabilities_json FROM `{$prefix}comm_channels` WHERE id = ?",
         [$srcId]
     );
     $dst = db_fetch_one(
-        "SELECT id, label, adapter, regulatory_class, enabled FROM `{$prefix}comm_channels` WHERE id = ?",
+        "SELECT id, label, adapter, regulatory_class, enabled, capabilities_json FROM `{$prefix}comm_channels` WHERE id = ?",
         [$dstId]
     );
     // matrix_core.py: "route references unknown channel"
@@ -383,6 +383,22 @@ function matrix_route_validate($srcId, $dstId, $allowCrossClass, $excludeRouteId
             'The dispatcher intercom channel cannot be patched or coupled to any other channel — '
             . 'it is a dispatcher-only party line by design, never a mixing-bus member'
         );
+    }
+
+    // Phase 155 (GH#151/GH#129) -- a digital voice bridge channel
+    // (dvmproject / usrp_bridge) is LISTEN-ONLY in this release: its leg
+    // never sends a packet (services/audio-matrix/legs/usrp.py). A patch
+    // INTO such a channel could therefore never carry audio, and offering
+    // one would suggest a transmit path that does not exist. Refused here,
+    // not just ignored by the leg, so no standing patch, group coupling or
+    // console talk-route can be created toward it; a patch OUT of it (its
+    // received audio to Zello, a console strip, another channel) is the
+    // whole point and stays allowed. The capability that lifts this is
+    // voice_tx on the destination row (inc/voice-bridge-channels.php's
+    // vbc_capabilities(), switched on only by a later release).
+    $vbcErr = matrix_voice_bridge_listen_only_error($dst);
+    if ($vbcErr !== null) {
+        throw new InvalidArgumentException($vbcErr);
     }
 
     // matrix_core.py: "route {src}->{dst} exists" (exact directed pair only —
@@ -430,6 +446,24 @@ function matrix_route_validate($srcId, $dstId, $allowCrossClass, $excludeRouteId
     }
 
     return ['src' => $src, 'dst' => $dst, 'cross_class' => $blocked || $transitive['crosses']];
+}
+
+/**
+ * Phase 155 -- is $channel (a comm_channels row with adapter and
+ * capabilities_json) a digital voice bridge that cannot transmit? Returns the
+ * refusal message, or null when a patch INTO it is acceptable.
+ */
+function matrix_voice_bridge_listen_only_error($channel) {
+    require_once __DIR__ . '/voice-bridge-channels.php';
+    if (!is_array($channel) || !vbc_is_voice_bridge_adapter($channel['adapter'] ?? '')) {
+        return null;
+    }
+    $caps = !empty($channel['capabilities_json']) ? (json_decode($channel['capabilities_json'], true) ?: []) : [];
+    if (!empty($caps['voice_tx'])) {
+        return null;
+    }
+    return 'The channel "' . ($channel['label'] ?? '?') . '" is a digital voice bridge and is listen-only: '
+         . 'its audio can be patched out to other channels, but nothing can be patched into it.';
 }
 
 /** Clamp + validate gain_db into the sane console range; throws on out-of-range. */
@@ -848,14 +882,14 @@ function matrix_group_routes($groupId) {
  * @return array the validated comm_channels row
  * @throws InvalidArgumentException
  */
-function matrix_browser_leg_validate_channel($channelId) {
+function matrix_browser_leg_validate_channel($channelId, $direction = null) {
     $prefix = $GLOBALS['db_prefix'] ?? '';
     $channelId = (int) $channelId;
     if ($channelId <= 0) {
         throw new InvalidArgumentException('A channel id is required');
     }
     $ch = db_fetch_one(
-        "SELECT id, channel_key, label, adapter, regulatory_class, enabled FROM `{$prefix}comm_channels` WHERE id = ?",
+        "SELECT id, channel_key, label, adapter, regulatory_class, enabled, capabilities_json FROM `{$prefix}comm_channels` WHERE id = ?",
         [$channelId]
     );
     if (!$ch) {
@@ -866,6 +900,15 @@ function matrix_browser_leg_validate_channel($channelId) {
             'The dispatcher intercom channel cannot be reached this way — '
             . 'it is a dispatcher-only party line by design, never a mixing-bus member'
         );
+    }
+    // Phase 155: a console mic may not be routed INTO a listen-only digital
+    // voice bridge (only the talk direction is refused; listening, and
+    // tearing a route down, are never blocked).
+    if ($direction === 'talk') {
+        $vbcErr = matrix_voice_bridge_listen_only_error($ch);
+        if ($vbcErr !== null) {
+            throw new InvalidArgumentException($vbcErr);
+        }
     }
     return $ch;
 }

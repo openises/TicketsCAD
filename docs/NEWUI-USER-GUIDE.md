@@ -24,6 +24,7 @@ This guide is written for dispatchers, volunteers, and team leaders who use the 
 - [Part 13b: Logging Volunteer Hours](#part-13b-logging-volunteer-hours)
 - [Part 14: External Links](#part-14-external-links)
 - [Part 15: Mesh Bridges (LoRa Radio Backhaul)](#part-15-mesh-bridges-lora-radio-backhaul)
+- [Part 16: Towing and Roadside Dispatch](#part-16-towing-and-roadside-dispatch)
 - [Appendix A: Keyboard Shortcuts](#appendix-a-keyboard-shortcuts)
 - [Appendix B: Troubleshooting](#appendix-b-troubleshooting)
 
@@ -350,6 +351,29 @@ Click any incident in the dashboard's Active Incidents widget (or in the Inciden
 
 To reopen a closed incident, change the status back to "Open" and save.
 
+Closing an incident that is already closed does nothing (the original close time is kept), and every real status change — Closed, Open or Scheduled, in any direction — is announced exactly once to any external system an administrator has connected (the `incident.status_changed` webhook; see the Integrator Guide).
+
+### Scheduled Incidents
+
+An incident can be **Scheduled** for a future date and time instead of opened right away (choose Scheduled and give a booked date on the New Incident form, or on the incident's status control). It waits, listed as Scheduled, and **becomes Open by itself when its booked time arrives** --- whether or not anyone has the dispatch board open (a background job does it every minute; see Settings → System Health → File & Code Health → Scheduled background jobs). You can also open a Scheduled incident early by hand.
+
+### Units assigned to Scheduled incidents
+
+What happens when you assign a unit to a Scheduled incident depends on one administrator setting (**Settings → Incident Lifecycle → Units assigned to Scheduled incidents**):
+
+- **Dispatch immediately** (the default, and how it has always worked). The unit is marked Dispatched the moment you assign it, hours before the incident starts. The unit then looks busy everywhere.
+- **Reserve until the booked time.** The unit is **reserved**: committed to the incident but **not dispatched**. It stays Available, so a dispatcher looking for a unit for a right-now call can still use it. The incident page shows a **Reserved units** list, and the unit shows a small clock chip (for example `26-0071 10-04 18:00`) wherever units are listed --- the dashboard units widget, the incident page's Available Units list and the unit's own page --- saying which call and when. When the booked time arrives the unit is dispatched automatically (an administrator can set a **lead time** of up to 24 hours to dispatch it earlier, for staging).
+
+On the Reserved units list each reservation shows one of:
+
+| Shown | Meaning | What to do |
+|---|---|---|
+| **Reserved — dispatches 10-04 18:00** | Waiting for its time. | Nothing. **Dispatch now** sends it at once; **Release** cancels the reservation. |
+| **DUE — not yet dispatched** | The time has come but nothing has dispatched the unit yet (the background job is late or not running). The unit is **not** marked Dispatched. | Click **Dispatch now**, and tell your administrator the scheduled-jobs timer is not running. |
+| **HELD for a dispatcher** | At the booked time the unit was busy on another call (and is not set to Multi-Assign), or its status forbids dispatch. TicketsCAD will not double-book it. The reason is shown. | Decide: **Dispatch now** (you will be asked to confirm; a unit whose status is *Unavailable* cannot be forced), or **Release**. It is never retried automatically. |
+
+Reserving the same unit for the same incident twice is refused, and if the unit is also reserved for another incident within four hours you are told so (a warning, never a block). Closing the incident cancels its reservations; a unit marked Multi-Assign is dispatched without waiting for a decision. Assigning with **dispatch now** (External API: `"dispatch_now": true`) skips the reservation.
+
 ### Major Incidents
 
 A major incident groups several related calls together under one umbrella. For example, a wildfire might generate separate calls for structure fires, evacuations, and medical emergencies --- all linked to one major incident.
@@ -358,6 +382,7 @@ A major incident groups several related calls together under one umbrella. For e
 - **Link** existing incidents to it.
 - **Command structure** fields let you record Gold, Silver, and Bronze command positions with names and locations.
 - **Navigate** between linked incidents from any call in the group.
+- **Closing a major incident closes every linked Open incident the same way pressing Close on each would**: their units are released and set back to Available, each incident is logged and announced (including the `incident.closed` / `incident.status_changed` webhooks), and the confirmation says so. Linked incidents that belong to an organization you cannot change are left open, and the result tells you how many.
 
 ## Public Incident Board
 
@@ -936,6 +961,31 @@ The built-in **All Channels** tab always lists everything enabled and cannot be 
 
 Access requires the Communications Console screen permission; transmitting requires Console Transmit; authoring *shared* views requires Design Shared Console Views. Your own personal views need no extra permission. All view publishing and edits are captured in the audit log.
 
+## Browser Phone
+
+If your administrator has connected a phone system, the **phone button** in the navigation bar (gated on the *Call Queue* screen permission) lets you place and answer calls from the browser with a headset — no softphone to install.
+
+- **Where it works.** A phone registration lasts only as long as the page that made it, and TicketsCAD is a multi-page application. By default the phone registers on the **Console** and in the **Phone window** (`phone.php`). On any other page the navbar phone button opens the Phone window, a small window that keeps ringing while you work in other tabs — open it once at the start of a shift and leave it open. On a page that does not register, the widget says *"The phone is active in your Console or Phone window"* with a link. Only one window of a browser holds the registration at a time.
+- **Getting bound to an extension.** An administrator binds an extension to your workstation using its token. On the Console, click **Phone token** in the workstation bar to see and copy it.
+- **Answering.** An incoming call shows the caller with **Answer** focused (press **Enter**) and **Decline**. When the phone system tags the call, answering in the phone also claims the call in the inbound-call banner and opens the New Incident form in a new tab; clicking **Answer** in the banner answers the audio in the phone. If nothing correlates, the audio is answered anyway.
+- **Dialing.** Type a number and press **Enter**, use the keypad, or the general-number button.
+- **When something is wrong,** the footer line says so in words (blocked microphone, a page that is not https, a certificate the browser has not trusted yet, a wrong password, a lost connection) and what to do.
+- **Callers become Contacts.** The caller's number is matched however it is written (`+1 612 555 1234`, `(612) 555-1234`, `612.555.1234` are one person); a number with no record gets a bare one, and a call from one of your own extensions is recorded under the extension's label unless your administrator turned that off.
+
+The incident page's optional **Relay test page** button is a *simulated* test of a relay path to a plain Asterisk test server — it is not AllStarLink, nothing in it keys a radio, and it is off unless a Super Admin enables it under **Settings > Communications & Integrations > AllStar Relay (test)**.
+
+Setup, the certificate step, and exactly what has and has not been verified live are in the [Browser Phone guide](PHONE-TELEPHONY-GUIDE.md).
+
+### Digital voice bridge channels (listen-only)
+
+Your administrator may have connected a P25, DMR or analog talkgroup to the console through a **digital voice bridge** (Settings > Communications & Integrations > Digital Voice Bridges). Its strip is **listen-only**: it says *Listen-only · P25 · TG …*, has no PTT button, and nothing you press can transmit on it.
+
+- Tick **Listen** on the strip to hear it. Listening does not need Console Transmit permission, and your browser is not asked for the microphone unless you hold that permission.
+- The **RX** lamp lights while audio is arriving. The status light stays grey (*unknown*) unless your administrator has connected the optional network link check; a quiet channel never turns it green.
+- An administrator can patch its audio out to other channels (for example a Zello channel). Nothing can be patched into it.
+
+Administrators: setup, DVMProject's usage guidelines, and what has and has not been tested are in `docs/DIGITAL-VOICE-USRP.md`. Creating one needs the *Manage Digital Voice Bridges* permission (Super Admin and Org Admin by default); a DVMProject channel also needs a recorded acknowledgment of the DVMProject usage-policy statement, which is audited.
+
 ## Internal Messaging
 
 TicketsCAD includes a built-in internal messaging system for sending messages between users within the application. Access it from the **Messaging** page in the navigation bar.
@@ -971,6 +1021,38 @@ Broadcasts are useful for:
 - Emergency notifications that affect all personnel.
 - System-wide announcements (weather alerts, facility closures, schedule changes).
 - Alerting all users about a major incident activation.
+
+## Notification Rules (Email, Text and Chat Alerts for CAD Events)
+
+*Administrators only (Super Admin).* Go to Settings → Communications & Integrations → **Notification Rules**.
+
+A notification rule says: **when** something happens in the CAD, **tell** these people, **by** this channel, with **this message**. Examples:
+
+- When a unit is dispatched, email the Active911 alert address one line, `NATURE;ADDRESS;CITY;DETAILS`.
+- When an incident is raised to a High alert severity, email the supervisors.
+- When any new incident is created, post a line to the Slack channel.
+- When a shelter incident opens, email the Red Cross operations list.
+
+### Making a rule
+
+1. Choose **New rule**, or **From template** (Active911 StandardA, Active911 Cadpage, email supervisors on a high-alert incident, post every new incident to Slack).
+2. **When** --- pick the event (new incident, unit dispatched, unit cleared, incident closed, reopened or rescheduled, high-alert incident, HAS broadcast). Optionally narrow it to one severity level or one incident type.
+3. **Who and where** --- pick the channel (Email, SMS, Chat, Push, Slack, Telegram). The page offers what the channel can use: for email, people (by name), typed email addresses and email lists; for SMS, people and typed mobile numbers; Slack and Telegram post to the one channel set up in Settings and take no recipients. A warning icon next to a person means they have no email address (or mobile number) on file, so nothing will reach them.
+4. **Message** --- leave the subject and message blank for the default, or write your own. The field buttons (`{street}`, `{incident_type}`, `{units}`...) insert the value where you are typing. Add `|clean` (for example `{street|clean}`) to remove semicolons and line breaks for a one-line format.
+5. **Review** --- the right-hand side shows the message as it will be sent and every delivery it would make, including those it would skip and why. Nothing is sent by looking.
+6. **Send a test to me**, then **Save**.
+
+*Only the first time for each incident* (on *Unit dispatched* and *Incident reopened or rescheduled*) sends one message for the first matching event on an incident, so Active911 is paged once per call, not once per unit.
+
+### Watching it work
+
+- **The strip at the top** shows whether each channel is set up (click a badge to open its settings), how many messages are waiting, and whether the scheduled sender is running. A red banner means a channel is paused after repeated failures; it retries by itself.
+- **Delivery log** shows every message: **Sent**, **Waiting** (it will be retried), **Failed** (with the reason), **Skipped** (opted out, no address, a security label forbids it), **Expired**, or **Cancelled**. Open a row to read exactly what was sent.
+- **Delivery settings** --- plain text or HTML email; how personal notification preferences apply; how long to keep the log.
+
+Testing: **Send a test to me** is the safe default. **Send a test to the real recipients** asks first and lists every destination --- *a pager or Active911 address pages real devices*.
+
+The full guide, with the Active911 recipes and troubleshooting, is [Notification Rules](NOTIFICATION-RULES.md).
 
 ---
 
@@ -1218,22 +1300,58 @@ The seed categories are **Precincts**, **Zones**, **Parade Routes** (off by defa
 
 ## Managing Email Distribution Lists
 
-Go to Config > Communications > **Email Lists**.
+Go to Settings → Communications & Integrations → **Email Lists**. (Super Admin.)
 
-Email lists let you address a single email message to a curated group of recipients --- staff, volunteers, mutual-aid partners --- without typing each address every time. They're used by the notification engine, the standard messages broadcast, and any future feature that needs a "send to this group" hook.
+An email list is a named group of email recipients --- staff, volunteers, mutual-aid partners --- that a **[Notification Rule](NOTIFICATION-RULES.md)** can send to without typing each address into the rule. **Notification Rules are the only thing that reads a list.** The list is read each time the rule fires, so adding someone, or fixing a member's email address, changes who is told from the next event on.
 
-Each list has a name and a description, plus a roster of members. A member can be any of:
+The table shows each list's **Entries** (what is on it), **Addresses** (how many unique addresses it resolves to right now) and **Problems** (entries that cannot produce an address).
 
-- **Member** (a personnel record from the Roster), addressed using the email on file.
-- **Constituent** (a contact from the Constituents page), addressed using the email on file.
-- **Inline** address --- a free-form email address you type in (`sheriff@county.gov`). Use this for one-off contacts that don't belong in the Roster.
-- **List** --- another email list, by reference. This is how you build groups of groups ("All Cities" = Riverside Staff + Lakeside Staff + Fairview Staff). The resolver detects circular references and refuses to fan out a list that loops back on itself.
+### Managing a list
 
-**Importing from a CSV** --- click the **Import** button and paste a CSV with `email,name,note` columns (header row required). Inline addresses are created for each row that doesn't already match a member by email.
+Choose **Manage**. The top of the window says in one sentence what the list resolves to --- for example *"This list currently resolves to 14 unique addresses from 9 entries"* --- and, if anything needs attention, what: *"2 entries have no email address · 1 skipped (member status Retired) · 1 duplicate collapsed"*.
 
-**Resolving a list** --- the backend provides a `resolve` action that walks the list, follows nested list references, deduplicates, and returns the flat array of addresses. This is what the notification engine calls when it needs to send the actual emails.
+**To add someone**, pick what you are adding, then search:
 
-**Archiving a list** soft-deletes it; existing references to the list remain valid in the audit log but the list won't be offered as a recipient in new messages.
+- **Member** --- a roster member, found by name or callsign. The list shows the email on file next to each name, or *no email on file*. Members who are already on the list, or whose status you have chosen to skip, say so in the row.
+- **Contact** --- a record from the Constituents address book, found by name, email or phone. By default only contacts that have an email address are shown.
+- **Sub-list** --- another list. Lists can be nested up to 10 levels; a list that would end up containing itself, directly or through other lists, is refused and the message names the loop.
+- **Email address** --- type an address (and optionally a name) for someone who is not in your roster.
+
+Use the keyboard if you like: press **Enter** to choose the highlighted row, then **Enter** again on **Add**; the box clears and is ready for the next one. **Esc** closes the search list without closing the window.
+
+A member or contact **with no email address** can still be added --- the button reads *Add anyway (no email on file)* --- and the entry is marked **No email address**, with a **Fix in Roster** link, so you can complete the record. (Settings can refuse these instead: see *List options*.)
+
+### The entries table
+
+Entries that need attention are listed **first**. Each row shows the type, who it is, a **status** (an icon and a word), what it gives, and who added it and when:
+
+| Status | Meaning |
+|---|---|
+| OK | Contributes an address |
+| No email address on file / Not a valid email address | Fix the member or contact record |
+| Member was deleted / Record no longer exists | The roster member or contact was removed; remove the entry |
+| Sub-list is archived | Restore the sub-list or remove the entry |
+| Loop in nested lists / Nested too deeply | Remove the entry that closes the loop |
+| Skipped (member status) | The member's status is one you chose to leave out |
+| Opted out of email | The member's account has email notifications switched off |
+| Duplicate (already provided) | The same address came from an earlier entry; it is sent once |
+
+Choose **Remove** (it asks first) to take an entry off. A sub-list row shows how many addresses it gives, and opens that list when clicked.
+
+### Preview, import and rename
+
+- **Preview recipients** shows exactly who would receive a message right now, and who was left out and why.
+- **Import addresses from a CSV** adds typed addresses in bulk: one address per line, an optional second column for the name. There is no header row; a first line that is not an address is reported as skipped like any other. Lines starting with `#` are ignored. The result says how many were added, skipped (not an address), and already on the list. The import does not match anyone to the roster.
+- **Edit name and description** renames the list.
+
+### List options
+
+*List options* (top of the panel):
+
+- **Leave out members whose status is ...** --- tick the member statuses that should not receive list email. A new install ticks Suspended and Retired if you have those statuses, so a retired volunteer does not keep receiving incident details. Un-tick to send to every member who has not been deleted.
+- **Refuse to add a member or contact that has no email address** --- off by default.
+
+**Archiving a list** removes it from the table and from the rule form. If a notification rule still uses the list, you are told which rules and asked to confirm; a rule that names an archived list sends nothing and logs why.
 
 ## Managing OwnTracks Tracking Tokens
 
@@ -1466,6 +1584,20 @@ This panel provides tools for:
 - **Cache clearing** --- Clear cached weather tiles and other temporary data.
 
 It is recommended to back up your database regularly, especially before making configuration changes or updating the software.
+
+## Agency Logo & Branding
+
+Go to Settings → Application — Presentation → Agency Logo & Branding.
+
+Show your own agency logo instead of the generic radio-tower icon, and use it as a letterhead on what you print. Nothing changes until a logo is uploaded, and the standard icon is always the fallback.
+
+- **Install-wide logo** --- upload a PNG or JPEG (up to 2 MB) for light backgrounds, and optionally a second image for dark backgrounds. SVG is not accepted because it can carry script; export your logo as a PNG. The server re-encodes the picture, which removes hidden metadata (camera and location tags) and keeps the stored copy under 256 KB.
+- **Where it appears** --- the sign-in screen, a letterhead on printed pages and reports, the print/PDF of every ICS form (using the organization that owns the incident), the public incident board, and, only if you opt in, the top bar of every page. Each has its own switch, so an agency that does not want its name on a public sign-in page can still have it on paper.
+- **Organization logos** --- on an install with two or more organizations, each can have its own logo. One without a logo uses its parent organization's, then the install-wide logo. A Super Admin can set any organization's logo and can switch organization logos off; an Org Admin can change only their own organization's logo.
+- **Live preview** --- the page shows the sign-in card (with a Day/Night toggle), the top bar and a printed page, updating as you change the controls or choose a file. Nothing is saved until you click Upload or Save.
+- **Dark theme** --- with no dark-background image, the light logo is placed on a white plate so it stays legible; you can turn that off.
+
+Changing the install-wide logo or any setting needs the **Manage Agency Branding** permission (Super Admin only). Changing your own organization's logo needs **Manage Own Org's Logo** (Super Admin and Org Admin). Every change is recorded in the audit log. See the Agency Logo & Branding guide (`docs/AGENCY-BRANDING.md`) for all eleven settings, how the logo is stored and served, and troubleshooting.
 
 ---
 
@@ -1740,6 +1872,38 @@ Access to the Mesh Console requires the `action.manage_mesh_bridges` permission.
 
 ---
 
+# Part 16: Towing and Roadside Dispatch
+
+When a unit on scene needs a tow truck, a locksmith, a jump-start or a tire change, you can dispatch an outside company from the incident itself, in rotation, and keep a permanent record of who was called and what they said. The full guide, including administrator setup, is [Towing and roadside dispatch](VENDOR-DISPATCH-GUIDE.md); this part is the dispatcher's quick tour.
+
+This feature is **off until an administrator turns it on** (Settings > Resources > Service Providers (Towing) > Settings). It records and suggests; it never texts or calls anyone by itself.
+
+## Dispatching a tow
+
+1. Open the incident (any type: a traffic stop, a crash, a disabled-vehicle assist, or a plain tow incident) and click **Tow / Roadside** in the header, or **New** on the **Towing / Roadside** card.
+2. Choose the **service needed**. If your agency has more than one rotation list for that service, choose the list (one is preselected).
+3. The **Who to call** table shows each company, its number and a status. The company marked **NEXT UP** is the one your rotation says to call. Press **Log call** (the button says **Call** when your agency has click-to-dial on). The call is recorded first and dialled second.
+4. When the company answers, press **Accepted** and enter the ETA in minutes, or **Declined**, **No answer**, **Unavailable**. Leave nothing without an outcome: a call with no outcome is flagged on the card.
+5. Fill in the **vehicle**, **plate** and, for a tow, the **destination**: the company's yard, a facility already on file (an impound lot, a repair shop), or **Enter an address**.
+6. **Read to the driver** gives you the pickup, vehicle, destination, callback number and reference; **Copy** copies it.
+
+If you pick a company that is **not** next, you are asked why (it is recorded, and it does not use up that company's turn). If the driver or owner asked for a particular company, tick **The driver or owner requested this company**. A company that is on no list can be typed in under **Another company**.
+
+If someone else called the same company a moment before you, you are told **who is next now**, nothing is recorded and nothing is dialled; press the button again.
+
+## Afterwards
+
+Click **Manage** on the card row to mark **On scene**, **Completed**, **Company withdrew** (call another company), **Gone on arrival** or **Cancel this dispatch**, to update the ETA, add a note, or correct the vehicle and destination. A mistake is fixed with **Void** (never an edit): you can void your own entry within 15 minutes; a supervisor can void any entry. Both lines stay in the history. Every step also appears in the incident log.
+
+## Permission summary
+
+| What | Permission code |
+|------|-----------------|
+| Use the Tow / Roadside button, record calls and outcomes | `action.dispatch_vendor` (Super Admin, Org Admin, Dispatcher) |
+| Manage companies and lists; void any entry; export the history (service types and settings: Super Admin only) | `action.manage_vendors` (Super Admin, Org Admin) |
+
+---
+
 # Appendix A: Keyboard Shortcuts
 
 TicketsCAD is designed for keyboard-first operation. Here is a complete list of keyboard shortcuts.
@@ -1867,6 +2031,7 @@ If the dashboard data is stale and the SSE indicator is red:
 1. Press **Ctrl+P** (Windows/Linux) or **Cmd+P** (Mac) to print any page.
 2. The navigation bar, toolbars, and interactive elements are automatically hidden when printing.
 3. For the dashboard and map views, use **Landscape** orientation for best results.
+4. If your administrator has set up an agency logo, it prints as a letterhead at the top of the page. It is loaded when the page opens, so wait for it to appear on screen before you press print.
 
 ## Something Else Is Not Working
 

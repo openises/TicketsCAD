@@ -19,6 +19,8 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/audit.php';
+// GH#142 (Phase 155) -- an organization's logos are removed with it.
+require_once __DIR__ . '/../inc/branding.php';
 
 $prevDisplay = ini_get('display_errors');
 ini_set('display_errors', '0');
@@ -116,6 +118,14 @@ function handlePost() {
     $raw  = file_get_contents('php://input');
     $input = json_decode($raw, true) ?: [];
     $action = $input['action'] ?? '';
+
+    // CSRF. EVERY action below changes state -- delete_org, save_org, the member
+    // assignments, and set_active_org (it rewrites the session's active organization,
+    // which scopes what the victim sees and writes next) -- and none of them checked
+    // a token: any page the signed-in admin visited could POST delete_org at this
+    // endpoint (the body is JSON read from php://input, which a cross-site form can
+    // send as text/plain). One guard before the first branch covers all of them.
+    csrf_require($input);
 
     // set_active_org — any authenticated user, but ONLY to an org already
     // in their own $_SESSION['user_orgs'] list (member_organizations
@@ -264,6 +274,15 @@ function handlePost() {
 
             db_query("DELETE FROM " . db_table('organizations') . " WHERE id = ?", [$id]);
             audit_log('config', 'delete', 'organization', $id, "Deleted organization '{$orgName}'");
+            // GH#142: branding_logos has no foreign key (org 0 means install-wide), so
+            // the organization's logo rows are cleaned up here, by code.
+            if (function_exists('branding_delete_for_org')) {
+                $logosRemoved = branding_delete_for_org((int) $id);
+                if ($logosRemoved > 0) {
+                    audit_log('config', 'delete', 'branding_logo', null,
+                        "Removed {$logosRemoved} logo(s) with deleted organization '{$orgName}'", ['org_id' => (int) $id]);
+                }
+            }
             json_response(['success' => true]);
         } catch (Exception $e) {
             json_error('Failed to delete organization: ' . $e->getMessage());

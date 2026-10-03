@@ -528,6 +528,14 @@ if ($method === 'POST') {
             json_error('Failed to send broadcast: ' . $e->getMessage(), 500);
         }
 
+        // Phase 155 (GH#144) — Notification Rules: a HAS broadcast was sent. After the
+        // broadcast itself succeeded, outside its try/catch: a rule problem must not
+        // turn a delivered broadcast into an error response. Never throws.
+        require_once __DIR__ . '/../inc/notification-hook.php';
+        notification_hook('has_broadcast', [
+            'message_subject' => $subject, 'message' => $body, 'user' => (string) $current_user,
+        ]);
+
         json_response([
             'ok'         => true,
             'message_id' => $messageId,

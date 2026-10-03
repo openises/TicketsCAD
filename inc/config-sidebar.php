@@ -159,6 +159,14 @@ $canCfg   = (!function_exists('rbac_can') || rbac_can('action.manage_config'));
         <?php _cfg_tab('map-defaults',      t('sidebar.tab.map_defaults',     'Map Settings'), 'leaflet center zoom basemap map default'); ?>
         <?php _cfg_tab('sound-alerts',      t('sidebar.tab.sound_alerts',     'Sound / Alerts'), 'audio sound alert tone beep chime'); ?>
         <?php _cfg_tab('tile-providers',    t('sidebar.tab.tile_providers',   'Tile Providers'), 'openstreetmap osm mapbox basemap map tiles source'); ?>
+        <?php // GH#142 (Phase 155) — agency logo and branding (standalone page).
+              // Gated on EITHER permission, same reasoning as the Public Board link
+              // below: an Org Admin holding only action.manage_branding_org still
+              // needs to reach the page to manage their own organization's logo.
+              // The page itself hides the install-wide panels from anyone without
+              // action.manage_branding.
+              if (!function_exists('rbac_can') || rbac_can('action.manage_branding') || rbac_can('action.manage_branding_org')) {
+                  _cfg_link('branding', 'branding-admin.php', t('sidebar.tab.branding', 'Agency Logo & Branding'), 'logo agency branding letterhead login report header image'); } ?>
     </ul>
 
     <!-- 6. Application — Geographic Data -->
@@ -232,6 +240,10 @@ $canCfg   = (!function_exists('rbac_can') || rbac_can('action.manage_config'));
         <?php _cfg_tab('facility-statuses', t('sidebar.tab.facility_statuses','Facility Statuses'), 'facility status open closed diversion'); ?>
         <?php _cfg_tab('facility-types',    t('sidebar.tab.facility_types', 'Facility Types'), 'facility types hospital shelter station'); ?>
         <?php _cfg_tab('vehicles',          t('sidebar.tab.vehicles',       'Vehicle Types'), 'vehicles apparatus fleet trucks'); ?>
+        <?php // GH#148 (Phase 155) — towing / roadside companies + rotation lists (standalone page).
+              // Gated on the page's OWN permission (the page and its API both name action.manage_vendors).
+              if (!function_exists('rbac_can') || rbac_can('action.manage_vendors')) {
+                  _cfg_link('service-providers-admin', 'service-providers-admin.php', t('sidebar.tab.service_providers', 'Service Providers (Towing)'), 'service providers towing tow roadside wrecker rotation list vendors lockout'); } ?>
         <?php _cfg_sub(t('sidebar.sub.address_book', 'Address Book')); ?>
         <?php _cfg_tab('constituents',      t('sidebar.tab.constituents',   'Constituents'), 'contacts address book people constituents'); ?>
     </ul>
@@ -245,7 +257,9 @@ $canCfg   = (!function_exists('rbac_can') || rbac_can('action.manage_config'));
     <ul class="config-tab-list" data-section="comms-integrations">
         <?php _cfg_sub(t('sidebar.sub.routing_policy', 'Routing & Policy')); ?>
         <?php _cfg_tab('message-routing',   t('sidebar.tab.message_routing',   'Message Routing'), 'routing rules bridge forward message'); ?>
-        <?php _cfg_tab('notifications',     t('sidebar.tab.notification_rules','Notification Rules'), 'notification rules alerts triggers'); ?>
+        <?php // Phase 155 (GH#144): authoring a rule is Super-Admin-only (action.manage_notification_rules, tier 2) - hide the tab from everyone else.
+              if (!function_exists('rbac_can') || rbac_can('action.manage_notification_rules')) {
+                  _cfg_tab('notifications', t('sidebar.tab.notification_rules','Notification Rules'), 'notification rules alerts triggers active911 email sms'); } ?>
         <?php _cfg_tab('std-messages',      t('sidebar.tab.std_messages',      'Standard Messages'), 'standard messages canned templates quick'); ?>
         <?php // Phase 112 — NWS weather alerts (standalone admin page).
               if (!function_exists('rbac_can') || rbac_can('action.manage_weather_alerts')) {
@@ -286,6 +300,10 @@ $canCfg   = (!function_exists('rbac_can') || rbac_can('action.manage_config'));
               // same domain as the Inbound Calls trunk admin above.
               if (!function_exists('rbac_can') || rbac_can('action.manage_calls')) {
                   _cfg_link('phone-extensions-admin', 'phone-extensions-admin.php', t('sidebar.tab.phone_extensions', 'Phone Extensions'), 'sip extension webrtc general direct station number phone widget'); } ?>
+        <?php // Phase 155 (GH#108 S5) -- the SIMULATED relay test (not AllStarLink).
+              // Install-wide and holds a secret: action.manage_config, never is_admin().
+              if (!function_exists('rbac_can') || rbac_can('action.manage_config')) {
+                  _cfg_link('allstar-relay-admin', 'allstar-relay-admin.php', t('sidebar.tab.allstar_relay', 'AllStar Relay (test)'), 'allstar relay test simulated mock asterisk ami incident page'); } ?>
 
         <?php _cfg_sub(t('sidebar.sub.voice', 'Voice')); ?>
         <?php // Phase 113 — pluggable text-to-speech engines (standalone page).
@@ -302,6 +320,11 @@ $canCfg   = (!function_exists('rbac_can') || rbac_can('action.manage_config'));
               // (same as matrix-admin.php above) rather than a new permission code.
               if (!function_exists('rbac_can') || rbac_can('action.manage_matrix')) {
                   _cfg_link('stream-channels-admin', 'stream-channels-admin.php', t('sidebar.tab.stream_channels', 'Stream Channels'), 'broadcastify liveatc noaa weather radio icecast public stream test'); } ?>
+        <?php // Phase 155 (GH#151/GH#129) -- digital voice bridge channels (DVMProject
+              // dvmbridge / USRP bridges). Its own tier-1 permission, not manage_matrix:
+              // creating one binds a UDP socket and joins a radio network's audio to the console.
+              if (!function_exists('rbac_can') || rbac_can('action.manage_voice_bridges')) {
+                  _cfg_link('voice-bridges-admin', 'voice-bridges-admin.php', t('sidebar.tab.voice_bridges', 'Digital Voice Bridges'), 'dvmproject dvmbridge dvm fne p25 dmr usrp dvswitch analog bridge allstar digital voice talkgroup'); } ?>
         <?php // Phase 152 -- the thin position layer's admin page (standalone,
               // matrix-admin.php's own shape). Gated on action.manage_positions.
               if (!function_exists('rbac_can') || rbac_can('action.manage_positions')) {

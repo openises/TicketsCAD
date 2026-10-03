@@ -37,6 +37,7 @@ header('Content-Type: application/json; charset=utf-8');
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
+require_once __DIR__ . '/../inc/audit.php';
 require_once __DIR__ . '/../inc/sse.php';
 require_once __DIR__ . '/../inc/broker.php';
 
@@ -199,15 +200,26 @@ foreach ($recipients as $r) {
 }
 
 // Audit log entry — captures the send regardless of per-recipient outcome.
-if (function_exists('audit_log')) {
-    try {
-        audit_log(
-            'messaging|send|' . $channel,
-            'Sent to ' . count($recipients) . ' recipient(s) via ' . $channel
-            . ($successCount === count($recipients) ? '' : " ({$successCount} ok, {$failCount} failed)"),
-            ['channel' => $channel, 'recipients' => $recipients, 'results' => $results]
-        );
-    } catch (Throwable $e) { /* non-fatal */ }
+//
+// Arguments are ($category, $activity, $targetType, $targetId, $summary, $details).
+// This call used to be audit_log('messaging|send|' . $channel, '<summary>', [details]):
+// three arguments in the shape of an older logger, so the details array landed in
+// the `?string $targetType` slot -- a TypeError that the catch below swallowed, so
+// not one send was ever audited. (tools/audit_log_arity.php now fails the suite on
+// that shape.) The audit failure is still non-fatal -- the message has already
+// gone -- but it is no longer SILENT: it is written to the error log.
+try {
+    audit_log(
+        'comms',
+        'send',
+        'messaging_channel',
+        $channel,
+        'Sent to ' . count($recipients) . ' recipient(s) via ' . $channel
+        . ($successCount === count($recipients) ? '' : " ({$successCount} ok, {$failCount} failed)"),
+        ['channel' => $channel, 'recipients' => $recipients, 'results' => $results]
+    );
+} catch (Throwable $e) {
+    error_log('[messaging-send] audit row could not be written: ' . $e->getMessage());
 }
 
 http_response_code($failCount === count($recipients) ? 500 : 200);

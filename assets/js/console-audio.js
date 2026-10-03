@@ -106,7 +106,9 @@
             // automatic on page load — the mic-permission prompt console-
             // mic.js's connect() triggers must only ever follow a genuine
             // user gesture), just with no singleton family for it below.
-            var isMatrixCapable = isRadio || meta.adapter === 'intercom_dd';
+            var isMatrixCapable = isRadio || meta.adapter === 'intercom_dd'
+                // Phase 155: digital voice bridges (listen-only matrix legs).
+                || !!(window.ConsoleMatrix && window.ConsoleMatrix.isMatrixBacked(meta.adapter));
             // Phase 152 — a channel with matrixAudio engaged gets its OWN
             // independent gain via the browser-leg route (below) and must
             // be EXCLUDED from the singleton radio-widget computation —

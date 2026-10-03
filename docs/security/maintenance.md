@@ -28,7 +28,8 @@ runs on, and a log of when it actually ran.
 | Cryptographic-currency review | **Annually**, or immediately on a NIST SP 800-131A/800-57 revision | Manual — check each algorithm/key-length in `architecture.md` §3 against the current SP revision | This document's maintenance log + `architecture.md` §3 updated in place |
 | Audit-log review | **Monthly** for a live production install (operator responsibility — see below) | Settings → Audit Log, or CSV export | Operator's own records — not this project's, since we don't operate installs |
 | Backup verification | **Automatic**, every scheduled backup (content-based) | `inc/backup.php`, systemd timer | Settings → System Health |
-| Backup **restore drill** | **Quarterly**, minimum | `tools/restore.php --drill`, or Settings → Backup / Maintenance | Health page + `backup_last_drill_status` |
+| Backup **restore drill** | **Quarterly**, minimum | `tools/restore.php --drill`, or Settings → Backup / Maintenance. Since Phase 155 it also recomputes every table's content fingerprint from the restored rows and fails on any difference (`tests/test_backup_value_fidelity.php`) | Health page + `backup_last_drill_status` |
+| CSRF coverage of `api/` + `audit_log()` arity/reachability | **Every push** (CI, and the pre-commit hook when a `.php` file is staged) | `tools/csrf_coverage_audit.php`, `tools/audit_log_arity.php` (each with its own test) | CI run status; both derive their subject from the code, so a new endpoint is checked the day it is written |
 | Key/credential rotation | **On suspected compromise**, immediately. Otherwise: SBOM signing key every **2 years**; per-install encryption keys, on operator judgement | See §5 below | This document's maintenance log, `CHANGELOG.md` for a public-facing rotation |
 | Pre-commit + CI gate review (are the gates still mirroring what CI actually checks?) | **Whenever a new CI gate is added** | `tools/install-git-hooks.sh`, `.github/workflows/qa.yml` | Immediate — the standing rule is a CI gate not mirrored locally gets added to the pre-commit hook in the same change |
 | This runbook itself | **Annually**, or when a practice listed here changes | — | Document version bump |
@@ -169,8 +170,11 @@ continuous, not scheduled separately.
 **Restore drills are different and must be run deliberately, quarterly at
 minimum**: `tools/restore.php --drill` (or Settings → Backup / Maintenance)
 spins up a genuinely separate scratch database, restores into it, compares row
-counts against the live system, and tears the scratch database down — proving
-the backup is *actually restorable*, not merely present. A backup that has
+counts against the live system, **recomputes each table's content fingerprint
+from the restored rows and compares it with the one the dump carries (Phase
+155 — a restore can apply cleanly and still change values, which counts alone
+cannot see)**, and tears the scratch database down — proving the backup is
+*actually restorable*, not merely present. A backup that has
 never been drilled is a hope, not a control.
 
 Run a drill:
@@ -189,6 +193,7 @@ Run a drill:
 |---|---|---|
 | Per-install RSA field-encryption key | Suspected compromise, or operator judgement | `docs/ENCRYPTION-KEY-LIFECYCLE.md` |
 | TFA encryption key (`../keys/tfa.key`) | Suspected compromise | Same doc |
+| Text-to-speech API keys (`keys/tts/`, only if a hosted engine is configured) | Suspected compromise, provider rotation, or staff change | Rotate at the provider (Deepgram, or the OpenAI-compatible service), then re-paste under Settings → Voice & Speech; the old file is replaced, and a copy left in the old in-tree location is removed |
 | SBOM Author Signature (project-level) | Every 2 years, or immediately on suspected compromise, or maintainer-role change | `SECURITY-POLICY.md` §5.3 |
 | DMR/Zello/Meshtastic bridge bearer tokens | Suspected compromise, or when rotating a shared secret after personnel change | Regenerate in TicketsCAD's channel settings; update the bridge's `.env`/config to match |
 | SonarQube `ci-scanner` analysis token | Yearly, or on compromise | SonarQube playbook (external to this repo) |

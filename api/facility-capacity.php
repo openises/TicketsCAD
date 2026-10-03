@@ -141,6 +141,9 @@ if ($method === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true) ?: [];
     $action = $input['action'] ?? '';
 
+    // CSRF: update, save_category and delete_category all change stored state.
+    csrf_require($input);
+
     // Update capacity
     if ($action === 'update') {
         $facId = intval($input['facility_id'] ?? 0);

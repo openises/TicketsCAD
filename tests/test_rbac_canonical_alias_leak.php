@@ -71,6 +71,11 @@ $excludedByRole = [
           'action.manage_audit_retention', 'action.manage_dispositions',
           'action.manage_public_board', 'action.manage_ics_form_types',
           'action.manage_org_routing', 'action.manage_org_routing_org',
+          // GH#142 (Phase 155): install-wide branding is Super-Admin-only.
+          // Placed BEFORE action.manage_org_relationships, which must stay LAST.
+          'action.manage_branding',
+          // Phase 155 (GH#144) - tier 2; BEFORE manage_org_relationships (it stays last).
+          'action.manage_notification_rules',
           'action.manage_org_relationships'],
     3 => ['action.manage_config', 'action.manage_roles', 'action.manage_users',
           'action.delete_incident', 'action.import_data', 'action.bulk_delete_members',
@@ -90,6 +95,21 @@ $excludedByRole = [
           // tests/test_org_relationships_rbac.php's own structural check
           // expects that code to be the LAST entry in this array.
           'action.manage_matrix',
+          // Phase 155 (2026-10-02) -- tier-1 digital voice bridge admin
+          // (GH#151/GH#129). Added to Dispatcher's NOT-IN list and both
+          // repair-DELETEs in sql/rbac.sql in the same change; here so a
+          // regression is caught like every prior leak. Still BEFORE
+          // action.manage_org_relationships, which must stay last.
+          'action.manage_voice_bridges',
+          // GH#142 (Phase 155): both branding codes are withheld from Dispatcher.
+          'action.manage_branding', 'action.manage_branding_org',
+          // GH#148 (Phase 155, 2026-10-02) -- tier-1 towing/roadside rotation-list
+          // management; withheld from Dispatcher in sql/rbac.sql (exclusion list
+          // + both repair DELETEs) and sql/run_00_rbac.php. Placed BEFORE
+          // action.manage_org_relationships (that entry must stay LAST).
+          'action.manage_vendors',
+          // Phase 155 (GH#144) - tier 2; BEFORE manage_org_relationships (it stays last).
+          'action.manage_notification_rules',
           'action.manage_org_relationships'],
 ];
 

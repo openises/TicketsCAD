@@ -1,0 +1,27 @@
+/*
+ * GH#148 (Phase 155) -- Towing / Roadside dispatch dialog and card.
+ * Theme-safe: Bootstrap CSS variables only, no hard-coded colours, so light and dark both work.
+ * Touch targets are at least 38px tall on coarse pointers.
+ */
+.vd-card-row:last-child { border-bottom: 0 !important; }
+
+#vendorDispatchModal .table > :not(caption) > * > * { padding-top: 0.35rem; padding-bottom: 0.35rem; }
+
+#vendorDispatchModal [data-dial] { font-weight: 600; white-space: nowrap; }
+
+#vendorDispatchModal #vdReadAloud {
+    background: var(--bs-tertiary-bg);
+    border-radius: var(--bs-border-radius);
+    padding: 0.5rem 0.75rem;
+}
+
+@media (pointer: coarse) {
+    #vendorDispatchModal .btn,
+    #vendorDispatchModal .form-select,
+    #vendorDispatchModal .form-control { min-height: 38px; }
+}
+
+/* Service Providers admin page (service-providers-admin.php) */
+.vp-tabs .nav-link { padding: 0.35rem 0.75rem; }
+.vp-order-locked { opacity: 0.65; }
+.vp-next-up { font-weight: 600; }

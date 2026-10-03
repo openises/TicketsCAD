@@ -105,7 +105,7 @@
 
     function provision(memberId, mode) {
         if (mode === 'file') {
-            var fileUrl = API + '?action=link&mode=file&member_id=' + memberId;
+            var fileUrl = API + '?action=link&mode=file&member_id=' + memberId + '&csrf_token=' + encodeURIComponent(csrf());
             var ifr = document.createElement('iframe');
             ifr.style.display = 'none';
             ifr.src = fileUrl;
@@ -139,7 +139,7 @@
             return;
         }
 
-        var url = API + '?action=link&member_id=' + memberId + '&mode=' + encodeURIComponent(mode);
+        var url = API + '?action=link&member_id=' + memberId + '&mode=' + encodeURIComponent(mode) + '&csrf_token=' + encodeURIComponent(csrf());
         fetch(url, { credentials: 'same-origin' })
             .then(function (r) { return r.json(); })
             .then(function (d) {

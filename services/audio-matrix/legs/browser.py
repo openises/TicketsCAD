@@ -199,8 +199,11 @@ def make_state_notify_fn(
     connect/disconnect or TX state over SSE, not just the one browser tab
     directly involved.
 
-    `event` is "channel_state" (state: "connected"/"disconnected") or
-    "tx_state" (state: "started"/"ended"). Best-effort: any failure
+    `event` is "channel_state" (state: "connected"/"disconnected"),
+    "tx_state" (state: "started"/"ended") or, added in Phase 155 for the
+    generic USRP leg (legs/usrp.py), "rx_state" (state: "started"/"ended" —
+    audio began/stopped arriving FROM a bridge on that channel).
+    Best-effort: any failure
     (network, non-2xx) is logged at debug and swallowed — a state-report
     call must never break the leg's own connect/disconnect/TX handling,
     mirroring fcc_gate.py's own fail-safe-for-the-caller posture (that one
@@ -212,6 +215,8 @@ def make_state_notify_fn(
         body = {"event": event, "channel_id": channel_id, "label": label}
         if event == "channel_state":
             body["state"] = state
+        elif event == "rx_state":
+            body["rx"] = state
         else:
             body["tx"] = state
         data = json.dumps(body).encode("utf-8")

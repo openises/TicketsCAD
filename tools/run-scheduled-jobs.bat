@@ -21,8 +21,8 @@ REM  "run once a day" -- that describes the RETENTION cadence, not how often
 REM  this script may safely call them. Both are idempotent cutoff-date
 REM  queries (SELECT eligible rows / DELETE WHERE created_at < cutoff):
 REM  calling them every minute costs one cheap query on the minutes nothing
-REM  is due and is otherwise correct. One task drives all eight ticks: fewer
-REM  moving parts than eight separate tasks, and they are always in step.
+REM  is due and is otherwise correct. One task drives all nine ticks: fewer
+REM  moving parts than nine separate tasks, and they are always in step.
 REM  (channel_receive_tick, added Phase 134, is a no-op sweep -- 0 channels
 REM  polled -- on any install that hasn't opted a channel in to inbound
 REM  polling, so scheduling it unconditionally alongside the others is safe
@@ -31,7 +31,11 @@ REM  the same shape: a no-op sweep -- 0 expired-but-open activations -- on
 REM  any install that has never used a standing cross-org relationship.
 REM  inbound_calls_tick, added Phase 149, is the same shape again: a no-op
 REM  sweep -- 0 wrapup folds, 0 stale claims -- on any install with zero
-REM  configured inbound-call trunks.)
+REM  configured inbound-call trunks. scheduled_incidents_tick, added Phase 155,
+REM  is the same shape once more: with no Scheduled incident due and no unit
+REM  reservation waiting it activates nothing and promotes nothing -- and it
+REM  is the job that makes a booked time arrive when nobody has a dispatch
+REM  board open.)
 REM
 REM  audit_log_purge_tick and message_log_purge_tick were missing from this
 REM  file entirely until 2026-08-14 -- each got a systemd timer the day it
@@ -99,7 +103,10 @@ if errorlevel 1 set "RC=1"
 "%TICKETSCAD_PHP%" tools\matrix_expiry_warning_tick.php >> "%LOGDIR%\matrix_expiry_warning_tick.log" 2>&1
 if errorlevel 1 set "RC=1"
 
-REM All eight jobs always run: a failure in one must not stop the others. The
+"%TICKETSCAD_PHP%" tools\scheduled_incidents_tick.php >> "%LOGDIR%\scheduled_incidents_tick.log" 2>&1
+if errorlevel 1 set "RC=1"
+
+REM All nine jobs always run: a failure in one must not stop the others. The
 REM exit code reports whether any of them failed, so Task Scheduler's
 REM "Last Run Result" is meaningful.
 exit /b %RC%

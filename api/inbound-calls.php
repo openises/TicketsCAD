@@ -18,6 +18,7 @@
  * GET  ?action=list_missed    — unreviewed abandoned calls
  * GET  ?action=detail&id=N    — one call's full record
  * POST ?action=claim          — {id}
+ * POST ?action=claim_by_provider — {provider_call_id}  (Phase 155: the browser phone's Answer)
  * POST ?action=release        — {id}
  * POST ?action=reassign       — {id}                (FR-18a quick reassignment)
  * POST ?action=heartbeat      — {id}
@@ -241,6 +242,46 @@ if ($method === 'POST') {
         json_response(['success' => true, 'call' => $result['call']]);
     }
 
+    // Phase 155 (GH#108 S4): ONE Answer. The browser phone's Answer button
+    // answers the audio; when the PBX tagged that INVITE with its Linkedid
+    // (X-Call-Linkedid in the reference dial plan) the widget also posts it
+    // here so the SAME click claims the call the Phase 149 banner shows and
+    // opens the New Incident form. Resolves the PBX's id to a row the caller
+    // may see and then runs the unchanged claim path (atomic UPDATE, audit,
+    // SSE) -- no second authorization mechanism. Nothing found is NOT an
+    // error: the audio never depends on the bridge being up.
+    if ($action === 'claim_by_provider') {
+        p149_require_csrf($input);
+        if (!rbac_can('action.claim_call')) json_error('Insufficient permissions: claim calls', 403);
+        $providerId = trim((string) ($input['provider_call_id'] ?? ''));
+        if ($providerId === '' || strlen($providerId) > 128 || !preg_match('/^[0-9A-Za-z._:\-]+\z/', $providerId)) {
+            json_error('provider_call_id required');
+        }
+        $call = null;
+        foreach (inbound_calls_find_by_provider_any_trunk($providerId) as $row) {
+            if (p149_user_can_see_call($row)) { $call = $row; break; }
+        }
+        if (!$call) {
+            json_response(['success' => false, 'reason' => 'not_found']);
+        }
+        $callId = (int) $call['id'];
+        if ($call['state'] === 'claimed' && (int) $call['claimed_by'] === $userId) {
+            // The banner's Answer got here first -- already this user's.
+            json_response(['success' => false, 'reason' => 'already_yours', 'call_id' => $callId]);
+        }
+        $result = inbound_call_claim($callId, $userId, $userName);
+        if (!$result['ok']) {
+            json_response([
+                'success'          => false,
+                'reason'           => $result['reason'],
+                'claimed_by_name'  => $result['claimed_by_name'] ?? null,
+                'state'            => $result['state'] ?? null,
+                'call_id'          => $callId,
+            ]);
+        }
+        json_response(['success' => true, 'call_id' => $callId, 'call' => $result['call']]);
+    }
+
     if ($action === 'release') {
         p149_require_csrf($input);
         if (!rbac_can('action.claim_call')) json_error('Insufficient permissions', 403);
@@ -280,6 +321,10 @@ if ($method === 'POST') {
     }
 
     if ($action === 'heartbeat') {
+        // CSRF like every other action here (call-alert.js's postAction() sends the token for all of
+        // them). A heartbeat keeps the caller's claim on a call alive, so a forged one could hold a
+        // call open for a dispatcher who has walked away.
+        p149_require_csrf($input);
         if (!rbac_can('action.claim_call')) json_error('Insufficient permissions', 403);
         if ($id <= 0) json_error('id required');
         $result = inbound_call_heartbeat($id, $userId);

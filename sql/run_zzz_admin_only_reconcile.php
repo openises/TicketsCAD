@@ -70,7 +70,9 @@ try {
         'action.manage_audit_retention', 'action.manage_dispositions',
         'action.manage_public_board', 'action.manage_ics_form_types',
         'action.manage_org_routing', 'action.manage_org_routing_org',
-        'action.manage_org_relationships'
+        'action.manage_org_relationships',
+        'action.manage_branding',
+        'action.manage_notification_rules'
     ) AND admin_only < 2")->rowCount();
 
     $tier1 = db_query("UPDATE `{$prefix}permissions` SET admin_only = 1 WHERE code IN (
@@ -78,7 +80,10 @@ try {
         'console.design', 'action.intercom_unlock', 'action.view_reports',
         'action.delete_ics_form', 'action.delete_equipment_log',
         'action.manage_public_board_org', 'action.manage_ics_form_types_org',
-        'action.manage_matrix', 'action.manage_calls'
+        'action.manage_matrix', 'action.manage_calls',
+        'action.manage_voice_bridges',
+        'action.manage_branding_org',
+        'action.manage_vendors'
     ) AND admin_only < 1")->rowCount();
 
     $alias1 = db_query("UPDATE `{$prefix}permissions` canon

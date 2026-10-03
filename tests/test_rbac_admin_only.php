@@ -88,6 +88,7 @@ $tier2 = [
     'action.manage_public_board', 'action.manage_ics_form_types',
     'action.manage_org_routing', 'action.manage_org_routing_org',
     'action.manage_org_relationships',
+    'action.manage_branding',
 ];
 $tier1 = [
     'action.manage_users', 'action.delete_incident', 'action.import_data',
@@ -95,6 +96,9 @@ $tier1 = [
     'action.delete_ics_form', 'action.delete_equipment_log',
     'action.manage_public_board_org', 'action.manage_ics_form_types_org',
     'action.manage_matrix', 'action.manage_calls',
+    'action.manage_voice_bridges',   // Phase 155 (GH#151/GH#129)
+    'action.manage_branding_org',
+    'action.manage_vendors',         // Phase 155 (GH#148)
 ];
 $tier0Reserved = ['screen.facility_portal', 'action.facility_self_report'];
 

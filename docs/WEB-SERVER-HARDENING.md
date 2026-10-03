@@ -544,6 +544,18 @@ differently, so TicketsCAD does not rely on them alone:
   directory whenever it creates or touches it, wherever that directory is. Those
   are the same Request Filtering rules described above. They are a mitigation,
   not a reason to leave a private key in a published folder.
+* **Text-to-speech API keys live there too, in `keys/tts`.** Until recently they were written to `<install>/keys/tts` — inside the web
+  root. Apache was covered by
+  the root `.htaccess`; IIS reads no `.htaccess` and a `.key` file was refused only
+  because that extension has no MIME mapping; nginx was covered only if you had
+  installed the include. They now follow the keys directory (`%ProgramData%\TicketsCAD\keys\tts`
+  on Windows, `../keys/tts` elsewhere and in Docker), with one deliberate
+  difference: unlike the encryption keys they do **not** follow an old, published
+  keys directory, because an API key can be re-pasted in seconds. Set
+  `define('TTS_KEYS_DIR', '/your/path');` in `config.php` to put them somewhere else.
+  `php sql/run_migrations.php` (or `php sql/run_tts_keys_relocate.php`) moves any
+  that are still in the old place — copy, verify, delete — and the Status page's
+  "Encryption key location" row names any that remain.
 * **The Status page probes itself** and says so loudly if any of the three paths
   is still reachable. It also writes a small random file into the backup
   directory and asks this host for it back on the **default** ports — the only

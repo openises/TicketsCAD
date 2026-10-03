@@ -516,12 +516,35 @@ elseif ($action === 'close') {
 
     // Cascade: close all linked open tickets
     //
+    // Phase 155 (GH#147 / Decision 5): each linked ticket now goes through the
+    // STANDARD close writer, incident_update_status_internal(), exactly as if a
+    // dispatcher had pressed Close on it. This used to be a raw
+    // `UPDATE ticket SET status = 1` that (a) cleared nothing -- every unit
+    // stayed assigned to a ticket that was now closed, the very stranded-units
+    // state sql/run_repair_stranded_assigns.php exists to heal -- and (b) fired
+    // no webhook, no push and no audit row per ticket, so an RMS subscribed to
+    // incident.closed / incident.status_changed never learned that a whole
+    // event's worth of incidents had ended.
+    //
+    // 'skip_disposition_check' is set for the same reason inc/auto_close.php
+    // sets it: no human is choosing a disposition per ticket in a cascade, so
+    // turning disposition_required_on_close on must not start silently
+    // failing the event close.
+    //
+    // Org scoping: the writer does not check it (callers do), and a cascade
+    // that now CLEARS UNITS must not reach into another organization's
+    // tickets. A linked ticket the caller may not mutate (org_can_mutate_ticket)
+    // is left open and counted in the response -- never closed silently.
+    //
     // Soft-delete sweep (issue #25 follow-up) — a soft-deleted child
     // ticket must not be mutated by this cascade (it would flip its
     // status even though it's supposed to be untouched pending recovery
     // from the wastebasket).
     $closed_count = 0;
+    $left_open_count = 0;
     try {
+        require_once __DIR__ . '/../inc/incident-write.php';
+        require_once __DIR__ . '/../inc/sse.php';
         $linked = db_fetch_all(
             "SELECT l.`ticket_id`, t.`status`
                FROM `{$prefix}newui_major_incident_links` l
@@ -532,13 +555,25 @@ elseif ($action === 'close') {
         );
 
         foreach ($linked as $lt) {
+            $lTid = (int) $lt['ticket_id'];
             try {
-                db_query(
-                    "UPDATE `{$prefix}ticket`
-                        SET `status` = 1, `problemend` = ?, `updated` = ?
-                      WHERE `id` = ? AND `status` = 2",
-                    [$now, $now, (int) $lt['ticket_id']]
-                );
+                if (!org_can_mutate_ticket($lTid)) {
+                    $left_open_count++;
+                    continue;
+                }
+                $res = incident_update_status_internal($lTid, 1, (int) $current_user_id, [
+                    'skip_disposition_check' => true,
+                    'source'                 => 'major_incident_close',
+                ]);
+                if (!empty($res['errors']) || empty($res['status_changed'])) {
+                    // Closed by someone else a moment ago (noop), or the writer
+                    // refused. Either way THIS cascade did not close it.
+                    if (!empty($res['errors'])) {
+                        error_log('[major-incidents] cascade close #' . $lTid . ': ' . implode(',', $res['errors']));
+                        $left_open_count++;
+                    }
+                    continue;
+                }
                 $closed_count++;
 
                 // Log action on each closed ticket (best-effort)
@@ -548,7 +583,7 @@ elseif ($action === 'close') {
                             (`ticket_id`, `date`, `description`, `user`, `action_type`, `updated`)
                          VALUES (?, ?, ?, ?, 10, ?)",
                         [
-                            (int) $lt['ticket_id'],
+                            $lTid,
                             $now,
                             'Closed via major incident #' . $major_id . ' (' . $major['name'] . ')',
                             $current_user_id,
@@ -558,8 +593,44 @@ elseif ($action === 'close') {
                 } catch (Exception $e) {
                     // non-fatal
                 }
-            } catch (Exception $e) {
+
+                // The same standard close announcements the UI's Close button
+                // produces: the legacy close audit row (-> incident.closed),
+                // the SSE event the boards listen for, and notification rules.
+                // (incident.status_changed was already written by the writer.)
+                $lNum = incnum_display($lTid);
+                audit_log('incident', 'close', 'ticket', $lTid,
+                    "Status changed on incident {$lNum}: Open → Closed (major incident #{$major_id})",
+                    [
+                        'old_status'       => 2,
+                        'new_status'       => 1,
+                        'cleared_assigns'  => (int) ($res['cleared_assigns'] ?? 0),
+                        'reset_responders' => (int) ($res['reset_responders'] ?? 0),
+                        'major_incident_id' => $major_id,
+                    ]);
+                try {
+                    sse_publish_for_incident('incident:close',
+                        ['ticket_id' => $lTid, 'incident_number' => $lNum,
+                         'new_status' => 1, 'status_label' => 'Closed'],
+                        $lTid);
+                } catch (Throwable $sseE) { /* non-fatal */ }
+                try {
+                    require_once __DIR__ . '/../inc/notification-engine.php';
+                    notification_check('incident_close', [
+                        'ticket_id'        => $lTid,
+                        'scope'            => '',
+                        'severity'         => 0,
+                        'old_status'       => 2,
+                        'new_status'       => 1,
+                        'old_status_label' => 'Open',
+                        'new_status_label' => 'Closed',
+                    ]);
+                } catch (Throwable $nE) {
+                    error_log('[major-incidents] notification on cascade close #' . $lTid . ': ' . $nE->getMessage());
+                }
+            } catch (Throwable $e) {
                 // non-fatal — continue closing others
+                error_log('[major-incidents] cascade close #' . $lTid . ': ' . $e->getMessage());
             }
         }
     } catch (Exception $e) {
@@ -586,13 +657,18 @@ elseif ($action === 'close') {
     audit_log('incident', 'update', 'major_incident', $major_id,
         "Closed major incident #{$major_id} ({$major['name']}), cascade-closed {$closed_count} tickets", [
         'closed_tickets' => $closed_count,
+        'left_open_tickets' => $left_open_count,
     ], AUDIT_MEDIUM);
 
     ini_set('display_errors', $prevDisplay);
     json_response([
         'success'        => true,
-        'message'        => "Major incident #{$major_id} closed. {$closed_count} linked ticket(s) also closed.",
+        'message'        => "Major incident #{$major_id} closed. {$closed_count} linked ticket(s) also closed."
+            . ($left_open_count > 0
+                ? " {$left_open_count} linked ticket(s) were left open (they belong to an organization you cannot change, or could not be closed)."
+                : ''),
         'closed_tickets' => $closed_count,
+        'left_open_tickets' => $left_open_count,
     ]);
 }
 

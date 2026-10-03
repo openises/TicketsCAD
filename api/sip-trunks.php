@@ -9,6 +9,15 @@
  * POST   action=trunk_toggle         — enable / disable
  * POST   action=trunk_delete         — hard delete (a trunk with no calls is a pure config row)
  * POST   action=trunk_rotate_token   — mint a new bearer token (returned ONCE)
+ * POST   action=trunk_test_call      — ring ONE clearly-labelled TEST call through this
+ *                                      trunk so an admin can prove the TicketsCAD half
+ *                                      (banner, tone, SSE) works before the PBX is wired
+ * POST   action=trunk_test_call_end  — end that test call and mark it reviewed so it
+ *                                      never lingers in anyone's Missed Calls panel
+ *
+ * Phase 155: the trunks list also reports each trunk's bridge connection state
+ * (never / connected / silent), derived from the heartbeat the bridge POSTs to
+ * api/sip-ingest.php, plus the time of the last real call.
  *
  * All actions gated on action.manage_calls (plan.md §8). Every mutation is
  * audit-logged per this project's standing UI-changes-state rule.
@@ -23,11 +32,65 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/audit.php';
 require_once __DIR__ . '/../inc/sip_token.php';
+require_once __DIR__ . '/../inc/sse.php';
+require_once __DIR__ . '/../inc/inbound-calls.php';
 ini_set('display_errors', '0');
 
 $prefix = $GLOBALS['db_prefix'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $action = $_GET['action'] ?? '';
+
+/**
+ * Trunk rows for the admin page, never including the token. Phase 155 adds
+ * the bridge heartbeat (connection_state / heartbeat_age_seconds /
+ * bridge_info) and the last real call time. The age is computed by the
+ * DATABASE (TIMESTAMPDIFF against its own NOW()) so a PHP-vs-DB clock offset
+ * can never make a live bridge look dead. Falls back to the pre-Phase-155
+ * column set on an install that has not yet run
+ * sql/run_phase155_pbx_trunk_heartbeat.php, so the page still loads.
+ */
+function st_fetch_trunks(?int $onlyId = null): array
+{
+    global $prefix;
+    $where  = $onlyId !== null ? 'WHERE t.id = ?' : '';
+    $params = $onlyId !== null ? [$onlyId] : [];
+    $supported = true;
+    try {
+        $rows = db_fetch_all(
+            "SELECT t.id, t.label, t.org_id, t.mute_bypass_enabled, t.wrapup_seconds,
+                    t.reassign_grace_seconds, t.enabled, t.created_at, t.updated_at,
+                    (t.`bearer_token` IS NOT NULL AND t.`bearer_token` <> '') AS has_token,
+                    t.bridge_info,
+                    t.last_heartbeat_at,
+                    TIMESTAMPDIFF(SECOND, t.last_heartbeat_at, NOW()) AS heartbeat_age_seconds,
+                    (SELECT MAX(c.ringing_at) FROM `{$prefix}inbound_calls` c WHERE c.trunk_id = t.id) AS last_call_at
+               FROM `{$prefix}pbx_trunks` t
+               {$where}
+              ORDER BY t.enabled DESC, t.label",
+            $params
+        );
+    } catch (Exception $e) {
+        $supported = false;
+        $rows = db_fetch_all(
+            "SELECT t.id, t.label, t.org_id, t.mute_bypass_enabled, t.wrapup_seconds,
+                    t.reassign_grace_seconds, t.enabled, t.created_at, t.updated_at,
+                    (t.`bearer_token` IS NOT NULL AND t.`bearer_token` <> '') AS has_token
+               FROM `{$prefix}pbx_trunks` t
+               {$where}
+              ORDER BY t.enabled DESC, t.label",
+            $params
+        );
+    }
+    foreach ($rows as &$r) {
+        $r['heartbeat_supported'] = $supported;
+        $age = (isset($r['heartbeat_age_seconds']) && $r['heartbeat_age_seconds'] !== null)
+            ? (int) $r['heartbeat_age_seconds'] : null;
+        $r['heartbeat_age_seconds'] = $age;
+        $r['connection_state'] = inbound_trunk_connection_state($age);
+    }
+    unset($r);
+    return $rows;
+}
 
 function st_require_perm(): void
 {
@@ -60,13 +123,7 @@ if ($method === 'GET') {
 
     if ($action === 'trunks') {
         try {
-            $rows = db_fetch_all(
-                "SELECT id, label, org_id, mute_bypass_enabled, wrapup_seconds,
-                        reassign_grace_seconds, enabled, created_at, updated_at,
-                        (`bearer_token` IS NOT NULL AND `bearer_token` <> '') AS has_token
-                   FROM `{$prefix}pbx_trunks`
-                  ORDER BY enabled DESC, label"
-            );
+            $rows = st_fetch_trunks();
             json_response(['trunks' => $rows]);
         } catch (Exception $e) {
             error_log('[sip-trunks trunks] ' . $e->getMessage());
@@ -78,14 +135,9 @@ if ($method === 'GET') {
         $id = (int) ($_GET['id'] ?? 0);
         if ($id <= 0) json_error('id required');
         try {
-            $row = db_fetch_one(
-                "SELECT id, label, org_id, mute_bypass_enabled, wrapup_seconds,
-                        reassign_grace_seconds, enabled, created_at, updated_at
-                   FROM `{$prefix}pbx_trunks` WHERE id = ?",
-                [$id]
-            );
-            if (!$row) json_error('not found', 404);
-            json_response(['trunk' => $row]);
+            $rows = st_fetch_trunks($id);
+            if (!$rows) json_error('not found', 404);
+            json_response(['trunk' => $rows[0]]);
         } catch (Exception $e) {
             json_error('query failed', 500);
         }
@@ -219,6 +271,78 @@ if ($method === 'POST') {
             ]);
         } catch (Exception $e) {
             json_error('rotate failed', 500);
+        }
+    }
+
+    if ($action === 'trunk_test_call') {
+        st_csrf_check($input);
+        $id = (int) ($input['id'] ?? 0);
+        if ($id <= 0) json_error('id required');
+        $trunk = db_fetch_one("SELECT * FROM `{$prefix}pbx_trunks` WHERE id = ?", [$id]);
+        if (!$trunk) json_error('not found', 404);
+        if ((int) $trunk['enabled'] !== 1) {
+            json_error('Enable this trunk first -- a disabled trunk drops every call, including a test.', 409);
+        }
+        // The banner shows caller_number, so it says TEST CALL where a number
+        // would be -- a dispatcher cannot mistake it for a caller. It has no
+        // digits, and _p153_resolve_constituent() ignores anything under four
+        // digits, so no Constituents row is created for a call that never
+        // happened.
+        $testCallId = 'test-' . bin2hex(random_bytes(4));
+        try {
+            $res = inbound_calls_ingest_event($trunk, [
+                'event'         => 'ringing',
+                'call_id'       => $testCallId,
+                'caller_number' => 'TEST CALL',
+                'caller_name'   => 'TEST CALL - setup check',
+                'called_number' => 'TEST',
+                'event_ts'      => gmdate('Y-m-d\TH:i:s\Z'),
+            ]);
+            if (empty($res['ok'])) {
+                json_error('test call failed: ' . ($res['reason'] ?? 'unknown'), 500);
+            }
+            audit_log('comms', 'test_call', 'pbx_trunk', $id, "Rang a TEST call through inbound-call trunk '{$trunk['label']}'");
+            json_response(['success' => true, 'provider_call_id' => $testCallId]);
+        } catch (Exception $e) {
+            error_log('[sip-trunks trunk_test_call] ' . $e->getMessage());
+            json_error('test call failed', 500);
+        }
+    }
+
+    if ($action === 'trunk_test_call_end') {
+        st_csrf_check($input);
+        $id = (int) ($input['id'] ?? 0);
+        $providerCallId = (string) ($input['provider_call_id'] ?? '');
+        // Only ever act on a call THIS endpoint created -- never on a real one.
+        if ($id <= 0 || strpos($providerCallId, 'test-') !== 0) json_error('id and a test call id are required');
+        $trunk = db_fetch_one("SELECT * FROM `{$prefix}pbx_trunks` WHERE id = ?", [$id]);
+        if (!$trunk) json_error('not found', 404);
+        try {
+            // End it as `ended`, not `abandoned`: abandoned would publish
+            // call:abandoned, which every open browser files under Missed
+            // Calls (and keeps there until its next refresh) -- a test must
+            // leave no trace on anyone's screen. The row is also marked
+            // reviewed so the server-side Missed list never offers it either.
+            $call = inbound_call_find_by_provider((int) $trunk['id'], $providerCallId);
+            if ($call && $call['state'] === 'ringing') {
+                $uid = (int) ($_SESSION['user_id'] ?? 0);
+                db_query(
+                    "UPDATE `{$prefix}inbound_calls`
+                        SET `state` = 'ended', `ended_at` = NOW(), `last_event_at` = NOW(),
+                            `reviewed_at` = NOW(), `reviewed_by` = ?
+                      WHERE `id` = ? AND `state` = 'ringing'",
+                    [$uid, (int) $call['id']]
+                );
+                inbound_call_audit((int) $call['id'], 'ended', $uid, (string) ($_SESSION['user'] ?? 'admin'), 'test call finished');
+                $updated = inbound_call_get((int) $call['id']);
+                if ($updated) {
+                    _p149_sse((int) $call['id'], 'call:ended', inbound_call_broadcast_payload($updated, $trunk),
+                        $updated['org_id'] !== null ? (int) $updated['org_id'] : null);
+                }
+            }
+            json_response(['success' => true]);
+        } catch (Exception $e) {
+            json_error('could not end test call', 500);
         }
     }
 

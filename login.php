@@ -27,6 +27,10 @@ require_once __DIR__ . '/inc/login-security.php';
 require_once __DIR__ . '/inc/session-manager.php';
 require_once __DIR__ . '/inc/tfa.php';
 require_once __DIR__ . '/inc/i18n.php';
+// GH#142 (Phase 155) -- configurable agency logo on the login card (falls back to
+// the Bootstrap glyph below whenever none is set, the setting is off, or the
+// branding tables are absent).
+require_once __DIR__ . '/inc/branding.php';
 // Phase 104e (a beta tester GH #6) — pick the mobile session profile if
 // the client is coming from a mobile PWA (either cookie is set or
 // the URL / referer indicates mobile.php was involved). Must fire
@@ -781,6 +785,8 @@ if ($rbacUnmigrated) {
 
 $csrf = csrf_token();
 $isTrustedNetwork = tfa_check_trusted_network();
+// Install-wide logo only: nothing is known about the visitor before sign-in.
+$brandLoginLogo = branding_login_logo_html();
 ?>
 <!DOCTYPE html>
 <html lang="<?php echo e(i18n_lang()); ?>" data-bs-theme="light">
@@ -800,6 +806,9 @@ $isTrustedNetwork = tfa_check_trusted_network();
     <link rel="apple-touch-icon" href="assets/logo-light.png">
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap.min.css">
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap-icons.min.css">
+<?php if ($brandLoginLogo !== ''): ?>
+    <link rel="stylesheet" href="assets/css/branding.css?v=<?php echo is_file(__DIR__ . '/assets/css/branding.css') ? filemtime(__DIR__ . '/assets/css/branding.css') : newui_version(); ?>">
+<?php endif; ?>
     <style>
         body {
             min-height: 100vh;
@@ -869,7 +878,9 @@ $isTrustedNetwork = tfa_check_trusted_network();
             <div class="alert alert-light border py-2 mb-3 small text-center" role="note" id="loginBannerText"><?php echo e($loginBannerText); ?></div>
             <?php endif; ?>
             <div class="text-center mb-4">
+                <?php if ($brandLoginLogo !== ''): echo $brandLoginLogo; else: ?>
                 <i class="bi bi-broadcast-pin fs-1 text-primary"></i>
+                <?php endif; ?>
                 <h4 class="mt-2"><?php echo e(t('login.title', 'Tickets NewUI')); ?></h4>
                 <small class="text-body-secondary">v<?php echo e(newui_version()); ?></small>
             </div>

@@ -154,3 +154,37 @@
     border-right: 2px solid var(--bs-border-color);
     border-bottom: 2px solid var(--bs-border-color);
 }
+
+/* Phase 155 (GH#108 S1) -- on a page where this widget deliberately does not
+   register, or while another window of the browser holds the registration. */
+.phone-elsewhere-panel {
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--bs-secondary-color);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+/* The standalone Phone window (phone.php): the widget IS the page. */
+.phone-widget.phone-standalone {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    height: auto;
+    min-width: 0;
+    min-height: 0;
+    max-width: none;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+.phone-widget.phone-standalone .phone-header { cursor: default; }
+.phone-widget.phone-standalone .phone-header-actions,
+.phone-widget.phone-standalone .phone-resize-handle { display: none; }

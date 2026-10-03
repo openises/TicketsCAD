@@ -239,6 +239,23 @@ function sched_job_registry(): array {
             'command'    => $win ? 'php tools\\inbound_calls_tick.php' : 'php tools/inbound_calls_tick.php',
             'purpose'    => 'Folds wrapped-up calls to ended once wrapup_seconds elapses, and flags claims whose heartbeat has lapsed as stale',
         ],
+        // Phase 155 (2026-10, GH#141 + GH#147) -- scheduled-incident
+        // activation. 60s: a booked incident should become Open (and any unit
+        // reserved for it be dispatched) within about a minute of its booked
+        // time, with or without anybody watching a dispatch board. Until this
+        // existed the flip happened only as a side effect of someone loading
+        // the incident list. It is still ALSO driven from that lazy hook, which
+        // is why a late tick fails visible (a "DUE -- not yet dispatched"
+        // reservation, a red Status row) rather than silently wrong.
+        'scheduled_incidents_tick' => [
+            'label'      => 'Scheduled-incident activation',
+            'interval_s' => 60,
+            'grace_mult' => 15,
+            'unit'       => $win ? 'TicketsCAD Background Jobs' : 'ticketscad-scheduled-incidents.timer',
+            'unit_kind'  => $win ? 'schtasks' : 'systemd',
+            'command'    => $win ? 'php tools\\scheduled_incidents_tick.php' : 'php tools/scheduled_incidents_tick.php',
+            'purpose'    => 'Turns Scheduled incidents Open at their booked time, and dispatches units reserved for them',
+        ],
         // Phase 152 (2026-09-08) -- Communications Console patch-rail
         // expiry warning. Registered after a net-control persona review
         // found this tick had NEVER been wired in (tools/matrix_expiry_
@@ -522,6 +539,48 @@ function sched_job_required(string $jobKey): array {
         // resolves against the sidebar's own registered labels.
         return ['required' => false, 'why' => 'No inbound-call trunks are configured. '
             . "Configure one at Settings \u{2192} Communications & Integrations \u{2192} Inbound Calls (SIP/PBX)."];
+    }
+
+    if ($jobKey === 'scheduled_incidents_tick') {
+        // Same "shipped default configuration is not evidence of use"
+        // discipline as every job above. A fresh install has no Scheduled
+        // incidents and no reservations, so this job is not required there --
+        // and it must not turn red for an incident booked months away either.
+        // It becomes required the moment something is ABOUT to need it: a
+        // Scheduled incident whose booked time is already past or within the
+        // next 24 hours, or a unit reservation still waiting to be dispatched.
+        try {
+            $n = (int) db_fetch_value(
+                "SELECT COUNT(*) FROM `{$prefix}ticket`
+                  WHERE `status` = 3 AND `booked_date` IS NOT NULL
+                    AND `booked_date` <= DATE_ADD(NOW(), INTERVAL 24 HOUR)
+                    AND (`deleted_at` IS NULL OR `deleted_at` = '0000-00-00 00:00:00')");
+            if ($n > 0) {
+                return ['required' => true, 'why' => "{$n} Scheduled incident(s) are booked within the next 24 hours (or already due)"];
+            }
+        } catch (Exception $e) {}
+        // GH#141: a unit RESERVED for a Scheduled incident is dispatched by this
+        // job (at the booked time, or the lead time before it) -- so a pending
+        // reservation makes it required even if the incident itself is further out
+        // than 24 hours (a long lead time dispatches the unit early).
+        try {
+            $exists = (int) db_fetch_value(
+                "SELECT COUNT(*) FROM information_schema.TABLES
+                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
+                [$prefix . 'assign_reservations']);
+            if ($exists === 1) {
+                $r = (int) db_fetch_value(
+                    "SELECT COUNT(*) FROM `{$prefix}assign_reservations` r
+                       JOIN `{$prefix}ticket` t ON t.`id` = r.`ticket_id`
+                      WHERE r.`state` = 'pending'
+                        AND (t.`deleted_at` IS NULL OR t.`deleted_at` = '0000-00-00 00:00:00')
+                        AND t.`status` IN (2, 3)");
+                if ($r > 0) {
+                    return ['required' => true, 'why' => "{$r} unit reservation(s) are waiting to be dispatched"];
+                }
+            }
+        } catch (Exception $e) {}
+        return ['required' => false, 'why' => 'No Scheduled incident is booked within the next 24 hours and no unit reservation is waiting'];
     }
 
     if ($jobKey === 'matrix_expiry_warning') {

@@ -105,7 +105,7 @@ and image rebuilds:
 | `app_tile_cache` | `/var/www/tile-cache`  | Basemap tiles fetched by `api/tile-proxy.php`. **Outside `/var/www/html`** — this cache records which map areas the install has viewed, which inside the webroot would be readable without logging in. Regenerable, but keep it on a volume: a rebuild that empties it makes the install re-fetch every tile at once, which is the load spike tile providers ask us not to cause. |
 | `app_geocode_cache` | `/var/www/geocode-cache` | Address-lookup cache (`inc/geocode.php`). **Outside `/var/www/html`**, same reasoning as `app_tile_cache`; regenerable but worth keeping on a volume so a rebuild doesn't re-hit the geocoding provider for every cached address at once. |
 | `app_backups` | `/var/www/backups`        | Archives written by `tools/backup_run.php` and Settings → Backup / Maintenance. **Outside `/var/www/html`** — that is the Apache DocumentRoot, and an archive inside it was downloadable by anyone who guessed the filename (v4.2.3). |
-| `app_keys`    | `/var/www/keys`           | 2FA + RSA field-encryption keys (kept out of the webroot).|
+| `app_keys`    | `/var/www/keys`           | 2FA + RSA field-encryption keys (kept out of the webroot), and — in its `tts/` subdirectory — the text-to-speech API keys saved under Settings → Voice & Speech. |
 | `app_zello_audio` | `/var/www/zello-audio` | Zello voice-message recordings (GHSA-x9x6-w4fg-pmcc). **Outside `/var/www/html`**, mounted on BOTH the `app` service and the `zello-proxy` service (the proxy is what actually writes recordings). Irreplaceable, not regenerable — this is precious data, not a cache. |
 
 **Anything NOT on this list lives in the container's writable layer and is
@@ -140,6 +140,26 @@ docker compose exec app chown -R www-data:www-data /var/www/backups
 
 If `docker compose cp` reports the path does not exist, you had no on-container
 backups and there is nothing to migrate — just rebuild.
+
+### One-time step if you saved text-to-speech API keys on an older version
+
+In v4.2.27 and earlier, the API keys you saved under **Settings → Voice & Speech**
+(Deepgram, an OpenAI-compatible server) were written to
+`/var/www/html/keys/tts` — inside the container's writable layer, so the update
+command above destroyed them (the engine then quietly fell back to Piper). They
+now live in `/var/www/keys/tts`, on the `app_keys` volume. If you have saved such
+a key and are still on the old container, rescue it before the first rebuild:
+
+```bash
+docker compose cp app:/var/www/html/keys/tts ./tts-keys-rescued   # old path
+git pull && docker compose up -d --build
+docker compose cp ./tts-keys-rescued/. app:/var/www/keys/tts
+docker compose exec app chown -R www-data:www-data /var/www/keys/tts
+```
+
+If `docker compose cp` reports the path does not exist you never saved a key —
+nothing to do. If the container was already rebuilt, just paste the key again
+under Voice & Speech; it is stored in the right place now.
 
 ### Getting a backup off the box
 

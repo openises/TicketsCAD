@@ -108,11 +108,11 @@ function _telegram_send(array $message) {
         CURLOPT_FOLLOWLOCATION  => false,
         CURLOPT_PROTOCOLS       => CURLPROTO_HTTPS,
         CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
-        CURLOPT_CONNECTTIMEOUT  => 5,
+        CURLOPT_CONNECTTIMEOUT  => function_exists('notify_adapter_timeout') ? notify_adapter_timeout(5) : 5,
         // Sends are synchronous inside broker_send(), so a route fanning out
         // to Telegram adds up to this many seconds to the request that
-        // triggered it.
-        CURLOPT_TIMEOUT         => 10,
+        // triggered it (clamped to the caller's budget when one is in force).
+        CURLOPT_TIMEOUT         => function_exists('notify_adapter_timeout') ? notify_adapter_timeout(10) : 10,
     ]);
 
     $resp = curl_exec($ch);

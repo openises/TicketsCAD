@@ -16,6 +16,10 @@ Facts a schema dump alone cannot show. Read this section before writing any new 
 
 `org_id` is NOT in the base schema for any of these five (Phase 99j-6, "org-scope filter for units, facilities, teams, vehicles, equipment") — same shape as `member_comm_identifiers.sort_order` above. It is added lazily by `inc/org-scope.php`'s `ensure_org_id_column($table)`, called at the top of every writer that needs it (`facility_upsert_internal()`, `responder_upsert_internal()`, `team_upsert_internal()`, `api/equipment.php`'s save action, `api/vehicles.php`'s save action) before the INSERT that references it. A fresh CI install has none of the five until the FIRST create call for that table runs. `tools/schema_audit.php`'s own parser doesn't use `tools/sql_extract.php` (a pre-existing gap, not fixed here) so it only ever sees the two of these five built as a single literal `"INSERT INTO \`{$prefix}table\` (...)"` string (`facilities`, `responder`) — those two are in `tools/schema_audit_baseline.txt`; `teams` (built via `. db_table('teams') .` concatenation) and `newui_equipment`/`newui_vehicles` (built from a fully dynamic `$fields` array) are invisible to that parser regardless and need no baseline entry, but are exactly as lazily-self-healed as the two that do.
 
+### `ticket` (status 3 / `booked_date`) and `assign_reservations`
+
+`ticket.status = 3` (Scheduled) becomes `2` (Open) when `booked_date <= NOW()`, done by `inc/scheduled-incidents.php`'s `incident_activate_scheduled_one()` -- ONE per-ticket compare-and-set (`UPDATE ... WHERE status = 3 AND booked_date <= NOW()`; only the process whose `rowCount()` is 1 announces it), driven by the 60-second `tools/scheduled_incidents_tick.php` AND the lazy hook that still runs when `api/incidents.php` serves the board. Every `ticket.status` write goes through `incident_update_status_internal()` (compare-and-set; a repeat close is a no-op that does NOT re-stamp `problemend`) or that function, and each real change writes ONE `incident|status_change|ticket` audit row (-> `incident.status_changed`); `tests/test_gh147_status_writers_emit.php` fails on any other writer. A Scheduled incident has `problemend` NULL. `action.description` is **latin1** on installs that began as a legacy v3 database (and in the base schema): do not put a non-latin1 character (the "→" arrow) in an action-log line -- the INSERT fails with error 1366 and a `catch` hides it.
+
 ### `settings / config`
 
 TWO separate stores, easy to cross. `settings` (name/value, ~255 rows) is what the Settings UI actually writes and what `get_variable($name)` reads — this is where a new feature toggle belongs. `config` (key/value, ~8 rows) is a small bootstrap-ish store read by `get_setting($key, $default)` that the Settings UI does NOT write to. Reading a UI-saved toggle with `get_setting()` silently returns the default forever, with no error anywhere (GH #79).
@@ -62,11 +66,13 @@ Fully data-driven: `fields_json` on each row defines the per-mode form field sha
 | `allocates` | [#`allocates`](#allocates) |
 | `allocations` | [#`allocations`](#allocations) |
 | `aprs_watchlist` | [#`aprs_watchlist`](#aprs_watchlist) |
+| `assign_reservations` | [#`assign_reservations`](#assign_reservations) |
 | `assigns` | [#`assigns`](#assigns) |
 | `atak_unbound_uids` | [#`atak_unbound_uids`](#atak_unbound_uids) |
 | `audit_log_purges` | [#`audit_log_purges`](#audit_log_purges) |
 | `auto_disp_status` | [#`auto_disp_status`](#auto_disp_status) |
 | `auto_status` | [#`auto_status`](#auto_status) |
+| `branding_logos` | [#`branding_logos`](#branding_logos) |
 | `bridge_tokens` | [#`bridge_tokens`](#bridge_tokens) |
 | `capability_types` | [#`capability_types`](#capability_types) |
 | `capacity_categories` | [#`capacity_categories`](#capacity_categories) |
@@ -481,6 +487,33 @@ Indexes:
 - `KEY idx_added_at` (added_at)
 - `UNIQUE KEY uk_callsign` (callsign)
 
+### `assign_reservations`
+
+Engine: InnoDB · Collation: utf8mb4_uca1400_ai_ci
+
+*Hand-added (GH#141, Phase 155) -- the generated dump above predates it. A unit RESERVED for a Scheduled incident: committed for later, deliberately NOT an `assigns` row (about 45 readers and three writers treat any uncleared `assigns` row as live work). Promoted into a real `assigns` row at the booked time (or `scheduled_assign_lead_minutes` before it) by `inc/assign-reservations.php`'s `assign_reservations_promote_one()`. Created by `sql/run_gh141_assign_reservations.php`.*
+
+| Column | Type | Null | Key | Default | Extra |
+|---|---|---|---|---|---|
+| `id` | int(10) unsigned | NO | PRI |  | auto_increment |
+| `ticket_id` | int(11) | NO | MUL |  |  |
+| `responder_id` | int(11) | NO | MUL |  |  |
+| `role` | varchar(64) | NO |  |  |  |
+| `reserved_by` | int(11) | NO |  |  |  |
+| `reserved_at` | datetime | NO |  | current_timestamp() |  |
+| `state` | enum('pending','promoted','cancelled','blocked') | NO |  | pending |  |
+| `active_key` | tinyint(4) | YES |  | 1 |  |
+| `closed_at` | datetime | YES |  | NULL |  |
+| `outcome_note` | varchar(255) | YES |  | NULL |  |
+| `promoted_assign_id` | int(11) | YES |  | NULL |  |
+
+Indexes:
+- `UNIQUE KEY uk_active` (ticket_id, responder_id, active_key) -- `active_key` is 1 while a reservation is live (`pending` or `blocked`) and NULL once finished. NULLs are distinct in a unique index, so any number of finished rows coexist while two LIVE rows for one (incident, unit) collide: a real constraint with no generated column (the Phase 129 NULL-collapse lesson, applied with a plain column).
+- `KEY idx_ticket_state` (ticket_id, state)
+- `KEY idx_responder_state` (responder_id, state)
+
+"Is it due" is never stored: it is derived from `ticket.status` / `ticket.booked_date` against the database clock on every read (`assign_reservations_due_sql()`), so a late timer fails visible instead of silently wrong. A reservation on a soft-deleted incident is excluded by join, not mutated.
+
 ### `assigns`
 
 Engine: InnoDB · Collation: latin1_swedish_ci
@@ -576,6 +609,31 @@ Engine: InnoDB · Collation: latin1_swedish_ci
 | `id` | int(3) | NO | PRI |  | auto_increment |
 | `text` | varchar(24) | NO |  |  |  |
 | `status_val` | int(3) | NO |  |  |  |
+
+### `branding_logos`
+
+Engine: InnoDB · Collation: utf8mb4_general_ci
+
+| Column | Type | Null | Key | Default | Extra |
+|---|---|---|---|---|---|
+| `id` | int(11) | NO | PRI |  | auto_increment |
+| `org_id` | int(11) | NO | MUL | 0 |  |
+| `variant` | varchar(8) | NO |  | 'light' |  |
+| `asset_key` | char(32) | NO | UNI |  |  |
+| `mime` | varchar(32) | NO |  |  |  |
+| `width` | int(11) | NO |  | 0 |  |
+| `height` | int(11) | NO |  | 0 |  |
+| `byte_size` | int(11) | NO |  | 0 |  |
+| `sha256` | char(64) | NO |  |  |  |
+| `data_b64` | mediumtext | NO |  |  |  |
+| `uploaded_by` | int(11) | NO |  | 0 |  |
+| `uploaded_by_name` | varchar(64) | NO |  |  |  |
+| `created_at` | datetime | NO |  | current_timestamp() |  |
+| `updated_at` | datetime | NO |  | current_timestamp() | on update current_timestamp() |
+
+Indexes:
+- `UNIQUE KEY uk_branding_scope_variant` (org_id, variant)
+- `UNIQUE KEY uk_branding_asset_key` (asset_key)
 
 ### `bridge_tokens`
 
@@ -5296,6 +5354,166 @@ Engine: MyISAM · Collation: latin1_swedish_ci
 
 Indexes:
 - `UNIQUE KEY uk_vt_name` (name)
+
+### `vendor_dispatch_ledger`
+
+Engine: InnoDB · Collation: utf8mb4_general_ci
+
+GH#148 (Phase 155). APPEND-ONLY: no application code UPDATEs or DELETEs a row (tests/test_vendor_ledger_immutability.php). "Who is next" is derived from it; a correction is a new `voided` row naming `ref_event_id`. `provider_name`/`provider_phone` are snapshots of what was shown and dialled.
+
+| Column | Type | Null | Key | Default | Extra |
+|---|---|---|---|---|---|
+| `id` | bigint(20) | NO | PRI |  | auto_increment |
+| `dispatch_id` | int(11) | YES | MUL | NULL |  |
+| `list_id` | int(11) | YES | MUL | NULL |  |
+| `provider_id` | int(11) | YES |  | NULL |  |
+| `provider_name` | varchar(120) | NO |  |  |  |
+| `provider_phone` | varchar(32) | YES |  | NULL |  |
+| `event_type` | varchar(24) | NO |  |  |  |
+| `selection_method` | varchar(16) | YES |  | NULL |  |
+| `consumed_turn` | tinyint(1) | NO |  | 0 |  |
+| `expected_head_provider_id` | int(11) | YES |  | NULL |  |
+| `eta_minutes` | smallint(6) | YES |  | NULL |  |
+| `reason` | varchar(255) | YES |  | NULL |  |
+| `detail` | varchar(500) | YES |  | NULL |  |
+| `ref_event_id` | bigint(20) | YES | MUL | NULL |  |
+| `event_at` | datetime | NO | MUL |  |  |
+| `actor_user_id` | int(11) | YES |  | NULL |  |
+| `actor_name` | varchar(64) | NO |  |  |  |
+| `actor_ip` | varchar(45) | YES |  | NULL |  |
+
+Indexes:
+- `KEY idx_vendor_ledger_dispatch` (dispatch_id, id)
+- `KEY idx_vendor_ledger_event_at` (event_at)
+- `KEY idx_vendor_ledger_ref` (ref_event_id)
+- `KEY idx_vendor_ledger_rot` (list_id, provider_id, consumed_turn, event_at)
+
+### `vendor_dispatches`
+
+Engine: InnoDB · Collation: utf8mb4_general_ci
+
+GH#148. One row per towing / roadside dispatch on an incident; reference shown to people is `<incident number>-T<ordinal>`. `status`, `provider_*`, `eta_minutes`, `assigned_at`, `closed_at` are a cache written in the same transaction as the ledger row and proven equal to the ledger-derived status.
+
+| Column | Type | Null | Key | Default | Extra |
+|---|---|---|---|---|---|
+| `id` | int(11) | NO | PRI |  | auto_increment |
+| `ticket_id` | int(11) | NO | MUL |  |  |
+| `ticket_ref` | varchar(64) | NO |  |  |  |
+| `ordinal` | int(11) | NO |  |  |  |
+| `org_id` | int(11) | YES |  | NULL |  |
+| `service_type_id` | int(11) | NO |  |  |  |
+| `service_label` | varchar(64) | NO |  |  |  |
+| `list_id` | int(11) | YES | MUL | NULL |  |
+| `status` | enum('open','assigned','on_scene','completed','cancelled','goa') | NO | MUL | 'open' |  |
+| `vehicle_desc` | varchar(160) | YES |  | NULL |  |
+| `plate` | varchar(16) | YES |  | NULL |  |
+| `plate_state` | varchar(4) | YES |  | NULL |  |
+| `tow_reason` | varchar(80) | YES |  | NULL |  |
+| `dest_facility_id` | int(11) | YES |  | NULL |  |
+| `dest_text` | varchar(255) | YES |  | NULL |  |
+| `provider_id` | int(11) | YES |  | NULL |  |
+| `provider_name` | varchar(120) | YES |  | NULL |  |
+| `provider_phone` | varchar(32) | YES |  | NULL |  |
+| `eta_minutes` | smallint(6) | YES |  | NULL |  |
+| `assigned_at` | datetime | YES |  | NULL |  |
+| `notes` | varchar(255) | YES |  | NULL |  |
+| `created_at` | datetime | NO |  | current_timestamp() |  |
+| `created_by_name` | varchar(64) | NO |  |  |  |
+| `closed_at` | datetime | YES |  | NULL |  |
+
+Indexes:
+- `KEY idx_vendor_dispatch_list` (list_id)
+- `KEY idx_vendor_dispatch_status` (status)
+- `KEY idx_vendor_dispatch_ticket` (ticket_id)
+- `UNIQUE KEY uk_ticket_ordinal` (ticket_id, ordinal)
+
+### `vendor_providers`
+
+Engine: InnoDB · Collation: utf8mb4_general_ci
+
+GH#148. An outside company the agency calls (not a unit, facility or constituent). A provider referenced by any ledger or dispatch row can only be retired (`is_active = 0`), never deleted.
+
+| Column | Type | Null | Key | Default | Extra |
+|---|---|---|---|---|---|
+| `id` | int(11) | NO | PRI |  | auto_increment |
+| `org_id` | int(11) | YES | MUL | NULL |  |
+| `name` | varchar(120) | NO |  |  |  |
+| `contact_name` | varchar(64) | YES |  | NULL |  |
+| `phone` | varchar(32) | NO |  |  |  |
+| `phone_alt` | varchar(32) | YES |  | NULL |  |
+| `service_area` | varchar(160) | YES |  | NULL |  |
+| `hours_note` | varchar(255) | YES |  | NULL |  |
+| `notes` | text | YES |  | NULL |  |
+| `yard_facility_id` | int(11) | YES |  | NULL |  |
+| `is_active` | tinyint(1) | NO |  | 1 |  |
+| `suspended_until` | datetime | YES |  | NULL |  |
+| `suspend_reason` | varchar(255) | YES |  | NULL |  |
+| `created_at` | datetime | NO |  | current_timestamp() |  |
+| `updated_at` | datetime | NO |  | current_timestamp() | on update current_timestamp() |
+
+Indexes:
+- `KEY idx_vendor_provider_org` (org_id)
+
+### `vendor_rotation_lists`
+
+Engine: InnoDB · Collation: utf8mb4_general_ci
+
+GH#148. `mode` NULL = use the `vendor_rotation_mode` setting. "At most one default per (org, service type)" is enforced in the application, in a transaction (org_id is NULLable, so a unique key would constrain nothing).
+
+| Column | Type | Null | Key | Default | Extra |
+|---|---|---|---|---|---|
+| `id` | int(11) | NO | PRI |  | auto_increment |
+| `org_id` | int(11) | YES | MUL | NULL |  |
+| `name` | varchar(120) | NO |  |  |  |
+| `service_type_id` | int(11) | NO | MUL |  |  |
+| `description` | varchar(255) | YES |  | NULL |  |
+| `mode` | varchar(16) | YES |  | NULL |  |
+| `is_default` | tinyint(1) | NO |  | 0 |  |
+| `is_active` | tinyint(1) | NO |  | 1 |  |
+| `sort_order` | int(11) | NO |  | 0 |  |
+| `created_at` | datetime | NO |  | current_timestamp() |  |
+| `updated_at` | datetime | NO |  | current_timestamp() | on update current_timestamp() |
+
+Indexes:
+- `KEY idx_vendor_list_org` (org_id)
+- `KEY idx_vendor_list_service` (service_type_id)
+
+### `vendor_rotation_members`
+
+Engine: InnoDB · Collation: utf8mb4_general_ci
+
+GH#148. `removed_at` set = soft-removed. `position` only orders strict-order and manual lists and breaks round-robin ties; round-robin order is derived from the ledger.
+
+| Column | Type | Null | Key | Default | Extra |
+|---|---|---|---|---|---|
+| `id` | int(11) | NO | PRI |  | auto_increment |
+| `list_id` | int(11) | NO | MUL |  |  |
+| `provider_id` | int(11) | NO | MUL |  |  |
+| `position` | int(11) | NO |  | 0 |  |
+| `added_at` | datetime | NO |  | current_timestamp() |  |
+| `removed_at` | datetime | YES |  | NULL |  |
+
+Indexes:
+- `KEY idx_vendor_member_provider` (provider_id)
+- `UNIQUE KEY uk_list_provider` (list_id, provider_id)
+
+### `vendor_service_types`
+
+Engine: InnoDB · Collation: utf8mb4_general_ci
+
+GH#148. Editable pick list (Tow, Lockout, Jumpstart, Tire Change ...). `needs_destination` decides whether the dispatch dialog shows the destination field.
+
+| Column | Type | Null | Key | Default | Extra |
+|---|---|---|---|---|---|
+| `id` | int(11) | NO | PRI |  | auto_increment |
+| `code` | varchar(32) | NO | UNI |  |  |
+| `label` | varchar(64) | NO |  |  |  |
+| `needs_destination` | tinyint(1) | NO |  | 0 |  |
+| `is_active` | tinyint(1) | NO |  | 1 |  |
+| `sort_order` | int(11) | NO |  | 0 |  |
+
+Indexes:
+- `UNIQUE KEY uk_vendor_service_code` (code)
 
 ### `warnings`
 

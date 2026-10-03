@@ -23,6 +23,12 @@
  *   ls_clear_attempts($username);
  */
 
+// This file calls audit_log() and used to rely on its caller having loaded inc/audit.php;
+// every call site sat behind function_exists('audit_log'), so on a request path that had
+// not loaded it the audit row was silently never written. Loaded here so it cannot depend on
+// what the caller happened to include. (tools/audit_log_arity.php gates this.)
+require_once __DIR__ . '/audit.php';
+
 /**
  * Ensure the login_attempts table exists.
  * Safe to call multiple times.

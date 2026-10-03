@@ -24,6 +24,12 @@
  *     "event_ts": "2026-08-22T14:03:11Z"
  *   }
  *
+ * Phase 155 adds one more body, which carries no call data:
+ *   { "event": "heartbeat", "bridge": "sip-bridge 1.1.0 (threecx)" }
+ * The bridge sends it every ~30s so the admin page can tell a quiet line from
+ * a dead bridge. It is recorded even for a disabled trunk (the reply says
+ * trunk_enabled:false) and never reaches the call state machine.
+ *
  * Trunk identity comes ONLY from the bearer token, never from a field in
  * the body (plan.md §2) — a compromised or misconfigured adapter cannot
  * claim to be a different trunk than its token authorizes.
@@ -95,19 +101,37 @@ if (stripos($auth, 'Bearer ') !== 0) {
 }
 $token = substr($auth, 7);
 
-$trunk = sip_token_resolve_trunk($token);
+$trunk = sip_token_resolve_trunk($token, true); // Phase 155: disabled trunks resolve too, answered below
 if ($trunk === null) {
     error_log('[sip-ingest] bearer mismatch from ' . $srcIp);
     sip_ingest_error('bad bearer', 403);
 }
+$raw = file_get_contents('php://input');
+$input = json_decode($raw, true);
+
+// Phase 155 — bridge heartbeat. Accepted from a DISABLED trunk too, so the
+// admin page can say "bridge is connected but this trunk is switched off"
+// rather than "never connected". Carries no call data and never reaches
+// the call state machine.
+if (is_array($input) && ($input['event'] ?? '') === 'heartbeat') {
+    $recorded = inbound_trunk_record_heartbeat((int) $trunk['id'], isset($input['bridge']) ? (string) $input['bridge'] : null);
+    json_response([
+        'ok'            => true,
+        'heartbeat'     => true,
+        'recorded'      => $recorded,
+        'trunk_id'      => (int) $trunk['id'],
+        'trunk_label'   => (string) ($trunk['label'] ?? ''),
+        'trunk_enabled' => (int) ($trunk['enabled'] ?? 0) === 1,
+    ]);
+}
+
 if ((int) ($trunk['enabled'] ?? 0) !== 1) {
     // Drop politely — an admin disabled the trunk; the adapter should
-    // notice via a future health probe and stop. Don't 4xx; it would retry.
+    // notice via the heartbeat reply's trunk_enabled flag and say so.
+    // Don't 4xx; it would retry.
     json_response(['ok' => true, 'dropped' => 'trunk disabled']);
 }
 
-$raw = file_get_contents('php://input');
-$input = json_decode($raw, true);
 if (!is_array($input)) {
     sip_ingest_error('JSON body required');
 }

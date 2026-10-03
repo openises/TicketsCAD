@@ -11,6 +11,19 @@
  */
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/db.php';
+// The TTS key directory now defaults to the machine-wide keys
+// directory (beside the 2FA/RSA keys, outside the web root) — shared by every
+// checkout on a dev box, so a test must not write into it. TTS_KEYS_DIR is the
+// documented override; point it at a scratch directory and remove it after.
+if (!defined('TTS_KEYS_DIR')) {
+    define('TTS_KEYS_DIR', sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'tcad-tts-engines-test-' . getmypid());
+}
+register_shutdown_function(function () {
+    foreach ((array) @glob(TTS_KEYS_DIR . '/{,.}*', GLOB_BRACE) as $f) {
+        if (is_file($f)) { @unlink($f); }
+    }
+    @rmdir(TTS_KEYS_DIR);
+});
 require_once __DIR__ . '/../inc/tts/engine.php';
 require_once __DIR__ . '/../inc/tts/engine_openai_compat.php';
 

@@ -164,6 +164,13 @@ grants/revokes) are the two heaviest categories on this particular install, ahea
 `SELECT DISTINCT category FROM newui_audit_log` on your own install rather than assuming
 only the eight above exist.
 
+**`vendor`** (towing / roadside dispatch, GH#148): `provider.create|update|suspend|unsuspend|retire|delete`,
+`list.create|update|retire|delete|set_default`, `member.add|remove|move|move_to_end`,
+`service_type.save`, `settings.update` (before and after of every key that changed, severity Medium),
+`dispatch.create|update|offer|outcome|status|note|void` (void is Medium) and `history.export` (Low). The durable
+record of who was offered a job is the append-only `vendor_dispatch_ledger` table, **not** this log, because audit
+retention may purge these rows. See `docs/VENDOR-DISPATCH-GUIDE.md`.
+
 ---
 
 ## Activities
@@ -177,7 +184,11 @@ assign, unassign, activate, deactivate, error, view
 ```
 
 Anything not in that map defaults to `AUDIT_INFO` (1) unless the caller passes an
-explicit severity. In practice the codebase uses many activity values beyond this list —
+explicit severity. `audit_log()` also takes an optional trailing `$actor` argument
+(`['id' => ..., 'name' => ...]`; the constant `AUDIT_ACTOR_SYSTEM` is the one background
+work uses) which overrides the session lookup, so a row written by a timer or an
+automatic sweep says **System** with a NULL `user_id` instead of naming whichever
+dispatcher's request it happened to run inside (Phase 155). In practice the codebase uses many activity values beyond this list —
 `status_change`, `config_change`, `grant`/`revoke`, `zone_update`, `rotate`,
 `console.view_create`, `channels.sync`, `clock_in`/`clock_out`, `apply_override` — each
 caller names the verb that fits the action; there's no fixed enum to conform to. When
@@ -238,6 +249,27 @@ category=incident activity=create        target=ticket#10762
 category=rbac    activity=revoke         target=user_role#9257
   {"user_id":2,"role_id":5,"scope_kind":"global","scope_id":null,
    "reason":"F7 audit cleanup","revoked_by":null}
+```
+
+Phase 155 added these incident rows (also real shapes):
+
+```
+category=incident activity=status_change  target=ticket#412     (webhook: incident.status_changed)
+  {"ticket_id":412,"incident_number":"26-0071","old_status":3,"new_status":2,
+   "old_status_label":"Scheduled","new_status_label":"Open","transition":"activated",
+   "source":"scheduled_activation","actor_type":"system","actor_id":null,
+   "actor_name":"System","booked_date":"2026-10-04 18:00:00","via_external_api":false}
+   -- written by the status writer once per REAL change (user_name is "System" for
+      the scheduled-activation and auto-close routes, never a dispatcher whose
+      browser happened to run the sweep); no incident text in it by design
+
+category=incident activity=reserve         target=assigns#9      (reservation id; NOT a webhook)
+  {"ticket_id":412,"responder_id":77,"reservation_id":9,"role":"Medic",
+   "booked_date":"2026-10-04 18:00:00","promotes_at":"2026-10-04 17:30:00"}
+category=incident activity=reserve_release target=assigns#9      (released, or the incident closed)
+category=incident activity=reserve_promote target=assigns#9      (the booked time arrived; the dispatch itself is the
+                                                                   ordinary `assign` row -> assign.created)
+category=incident activity=reserve_blocked target=assigns#9      (held for a dispatcher: the unit was busy)
 ```
 
 Treat these as illustrations of the pattern ("small, flat-ish, includes enough to

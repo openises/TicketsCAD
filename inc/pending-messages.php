@@ -52,6 +52,12 @@ require_once __DIR__ . '/scheduled-jobs.php';
 if (is_file(__DIR__ . '/notify-fanout.php')) {
     require_once __DIR__ . '/notify-fanout.php';
 }
+// Phase 155 (GH#144): a third kind of row - Notification Rule deliveries. The
+// delivery code (NOTIFY_RULE_CHANNEL, replay, per-channel breaker) lives in
+// notification-delivery.php; this file only recognises the channel in the sweep.
+if (is_file(__DIR__ . '/notification-delivery.php')) {
+    require_once __DIR__ . '/notification-delivery.php';
+}
 
 function pending_enqueue(array $msg): ?int {
     $prefix = $GLOBALS['db_prefix'] ?? '';
@@ -105,6 +111,12 @@ function pending_kill(int $id, ?int $userId, ?string $reason): bool {
             audit_log('routing', 'kill', 'pending_message', $id,
                 "Killed pending routed message #{$id}", ['reason' => $reason]);
         }
+        // A killed Notification Rule delivery must not read `queued` for ever in the
+        // delivery log (and "once per incident" must not believe it was sent).
+        if (function_exists('notification_delivery_mark_unsent')) {
+            notification_delivery_mark_unsent($id, 'killed during the security-label send delay'
+                . ($reason !== null && $reason !== '' ? ': ' . $reason : ''), 'skipped');
+        }
         return true;
     } catch (Exception $e) { return false; }
 }
@@ -130,6 +142,7 @@ function pending_sweep(?int $now = null, ?int $cutoffMin = null,
     $deadline = $budgetS !== null ? microtime(true) + max(0.0, $budgetS) : null;
     $sent = 0; $failed = 0; $considered = 0; $expired = 0; $deferred = 0;
     $breakerOpen = null;   // resolved lazily, once per sweep
+    $ruleState = ['defer' => [], 'fails' => []];   // Notification Rule deliveries: per-channel, per-sweep (Phase 155)
     try {
         $sql  = "SELECT * FROM `{$prefix}pending_routed_messages`
                   WHERE status = 'pending'
@@ -178,6 +191,10 @@ function pending_sweep(?int $now = null, ?int $cutoffMin = null,
                             'scheduled_send_at' => $r['scheduled_send_at'],
                             'ticket_id'         => $r['ticket_id'],
                         ]);
+                }
+                if (defined('NOTIFY_RULE_CHANNEL') && $r['channel'] === NOTIFY_RULE_CHANNEL
+                    && function_exists('notification_delivery_mark_unsent')) {
+                    notification_delivery_mark_unsent((int) $r['id'], 'not delivered - ' . $reason, 'failed');
                 }
             } catch (Exception $e) {
                 error_log('pending_sweep expire failed for #' . $r['id'] . ': ' . $e->getMessage());
@@ -246,6 +263,33 @@ function pending_sweep(?int $now = null, ?int $cutoffMin = null,
                     $failed++;
                 }
             } catch (Exception $e) {}
+            continue;
+        }
+
+        // ── Notification Rule delivery (Phase 155, GH#144) ───────────────
+        // One code path for the timer sweep and the synchronous caller:
+        // notification_delivery_process_row() does the per-channel breaker, the
+        // replay and the queue row's own bookkeeping.
+        if (defined('NOTIFY_RULE_CHANNEL') && $r['channel'] === NOTIFY_RULE_CHANNEL) {
+            if (!function_exists('notification_delivery_process_row')) {
+                try {
+                    db_query("UPDATE `{$prefix}pending_routed_messages`
+                                 SET status = 'failed', send_error = ? WHERE id = ?",
+                             ['notification_delivery_process_row() not loaded', $r['id']]);
+                } catch (Exception $e) {}
+                $failed++;
+                continue;
+            }
+            $remaining = $deadline !== null ? max(0.5, $deadline - microtime(true)) : null;
+            $res = notification_delivery_process_row($r, $remaining, $ruleState, $now);
+            if ($res['outcome'] === 'sent') {
+                $sent++;
+            } elseif ($res['outcome'] === 'deferred') {
+                $deferred++;
+                $considered--;   // not considered: we did not attempt it
+            } else {
+                $failed++;
+            }
             continue;
         }
 

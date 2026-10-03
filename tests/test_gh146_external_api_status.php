@@ -46,10 +46,21 @@ t('PATCH extracts status as a dedicated action, out of the generic field whiteli
     strpos($extApi, "array_key_exists('status', \$fields)") !== false);
 t('PATCH extracts disposition_id as a dedicated action too',
     strpos($extApi, "array_key_exists('disposition_id', \$fields)") !== false);
+// GH#147 (F7): the permission checks moved to BEFORE the first write (they used
+// to sit inside the status/disposition branches, after the generic fields had
+// already been saved and audited). Same gates, same permission codes -- the
+// regexes below match the new `$flag && !rbac_can(...)` shape, and the position
+// assertions pin the ordering (tests/test_gh147_every_path_fires_once.php drives
+// it for real).
 t('status write checks action.close_incident (same gate the internal update_status action uses)',
-    (bool) preg_match("/statusFieldPresent\\)\\s*\\{\\s*\n\\s*if \\(!rbac_can\\('action\\.close_incident'\\)\\)/", $extApi));
+    (bool) preg_match("/\\\$statusFieldPresent && !rbac_can\\('action\\.close_incident'\\)/", $extApi));
 t('disposition write checks action.edit_incident (same gate the internal set_disposition action uses)',
-    (bool) preg_match("/dispositionFieldPresent\\)\\s*\\{\\s*\n\\s*if \\(!rbac_can\\('action\\.edit_incident'\\)\\)/", $extApi));
+    (bool) preg_match("/\\\$dispositionFieldPresent && !rbac_can\\('action\\.edit_incident'\\)/", $extApi));
+$firstWrite = strpos($extApi, '= incident_update_fields_internal(');   // the CALL (comments name the function too)
+$statusGate = strpos($extApi, "\$statusFieldPresent && !rbac_can('action.close_incident')");
+$dispGate   = strpos($extApi, "\$dispositionFieldPresent && !rbac_can('action.edit_incident')");
+t('GH#147: the status permission is decided BEFORE the first write', $statusGate !== false && $firstWrite !== false && $statusGate < $firstWrite);
+t('GH#147: the disposition permission is decided BEFORE the first write', $dispGate !== false && $firstWrite !== false && $dispGate < $firstWrite);
 t('status routes through incident_update_status_internal() -- the real business-logic writer, not a raw UPDATE',
     (bool) preg_match('/statusFieldPresent[\s\S]{0,900}?incident_update_status_internal\(/', $extApi));
 t('standalone disposition_id routes through incident_set_disposition_internal()',

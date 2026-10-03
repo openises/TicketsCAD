@@ -1,0 +1,35 @@
+# Baseline for tests/test_sse_types_wired.php -- SSE event types that are published
+# (PHP) or listened for (JS) but are NOT in assets/js/event-bus.js SSE_TYPES.
+#
+# EventBus only registers an EventSource listener for the types in that array
+# (event-bus.js, "Register all SSE event types"), so a type missing from it never
+# reaches ANY consumer, however correctly the server publishes it or the client
+# listens. One entry per line, exactly as the test prints it.
+#
+# 2026-10-02 -- found while fixing incident:primary_changed (Phase 151, which was
+# in the same state and IS now wired). These were NOT wired in the same change on
+# purpose: wiring them changes what dispatchers see and hear on live installs
+# (weather and geofence tones start playing, the notification tray starts filling),
+# which is Eric's call, not a drive-by edit. Each needs a decision, then a one-line
+# addition to SSE_TYPES and removal of its line here:
+#
+#   geofence:enter / geofence:exit  audio-alerts.js plays a tone for them (CLAUDE.md
+#                                   lists geofence audio alerts as complete); no server
+#                                   code publishes them under these literal names through
+#                                   the scanned helpers, so verify the publisher first.
+#   weather:alert                   audio-alerts.js + notification-tray.js consume it;
+#                                   inc/weather_alerts.php publishes it ('public' scope).
+#   weather:clear                   published by inc/weather_alerts.php; no consumer yet.
+#   unit:assignment                 api/unit-assignments.php publishes it;
+#                                   notification-tray.js has a case for it.
+#   facility:capacity               api/facility-capacity.php publishes it; no consumer.
+#   responder:rec_facility          api/incident-assign.php publishes it; no consumer.
+#
+# DO NOT add a new type here to make the test pass: add it to SSE_TYPES.
+geofence:enter
+geofence:exit
+weather:alert
+weather:clear
+unit:assignment
+facility:capacity
+responder:rec_facility

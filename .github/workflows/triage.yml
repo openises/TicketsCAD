@@ -1,0 +1,69 @@
+name: triage
+
+# Acknowledge and label every newly opened issue, within minutes, whether or
+# not the maintainer is at the keyboard (Phase 155, community responsiveness).
+#
+# WHY A BOT: first-reply time was 8.9 hours while the maintainer was present
+# and 9.2 DAYS while absent. The one part of responsiveness that must not
+# depend on a person is "your report arrived". The comment says plainly that it
+# is a bot, says when the maintainer is away, and promises nothing.
+#
+# WHAT IT DOES NOT DO: close, lock, assign or decide anything; speak as the
+# maintainer; echo the issue text anywhere. Best effort by design: the
+# state-based detector in the maintainer's private repository is the backstop
+# for a run GitHub never delivers (an Actions outage loses the event for good).
+#
+# SECURITY SHAPE (read before editing):
+#   * The issue title and body are attacker-controlled. They are NEVER
+#     interpolated into a run: script. The script reads them from the event
+#     payload file the runner already wrote ($GITHUB_EVENT_PATH).
+#   * Every ${{ }} expression below sits in an env: or with: value, never in a
+#     run: line. tests/test_github_workflows_safety.php enforces this.
+#   * No pull_request_target, no secrets. The token is the per-run GITHUB_TOKEN
+#     limited to the two scopes declared here.
+#
+# SETTINGS are repository VARIABLES (repository settings, Secrets and variables,
+# Actions, Variables), all optional; see docs/COMMUNITY-OPERATIONS.md:
+#   AWAY_UNTIL, TRIAGE_ENABLED, TRIAGE_TARGET_DAYS, TRIAGE_TARGET_STYLE,
+#   TRIAGE_SKIP_ASSOCIATIONS, TRIAGE_WINDOWS_LABEL
+#
+# The acknowledgement WORDING is .github/triage/acknowledgement.md.
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read   # checkout
+  issues: write    # the comment and the labels; nothing else
+
+concurrency:
+  group: triage-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  acknowledge:
+    name: acknowledge and label
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+
+      - name: Acknowledge and label the new issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AWAY_UNTIL: ${{ vars.AWAY_UNTIL }}
+          TRIAGE_ENABLED: ${{ vars.TRIAGE_ENABLED }}
+          TRIAGE_TARGET_DAYS: ${{ vars.TRIAGE_TARGET_DAYS }}
+          TRIAGE_TARGET_STYLE: ${{ vars.TRIAGE_TARGET_STYLE }}
+          TRIAGE_SKIP_ASSOCIATIONS: ${{ vars.TRIAGE_SKIP_ASSOCIATIONS }}
+          TRIAGE_WINDOWS_LABEL: ${{ vars.TRIAGE_WINDOWS_LABEL }}
+        run: php tools/triage-issue.php

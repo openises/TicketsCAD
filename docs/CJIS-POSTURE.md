@@ -130,7 +130,7 @@ Retention is **minimum 365 days**.
 | **Password rotation** | Configurable interval (default 90 days). `password_changed_at` column tracks last change; a banner reminds users when rotation is due (snoozeable). |
 | **Account lockout** | After N failed attempts (default 5) within a window (default 5 min), account locks for a duration (default 15 min). Above CJIS minimum (10 min). |
 | **Hash algorithm** | bcrypt cost 12 (`password_hash()` PHP default). Legacy MD5/SHA1/plaintext hashes are auto-upgraded on first successful login. |
-| **CSRF protection** | `csrf_token()` / `csrf_verify()` on all POST endpoints. Token rotates on login (Phase 73cc). |
+| **CSRF protection** | `csrf_token()` / `csrf_verify()` / `csrf_require()` on every state-changing endpoint that the session cookie authenticates. Token rotates on login (Phase 73cc). Since Phase 155 this is **enforced by a gate that reads the code** (`tools/csrf_coverage_audit.php`: every state-changing statement in `api/` must be dominated by a token check, per action and per HTTP method) rather than asserted -- its first run found seven endpoints, including the role-grant editor, that had no check. Bearer-token endpoints (`api/external/*`, the ingest webhooks) are exempt by construction: no session cookie is consulted. |
 | **Session ID regeneration** | `session_regenerate_id(true)` on login and on privilege change. Prevents session fixation. |
 | **Force-logout on password change** | Phase 33 — all OTHER sessions for the user are destroyed when password changes; current session continues so the user isn't kicked out of the form. |
 

@@ -3,8 +3,16 @@
  * Phase 94 Stage 4c — External API: responder-to-incident assignments.
  *
  * POST   /api/external/v1/assignments.php
- *   Body: { "ticket_id": N, "responder_id": N, "role": "optional" }
+ *   Body: { "ticket_id": N, "responder_id": N, "role": "optional",
+ *           "force": false, "dispatch_now": false }
  *   Returns 201 { id: <assignId> }
+ *   GH#141: when the install's "Units assigned to Scheduled incidents" setting
+ *   is `reserve` and the incident is Scheduled with its booked time still ahead,
+ *   the unit is RESERVED, not dispatched, and the answer is instead
+ *   201 { reserved: true, reservation_id, ticket_id, responder_id, promotes_at }
+ *   (no `id`: there is no assignment yet, and no assign.created webhook fires
+ *   until the unit is really dispatched). "dispatch_now": true bypasses the
+ *   reservation and dispatches at once.
  *
  * PATCH  /api/external/v1/assignments.php
  *   Body: { "assign_id": N, "new_status_id": N }
@@ -29,6 +37,8 @@ require_once __DIR__ . '/_auth.php';
 require_once __DIR__ . '/../../../inc/rbac.php';
 require_once __DIR__ . '/../../../inc/audit.php';
 require_once __DIR__ . '/../../../inc/assignment-write.php';
+require_once __DIR__ . '/../../../inc/assign-effects.php';      // GH#141: assign_emit_created_effects()
+require_once __DIR__ . '/../../../inc/org-scope.php';
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
@@ -41,6 +51,41 @@ if (!rbac_can('action.assign_unit')) {
 $userId = (int) ($_SESSION['user_id'] ?? 0);
 if ($userId <= 0) {
     ext_api_error('auth_user_missing', 500);
+}
+
+/**
+ * GH#141 (Phase 155) -- the organization write gate this endpoint never had.
+ *
+ * Every other external write path that names an incident (PATCH/DELETE
+ * /incidents/<id>) checks org_can_mutate_ticket() before touching it; this one
+ * passed the id straight to the writer, so a token bound to a user of one
+ * organization could assign units to -- and, with reservations, now reserve
+ * units on -- another organization's incident. Same answer shape as
+ * incidents.php: 403 `forbidden` when the caller can see the incident but its
+ * tier does not permit writing, 404 `not_found` when it cannot see it at all
+ * (never confirming that it exists). A missing incident is left to the writer's
+ * own "Ticket not found" so existing behaviour for that case is unchanged.
+ */
+function _ext_assign_org_gate(int $ticketId): void {
+    if ($ticketId <= 0) return;
+    $prefix = $GLOBALS['db_prefix'] ?? '';
+    $exists = db_fetch_value("SELECT 1 FROM `{$prefix}ticket` WHERE `id` = ?", [$ticketId]);
+    if (!$exists) return;
+    if (!org_can_mutate_ticket($ticketId)) {
+        if (org_can_see_ticket($ticketId)) ext_api_error('forbidden', 403);
+        ext_api_error('not_found', 404);
+    }
+}
+
+/** The incident an assignment belongs to (0 if unknown), for the PATCH/DELETE org gate. */
+function _ext_assign_ticket_of(int $assignId): int {
+    if ($assignId <= 0) return 0;
+    $prefix = $GLOBALS['db_prefix'] ?? '';
+    try {
+        return (int) db_fetch_value("SELECT `ticket_id` FROM `{$prefix}assigns` WHERE `id` = ?", [$assignId]);
+    } catch (Exception $e) {
+        return 0;
+    }
 }
 
 /** Decode JSON body; fall through to empty array on DELETE if no body. */
@@ -83,8 +128,11 @@ if ($method === 'POST') {
     // force, from either endpoint.
     $force = !empty($input['force']);
 
+    _ext_assign_org_gate($ticketId);
+
     try {
-        $result = assign_create_internal($ticketId, $responderId, $role, $userId, $force);
+        $result = assign_create_internal($ticketId, $responderId, $role, $userId, $force,
+            !empty($input['dispatch_now']) ? ['dispatch_now' => true] : []);
     } catch (Exception $e) {
         ext_api_db_error('db_query', $e);
     }
@@ -99,37 +147,35 @@ if ($method === 'POST') {
         ext_api_error($code, $status, ['errors' => $result['errors']]);
     }
 
+    // GH#141 -- RESERVED, not dispatched: no assignment exists (id would be 0), so
+    // there is no assign.created audit row to write and nothing to put in `id`.
+    if (!empty($result['reserved'])) {
+        ext_api_response([
+            'reserved'       => true,
+            'reservation_id' => (int) $result['reservation_id'],
+            'ticket_id'      => $ticketId,
+            'responder_id'   => $responderId,
+            'promotes_at'    => $result['promotes_at'] ?? null,
+            'conflicts'      => $result['conflicts'] ?? [],
+        ], 201);
+    }
+
     $assignId = (int) $result['id'];
 
-    // Fire audit → 'assign.created' webhook via the Stage 5 hook.
-    // target_type='assigns' matches the existing
-    // _audit_to_webhook_event mapping in inc/webhooks.php.
-    try {
-        audit_log(
-            'incident', 'assign', 'assigns', $assignId,
-            "External API assigned responder #{$responderId} to incident #{$ticketId}",
-            [
-                'token_id'         => $GLOBALS['__ext_api_token_id'] ?? null,
-                'ticket_id'        => $ticketId,
-                'responder_id'     => $responderId,
-                'role'             => $role,
-                'via_external_api' => true,
-            ]
-        );
-    } catch (Exception $e) { /* audit failure non-fatal */ }
-
-    // Best-effort SSE for live UI refresh
-    try {
-        require_once __DIR__ . '/../../../inc/sse.php';
-        if (function_exists('sse_publish_for_incident')) {
-            sse_publish_for_incident('responder:assign', [
-                'ticket_id'    => $ticketId,
-                'responder_id' => $responderId,
-                'assign_id'    => $assignId,
-                'via'          => 'external_api',
-            ], $ticketId);
-        }
-    } catch (Exception $e) { /* SSE non-fatal */ }
+    // Audit row -> 'assign.created' webhook (target_type='assigns' matches the
+    // _audit_to_webhook_event mapping in inc/webhooks.php) and the SSE refresh:
+    // GH#141 moved both into assign_emit_created_effects(), shared with the
+    // promotion of a reservation. This endpoint keeps its historical audit
+    // summary/details and SSE payload shape, and -- as before -- does not push
+    // OwnTracks config or fire notification rules.
+    require_once __DIR__ . '/../../../inc/sse.php';
+    assign_emit_created_effects($ticketId, $responderId, $assignId, '', [
+        'via'       => 'external_api',
+        'token_id'  => $GLOBALS['__ext_api_token_id'] ?? null,
+        'role'      => $role,
+        'owntracks' => false,
+        'notify'    => false,
+    ]);
 
     ext_api_response([
         'id'           => $assignId,
@@ -157,6 +203,8 @@ if ($method === 'PATCH') {
     } else {
         ext_api_error('missing_status', 400, ['hint' => 'Send new_status or new_status_id']);
     }
+
+    _ext_assign_org_gate(_ext_assign_ticket_of($assignId));
 
     try {
         $result = assign_update_status_internal($assignId, $statusInput, $userId);
@@ -211,6 +259,8 @@ if ($method === 'DELETE') {
         $assignId = (int) ($input['assign_id'] ?? 0);
     }
     if ($assignId <= 0) ext_api_error('invalid_assign_id', 400);
+
+    _ext_assign_org_gate(_ext_assign_ticket_of($assignId));
 
     try {
         $result = assign_unassign_internal($assignId, $userId);

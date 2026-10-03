@@ -48,6 +48,12 @@
  * at the top of facility-detail.php's Bed Capacity card.
  */
 
+// This file calls audit_log() and used to rely on its caller having loaded inc/audit.php;
+// every call site sat behind function_exists('audit_log'), so on a request path that had
+// not loaded it the audit row was silently never written. Loaded here so it cannot depend on
+// what the caller happened to include. (tools/audit_log_arity.php gates this.)
+require_once __DIR__ . '/audit.php';
+
 if (!defined('BED_AUTO_STATUS_PATTERNS')) {
     /**
      * Case-insensitive substring patterns on `un_status.status_val`

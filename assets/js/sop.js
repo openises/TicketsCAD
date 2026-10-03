@@ -67,9 +67,24 @@
         return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
+    // Author-written markdown is untrusted: `marked` does not sanitise, so its output must
+    // never reach innerHTML as-is. Every SOP surface (page, revision view, editor preview)
+    // goes through this one function, so this is the single choke point.
+    //  - Active content (script, event-handler attributes, javascript: URLs) is removed.
+    //  - Tags that can phish or pull in outside content (forms and controls, frames, embeds,
+    //    <style>) are removed too; an SOP is a document, not a mini-application.
+    //  - If DOMPurify is not loaded, fall back to escaped plain text. FAIL CLOSED: an
+    //    unformatted SOP is an inconvenience; unsanitised HTML is a vulnerability.
+    var SANITIZE_OPTIONS = {
+        FORBID_TAGS: ['style', 'form', 'input', 'button', 'select', 'textarea', 'option',
+                      'iframe', 'frame', 'frameset', 'object', 'embed', 'applet', 'base', 'meta', 'link'],
+        FORBID_ATTR: ['formaction', 'srcdoc'],
+        ALLOW_DATA_ATTR: false
+    };
+
     function renderMarkdown(md) {
-        if (typeof marked !== 'undefined') {
-            return marked.parse(md || '');
+        if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
+            return DOMPurify.sanitize(marked.parse(md || ''), SANITIZE_OPTIONS);
         }
         return '<pre>' + escHtml(md) + '</pre>';
     }

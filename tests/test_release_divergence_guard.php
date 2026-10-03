@@ -682,5 +682,119 @@ if (is_file($realExceptions)) {
         strpos($rReal['out'], 'public-authoritative: CHANGELOG.md') !== false);
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// 12. Untagged syncs (tools/publish-sync.sh) are a baseline too
+// ─────────────────────────────────────────────────────────────────────
+//
+// Phase 155. The standing practice is to sync every verified fix to the public
+// repo at once and tag only RELEASES. With the newest `v*` tag as the only
+// baseline, every file an earlier UNTAGGED sync touched differs from the
+// baseline, so each one was reported as a public-only change that publishing
+// would revert. On 2026-10-02 that was 17 findings across 7 files, every one
+// individually checked as "dev moved forward", and the release needed
+// --allow-revert=17. These cases reproduce that shape exactly, and then prove
+// the fix did not open the opposite hole: a GENUINE outside change made after
+// the sync commit must still stop the release.
+
+echo "\n-- 12. Untagged sync commits (Dev-Commit trailer) as the baseline --\n";
+
+$devShaA = str_repeat('a', 40);
+$syncMsg = "TicketsCAD sync aaaaaaa: GH#1\n\nDev-Commit: {$devShaA}\nFixes-Included: GH#1\n";
+
+/**
+ * A public repo: release v1.0.0, then an UNTAGGED sync commit that updated
+ * app.php to release 1.1 and carries a Dev-Commit trailer. $after, if given,
+ * is committed on top of it (an outside change made after the sync).
+ */
+$untagged = static function (string $name, array $after = []) use ($tmp, $BASE, $devShaA, $syncMsg): array {
+    $pub = $tmp . '/' . $name . '-public';
+    rdg_repo_init($pub);
+    rdg_write($pub, $BASE);
+    rdg_commit($pub, 'release v1.0.0');
+    rdg_git($pub, ['tag', '-a', 'v1.0.0', '-m', 'v1.0.0']);
+    rdg_write($pub, ['app.php' => "<?php\n// application, release 1.1 (synced untagged)\nreturn 11;\n"]);
+    rdg_commit($pub, $syncMsg);
+    if ($after !== []) {
+        rdg_write($pub, $after);
+        rdg_commit($pub, 'fix: contributed in the public repo after the sync');
+    }
+    $snap = $tmp . '/' . $name . '-snapshot';
+    mkdir($snap, 0777, true);
+    // Dev has moved on again: app.php is release 2, nothing else changed.
+    rdg_write($snap, [
+        'app.php'    => "<?php\n// application, release 2\nreturn 2;\n",
+        'helper.php' => $BASE['helper.php'],
+        'README.md'  => $BASE['README.md'],
+    ]);
+    return [$pub, $snap];
+};
+
+[$pub12, $snap12] = $untagged('untagged-clean');
+$syncSha12 = trim(rdg_git($pub12, ['rev-parse', 'HEAD'])['out']);
+$r12 = rdg_json($checker, $snap12, $pub12, $exceptionsCommon);
+t('an earlier untagged sync is NOT reported as a public-only change',
+    ($r12['json']['counts']['revert'] ?? -1) === 0, json_encode($r12['json']['reverts'] ?? []));
+t('so the release is not stopped and needs no --allow-revert', $r12['code'] === 0, 'exit ' . $r12['code']);
+t('the baseline is the sync commit, which is newer than the tag',
+    ($r12['json']['baseline_ref'] ?? '') === $syncSha12, ($r12['json']['baseline_ref'] ?? 'none'));
+t('and the report says why',
+    stripos((string) ($r12['json']['baseline_source'] ?? ''), 'Dev-Commit') !== false,
+    (string) ($r12['json']['baseline_source'] ?? ''));
+
+// The failure as it happened: the same fixture judged by the TAG alone. This is
+// the control that proves the cases above pass because of the fix and not
+// because the fixture is trivially clean.
+$r12tag = rdg_json($checker, $snap12, $pub12, $exceptionsCommon, ['--baseline=v1.0.0']);
+t('control: judged against the tag alone, the same tree IS (wrongly) reported as a revert',
+    ($r12tag['json']['counts']['revert'] ?? 0) >= 1 && $r12tag['code'] === 1,
+    'reverts=' . ($r12tag['json']['counts']['revert'] ?? 'n/a') . ' exit ' . $r12tag['code']);
+
+// A genuine outside change AFTER the sync must still be caught.
+[$pub12b, $snap12b] = $untagged('untagged-outside', [
+    'helper.php' => "<?php\n// helper, a contributor's fix merged publicly\nfunction h() { return 'fixed'; }\n",
+]);
+$r12b = rdg_json($checker, $snap12b, $pub12b, $exceptionsCommon);
+t('a real outside change made after the sync commit still STOPS the release',
+    $r12b['code'] === 1 && in_array('helper.php', rdg_revert_paths($r12b), true),
+    'exit ' . $r12b['code'] . ' reverts=' . json_encode(rdg_revert_paths($r12b)));
+t('and only that file is named (the synced app.php is not noise)',
+    rdg_revert_paths($r12b) === ['helper.php'], json_encode(rdg_revert_paths($r12b)));
+
+// A tag NEWER than the last sync commit wins: releases are baselines too.
+$pub12c = $tmp . '/tag-after-sync-public';
+rdg_repo_init($pub12c);
+rdg_write($pub12c, $BASE);
+rdg_commit($pub12c, 'release v1.0.0');
+rdg_git($pub12c, ['tag', '-a', 'v1.0.0', '-m', 'v1.0.0']);
+rdg_write($pub12c, ['app.php' => "<?php\n// synced\nreturn 11;\n"]);
+rdg_commit($pub12c, $syncMsg);
+rdg_write($pub12c, ['app.php' => "<?php\n// released as 1.2\nreturn 12;\n"]);
+rdg_commit($pub12c, 'release v1.2.0');
+rdg_git($pub12c, ['tag', '-a', 'v1.2.0', '-m', 'v1.2.0']);
+$snap12c = $tmp . '/tag-after-sync-snapshot';
+mkdir($snap12c, 0777, true);
+rdg_write($snap12c, ['app.php' => "<?php\n// release 3\nreturn 3;\n",
+                     'helper.php' => $BASE['helper.php'], 'README.md' => $BASE['README.md']]);
+$r12c = rdg_json($checker, $snap12c, $pub12c, $exceptionsCommon);
+t('a release tag newer than the last sync commit is the baseline',
+    ($r12c['json']['baseline_ref'] ?? '') === 'v1.2.0' && $r12c['code'] === 0,
+    ($r12c['json']['baseline_ref'] ?? 'none') . ' exit ' . $r12c['code']);
+
+// The trailer must be a REAL one: a commit that merely mentions the words in
+// prose is not a baseline.
+$pub12d = $tmp . '/prose-public';
+rdg_repo_init($pub12d);
+rdg_write($pub12d, $BASE);
+rdg_commit($pub12d, 'initial, never tagged');
+rdg_write($pub12d, ['app.php' => "<?php\n// edited\nreturn 5;\n"]);
+rdg_commit($pub12d, "notes\n\nThe Dev-Commit: trailer is described in the docs, no hash here.\n");
+$snap12d = $tmp . '/prose-snapshot';
+mkdir($snap12d, 0777, true);
+rdg_write($snap12d, $BASE);
+$r12d = rdg_check($checker, $snap12d, $pub12d, $exceptionsCommon);
+t('prose that mentions the trailer name is not a baseline: the check still refuses',
+    $r12d['code'] === 1 && stripos($r12d['err'], 'cannot establish what the last release published') !== false,
+    'exit ' . $r12d['code'] . ' ' . trim($r12d['err']));
+
 echo "\n{$passed} passed, {$failed} failed\n";
 exit($failed > 0 ? 1 : 0);

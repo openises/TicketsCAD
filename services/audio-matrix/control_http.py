@@ -41,6 +41,23 @@ Endpoints (all JSON; every mutating call requires Authorization: Bearer):
                                         otherwise.
   DELETE /channels/http_stream?channel_id=  -> stop the leg and remove the
                                         channel from the live matrix
+  POST /channels/leg {channel_id,name,reg_class,adapter,config}
+                                      -> create (or re-attach) a channel AND
+                                        attach a live USRP-family leg
+                                        (adapter "dvmproject" or
+                                        "usrp_bridge"; Phase 155, GH#151/
+                                        GH#129 -- LISTEN-ONLY) with no
+                                        service restart. 501 unless
+                                        service.py wires create_leg/
+                                        remove_leg; 400 on a bad config or a
+                                        UDP port already in use.
+  DELETE /channels/leg?channel_id=    -> stop that leg, free its port, and
+                                        remove the channel
+  GET  /legs                          -> per-leg health for USRP-family legs
+                                        ([{channel_id, running, receiving,
+                                        rx_frames, ...}]). BEARER-REQUIRED
+                                        (unlike the other reads): it carries
+                                        the bridge's address and ports.
 
 Read endpoints are open (dispatch dashboards poll health); mutations
 require the token so only the app / an authorized operator can re-patch.
@@ -72,7 +89,10 @@ def make_control_server(core: MatrixCore, port: int, token: str,
                         host: str = "127.0.0.1", get_ticks=None,
                         dev_insecure: bool = False,
                         create_http_stream_leg=None,
-                        remove_http_stream_leg=None):
+                        remove_http_stream_leg=None,
+                        create_leg=None,
+                        remove_leg=None,
+                        get_leg_health=None):
     """
     Build (but do not start) a ThreadingHTTPServer exposing `core`.
     Caller runs server.serve_forever() on its own thread. `get_ticks`
@@ -86,6 +106,11 @@ def make_control_server(core: MatrixCore, port: int, token: str,
     means the /channels/http_stream endpoints answer 501; service.py always
     wires both in practice since HttpStreamLeg has no optional external
     dependency the way the browser leg's mysql-connector check does.
+
+    `create_leg(channel_id, name, reg_class, adapter, config) -> leg`,
+    `remove_leg(channel_id) -> bool` and `get_leg_health() -> list[dict]`
+    (Phase 155) are the same injection for the generic USRP-family legs;
+    None answers 501 on the three routes that need them.
 
     Raises ControlPlaneConfigError if `token` is empty and `dev_insecure`
     is not explicitly True — an open control plane means anyone who can
@@ -122,6 +147,17 @@ def make_control_server(core: MatrixCore, port: int, token: str,
             hdr = self.headers.get("Authorization", "")
             if hdr.startswith("Bearer ") and hdr[7:].strip() == token:
                 return True
+            # Consume (up to 1 MiB of) the request body BEFORE answering.
+            # Replying 401 and closing with the body unread makes the client's
+            # send race the server's close, which surfaces on Windows as a
+            # connection-aborted error instead of the 401 (seen intermittently
+            # in services/audio-matrix/tests/test_usrp_service.py).
+            try:
+                n = min(int(self.headers.get("Content-Length", "0") or "0"), 1048576)
+                if n > 0:
+                    self.rfile.read(n)
+            except Exception:
+                pass
             self._send(401, {"error": "unauthorized"})
             return False
 
@@ -166,6 +202,15 @@ def make_control_server(core: MatrixCore, port: int, token: str,
                 return
             if path == "/workstation-mutes":
                 self._send(200, core.workstation_mutes())
+                return
+            if path == "/legs":
+                # Auth required: the body names the bridge's host and ports.
+                if not self._authed():
+                    return
+                if get_leg_health is None:
+                    self._send(501, {"error": "legs not supported by this build"})
+                    return
+                self._send(200, {"legs": get_leg_health()})
                 return
             self._send(404, {"error": "not found"})
 
@@ -309,6 +354,28 @@ def make_control_server(core: MatrixCore, port: int, token: str,
                     self._send(400, {"error": "could not start stream: " + str(e)})
                 return
 
+            if path == "/channels/leg":
+                if create_leg is None:
+                    self._send(501, {"error": "legs not supported by this build"})
+                    return
+                try:
+                    channel_id = str(data["channel_id"])
+                    name = str(data.get("name") or channel_id)
+                    reg_class = str(data.get("reg_class") or "")
+                    adapter = str(data["adapter"])
+                    config = data.get("config") or {}
+                    if not channel_id or not adapter:
+                        raise ValueError("channel_id and adapter are required")
+                    if not isinstance(config, dict):
+                        raise ValueError("config must be an object")
+                    create_leg(channel_id, name, reg_class, adapter, config)
+                    self._send(200, {"ok": True, "channel_id": channel_id})
+                except (RouteError, ValueError, KeyError) as e:
+                    self._send(400, {"error": str(e)})
+                except Exception as e:  # noqa: BLE001 - e.g. leg construction failed
+                    self._send(400, {"error": "could not start leg: " + str(e)})
+                return
+
             self._send(404, {"error": "not found"})
 
         def do_DELETE(self):
@@ -332,6 +399,18 @@ def make_control_server(core: MatrixCore, port: int, token: str,
                     self._send(400, {"error": "channel_id required"})
                     return
                 ok = remove_http_stream_leg(channel_id)
+                self._send(200 if ok else 404, {"removed": ok})
+                return
+            if parsed.path == "/channels/leg":
+                if remove_leg is None:
+                    self._send(501, {"error": "legs not supported by this build"})
+                    return
+                q = parse_qs(parsed.query)
+                channel_id = (q.get("channel_id") or [""])[0]
+                if not channel_id:
+                    self._send(400, {"error": "channel_id required"})
+                    return
+                ok = remove_leg(channel_id)
                 self._send(200 if ok else 404, {"removed": ok})
                 return
             self._send(404, {"error": "not found"})

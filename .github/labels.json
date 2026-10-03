@@ -1,0 +1,79 @@
+{
+  "_comment": [
+    "Label definitions for this repository, applied by tools/sync-labels.php.",
+    "Spelled out in full on purpose: no abbreviations a stranger has to look up.",
+    "mode 'sync'        : created if missing, and its colour and description are brought back to this file's values.",
+    "mode 'create-only' : created if missing, NEVER edited if it already exists (used for labels whose live",
+    "                     definition predates this file and may have been tuned by hand).",
+    "Nothing in this file deletes or renames a label. Removing a label is a maintainer decision made by hand.",
+    "A description is at most 100 characters (GitHub's limit); a colour is six hex digits with no leading #."
+  ],
+  "labels": [
+    {
+      "name": "needs triage",
+      "color": "fbca04",
+      "description": "New and not yet read by a person. The triage bot adds it; the maintainer removes it.",
+      "mode": "sync"
+    },
+    {
+      "name": "confirmed",
+      "color": "0e8a16",
+      "description": "The maintainer reproduced this, or confirmed it from the code.",
+      "mode": "sync"
+    },
+    {
+      "name": "live operations",
+      "color": "b60205",
+      "description": "The reporter says this is affecting a real, current operation.",
+      "mode": "sync"
+    },
+    {
+      "name": "planned",
+      "color": "1d76db",
+      "description": "Accepted and intended to be built. Not a promise of a date.",
+      "mode": "sync"
+    },
+    {
+      "name": "on hold",
+      "color": "c5def5",
+      "description": "Deliberately paused. The thread says why and when it will be looked at again.",
+      "mode": "sync"
+    },
+    {
+      "name": "fixed in main",
+      "color": "5319e7",
+      "description": "The fix is in main on this repository. Run git pull to get it.",
+      "mode": "sync"
+    },
+    {
+      "name": "needs reporter",
+      "color": "d4c5f9",
+      "description": "Waiting for the reporter to answer a question or confirm a fix.",
+      "mode": "create-only"
+    },
+    {
+      "name": "windows/iis",
+      "color": "0052cc",
+      "description": "Reported on a Windows or IIS install.",
+      "mode": "create-only"
+    },
+    {
+      "name": "bug",
+      "color": "d73a4a",
+      "description": "Something is not working.",
+      "mode": "create-only"
+    },
+    {
+      "name": "enhancement",
+      "color": "a2eeef",
+      "description": "A new feature or a request to change behaviour.",
+      "mode": "create-only"
+    },
+    {
+      "name": "question",
+      "color": "d876e3",
+      "description": "A question about installing, configuring or running TicketsCAD.",
+      "mode": "create-only"
+    }
+  ]
+}

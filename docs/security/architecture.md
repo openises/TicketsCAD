@@ -301,12 +301,12 @@ authoritative for a compliance submission.
 | 8 | Audit Log Management | **COVERED** | Login/data-access/admin-action trail with IP + user agent, write-only from the app; no stated retention *policy* (retention is unbounded by default, which is itself a documented tradeoff) | Light |
 | 9 | Email and Web Browser Protections | GAP | Out of the application's control surface — operator workstation/browser hygiene | Light |
 | 10 | Malware Defenses | GAP | No malware/AV scanning on uploaded attachments; host antivirus is the operator's domain | Light |
-| 11 | Data Recovery | **COVERED** | Automatic, verified, restorable backups on systemd timers with a genuine `--drill` restore-and-compare mode — a strong, tested match to this control | Moderate |
+| 11 | Data Recovery | **COVERED** | Automatic, verified, restorable backups on systemd timers with a genuine `--drill` restore-and-compare mode — a strong, tested match to this control. Each dump carries a per-table content fingerprint that the drill and `restore.php --yes/--verify` recompute from the restored rows, so a restore that changes values fails (Phase 155) | Moderate |
 | 12 | Network Infrastructure Management | PARTIAL | [`network-segmentation-guidance.md`](network-segmentation-guidance.md) now names the specific bridge services and a starting zone layout; still no enforcement — segmentation remains the operator's own network, by design (see §1) | Minimal |
 | 13 | Network Monitoring and Defense | GAP | No IDS/monitoring guidance — legitimately IG2/IG3-tier for this project's scale | None |
 | 14 | Security Awareness and Skills Training | **COVERED** | [`operator-security-awareness.md`](operator-security-awareness.md) — password hygiene, phishing in a public-safety context, physical device security, every in-app reference verified against the code | Heavy |
 | 15 | Service Provider Management | PARTIAL | SECURITY.md discloses every third-party data flow explicitly (AI, TTS, weather, tile providers); no formal service-provider review *process* for operators choosing which to enable | Minimal |
-| 16 | Application Software Security | PARTIAL | Strong test-gate discipline (8,000+ assertions, schema/contract/legacy-level audits, pre-commit hooks); SonarQube runs but is not yet a hard CI gate (see `maintenance.md`), no CodeQL or dedicated SAST gate | None |
+| 16 | Application Software Security | PARTIAL | Strong test-gate discipline (8,000+ assertions, schema/contract/legacy-level audits, tokenizing CSRF-coverage and audit_log-reachability gates, pre-commit hooks); SonarQube runs but is not yet a hard CI gate (see `maintenance.md`), no CodeQL or dedicated SAST gate | None |
 | 17 | Incident Response Management | **COVERED** | [`incident-response-plan-template.md`](incident-response-plan-template.md) — fill-in-now contacts, recognition signs, first-30-minutes/containment/recovery/after-action, distinct from SECURITY.md's researcher-facing VDP | Light |
 | 18 | Penetration Testing | GAP | No formal program; the project's multi-year real-world vulnerability-report history (see §7) is a partial, informal substitute, not an equivalent | None |
 
@@ -572,6 +572,30 @@ adding a new admin-only permission must follow to avoid reintroducing this.
   a documented residual risk, not silently dismissed, since a future
   multi-tenant deployment of this script would need to revisit it (e.g.
   `tempfile.NamedTemporaryFile` instead of a hand-built path).
+
+- **Towing / roadside dispatch (GH#148, Phase 155) holds personal data with no
+  retention rule.** A dispatch records a
+  vehicle description and licence plate (personal data about a member of the
+  public). They live on `vendor_dispatches`, not in the append-only ledger (which
+  holds company names and numbers, the acting user and a reason), and nothing
+  purges them: a retention rule for them is a follow-up, and until then an agency
+  must treat them like other incident data. (An independent review found that
+  `action.manage_vendors`, which an Org Admin holds, could change the
+  install-wide dispatch settings and the shared service types for every
+  organization; the writers now refuse anyone whose organization visibility is
+  restricted, so only a Super Admin can, and the admin page shows those two tabs
+  read-only to everyone else.) Controls that DO apply: every state change is in the audit log (`vendor`
+  category) and in the ledger; the ledger is never UPDATEd or DELETEd by
+  application code (a tokenizing test enforces it) and a site may revoke those
+  rights at the database for tamper resistance; org scoping on companies, lists,
+  dispatches and history; `action.dispatch_vendor` and `action.manage_vendors`
+  never fall back to `is_admin()`; two dispatchers cannot be given the same
+  rotation slot (a per-list row lock, then a provider row lock, in a READ
+  COMMITTED transaction); a pick that names a rotation member without its list is
+  judged against that list; a reorder of a list with history needs a reason and
+  leaves a ledger row; `vendor:dispatch` SSE events are scoped to the incident's
+  organizations. Full detail:
+  `docs/VENDOR-DISPATCH-GUIDE.md`.
 
 ---
 

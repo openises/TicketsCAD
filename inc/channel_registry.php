@@ -189,6 +189,42 @@ function channel_adapter_catalog() {
             'regulatory_class' => 'internal',
             'capabilities' => ['voice_rx' => true],
         ],
+        // Phase 155 (GH#151 DVM Host in the Console + GH#129 P25 bridge) --
+        // ONE generic USRP leg (services/audio-matrix/legs/usrp.py) in two
+        // flavours. USRP is the 8 kHz PCM-over-UDP framing that DVMProject's
+        // `dvmbridge`, DVSwitch's Analog_Bridge and AllStar's chan_usrp all
+        // speak, so the audio matrix needs no codec and no knowledge of any
+        // radio network: an operator-installed bridge program does the
+        // vocoding and joins the network. Managed by inc/voice-bridge-
+        // channels.php (voice-bridges-admin.php), created one row per
+        // talkgroup/bridge by an admin action, NOT synced.
+        //
+        // LISTEN-ONLY in Release A: the catalog declares voice_rx and
+        // nothing else. voice_tx / ptt_floor join this list in Release B,
+        // together with the station-ID and unattended-keying machinery that
+        // does not yet exist for these channels; until then the leg never
+        // transmits (see legs/usrp.py) and a patch INTO one of these
+        // channels is refused (inc/matrix-routes.php).
+        //
+        // regulatory_class defaults to 'amateur' and an admin may choose
+        // 'commercial' (a Part 90 network). 'internal'/'pstn' are refused
+        // for these adapters everywhere (inc/voice-bridge-channels.php,
+        // api/channels.php, service.py): a radio network classed 'internal'
+        // would be exempt from the cross-class patch guard.
+        //
+        // dvmproject additionally needs the recorded DVMProject usage-policy
+        // acknowledgment (settings.dvm_policy_ack) before a row can be
+        // created or enabled; usrp_bridge does not.
+        'dvmproject' => [
+            'label' => 'DVMProject (P25 / DMR via dvmbridge)',
+            'regulatory_class' => 'amateur',
+            'capabilities' => ['voice_rx' => true],
+        ],
+        'usrp_bridge' => [
+            'label' => 'USRP voice bridge (DVSwitch Analog_Bridge / AllStar chan_usrp)',
+            'regulatory_class' => 'amateur',
+            'capabilities' => ['voice_rx' => true],
+        ],
     ];
 }
 
@@ -674,6 +710,13 @@ function channel_registry_probe() {
                     $f['last_rx_at']  = $rx['created'];
                     $f['last_caller'] = $rx['sender_display'] ?: ($rx['sender_username'] ?: null);
                 }
+            } elseif ($ch['adapter'] === 'dvmproject' || $ch['adapter'] === 'usrp_bridge') {
+                // Phase 155: the link light comes from the FNE's own REST
+                // answer or it reads 'unknown' — never 'connected' because
+                // the audio path happens to be quiet. last_rx_at is written
+                // live by the leg's rx_state events (api/matrix-channel-state.php).
+                require_once __DIR__ . '/voice-bridge-channels.php';
+                $f = array_merge($f, vbc_probe_fields($ch));
             } elseif (!empty($ch['config']['broker_channel']) || $ch['adapter'] === 'mesh') {
                 $code = $ch['config']['broker_channel'] ?? 'meshtastic';
                 $rx = db_fetch_one(

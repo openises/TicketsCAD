@@ -135,6 +135,26 @@
         });
         row.appendChild(toggleBtn);
 
+        // Phase 155 (GH#108 S1): the docs always said the workstation token is
+        // "visible on its Console page", but nothing rendered it. An
+        // administrator binds a phone number to this desk by pasting it on the
+        // Phone Extensions page, so it gets its own one-click entry here.
+        if (myToken()) {
+            var tokenBtn = el('button', 'btn btn-sm btn-outline-secondary ms-2', null);
+            tokenBtn.type = 'button';
+            tokenBtn.id = 'consoleWorkstationTokenBtn';
+            tokenBtn.title = 'Show this workstation\'s token (an administrator uses it to bind a phone number to this desk)';
+            tokenBtn.appendChild(el('i', 'bi bi-key me-1'));
+            tokenBtn.appendChild(document.createTextNode('Phone token'));
+            tokenBtn.addEventListener('click', function () {
+                panelOpen = true;
+                renderPanel();
+                var tokenInput = document.getElementById('consoleWorkstationTokenInput');
+                if (tokenInput && tokenInput.focus) { tokenInput.focus(); tokenInput.select(); }
+            });
+            row.appendChild(tokenBtn);
+        }
+
         if (state.mutedIds.length) {
             var mutedLabels = [];
             for (var i = 0; i < state.nearby.length; i++) {
@@ -186,6 +206,35 @@
         panelEl.classList.toggle('d-none', !panelOpen);
         if (!panelOpen) { return; }
         panelEl.innerHTML = '';
+
+        var tokenValue = myToken();
+        if (tokenValue) {
+            var tokenWrap = el('div', 'console-workstation-token mb-2');
+            tokenWrap.appendChild(el('div', 'text-body-secondary small mb-1',
+                'This workstation\'s token. To give this desk its own phone number, an administrator pastes it ' +
+                'on the Phone Extensions page (Settings > Communications & Integrations).'));
+            var group = el('div', 'input-group input-group-sm');
+            var tokenInput = document.createElement('input');
+            tokenInput.type = 'text';
+            tokenInput.readOnly = true;
+            tokenInput.id = 'consoleWorkstationTokenInput';
+            tokenInput.className = 'form-control form-control-sm font-monospace';
+            tokenInput.value = tokenValue;
+            tokenInput.setAttribute('aria-label', 'This workstation\'s token');
+            group.appendChild(tokenInput);
+            var copyBtn = el('button', 'btn btn-outline-secondary', null);
+            copyBtn.type = 'button';
+            copyBtn.id = 'consoleWorkstationTokenCopy';
+            copyBtn.setAttribute('aria-label', 'Copy this workstation\'s token');
+            copyBtn.appendChild(el('i', 'bi bi-clipboard'));
+            copyBtn.addEventListener('click', function () {
+                tokenInput.select();
+                try { document.execCommand('copy'); } catch (e) { /* the text is selected; Ctrl+C still works */ }
+            });
+            group.appendChild(copyBtn);
+            tokenWrap.appendChild(group);
+            panelEl.appendChild(tokenWrap);
+        }
 
         if (state.discoveryEnabled) {
             var searchRow = el('div', 'mb-2');

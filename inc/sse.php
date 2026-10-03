@@ -179,13 +179,24 @@ if (!function_exists('sse_publish')) {
             // That restriction is also what makes the recursion terminate:
             // a webhook-only row never re-enters the routing engine, so it
             // cannot publish another SSE event.
-            if (function_exists('notify_fanout_dispatch')) {
-                notify_fanout_dispatch($eventType, $payload, ['webhook']);
-            } elseif (is_file(__DIR__ . '/notify-fanout.php')) {
-                require_once __DIR__ . '/notify-fanout.php';
-                notify_fanout_dispatch($eventType, $payload, ['webhook']);
-            } elseif (function_exists('webhook_fire')) {
-                webhook_fire($eventType, $payload);
+            //
+            // Phase 155 (GH#147): EXCEPT for the SSE types in
+            // sse_webhook_suppressed_types(). Those already reach webhook
+            // subscribers through their own audit row under the SAME name
+            // (this leg converts ':' to '.'), so fanning them out here too
+            // delivered every change to a subscriber TWICE with two different
+            // payload shapes. Measured through the real endpoint against a
+            // live receiver: incident.primary_changed arrived as the audit
+            // envelope AND as a bare {ticket_id, primary_responder_id, ...}.
+            if (!in_array($eventType, sse_webhook_suppressed_types(), true)) {
+                if (function_exists('notify_fanout_dispatch')) {
+                    notify_fanout_dispatch($eventType, $payload, ['webhook']);
+                } elseif (is_file(__DIR__ . '/notify-fanout.php')) {
+                    require_once __DIR__ . '/notify-fanout.php';
+                    notify_fanout_dispatch($eventType, $payload, ['webhook']);
+                } elseif (function_exists('webhook_fire')) {
+                    webhook_fire($eventType, $payload);
+                }
             }
 
             return true;
@@ -202,6 +213,21 @@ if (!function_exists('sse_publish')) {
                 return false;
             }
         }
+    }
+
+    /**
+     * Phase 155 (GH#147) -- SSE event types that must NOT also fan out to webhook
+     * subscribers, because the same change already reaches them through an
+     * audit-driven webhook of the identical (dot-notation) name. The browser
+     * still receives them over SSE; only the second, differently-shaped webhook
+     * delivery is suppressed. Add a type here only when its audit row maps to
+     * the same event name (inc/webhooks.php _audit_to_webhook_event()).
+     *
+     * @return string[]
+     */
+    function sse_webhook_suppressed_types(): array
+    {
+        return ['incident:primary_changed'];
     }
 
     /**

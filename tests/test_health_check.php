@@ -306,7 +306,9 @@ test('settings.php warns when Web Push library is absent',
 // the autoloader OR fall back to a filesystem check.
 $diagSrc = @file_get_contents(__DIR__ . '/../api/diagnostics.php') ?: '';
 test('api/diagnostics.php detects Web Push lib without relying on the autoloader',
-    strpos($diagSrc, "vendor/autoload.php") !== false
+    // The autoloader is loaded through inc/vendor-autoload.php's guarded helper (it silences a
+    // third-party PHP 8.4 deprecation while it loads), so accept the helper OR the bare path.
+    (strpos($diagSrc, "vendor/autoload.php") !== false || strpos($diagSrc, "newui_require_vendor_autoload()") !== false)
     && strpos($diagSrc, "vendor/minishlink/web-push") !== false);
 
 // ── API endpoint ──────────────────────────────────────────────

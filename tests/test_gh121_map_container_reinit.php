@@ -471,7 +471,7 @@ function runHandler(fnSrc, mapThrows) {
     var calls = {
         renderHeader: 0, renderDescription: 0, renderLocation: 0, renderContact: 0,
         renderFacilities: 0, renderTimeStatus: 0, renderAdditional: 0, renderProtocol: 0,
-        renderAssignments: 0, renderActions: 0, renderPrimaryUnitBanner: 0, syncStatusSelect: 0,
+        renderAssignments: 0, renderActions: 0, renderPrimaryUnitBanner: 0, renderReservations: 0, syncStatusSelect: 0,
         initEditButtons: 0, setInitialFocus: 0, loadDispositionOptions: [],
         mainContentRevealed: false, loadingSpinnerHidden: false
     };
@@ -514,6 +514,10 @@ function runHandler(fnSrc, mapThrows) {
     // success handler must not cascade and skip initEditButtons()/
     // setInitialFocus()/loadDispositionOptions() etc.).
     global.renderPrimaryUnitBanner = function () { calls.renderPrimaryUnitBanner++; };
+    // Phase 155 (GH#141, 2026-10) — same again for the "Reserved units" card:
+    // the handler now calls renderReservations(data.reservations || [],
+    // data.reservation_settings || {}) right after the primary-unit banner.
+    global.renderReservations = function () { calls.renderReservations++; };
     global.syncStatusSelect = function () { calls.syncStatusSelect++; };
     global.loadResponders = function () {};
     global.initEditButtons = function () { calls.initEditButtons++; };

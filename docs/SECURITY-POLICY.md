@@ -446,6 +446,20 @@ library is upgraded, the SBOM follows automatically; if a banner disappears,
 the component degrades to an explicit "unknown" rather than reporting a stale
 value.
 
+**The in-document signature (JSF) is deliberately not shipped.** The signature
+above is detached, so a verifier checks the literal published bytes and never has
+to reproduce a JSON canonicalisation. CycloneDX 1.6 also defines an in-document
+`signature` property, which standard tooling (`cyclonedx-cli verify`) looks for
+and does not find. Adding it is small only because this document stays inside a
+narrow profile: no floats, no control characters, only ASCII object keys. A
+canonicaliser that is subtly wrong would verify with our own tool and fail with
+everyone else's — reported as *tampered* rather than *unsigned* — so it will not
+ship until an independent implementation has verified it. In the meantime the
+generator enforces that profile (`tools/sbom-jcs-profile.php`, covered by
+`tests/test_sbom_jcs_profile.php`): `--check` fails if the document ever gains a
+float, a control character, a non-ASCII key or an integer a double cannot hold,
+so the premise cannot lapse unnoticed before the signature is built.
+
 ### 6.3 Dependency currency
 
 `.github/dependabot.yml` watches Composer, GitHub Actions, and the Meshtastic

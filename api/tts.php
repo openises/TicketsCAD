@@ -10,8 +10,9 @@
  * POST action=test           → synthesize a sample, return WAV (base64) to play
  *
  * RBAC: action.manage_tts (Super/Org Admin). CSRF on writes. Every change
- * audit-logged under 'tts'. API keys are written to ../keys/tts/<file> (0640,
- * outside the webroot) — never stored in the DB or returned to the browser.
+ * audit-logged under 'tts'. API keys are written to the TTS key directory
+ * (inc/tts/keys.php — mode 0640, OUTSIDE the web root, beside the 2FA/RSA keys)
+ * — never stored in the DB or returned to the browser.
  */
 
 ini_set('display_errors', '0');
@@ -101,26 +102,6 @@ if (empty($input['csrf_token']) || !csrf_verify((string) $input['csrf_token'])) 
 }
 $action = (string) ($input['action'] ?? '');
 
-/** Persist an API key to ../keys/tts/<file> (0640). Returns the basename. */
-function _tts_write_key(string $engineKey, string $key): string
-{
-    $dir = tts_keys_dir();
-    if (!is_dir($dir)) { @mkdir($dir, 0750, true); }
-    // Deny rules beside the keys. This directory IS inside the served tree
-    // (NEWUI_ROOT/keys/tts), so it depends on the shipped .htaccess or the
-    // nginx include — and IIS reads neither. On IIS a `.key` file is currently
-    // refused only because there is no MIME mapping for that extension, which
-    // is an accident of naming rather than a control; see
-    // docs/security/advisory-2026-08-03-fe-keys-dir.md.
-    require_once __DIR__ . '/../inc/served-dir.php';
-    served_dir_harden($dir, 'TicketsCAD text-to-speech API keys', true);
-    $file = preg_replace('/[^a-z0-9_\-]/i', '_', $engineKey) . '.key';
-    $path = $dir . '/' . $file;
-    file_put_contents($path, trim($key));
-    @chmod($path, 0640);
-    return $file;
-}
-
 switch ($action) {
     case 'save_engine': {
         $id        = (int) ($input['id'] ?? 0);
@@ -147,7 +128,17 @@ switch ($action) {
                 }
             }
             if (!empty($input['api_key'])) {
-                $cfg['key_ref'] = _tts_write_key($engineKey, (string) $input['api_key']);
+                // The one writer (inc/tts/keys.php). It refuses to put a secret
+                // inside the web root and never reports success it did not
+                // achieve — the old inline version ignored a failed write and
+                // returned the file name anyway. The browser gets a message
+                // that names no server path; the full one goes to the log.
+                $res = tts_write_key($engineKey, (string) $input['api_key']);
+                if (!$res['ok']) {
+                    error_log('[tts] API key not stored: ' . $res['error']);
+                    json_error((string) ($res['public'] ?? 'The API key could not be stored.'), 500);
+                }
+                $cfg['key_ref'] = $res['file'];
             }
             $cfgJson = json_encode($cfg, JSON_UNESCAPED_SLASHES);
             if ($id > 0) {

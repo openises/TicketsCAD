@@ -855,6 +855,22 @@ $vendored = [
                       . 'as "latest".'],
     ],
     [
+        'name'      => 'DOMPurify',
+        'publisher' => 'Cure53 and contributors',
+        'license'   => ['expression' => 'Apache-2.0 OR MPL-2.0'],
+        'purlBase'  => 'pkg:npm/dompurify',
+        'sourceUrl' => 'https://github.com/cure53/DOMPurify',
+        /* Header banner: "@license DOMPurify 3.4.16 | (c) Cure53 ...". Read from the
+         * shipped file so an upgrade is followed by the SBOM automatically. */
+        'detect'    => ['assets/vendor/dompurify/purify.min.js', '/DOMPurify\s+(\d+\.\d+\.\d+)/'],
+        'files'     => ['assets/vendor/dompurify/purify.min.js'],
+        'notes'     => ['HTML sanitiser applied to author-written markdown in the SOP viewer, '
+                      . 'revision view and editor preview (assets/js/sop.js renderMarkdown()). '
+                      . 'Added to close a stored cross-site-scripting finding: marked does not '
+                      . 'sanitise its output. Vendored unmodified from the npm tarball; see '
+                      . 'assets/vendor/dompurify/PROVENANCE.txt.'],
+    ],
+    [
         'name'      => 'Leaflet.Graticule',
         'publisher' => 'Bjorn Sandvik',
         'license'   => null,
@@ -1922,6 +1938,28 @@ $bom = [
 ];
 
 $json = json_encode($bom, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n";
+
+/* The profile gate — BEFORE the mode split below, so `--check` (a CI and
+ * pre-commit gate) trips on it as well as a real run.
+ *
+ * Today this document contains no floats, no control characters and only ASCII
+ * object keys, which is what makes an RFC 8785 (JCS) canonicalisation — and so a
+ * CycloneDX in-document JSF signature — small enough to prove correct. That is
+ * a property of the data, not of anything that enforces it. If a dependency ever
+ * changes it, a later signature would verify here and fail everywhere else,
+ * which tooling reports as "tampered", not "unsigned". Fail now, loudly, at the
+ * change that caused it. See tools/sbom-jcs-profile.php. */
+require_once __DIR__ . '/sbom-jcs-profile.php';
+$profileViolations = sbom_jcs_profile_violations($bom);
+if ($profileViolations !== []) {
+    fwrite(STDERR, "[FAIL] the SBOM document left the JSON profile its signature scheme was proven on.\n");
+    foreach ($profileViolations as $v) {
+        fwrite(STDERR, "       - {$v}\n");
+    }
+    fwrite(STDERR, "       Nothing was written or checked. Remove the offending value (usually a\n"
+                 . "       version or metadata string) rather than the guard: see tools/sbom-jcs-profile.php.\n");
+    exit(1);
+}
 
 /* ================================================================== *
  * 8. Human-readable rendering

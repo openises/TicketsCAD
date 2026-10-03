@@ -1484,7 +1484,8 @@
     function _unitOtProvision(mode) {
         var id = getEditId();
         if (!id) return;
-        var base = 'api/owntracks-config.php?action=unit_link&responder_id=' + encodeURIComponent(id) + '&mode=' + encodeURIComponent(mode);
+        var base = 'api/owntracks-config.php?action=unit_link&responder_id=' + encodeURIComponent(id) + '&mode=' + encodeURIComponent(mode)
+                 + '&csrf_token=' + encodeURIComponent(getCsrfToken());
         if (mode === 'file') {
             // Binary .otrc download — point a hidden iframe at it, then refresh.
             var ifr = document.createElement('iframe');

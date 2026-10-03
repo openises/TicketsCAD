@@ -146,6 +146,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             channel_registry_probe();
         }
         $channels = channels_all(!empty($_GET['enabled']));
+        // Phase 155: a digital voice bridge's config names the bridge's
+        // address and ports. An ordinary console operator needs only the
+        // mode and talkgroup to render the strip; the rest goes to people
+        // who administer the bridges.
+        require_once __DIR__ . '/../inc/voice-bridge-channels.php';
+        $canSeeBridgeConfig = rbac_can('action.manage_voice_bridges');
+        foreach ($channels as &$chRow) {
+            if (!$canSeeBridgeConfig && vbc_is_voice_bridge_adapter($chRow['adapter'])) {
+                $chRow['config'] = vbc_public_config(is_array($chRow['config']) ? $chRow['config'] : []);
+            }
+        }
+        unset($chRow);
         json_response(['channels' => $channels]);
     } catch (Exception $e) {
         json_error_safe('Failed to load channels', $e);
@@ -229,6 +241,20 @@ if ($action === 'update') {
     if ($id <= 0) { json_error('Missing channel id'); }
     $ch = channel_get($id);
     if (!$ch) { json_error('Channel not found', 404); }
+
+    // Phase 155: a digital voice bridge is enabled, disabled and reclassified
+    // ONLY on its own admin page (voice-bridges-admin.php). Enabling one here
+    // would skip the DVMProject usage-policy acknowledgment and the live
+    // attach; reclassifying one to internal/pstn would exempt a radio network
+    // from the cross-class patch guard. Presentation fields (label, colour,
+    // sort order) remain editable here like any other channel.
+    require_once __DIR__ . '/../inc/voice-bridge-channels.php';
+    if (vbc_is_voice_bridge_adapter($ch['adapter'])
+        && (array_key_exists('enabled', $input) || array_key_exists('regulatory_class', $input)
+            || array_key_exists('regulatory_class_locked', $input))) {
+        json_error('A digital voice bridge channel is enabled, disabled and reclassified on the '
+            . 'Digital Voice Bridges page (Settings), not here.', 403);
+    }
 
     $sets = []; $args = []; $changed = [];
     if (array_key_exists('label', $input) && trim((string) $input['label']) !== '') {

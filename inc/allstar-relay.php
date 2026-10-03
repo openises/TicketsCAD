@@ -33,16 +33,89 @@
  * command line would be a real remote-injection risk).
  */
 
+/**
+ * Phase 155 (GH#108 S5, "AllStar honesty") -- what this feature IS and ISN'T.
+ *
+ * This is a SIMULATED relay: it sends a spoken incident summary, over SSH and
+ * the Asterisk Manager Interface, to a plain Asterisk test server and measures
+ * the recording that comes back. It does not speak AllStarLink, key a radio,
+ * or touch a repeater, and no AllStar node exists in this system (real
+ * AllStarLink voice integration is a separate, unbuilt piece of work). Until
+ * Phase 155 the incident button said "AllStar Relay" on EVERY install, the
+ * connection defaults pointed at the maintainer's own lab, the settings had no
+ * screen, and a click froze the operator's whole session for 20-30 seconds.
+ * Now it is OFF unless an administrator turns it on, has no lab defaults, is
+ * configured on a Super-Admin-only page that says what it is, is labelled
+ * "Relay test page", and releases the session lock before it waits.
+ */
+/**
+ * An error whose message is SAFE to show to the person who clicked the button
+ * (nothing about the relay node's address, its SSH output or its Manager
+ * Interface replies). Every other RuntimeException from this file carries
+ * infrastructure detail (ssh stderr, AMI replies, host names): the endpoint
+ * logs those in full and shows the caller a generic sentence instead, because
+ * the person clicking is a dispatcher, not the administrator who set the node up.
+ */
+if (!class_exists('AllstarRelayUserError')) {
+    class AllstarRelayUserError extends RuntimeException {}
+}
+
 if (!function_exists('allstar_relay_settings')) {
 
-function allstar_relay_settings(): array {
+/**
+ * Is the relay test feature switched on? OFF unless the stored value is
+ * exactly '1' (a fresh install has no row). The incident button is not
+ * rendered, and the endpoint's trigger answers 404, while this is false.
+ */
+function allstar_relay_enabled(bool $fresh = false): bool {
+    return _allstar_relay_get('allstar_relay_enabled', $fresh) === '1';
+}
+
+/**
+ * Read one setting. get_variable() caches the whole settings table for the
+ * life of the process, so a request that has just WRITTEN a setting and wants
+ * to report it ($fresh) must read the row itself.
+ */
+function _allstar_relay_get(string $name, bool $fresh = false): string {
+    if ($fresh) {
+        $prefix = $GLOBALS['db_prefix'] ?? '';
+        $v = db_fetch_value("SELECT `value` FROM `{$prefix}settings` WHERE `name` = ?", [$name]);
+        return $v === false || $v === null ? '' : (string) $v;
+    }
+    $v = get_variable($name);
+    return $v === false ? '' : (string) $v;
+}
+
+function allstar_relay_save_enabled(bool $enabled): bool {
+    $prefix = $GLOBALS['db_prefix'] ?? '';
+    db_query(
+        "INSERT INTO `{$prefix}settings` (`name`, `value`) VALUES ('allstar_relay_enabled', ?)
+         ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)",
+        [$enabled ? '1' : '0']
+    );
+    return $enabled;
+}
+
+/**
+ * Connection settings. There are NO built-in defaults for the host, the SSH
+ * alias or the AMI user: the old defaults (ssh alias "allstar-mock", AMI host
+ * 10.0.0.10, user "ticketscad-relay") were the maintainer's lab, so on any
+ * other install the relay "worked" only on a machine with that exact ssh
+ * configuration. The dialplan extension and the Asterisk directory paths keep
+ * their defaults: those are the conventions of the documented test-node setup.
+ */
+function allstar_relay_settings(bool $fresh = false): array {
+    $g = static function (string $key, string $default) use ($fresh): string {
+        $v = _allstar_relay_get('allstar_relay_' . $key, $fresh);
+        return $v !== '' ? $v : $default;
+    };
     return [
-        'ssh_alias'             => (string) (get_variable('allstar_relay_ssh_alias') ?: 'allstar-mock'),
-        'ami_host'              => (string) (get_variable('allstar_relay_ami_host') ?: '10.0.0.10'),
-        'ami_port'              => (int)    (get_variable('allstar_relay_ami_port') ?: 5038),
-        'ami_user'              => (string) (get_variable('allstar_relay_ami_user') ?: 'ticketscad-relay'),
-        'ami_secret'            => (string) (get_variable('allstar_relay_ami_secret') ?: ''),
-        'extension'             => (string) (get_variable('allstar_relay_extension') ?: '200'),
+        'ssh_alias'             => $g('ssh_alias', ''),
+        'ami_host'              => $g('ami_host', ''),
+        'ami_port'              => (int)    $g('ami_port', '5038'),
+        'ami_user'              => $g('ami_user', ''),
+        'ami_secret'            => $g('ami_secret', ''),
+        'extension'             => $g('extension', '200'),
         // Asterisk's Playback() only reliably resolves files that live
         // under its own configured sounds directory -- a file dropped in
         // an arbitrary absolute path (e.g. /tmp) was found live-tested to
@@ -51,25 +124,148 @@ function allstar_relay_settings(): array {
         // The SSH account can't write here directly (owned by the
         // `asterisk` system user) -- delivery goes through a writable
         // staging directory first, then a `sudo mv` into place.
-        'remote_audio_dir'      => (string) (get_variable('allstar_relay_remote_audio_dir') ?: '/var/lib/asterisk/sounds/relay'),
-        'remote_staging_dir'    => (string) (get_variable('allstar_relay_remote_staging_dir') ?: '/tmp/ticketscad-relay'),
-        'remote_recordings_dir' => (string) (get_variable('allstar_relay_remote_recordings_dir') ?: '/var/spool/asterisk/allstar-mock-recordings'),
+        'remote_audio_dir'      => $g('remote_audio_dir', '/var/lib/asterisk/sounds/relay'),
+        'remote_staging_dir'    => $g('remote_staging_dir', '/tmp/ticketscad-relay'),
+        'remote_recordings_dir' => $g('remote_recordings_dir', '/var/spool/asterisk/allstar-mock-recordings'),
     ];
 }
 
+/**
+ * Validate one connection setting. Returns the cleaned value or throws
+ * InvalidArgumentException naming the field. These values are not decoration:
+ *   - ssh_alias is the first non-option argument to `ssh`/`scp`; one starting
+ *     with a dash would be parsed as an OPTION (e.g. ProxyCommand), i.e. a
+ *     command run on this web server;
+ *   - the three directories are interpolated into command lines that a REMOTE
+ *     shell parses, so they must be plain absolute paths;
+ *   - ami_user / ami_secret / extension go into AMI header lines, so a CR or LF
+ *     in any of them would inject extra AMI headers.
+ * Only an administrator can set them, but a setting that becomes a command
+ * line deserves a whitelist anyway.
+ */
+function allstar_relay_validate_setting(string $key, $raw): string {
+    $v = trim((string) $raw);
+    $bad = static function (string $why): InvalidArgumentException { return new InvalidArgumentException($why); };
+    switch ($key) {
+        case 'ssh_alias':
+            if ($v !== '' && !preg_match('/^[A-Za-z0-9][A-Za-z0-9._@-]{0,99}\z/', $v)) {
+                throw $bad('SSH alias may contain only letters, digits and . _ @ - and must not start with a dash.');
+            }
+            return $v;
+        case 'ami_host':
+            if ($v !== '' && !preg_match('/^[A-Za-z0-9][A-Za-z0-9.\-]{0,252}\z/', $v) && !filter_var($v, FILTER_VALIDATE_IP)) {
+                throw $bad('AMI host must be a host name or an IP address (no spaces, no scheme, no port).');
+            }
+            return $v;
+        case 'ami_port':
+            if (!preg_match('/^[0-9]{1,5}\z/', $v) || (int) $v < 1 || (int) $v > 65535) {
+                throw $bad('AMI port must be a number from 1 to 65535.');
+            }
+            return (string) (int) $v;
+        case 'ami_user':
+            if ($v !== '' && !preg_match('/^[A-Za-z0-9][A-Za-z0-9._@-]{0,63}\z/', $v)) {
+                throw $bad('AMI user may contain only letters, digits and . _ @ -');
+            }
+            return $v;
+        case 'ami_secret':
+            if (strlen($v) > 128 || preg_match('/[\x00-\x1F\x7F]/', $v)) {
+                throw $bad('AMI secret must be at most 128 characters with no control characters.');
+            }
+            return $v;
+        case 'extension':
+            if (!preg_match('/^[A-Za-z0-9_]{1,32}\z/', $v)) {
+                throw $bad('Extension may contain only letters, digits and underscores.');
+            }
+            return $v;
+        case 'remote_audio_dir':
+        case 'remote_staging_dir':
+        case 'remote_recordings_dir':
+            if (!preg_match('#^/[A-Za-z0-9._/-]{1,200}\z#', $v) || strpos($v, '..') !== false) {
+                throw $bad('Directories must be plain absolute paths (letters, digits and . _ / - only, no "..").');
+            }
+            return rtrim($v, '/') === '' ? '/' : rtrim($v, '/');
+    }
+    throw $bad('Unknown setting.');
+}
+
+/**
+ * Save connection settings. Every supplied value is validated BEFORE any is
+ * written (a refused save changes nothing). A blank or placeholder secret
+ * means "keep the stored one" (the secret is never sent to the browser, so a
+ * blank can only mean "I did not retype it"). Returns the names of the keys
+ * that actually changed -- never their values.
+ *
+ * @return string[]
+ */
 function allstar_relay_settings_save(array $in): array {
     $prefix = $GLOBALS['db_prefix'] ?? '';
+    require_once __DIR__ . '/settings-secrets.php';
     $keys = ['ssh_alias', 'ami_host', 'ami_port', 'ami_user', 'ami_secret', 'extension', 'remote_audio_dir', 'remote_staging_dir', 'remote_recordings_dir'];
+    $clean = [];
     foreach ($keys as $k) {
         if (!array_key_exists($k, $in)) { continue; }
-        $val = trim((string) $in[$k]);
+        if ($k === 'ami_secret' && is_masked_secret_value($in[$k])) { continue; }
+        $clean[$k] = allstar_relay_validate_setting($k, $in[$k]);
+    }
+    $before = allstar_relay_settings(true);
+    $changed = [];
+    foreach ($clean as $k => $val) {
+        // Always stored (an explicit save of a default is a real choice), but
+        // only a different EFFECTIVE value is reported as a change.
         db_query(
             "INSERT INTO `{$prefix}settings` (`name`, `value`) VALUES (?, ?)
              ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)",
             ['allstar_relay_' . $k, $val]
         );
+        if ((string) $before[$k] !== (string) $val) { $changed[] = $k; }
     }
-    return allstar_relay_settings();
+    return $changed;
+}
+
+/** Names of the connection settings that are still empty and required. */
+function allstar_relay_missing_settings(array $s): array {
+    $missing = [];
+    foreach (['ssh_alias' => 'SSH alias', 'ami_host' => 'AMI host', 'ami_user' => 'AMI user', 'ami_secret' => 'AMI secret'] as $k => $label) {
+        if ((string) ($s[$k] ?? '') === '') { $missing[] = $label; }
+    }
+    return $missing;
+}
+
+/**
+ * "Test connection": log in to the Asterisk Manager Interface and log out.
+ * That is ALL -- no Originate, no audio, nothing played or recorded. Reports
+ * where it stopped in words an administrator can act on. Never returns the
+ * server's own response text (it can name accounts) or the secret.
+ *
+ * @return array{ok:bool, detail:string}
+ */
+function allstar_relay_test_connection(array $settings): array {
+    $missing = allstar_relay_missing_settings($settings);
+    // ssh_alias is not needed to LOG IN to AMI; only the AMI trio is.
+    $needAmi = array_values(array_intersect($missing, ['AMI host', 'AMI user', 'AMI secret']));
+    if ($needAmi) {
+        return ['ok' => false, 'detail' => 'Not configured yet: ' . implode(', ', $needAmi) . '. Save the settings first.'];
+    }
+    $errno = 0; $errstr = '';
+    $sock = @fsockopen($settings['ami_host'], (int) $settings['ami_port'], $errno, $errstr, 6);
+    if (!$sock) {
+        return ['ok' => false, 'detail' => 'Cannot connect to ' . $settings['ami_host'] . ':' . (int) $settings['ami_port']
+            . ' (' . ($errstr !== '' ? $errstr : 'no answer') . '). Check the host, the port and the firewall.'];
+    }
+    stream_set_timeout($sock, 6);
+    $banner = (string) fgets($sock);
+    if (stripos($banner, 'Asterisk Call Manager') === false) {
+        fclose($sock);
+        return ['ok' => false, 'detail' => 'Something answered, but it is not an Asterisk Manager Interface. Check the port (the default is 5038).'];
+    }
+    fwrite($sock, "Action: Login\r\nUsername: {$settings['ami_user']}\r\nSecret: {$settings['ami_secret']}\r\n\r\n");
+    $resp = _allstar_relay_read_ami_block($sock);
+    $ok = strpos($resp, 'Response: Success') !== false;
+    if ($ok) { fwrite($sock, "Action: Logoff\r\n\r\n"); }
+    fclose($sock);
+    return $ok
+        ? ['ok' => true, 'detail' => 'Connected and logged in to the Asterisk Manager Interface. Nothing was sent or played.']
+        : ['ok' => false, 'detail' => 'The Manager Interface answered but refused the login. Check the AMI user and secret (and that the user may connect from this server).'];
 }
 
 /** A short, radio-appropriate spoken summary of an incident. */
@@ -84,7 +280,7 @@ function allstar_relay_build_message(int $ticketId): string {
         [$ticketId]
     );
     if (!$row) {
-        throw new RuntimeException('Incident not found.');
+        throw new AllstarRelayUserError('Incident not found.');
     }
     $parts = [];
     $parts[] = 'Dispatch relay.';
@@ -312,8 +508,14 @@ function allstar_relay_wav_stats(string $wavPath): array {
  */
 function allstar_relay_trigger(int $ticketId, ?string $messageOverride = null): array {
     $settings = allstar_relay_settings();
-    if ($settings['ami_secret'] === '') {
-        throw new RuntimeException('AllStar relay is not configured yet (missing AMI secret). Ask an administrator to set it up.');
+    $missing = allstar_relay_missing_settings($settings);
+    if ($missing) {
+        throw new AllstarRelayUserError('The relay test node is not configured yet (missing: ' . implode(', ', $missing)
+            . '). An administrator sets it up under Settings, Communications and Integrations, AllStar Relay (test).');
+    }
+    if ($messageOverride !== null) {
+        // The text is spoken; keep it short and printable (it also travels as FILE content, never in a command line).
+        $messageOverride = substr((string) preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', ' ', $messageOverride), 0, 500);
     }
 
     $text = $messageOverride !== null && trim($messageOverride) !== '' ? trim($messageOverride) : allstar_relay_build_message($ticketId);

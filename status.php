@@ -1257,6 +1257,28 @@ $csrf     = csrf_token();
                     '(setting <code>sched_stale_cutoff_min</code>).</div>';
         }
 
+        // ── Digital voice bridges (Phase 155, GH#151/GH#129) ────────
+        // Only rendered when at least one such channel is enabled: an
+        // install that does not use the feature has nothing to report.
+        var dvm = data.dvm_fne || {};
+        if (dvm.checked && dvm.channels > 0) {
+            html += '<div class="mt-3 mb-1 fw-semibold" style="font-size:0.8rem">' +
+                    '<i class="bi bi-broadcast-pin me-1"></i>Digital voice bridges' +
+                    '</div>';
+            html += '<div style="font-size:0.78rem" class="' + (dvm.severity === 'warn' ? 'text-warning' : 'text-body-secondary') + '">' +
+                    esc(dvm.channels + ' enabled channel(s)' + (dvm.severity === 'ok' ? ' — no problems found' : '')) + '</div>';
+            if ((dvm.issues || []).length > 0) {
+                html += '<ul class="mb-1" style="font-size:0.72rem;color:var(--bs-warning-text-emphasis)">';
+                for (var dv = 0; dv < dvm.issues.length; dv++) {
+                    html += '<li>' + esc(dvm.issues[dv]) + '</li>';
+                }
+                html += '</ul>';
+            }
+            if (dvm.note) {
+                html += '<div class="text-body-secondary" style="font-size:0.72rem">' + esc(dvm.note) + '</div>';
+            }
+        }
+
         // ── Team membership reconciliation (GH#76 Phase 144) ───────
         var tmr = data.team_membership || {};
         if (tmr.checked) {

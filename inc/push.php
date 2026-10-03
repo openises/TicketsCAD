@@ -39,9 +39,8 @@ declare(strict_types=1);
 // _push_enabled() checks the runtime prerequisite (class_exists +
 // settings gate) so callers that DO need push get the same graceful
 // bail as the "settings say push is off" path.
-if (is_file(__DIR__ . '/../vendor/autoload.php')) {
-    require_once __DIR__ . '/../vendor/autoload.php';
-} else {
+require_once __DIR__ . '/vendor-autoload.php';
+if (!newui_require_vendor_autoload()) {
     error_log('[push] vendor/autoload.php missing — push delivery disabled until `composer install` runs');
 }
 
@@ -275,6 +274,8 @@ function _push_build_notification(string $eventType, array $payload): array {
         'incident.created'  => '/incident-detail.php?id=' . $targetId,
         'incident.updated'  => '/incident-detail.php?id=' . $targetId,
         'incident.closed'   => '/incident-detail.php?id=' . $targetId,
+        'incident.reopened' => '/incident-detail.php?id=' . $targetId,
+        'incident.status_changed' => '/incident-detail.php?id=' . $targetId,
         'incident.note_added' => '/incident-detail.php?id=' . $targetId,
         'assign.created'    => '/incident-detail.php?id=' . ((int) ($data['ticket_id'] ?? 0)),
         'responder.status_changed' => '/unit-detail.php?id=' . $targetId,
@@ -287,6 +288,8 @@ function _push_build_notification(string $eventType, array $payload): array {
         'incident.created'   => 'New incident',
         'incident.updated'   => 'Incident updated',
         'incident.closed'    => 'Incident closed',
+        'incident.reopened'  => 'Incident reopened',
+        'incident.status_changed' => 'Incident status changed',
         'incident.note_added'=> 'Incident note',
         'assign.created'     => 'Unit assigned',
         'assign.removed'     => 'Unit released',

@@ -10,8 +10,17 @@
 #   api/file-upload.php:179    -- $colMap[$entityType] ?? null
 #   api/incident-list.php:120  -- $sort_map[$sort] ?? '`t`.`date`'
 #   api/incident-search.php:138 -- same $sort_map pattern (sibling of incident-list.php)
-#   api/mesh.php:1536          -- same int-cast + ?-bound IN(...) pattern as
-#                                  zello-inbox.php below (sibling endpoint)
+#   api/mesh.php:1541          -- same int-cast + ?-bound IN(...) pattern as
+#                                  zello-inbox.php below (sibling endpoint); was :1536,
+#                                  renumbered by the Phase 155 audit_log() fix above it
+#   api/constituents.php:140   -- Phase 155 (GH#108 S3): the WHERE fragment comes from
+#                                  phone_digits_match_sql() (inc/phone-match.php). Every
+#                                  column identifier is checked against a strict
+#                                  [A-Za-z0-9_`.] pattern (it THROWS on anything else);
+#                                  the dialed number reaches the query only as bound
+#                                  parameters; the rest is fixed SQL. Semgrep follows the
+#                                  tainted $_GET['phone'] into the returned array and
+#                                  cannot see that the 'sql' member never contains it.
 #   api/zello-inbox.php:266    -- ids are array_map('intval', ...)-cast and
 #                                  bound via a dynamically-sized ?-placeholder
 #                                  list; the flagged fragment is only "?,?,?"
@@ -20,5 +29,6 @@ api/audit-log.php:223
 api/file-upload.php:179
 api/incident-list.php:120
 api/incident-search.php:138
-api/mesh.php:1536
+api/mesh.php:1541
+api/constituents.php:140
 api/zello-inbox.php:266

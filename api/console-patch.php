@@ -118,7 +118,7 @@ if ($action === 'connect') {
         json_error('Forbidden — action.console_tx is required to key a channel', 403);
     }
     try {
-        $other = matrix_browser_leg_validate_channel($input['channel_id'] ?? 0);
+        $other = matrix_browser_leg_validate_channel($input['channel_id'] ?? 0, $direction);
     } catch (InvalidArgumentException $e) {
         json_error($e->getMessage());
     }

@@ -154,6 +154,28 @@ passwords); (3) resample to 8 kHz server-side (most services return 22–24 kHz)
 
 ---
 
+### Where hosted-engine API keys are stored
+
+A hosted engine (Deepgram, or an OpenAI-compatible server that needs a key)
+takes its API key from **Settings → Voice & Speech**. The key is never put in the
+database and never sent back to the browser — only whether one is stored. It is
+written to a file in the `tts` subdirectory of the keys directory, next to the
+2FA and field-encryption keys, **outside the web root**:
+
+| Platform | Directory |
+|---|---|
+| Linux, macOS | `../keys/tts` (a sibling of the install directory) |
+| Windows (IIS, XAMPP) | `%ProgramData%\TicketsCAD\keys\tts` |
+| Docker | `/var/www/keys/tts`, on the `app_keys` volume |
+
+Set `define('TTS_KEYS_DIR', '/your/path');` in `config.php` to use another
+directory. If the web server account cannot write there, saving a key fails with
+a message saying so, and **Settings → System Health → Encryption key location**
+names the directory; TicketsCAD never falls back to writing a key inside the web
+root. If you upgraded from v4.2.27 or older, `php sql/run_migrations.php`
+moves any keys left in the old `<install>/keys/tts` location; until then they keep
+working from where they are, and System Health lists them.
+
 ## 3. Troubleshooting
 
 - **Silent TX / empty audio:** run the Piper smoke test above on the bridge VM;

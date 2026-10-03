@@ -93,8 +93,13 @@ $csrf     = csrf_token();
         workstation simultaneously, including whichever one places the call. Every other extension
         is a <strong>direct-station number</strong> — dialing
         it rings only the one workstation it's bound to. Binding an extension to a workstation
-        (its token, from that workstation's own Console page) targets ringing notifications to
-        whichever operator is currently logged in there instead of broadcasting to everyone.
+        targets ringing notifications to whichever operator is currently logged in there instead
+        of broadcasting to everyone. A workstation's token is shown on its own Console page
+        (the <strong>Phone token</strong> button in the workstation bar) and in the phone's
+        &ldquo;not bound&rdquo; panel; on <em>this</em> browser, the <strong>This browser</strong>
+        button below fills it in for you. The extension's password here must match the endpoint
+        on the PBX &mdash; <strong>supply the PBX's existing password</strong> when you create it, or
+        change the PBX to the generated one.
     </div>
 
     <div class="card mb-3" id="pePbxPanel">
@@ -120,6 +125,54 @@ $csrf     = csrf_token();
             </div>
         </div>
     </div>
+
+    <?php if (rbac_can('action.manage_config')): ?>
+    <!-- Phase 155 (GH#108 S1) -- install-wide, so it needs action.manage_config
+         (Super Admin), not the action.manage_calls this page opens with. -->
+    <div class="card mb-3" id="peScopePanel">
+        <div class="card-header"><i class="bi bi-window-stack me-2"></i>Where the phone registers</div>
+        <div class="card-body">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-7">
+                    <label class="form-label form-label-sm mb-0" for="pePhoneScope">Register the browser phone on</label>
+                    <select class="form-select form-select-sm" id="pePhoneScope">
+                        <option value="phone_page">The Console and the Phone window only (recommended)</option>
+                        <option value="every_page">Every page</option>
+                    </select>
+                    <div class="form-text">A phone registration lasts only as long as the page that made it, and
+                        TicketsCAD is a multi-page app: with &ldquo;every page&rdquo; the extension drops off the PBX
+                        (and an active call ends) every time an operator clicks to another page. The recommended
+                        setting registers in the <strong>Phone window</strong> (<code>phone.php</code>, opened from
+                        the navbar phone button), which never navigates, plus the Console. Only one window of a
+                        browser holds the registration at a time. Choose &ldquo;every page&rdquo; only if your
+                        operators stay on one page.</div>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-sm btn-primary w-100" id="peBtnSaveScope">Save</button>
+                </div>
+            </div>
+            <hr class="my-3">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-10">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="peInternalConstituents" checked>
+                        <label class="form-check-label" for="peInternalConstituents">Record calls from our own
+                            extensions as Constituents</label>
+                    </div>
+                    <div class="form-text">When a workstation (say extension 101) calls the general number, the caller
+                        is added to the Constituents list under the extension's label, so the dispatcher who answers
+                        sees who is calling and a second call from that desk finds the same record. Turn this off if you
+                        do not want your own desks in the public contact list; a call from an extension then matches no
+                        Constituent. Phone numbers from outside are matched however they are written (<code>+1 612 555 1234</code>,
+                        <code>(612) 555-1234</code>, <code>612.555.1234</code> are one person).</div>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-sm btn-primary w-100" id="peBtnSaveInternal">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <div class="card mb-3" id="peListPanel">
         <div class="card-header d-flex align-items-center justify-content-between">
@@ -175,10 +228,26 @@ $csrf     = csrf_token();
         </div>
         <div class="mb-2" id="peWsWrap">
             <label class="form-label form-label-sm mb-0" for="peWorkstationToken">Workstation Token (optional)</label>
-            <input type="text" class="form-control form-control-sm font-monospace" id="peWorkstationToken"
-                   placeholder="paste from that workstation's Console page">
+            <div class="input-group input-group-sm">
+                <input type="text" class="form-control form-control-sm font-monospace" id="peWorkstationToken"
+                       placeholder="paste from that workstation's Console page">
+                <button type="button" class="btn btn-outline-secondary" id="peUseMyToken"
+                        title="Fill in the token of the browser you are using right now">This browser</button>
+            </div>
             <div class="form-text">Binds this direct number to one workstation, so a ring targets only the
-                operator currently logged in there instead of everyone. Leave blank for "not bound yet."</div>
+                operator currently logged in there instead of everyone. Leave blank for "not bound yet."
+                Each browser profile has its own token (shown by the Console's <strong>Phone token</strong>
+                button).</div>
+        </div>
+        <div class="mb-2" id="pePasswordWrap">
+            <label class="form-label form-label-sm mb-0" for="peSipPassword">PBX password (optional)</label>
+            <input type="password" class="form-control form-control-sm font-monospace" id="peSipPassword"
+                   autocomplete="new-password" maxlength="128" placeholder="leave blank to generate one">
+            <div class="form-text">Connecting to an endpoint that <strong>already exists</strong> on the PBX?
+                Type the password it already has (8&ndash;128 characters, no spaces) and nothing on the PBX has to
+                change. Leave it blank to have one generated (shown once, to copy into the PBX). On an existing
+                extension, filling this in <strong>replaces</strong> the stored password. It is never displayed
+                again.</div>
         </div>
         <div class="form-check form-switch mb-1">
             <input class="form-check-input" type="checkbox" id="peEnabled" checked>

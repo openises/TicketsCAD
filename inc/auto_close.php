@@ -316,9 +316,28 @@ function auto_close_sweep(int $limit = 20): array {
             // moment an admin turns disposition_required_on_close on.
             // Mirrors the Phase 129 PAR lesson: a disabled/gated feature
             // must not silently break unrelated background housekeeping.
-            $res = incident_update_status_internal($tid, 1, 0, ['skip_disposition_check' => true]);
+            // Phase 155 (GH#147): 'source'/'actor_type' make the
+            // incident.status_changed payload say this was the system's
+            // auto-close, not whichever dispatcher's incident-list request
+            // happened to run the sweep.
+            $res = incident_update_status_internal($tid, 1, 0, [
+                'skip_disposition_check' => true,
+                'source'                 => 'auto_close',
+                'actor_type'             => 'system',
+            ]);
             if (!empty($res['errors'])) {
                 error_log('[auto_close] sweep close #' . $tid . ': ' . implode(',', $res['errors']));
+                $skipped++;
+                continue;
+            }
+            if (!empty($res['noop'])) {
+                // Someone closed it between our SELECT and now (the writer is
+                // compare-and-set). Nothing was closed BY THIS SWEEP, so do not
+                // count it or write a second "auto-closed" audit row.
+                db_query(
+                    "UPDATE `{$prefix}ticket` SET auto_close_scheduled_at = NULL WHERE id = ?",
+                    [$tid]
+                );
                 $skipped++;
                 continue;
             }
@@ -329,9 +348,12 @@ function auto_close_sweep(int $limit = 20): array {
                 [$tid]
             );
             if (auto_close_ensure_audit()) {
+                // Phase 155: the acting identity is the SYSTEM, not whichever
+                // dispatcher's incident-list or SSE request ran this sweep.
                 audit_log('incident', 'close', 'ticket', $tid,
                     'Incident auto-closed after grace period expired (Phase 104d)',
-                    ['grace_seconds' => auto_close_grace_seconds()]);
+                    ['grace_seconds' => auto_close_grace_seconds()],
+                    AUDIT_INFO, AUDIT_ACTOR_SYSTEM);
             }
             $closed++;
         } catch (Exception $e) {

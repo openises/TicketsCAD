@@ -51,6 +51,14 @@ define('AUDIT_MEDIUM',   3);
 define('AUDIT_HIGH',     4);
 define('AUDIT_CRITICAL', 5);
 
+// Phase 155 (S0) -- the acting identity for work no human is performing right
+// now (a scheduled-incident activation, an auto-close sweep). Passed as
+// audit_log()'s trailing $actor argument so the row says "System" instead of
+// silently naming whoever's browser request the work happened to run inside.
+if (!defined('AUDIT_ACTOR_SYSTEM')) {
+    define('AUDIT_ACTOR_SYSTEM', ['id' => null, 'name' => 'System']);
+}
+
 // Severity labels for display
 function audit_severity_label(int $level): string {
     $labels = [
@@ -87,6 +95,19 @@ function audit_severity_color(int $level): string {
  * @param string      $summary     Human-readable summary of what happened
  * @param array|null  $details     Optional structured context (stored as JSON)
  * @param int         $severity    Severity level (use AUDIT_* constants, default AUDIT_INFO)
+ * @param array|null  $actor       Phase 155 (S0): override the acting user instead of
+ *                                 reading the session. Shape
+ *                                 ['id' => int|null, 'name' => string|null]; the
+ *                                 constant AUDIT_ACTOR_SYSTEM below is the one
+ *                                 background work should pass. Why this exists: the
+ *                                 lazy "scheduled incident became Active" step runs
+ *                                 inside whichever dispatcher's browser happened to
+ *                                 poll the incident list, so without an override the
+ *                                 audit row named that dispatcher as the person who
+ *                                 activated an incident they never touched -- a false
+ *                                 statement in a record whose whole job is to say who
+ *                                 did what. Omitted/null keeps the old behaviour
+ *                                 (session user) for every existing caller.
  * @return bool                    True on success, false on failure (never throws)
  */
 
@@ -122,12 +143,20 @@ function audit_log(
     $targetId = null,
     string  $summary = '',
     ?array  $details = null,
-    int     $severity = AUDIT_INFO
+    int     $severity = AUDIT_INFO,
+    ?array  $actor = null
 ): bool {
     try {
-        // Auto-detect user from session
-        $userId   = $_SESSION['user_id'] ?? null;
-        $userName = $_SESSION['user'] ?? null;
+        // Auto-detect user from session -- unless the caller states who the
+        // actor really is (Phase 155 S0: a system job must not borrow the
+        // session of whoever's request it happens to be running inside).
+        if ($actor !== null) {
+            $userId   = isset($actor['id']) && $actor['id'] !== null ? (int) $actor['id'] : null;
+            $userName = isset($actor['name']) ? (string) $actor['name'] : null;
+        } else {
+            $userId   = $_SESSION['user_id'] ?? null;
+            $userName = $_SESSION['user'] ?? null;
+        }
         // 2026-06-11 (Phase 10c): use trusted-proxy-aware client IP so
         // audit log shows the real client address, not the proxy loopback.
         require_once __DIR__ . '/client-ip.php';

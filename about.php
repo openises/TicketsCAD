@@ -139,7 +139,7 @@ try {
                         </li>
                         <li class="mb-2">
                             <i class="bi bi-people me-2"></i>
-                            <a href="https://groups.google.com/g/tickets-cad" target="_blank" rel="noopener noreferrer">Google Group (Community)</a>
+                            <a href="https://groups.google.com/g/open-source-cad" target="_blank" rel="noopener noreferrer">Google Group (Community)</a>
                         </li>
                         <li>
                             <i class="bi bi-download me-2"></i>
@@ -198,7 +198,7 @@ try {
                 </div>
                 <div class="card-body">
                     <p>Join the TicketsCAD community to ask questions, share ideas, and get support from other users and administrators.</p>
-                    <a href="https://groups.google.com/g/tickets-cad" class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener noreferrer">
+                    <a href="https://groups.google.com/g/open-source-cad" class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener noreferrer">
                         <i class="bi bi-envelope me-1"></i>Join the Google Group
                     </a>
                 </div>

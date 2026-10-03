@@ -408,10 +408,12 @@ Content-Type: application/json
 The fields to update may be sent at the top level of the body (as above) or nested under a `fields` key, matching the internal endpoint's shape — either form works. `id` may also be sent in the body instead of relying on the URL.
 
 - Scope: `incidents:write`
-- RBAC: `action.edit_incident`
-- Returns: `200 { "id": <id>, "fields_changed": [...] }`
+- RBAC: `action.edit_incident` for the request as a whole; **`status` additionally requires `action.close_incident`** (the same gate the dispatcher UI's status change uses), `disposition_id` requires `action.edit_incident`, and `primary_responder_id` requires `action.set_primary_unit`
+- Returns: `200 { "id": <id>, "fields_changed": [...] }` — when the request carried a `status`, the answer also says whether it really changed: `"status_changed": true|false`
 - Side effects: audit row (`category=incident`, `activity=update`); SSE `incident:update` event; webhook `incident.updated` event (via audit-driven fan-out, per `WEBHOOKS-INTEGRATOR-GUIDE.md`)
-- Statuses: `200`, `400 invalid_json_body`/`invalid_id`, `403 forbidden_rbac`/`forbidden`, `404 not_found`, `422 validation_failed` (response includes a `details.errors` array)
+- Statuses: `200`, `400 invalid_json_body`/`invalid_id`, `403 forbidden_rbac`/`forbidden`, `404 not_found`, `409 primary_unit_disabled`, `422 validation_failed` (response includes a `details.errors` array)
+- **Nothing is saved when the request is refused.** Every refusal that can be decided up front is decided *before* the first field is written: a missing permission for `status`/`disposition_id`/`primary_responder_id` (403), a `status` that is not 1/2/3 or a `status: 3` with no `booked_date` (422), an unknown or retired `disposition_id` (422), a close that would break the *disposition required on close* rule (422), and `primary_responder_id` on an install with the Primary Unit setting off (409). (Before Phase 155 a request mixing ordinary fields with a `status` the caller could not set saved the ordinary fields and *then* answered 403.)
+- **`status`** — `1` Closed, `2` Open, `3` Scheduled (send `booked_date`, `YYYY-MM-DD HH:MM:SS`, with `3`). It goes through the same writer as the dispatcher UI, so a real close clears the incident's units and fires `incident.closed` + `incident.status_changed`. **Asking for the status the incident already has is a safe no-op**: `200` with `"status_changed": false`, `problemend` untouched, no event — so a client may retry a close freely. Sending `status: 3` on an already Scheduled incident with a new `booked_date` just moves the booked time (`fields_changed` then contains `booked_date`).
 - **Cross-org ticket sharing:** a same-org ticket is unaffected. A share-derived ticket can only be PATCHed at `assist` tier — `view`-tier access is read-only. If the caller can see the ticket (via any tier) but the tier doesn't permit writing, the response is `403 forbidden` rather than `404 not_found`, so a legitimate `view`-tier integration gets a clear signal rather than an ambiguous "does this even exist."
 
 **Setting the primary/responsible unit (Phase 151, GH#138):** `primary_responder_id` is a DEDICATED action, not part of the generic field whitelist above — send it alone or alongside other fields in the same PATCH body:
@@ -478,8 +480,20 @@ Content-Type: application/json
 { "ticket_id": 42, "responder_id": 77, "role": "primary" }
 ```
 
+- Optional body flags: `"force": true` answers the double-booking confirmation (see below); `"dispatch_now": true` dispatches immediately even to a Scheduled incident (see *Reserved units*).
 - Returns: `201 { "id": <assign_id>, "ticket_id": 42, "responder_id": 77 }`
 - Side effects: audit `incident|assign|assigns`; webhook `assign.created`; SSE `responder:assign`
+- Statuses: `201`, `400`, `403 forbidden` (the incident belongs to another organization and is visible to you only read-only), `404 not_found` (it belongs to an organization you cannot see), `409 dispatch_confirmation_required` / `409 dispatch_blocked`, `422 validation_failed`
+- **Organization scope (Phase 155).** The assignments endpoint now applies the same organization gate as `PATCH`/`DELETE /incidents/<id>`: a token bound to a user of one organization can no longer assign, re-status or release units on another organization's incident (it answers `404 not_found`, never confirming the incident exists). Applies to all three verbs.
+
+**Reserved units (Phase 155, GitHub #141).** On an install whose *Units assigned to Scheduled incidents* setting (Settings → Incident Lifecycle) is **Reserve until the booked time**, assigning a unit to a **Scheduled** incident whose booked time is still ahead does **not** dispatch the unit. It is *reserved*: the unit stays Available, is committed to that incident, and is dispatched automatically at the booked time (or `scheduled_assign_lead_minutes` before it). The answer says so, and has **no `id`** because no assignment exists yet:
+
+```
+201 { "reserved": true, "reservation_id": 9, "ticket_id": 42, "responder_id": 77,
+      "promotes_at": "2026-10-04 17:30:00", "conflicts": [] }
+```
+
+`promotes_at` is when the unit will be dispatched (the booked time minus the lead). `conflicts` lists other reservations of the same unit within four hours of this one (advisory only, never blocking). `assign.created` is **not** fired for a reservation; it fires when the unit is really dispatched. Send `"dispatch_now": true` to bypass the reservation and dispatch at once (the normal `201 { "id": ... }`). Reserving the same unit for the same incident twice is `422 validation_failed` ("already reserved"). With the setting at its default (**Dispatch immediately**) none of this applies and the endpoint behaves exactly as it always has. A client that does not know about reservations should treat a `201` without `id` as "committed, not yet dispatched".
 
 #### Update status
 
@@ -796,6 +810,7 @@ Every error code TicketsCAD can return from an external endpoint, with the HTTP 
 | `invalid_assign_id`   | 400  | Body's `assign_id` missing or non-positive                              | Required for assignment PATCH/DELETE.                      |
 | `invalid_responder_id`| 400  | Body's `responder_id` missing or non-positive                           | Required for `POST /assignments`.                          |
 | `missing_status`      | 400  | `PATCH /assignments` without `new_status` or `new_status_id`            | Send one or the other.                                     |
+| `primary_unit_disabled` | 409 | `PATCH /incidents` with `primary_responder_id` while the install's Primary Unit setting is Off | Turn it on (Settings → Incident Lifecycle) or omit the field. |
 | `validation_failed`   | 422  | Body decoded but failed field-level validation                          | Response's `errors` array lists per-field issues from the internal write helper. |
 | `not_found`           | 404  | Referenced resource doesn't exist (e.g. `ticket_id` for action note)    | Verify the parent resource exists. Per security rule 27 we don't disclose existence to callers without read access — `not_found` may also mean "exists but you can't see it". |
 
@@ -938,6 +953,7 @@ These are the only event types TicketsCAD can fire (the canonical list, from [`i
 | `incident.deleted`          | `incident` / `delete` / `ticket`              |
 | `incident.closed`           | `incident` / `close` / `ticket`               |
 | `incident.reopened`         | `incident` / `reopen` / `ticket`              |
+| `incident.status_changed`   | `incident` / `status_change` / `ticket` — every REAL status transition, from every route, exactly once (Phase 155, GitHub #147). Payload and transition table: [WEBHOOKS-INTEGRATOR-GUIDE](WEBHOOKS-INTEGRATOR-GUIDE.md#status-changes-incidentstatus_changed) |
 | `incident.note_added`       | `incident` / `note_add` / `action`            |
 
 **Assignments:**

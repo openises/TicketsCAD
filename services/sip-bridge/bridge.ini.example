@@ -1,15 +1,51 @@
 [sip-bridge]
-# Connection mode: ami (Asterisk Manager Interface, FreePBX/plain Asterisk)
-# or webhook (a small built-in HTTP server for hosted SIP-trunk providers)
+# Which phone system are you connecting?
+#   threecx  -- 3CX (V20), via its Call Control API        <- see the 3CX block below
+#   ami      -- Asterisk / FreePBX, via the Manager Interface
+#   webhook  -- a hosted SIP provider that POSTs call events to you
+# The Inbound Calls page in TicketsCAD (Settings > Communications &
+# Integrations > Inbound Calls) will generate a ready-to-paste copy of this
+# file for you, with the token and address already filled in.
 mode = ami
 
-# TicketsCAD server
+# TicketsCAD server -- the folder that contains login.php, NO /api/... on the end.
 ticketscad_url = http://localhost/newui
 # Mint this in Settings > Communications & Integrations > Inbound Calls
 # (SIP/PBX) > New Trunk -- shown exactly once, so paste it here right away.
 bearer_token =
 
-# ── AMI mode ──
+# ── 3CX mode (mode = threecx) ──────────────────────────────────────────
+# Needs 3CX AI Edition (formerly Enterprise): it is the only edition that
+# includes the Call Control API. Requires:  pip install websockets
+#
+# In the 3CX Admin Console: Integrations > API > Add.
+#   Client ID  -> any name, e.g. ticketscad; it goes in threecx_client_id
+#   tick "3CX Call Control API Access"
+#   "Extensions to monitor" -> REQUIRED: add every dispatch extension.
+#       3CX sends NOTHING for an empty list (it does not mean "all").
+#   leave "DID numbers" empty
+#   Save, and copy the API key -- 3CX shows it exactly once.
+threecx_url =
+threecx_client_id =
+threecx_client_secret =
+# Optional: only consider these extensions (comma-separated). Blank = all the
+# API client lists.
+# threecx_monitor_dns = 100,101,102
+# Set to false ONLY if your 3CX uses a self-signed certificate.
+# threecx_verify_tls = true
+# 3CX does not report the dialed number on V20. Map each trunk's DN to the
+# number it carries so TicketsCAD can show the line (and Phone Extensions can
+# route a direct number), or set one fixed value:
+# threecx_trunk_did_map = 10001=+16125550100,10002=+16125550111
+# threecx_default_called_number = +16125550100
+# Also report extension-to-extension calls (normally just noise):
+# threecx_include_internal = false
+# Troubleshooting: record real 3CX traffic (numbers/names are masked) and
+# send the file to the project.
+# capture_file = threecx-capture.jsonl
+# capture_redact = true
+
+# ── AMI mode (mode = ami) ──
 ami_host = 127.0.0.1
 ami_port = 5038
 # Create a dedicated manager.conf user for this bridge -- do not reuse an
@@ -17,11 +53,12 @@ ami_port = 5038
 ami_user =
 ami_secret =
 ami_reconnect_seconds = 5
-# Optional: restrict to one dialplan context so this bridge only sees the
-# ONE trunk it's configured for, not every line ringing into this PBX.
+# Optional: only report calls whose FIRST channel is in this dialplan context
+# (blank = every call), so this bridge sees only the ONE trunk it is configured
+# for -- and not the calls your own dispatchers place from their browsers.
 # ami_context = from-pstn-mytrunk
 
-# ── Webhook mode ──
+# ── Webhook mode (mode = webhook) ──
 listen_host = 0.0.0.0
 listen_port = 8085
 # Key into PROVIDER_ADAPTERS in bridge.py. "generic" ships built in; add
@@ -37,3 +74,6 @@ log_level = INFO
 log_file =
 health_port = 8086
 http_timeout_seconds = 5
+# How often the bridge tells TicketsCAD "I am alive" (drives the green
+# "Bridge connected" badge on the Inbound Calls page).
+heartbeat_seconds = 30

@@ -33,6 +33,8 @@ require_once __DIR__ . '/../inc/rate-limit.php';
 require_once __DIR__ . '/../inc/client-ip.php';
 require_once __DIR__ . '/../inc/security-labels.php';
 require_once __DIR__ . '/../inc/public-board.php';
+// GH#142 (Phase 155) -- agency logo for the board header (opt-out setting, off-able).
+require_once __DIR__ . '/../inc/branding.php';
 
 $prevDisplay = ini_get('display_errors');
 ini_set('display_errors', '0');
@@ -127,10 +129,16 @@ foreach ($eligible as $row) {
 
 // Step 5 — ETag, computed so a config change (precision, excluded groups,
 // default delay) invalidates the cache even if no incident itself changed.
+// GH#142 (Phase 155): the board's logo URL, or null (no logo, the setting is off, or
+// no branding tables). Part of the cache key so a replaced logo is not hidden behind
+// a 304; omitted entirely when null so an unbranded install's ETag is unchanged.
+$logoUrl = function_exists('branding_public_logo_url') ? branding_public_logo_url($orgId) : null;
+
 $configVersion = sha1( // NOSONAR S4790: HTTP cache key only, not a security context — no secret or auth material is hashed here
     $precision . '|'
     . (string) get_variable('public_board_excluded_groups') . '|'
     . (string) get_variable('public_board_default_delay_secs')
+    . ($logoUrl !== null ? '|logo:' . $logoUrl : '')
 );
 $etag = '"' . sha1($maxUpdatedTs . ':' . count($incidents) . ':' . $configVersion) . '"'; // NOSONAR S4790: HTTP cache key only, not a security context
 header('ETag: ' . $etag);
@@ -156,16 +164,23 @@ if ($titleOrg === null) {
 
 header('Content-Type: application/json; charset=utf-8');
 ini_set('display_errors', $prevDisplay);
+$boardEnvelope = [
+    'title'           => $titleOrg . ' — Active Incidents',
+    // "Now" in UTC directly — no strtotime() round-trip needed (that
+    // path is for converting a DB LOCAL-time string, not the current
+    // instant, which gmdate() already gives unambiguously).
+    'generated'       => gmdate('Y-m-d\TH:i:s\Z'),
+    'precision_level' => $precision,
+    'org_scoped'      => $orgId !== null,
+    'count'           => count($incidents),
+];
+if ($logoUrl !== null) {
+    // A relative capability URL (api/branding-logo.php?k=<32 hex>); the page
+    // validates its shape before it ever becomes an <img src>.
+    $boardEnvelope['logo_url'] = $logoUrl;
+    $boardEnvelope['logo_alt'] = branding_logo_alt();
+}
 echo json_encode([
-    'board' => [
-        'title'           => $titleOrg . ' — Active Incidents',
-        // "Now" in UTC directly — no strtotime() round-trip needed (that
-        // path is for converting a DB LOCAL-time string, not the current
-        // instant, which gmdate() already gives unambiguously).
-        'generated'       => gmdate('Y-m-d\TH:i:s\Z'),
-        'precision_level' => $precision,
-        'org_scoped'      => $orgId !== null,
-        'count'           => count($incidents),
-    ],
+    'board'     => $boardEnvelope,
     'incidents' => $incidents,
 ], JSON_UNESCAPED_UNICODE);

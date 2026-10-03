@@ -384,6 +384,15 @@ function _audit_to_webhook_event(string $cat, string $act, ?string $target): ?st
         'incident|delete|ticket'        => 'incident.deleted',
         'incident|close|ticket'         => 'incident.closed',
         'incident|reopen|ticket'        => 'incident.reopened',
+        // Phase 155 (GH#147) -- ANY real status transition (Closed/Open/
+        // Scheduled in every direction, from every path including the
+        // system ones: scheduled activation, auto-close, Major Incident
+        // close). Written ONLY by incident_status_change_emit() inside the
+        // status writer (inc/incident-write.php), so it fires exactly once
+        // per real change. It is a COMPANION to close/reopen/update above,
+        // not a replacement: those keep firing unchanged for subscribers
+        // that already depend on them.
+        'incident|status_change|ticket' => 'incident.status_changed',
         // Action notes (the incident activity log)
         'incident|note_add|action'      => 'incident.note_added',
         // Phase 151 (GH#138) — primary/responsible unit designation changed

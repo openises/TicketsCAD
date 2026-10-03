@@ -206,6 +206,17 @@ lookups, APRS, DMR and Zello are all **unconfigured out of the box**. See
 SECURITY.md for the per-service table, the exact content each one sends, and
 guidance for fully offline installs.
 
+## Get help
+
+- **Something is not working, or you have an idea:** open an issue; the forms
+  ask only for what is needed.
+- **A question, or "has anyone done this?":** the
+  [Google Group](https://groups.google.com/g/open-source-cad).
+- **A security problem:** privately, never in a public issue. See
+  [SECURITY.md](SECURITY.md).
+- **What reply to expect, and what the project does not promise:**
+  [SUPPORT.md](SUPPORT.md).
+
 ## Documentation
 
 | Doc | Audience |

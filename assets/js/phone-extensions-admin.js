@@ -95,6 +95,7 @@
         document.getElementById('peIsGeneral').checked = false;
         document.getElementById('peWorkstationToken').value = '';
         document.getElementById('peEnabled').checked = true;
+        document.getElementById('peSipPassword').value = '';
         document.getElementById('peModalError').className = 'alert alert-danger small mt-2 d-none';
         document.getElementById('peCredentialWrap').className = 'd-none';
         document.getElementById('peBtnDelete').className = 'btn btn-outline-danger btn-sm d-none';
@@ -146,23 +147,41 @@
             workstation_token: document.getElementById('peWorkstationToken').value,
             enabled: document.getElementById('peEnabled').checked ? 1 : 0
         };
+        var suppliedPassword = document.getElementById('peSipPassword').value;
         if (id > 0) {
             body.id = id;
-            apiPost('extension_update', body).then(function (res) {
+            // Phase 155 (GH#108 S2): a typed password REPLACES the stored one
+            // (the PBX endpoint already has it); blank leaves it alone.
+            var step = Promise.resolve();
+            if (suppliedPassword !== '') {
+                step = apiPost('extension_set_password', { id: id, sip_password: suppliedPassword }).then(function (res) {
+                    if (!(res && res.ok)) { throw new Error((res && res.error) || 'Could not save the password'); }
+                });
+            }
+            step.then(function () { return apiPost('extension_update', body); }).then(function (res) {
                 if (res && res.ok) {
-                    showToast('Extension saved.', false);
+                    showToast(suppliedPassword !== '' ? 'Extension and password saved.' : 'Extension saved.', false);
+                    document.getElementById('peSipPassword').value = '';
                     loadExtensions();
                     if (modal) modal.hide();
                 } else {
                     showModalError((res && res.error) || 'Save failed');
                 }
-            });
+            }).catch(function (err) { showModalError(err && err.message ? err.message : 'Save failed'); });
         } else {
             body.extension = document.getElementById('peExtension').value;
+            if (suppliedPassword !== '') { body.sip_password = suppliedPassword; }
             apiPost('extension_create', body).then(function (res) {
                 if (res && res.extension_id) {
                     loadExtensions();
-                    showCredentials(res.sip_username, res.sip_password, res.note);
+                    document.getElementById('peSipPassword').value = '';
+                    if (res.password_supplied) {
+                        // Never echoed back -- the administrator already has it.
+                        showToast(res.note, false);
+                        if (modal) modal.hide();
+                    } else {
+                        showCredentials(res.sip_username, res.sip_password, res.note);
+                    }
                 } else {
                     showModalError((res && res.error) || 'Create failed');
                 }
@@ -206,6 +225,7 @@
             if (data && data.settings) {
                 document.getElementById('pePbxWssUrl').value = data.settings.wss_url || '';
                 document.getElementById('pePbxGeneral').value = data.settings.general_number || '';
+                loadScope(data.settings);
             }
         }).catch(function () {});
     }
@@ -223,10 +243,62 @@
         }).catch(function () { showToast('Save failed', true); });
     }
 
+    // Phase 155 (GH#108 S1): the "Where the phone registers" card exists only
+    // for a caller with action.manage_config (the page omits it otherwise).
+    function loadScope(settings) {
+        var sel = document.getElementById('pePhoneScope');
+        if (sel && settings && settings.register_scope) { sel.value = settings.register_scope; }
+        var cb = document.getElementById('peInternalConstituents');
+        if (cb && settings && typeof settings.internal_constituents !== 'undefined') { cb.checked = !!settings.internal_constituents; }
+    }
+
+    function saveInternalConstituents() {
+        apiPost('internal_constituents_save', {
+            enabled: document.getElementById('peInternalConstituents').checked ? 1 : 0
+        }).then(function (res) {
+            if (res && res.ok) {
+                showToast(res.internal_constituents
+                    ? 'Saved. Calls from our own extensions are recorded as Constituents.'
+                    : 'Saved. Calls from our own extensions are no longer recorded as Constituents.', false);
+            } else {
+                showToast((res && res.error) || 'Save failed', true);
+            }
+        }).catch(function () { showToast('Save failed', true); });
+    }
+
+    function saveScope() {
+        apiPost('register_scope_save', {
+            register_scope: document.getElementById('pePhoneScope').value
+        }).then(function (res) {
+            if (res && res.ok) {
+                showToast('Saved. Browsers pick the new setting up the next time they load a page.', false);
+            } else {
+                showToast((res && res.error) || 'Save failed', true);
+            }
+        }).catch(function () { showToast('Save failed', true); });
+    }
+
+    function useMyToken() {
+        var t = '';
+        try {
+            if (window.ConsoleWorkstation && window.ConsoleWorkstation.getToken) { t = window.ConsoleWorkstation.getToken(); }
+        } catch (e) { t = ''; }
+        if (t) {
+            document.getElementById('peWorkstationToken').value = t;
+        } else {
+            showModalError('This browser has no workstation token (site data may be blocked).');
+        }
+    }
+
     function init() {
         loadExtensions();
         loadPbxSettings();
         document.getElementById('peBtnSavePbx').addEventListener('click', savePbxSettings);
+        var scopeBtn = document.getElementById('peBtnSaveScope');
+        if (scopeBtn) { scopeBtn.addEventListener('click', saveScope); }
+        var internalBtn = document.getElementById('peBtnSaveInternal');
+        if (internalBtn) { internalBtn.addEventListener('click', saveInternalConstituents); }
+        document.getElementById('peUseMyToken').addEventListener('click', useMyToken);
         document.getElementById('peBtnNew').addEventListener('click', openNew);
         document.getElementById('peBtnSave').addEventListener('click', saveExtension);
         document.getElementById('peBtnDelete').addEventListener('click', deleteExtension);

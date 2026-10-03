@@ -56,40 +56,90 @@ function _sms_send_generic(array $config, $to, $body, array $message) {
         return ['success' => false, 'error' => 'Generic SMS URL not configured'];
     }
 
-    // Template variable substitution
+    // Template variable substitution - ESCAPED for the place each value lands.
+    //
+    // Phase 155 (GH#144): these values used to be pasted in raw. {body} carries
+    // text a notification rule rendered from an incident (its scope can come
+    // from an inbound message), and {to} carries a phone number. Raw into a JSON
+    // template, a quote in the text broke out of the string and could add a
+    // field - including a second "to" - so incident text could make the agency's
+    // SMS account text an arbitrary number. Raw into a URL, an '&' or '#' added
+    // or truncated parameters. Each context now gets its own escaping; see
+    // _sms_generic_substitute().
     $vars = [
-        '{to}'       => $to,
-        '{body}'     => $body,
-        '{from}'     => $config['sms_from'] ?? '',
-        '{subject}'  => $message['subject'] ?? '',
-        '{api_key}'  => $config['sms_generic_api_key'] ?? '',
+        'to'       => (string) $to,
+        'body'     => (string) $body,
+        'from'     => (string) ($config['sms_from'] ?? ''),
+        'subject'  => (string) ($message['subject'] ?? ''),
+        'api_key'  => (string) ($config['sms_generic_api_key'] ?? ''),
     ];
+    $isJson = (($config['sms_generic_content_type'] ?? '') === 'json');
 
     // Apply template to URL and body
-    $url = str_replace(array_keys($vars), array_values($vars), $url);
+    $url = _sms_generic_substitute($url, $vars, 'url');
 
     $postData = '';
     if ($tpl) {
-        $postData = str_replace(array_keys($vars), array_values($vars), $tpl);
+        $postData = _sms_generic_substitute($tpl, $vars, $isJson ? 'json' : 'form');
+    } elseif ($isJson) {
+        $postData = (string) json_encode(['to' => $to, 'body' => $body]);
     } else {
         $postData = http_build_query(['to' => $to, 'body' => $body]);
     }
 
-    $headers = ['Content-Type: application/x-www-form-urlencoded'];
-    if ($config['sms_generic_content_type'] ?? '' === 'json') {
-        $headers = ['Content-Type: application/json'];
-    }
+    // (The old test here read `$config[..] ?? '' === 'json'`, which PHP parses as
+    // `$config[..] ?? ('' === 'json')` - so ANY configured content type, 'form'
+    // included, was sent as JSON.)
+    $headers = $isJson ? ['Content-Type: application/json']
+                       : ['Content-Type: application/x-www-form-urlencoded'];
 
     // Add auth header if configured
     $authHeader = $config['sms_generic_auth_header'] ?? '';
     if ($authHeader) {
-        $authHeader = str_replace(array_keys($vars), array_values($vars), $authHeader);
+        $authHeader = _sms_generic_substitute($authHeader, $vars, 'header');
         $headers[] = $authHeader;
     }
 
     return _sms_http_request($method, $url, $postData, $headers);
 }
 
+/**
+ * Substitute {to} {body} {from} {subject} {api_key} into a template, escaping
+ * each value for the context it lands in:
+ *
+ *   url | form   rawurlencode()            (a value cannot add or end a parameter)
+ *   json         the inside of a JSON string literal (a quote or backslash cannot
+ *                end the string and add a field)
+ *   header       CR/LF/NUL replaced by a space (no header injection)
+ *
+ * strtr(), not str_replace(): it never re-scans text it has already inserted,
+ * so a value that itself contains the text "{body}" is not expanded a second time.
+ *
+ * Pure.
+ */
+function _sms_generic_substitute(string $template, array $vars, string $context): string {
+    $map = [];
+    foreach ($vars as $k => $v) {
+        $v = (string) $v;
+        switch ($context) {
+            case 'url':
+            case 'form':
+                $enc = rawurlencode($v);
+                break;
+            case 'json':
+                $j = json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $enc = ($j === false) ? '' : substr($j, 1, -1);
+                break;
+            case 'header':
+                $enc = (string) preg_replace('/[\r\n\0]+/', ' ', $v);
+                break;
+            default:
+                $enc = $v;
+        }
+        $map['{' . $k . '}'] = $enc;
+    }
+    return strtr($template, $map);
+}
 // ── Twilio ────────────────────────────────────────────────────
 
 function _sms_send_twilio(array $config, $to, $body) {
@@ -223,7 +273,8 @@ function _sms_receive($limit = 50) {
 function _sms_http_request($method, $url, $postData, array $headers) {
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+    // Clamped to the caller's wall-clock budget when one is in force (Phase 155).
+    curl_setopt($ch, CURLOPT_TIMEOUT, function_exists('notify_adapter_timeout') ? notify_adapter_timeout(15) : 15);
     curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 
     if ($method === 'POST') {

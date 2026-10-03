@@ -1613,7 +1613,8 @@
                 status: document.getElementById('editOrgStatus').value,
                 role: document.getElementById('editOrgRole').value || null,
                 join_date: document.getElementById('editOrgJoinDate').value || null,
-                notes: document.getElementById('editOrgNotes').value.trim() || null
+                notes: document.getElementById('editOrgNotes').value.trim() || null,
+                csrf_token: csrfToken()
             };
             // Disable button during save
             saveBtn.disabled = true;
@@ -2398,7 +2399,8 @@
             training_type: typeEl ? typeEl.value : 'Course',
             training_date: dateEl ? dateEl.value : null,
             hours: hoursEl && hoursEl.value ? parseFloat(hoursEl.value) : null,
-            result: resultEl ? resultEl.value : 'Completed'
+            result: resultEl ? resultEl.value : 'Completed',
+            csrf_token: csrfToken()
         };
 
         fetch('api/training.php', {
@@ -2429,7 +2431,7 @@
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'delete', id: id })
+            body: JSON.stringify({ action: 'delete', id: id, csrf_token: csrfToken() })
         })
         .then(function (res) { return res.json(); })
         .then(function (data) {
@@ -4318,7 +4320,7 @@
         // refresh the tokens table after a short delay so the new token shows
         // up. Show the Android-specific instructions in a follow-up alert.
         if (mode === 'file') {
-            var fileUrl = 'api/owntracks-config.php?action=link&mode=file&member_id=' + memberId;
+            var fileUrl = 'api/owntracks-config.php?action=link&mode=file&member_id=' + memberId + '&csrf_token=' + encodeURIComponent(_csrf());
             // Use a hidden iframe so the existing page state survives.
             var ifr = document.createElement('iframe');
             ifr.style.display = 'none';
@@ -4367,7 +4369,7 @@
             return;
         }
 
-        var url = 'api/owntracks-config.php?action=link&member_id=' + memberId + '&mode=' + encodeURIComponent(mode);
+        var url = 'api/owntracks-config.php?action=link&member_id=' + memberId + '&mode=' + encodeURIComponent(mode) + '&csrf_token=' + encodeURIComponent(_csrf());
         fetch(url, { credentials: 'same-origin' })
             .then(function (r) { return r.json(); })
             .then(function (d) {

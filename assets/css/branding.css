@@ -1,0 +1,111 @@
+/**
+ * NewUI v4.0 - Agency logo and branding (GH#142, Phase 155).
+ *
+ * Loaded on every signed-in page (inc/navbar.php), on the login page and on the
+ * public incident board. The admin page's preview panels use these SAME classes,
+ * so the preview cannot drift from what production renders.
+ *
+ * Markup comes from inc/branding.php (branding_img_html()):
+ *   .branding-logo-light            shown on light backgrounds
+ *   .branding-logo-dark             shown on dark backgrounds (only emitted when
+ *                                   an administrator uploaded a dark variant)
+ *   .branding-has-dark              set on the light image when a dark one exists
+ *                                   (so the light one is hidden in dark theme)
+ *   .branding-logo-plate            no dark variant and branding_dark_fallback is
+ *                                   `plate`: the light logo sits on a white plate
+ *                                   in dark theme so a dark logo stays legible
+ *
+ * Sizes are enumerations (small / medium / large), never pixel values from a
+ * setting, so nothing numeric ever reaches a style attribute. The numbers below
+ * MUST match branding_size_px() in inc/branding.php (tests/test_gh142_branding_
+ * surfaces.php compares them).
+ *
+ * Colours come from Bootstrap CSS variables only, so both themes work.
+ */
+
+.branding-logo {
+    display: inline-block;
+    max-width: 100%;
+    width: auto;
+    height: auto;
+    vertical-align: middle;
+}
+
+/* Light/dark variants follow data-bs-theme (a <picture> element can only follow
+   the OS setting, not Bootstrap's attribute). */
+.branding-logo-dark {
+    display: none;
+}
+[data-bs-theme="dark"] .branding-logo-dark {
+    display: inline-block;
+}
+[data-bs-theme="dark"] .branding-logo-light.branding-has-dark {
+    display: none;
+}
+[data-bs-theme="dark"] .branding-logo-plate {
+    background-color: var(--bs-white);
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--bs-border-radius);
+}
+
+/* Login card logo. */
+.branding-size-login-small  { max-height: 48px; }
+.branding-size-login-medium { max-height: 72px; }
+.branding-size-login-large  { max-height: 96px; }
+
+/* Navbar brand mark: same height as the product mark it replaces (36px). */
+.branding-size-navbar { max-height: 36px; }
+
+/* Public incident board header. */
+.branding-size-public { max-height: 64px; }
+
+/* Print letterhead (also used by the admin preview). */
+.branding-size-print-small  { max-height: 36px; }
+.branding-size-print-medium { max-height: 60px; }
+.branding-size-print-large  { max-height: 84px; }
+
+/* The letterhead is built by assets/js/print-letterhead.js as the first child of
+   <body>. Hidden on screen, shown on paper. */
+.print-letterhead {
+    display: none;
+    width: 100%;
+    margin: 0 0 8pt;
+    padding-bottom: 6pt;
+    border-bottom: 1pt solid currentColor;
+}
+.print-letterhead-align-left   { justify-content: flex-start; }
+.print-letterhead-align-center { justify-content: center; }
+.print-letterhead-align-right  { justify-content: flex-end; }
+/* The admin preview shows the letterhead on screen. */
+.print-letterhead.print-letterhead-visible {
+    display: flex;
+}
+
+@media print {
+    .print-letterhead {
+        display: flex;
+        break-inside: avoid;
+    }
+    /* Paper is white: always the light variant, never the plate. */
+    .branding-logo-dark {
+        display: none !important;
+    }
+    .branding-logo-light,
+    [data-bs-theme="dark"] .branding-logo-light.branding-has-dark {
+        display: inline-block !important;
+    }
+    .branding-logo-plate,
+    [data-bs-theme="dark"] .branding-logo-plate {
+        background: none !important;
+        padding: 0 !important;
+    }
+    /* branding_print_banner = replace: the logo takes the place of print.css's
+       text banner ("Tickets CAD - Printed [date]"). */
+    body.has-letterhead::before {
+        display: none !important;
+    }
+    .print-letterhead img {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+    }
+}

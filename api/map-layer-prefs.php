@@ -21,6 +21,10 @@ $prevDisplay = ini_get('display_errors');
 ini_set('display_errors', '0');
 
 require_once __DIR__ . '/auth.php';
+// Loaded here, not assumed: the audit row below sat behind function_exists('audit_log'),
+// which was false on this request path, so changing the install's default map layers
+// was never audited.
+require_once __DIR__ . '/../inc/audit.php';
 require_once __DIR__ . '/../inc/map-layer-prefs.php';
 
 try {
@@ -54,11 +58,9 @@ try {
                 error_log('[map-layer-prefs] admin default save failed for user ' . $uid);
                 json_error('Save failed', 500);
             }
-            if (function_exists('audit_log')) {
-                audit_log('config', 'update', 'settings', null,
-                    'Updated default map layer visibility',
-                    ['layers' => $input['admin_defaults']]);
-            }
+            audit_log('config', 'update', 'settings', null,
+                'Updated default map layer visibility',
+                ['layers' => $input['admin_defaults']]);
             json_response(['ok' => true, 'prefs' => map_layer_prefs_get($uid)]);
         }
 

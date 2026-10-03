@@ -76,13 +76,21 @@ if (!function_exists('sip_token_mint')) {
      * volunteer-agency CAD); a future phase could index on a token
      * fingerprint if that ever changes.
      */
-    function sip_token_resolve_trunk(string $presentedToken): ?array
+    function sip_token_resolve_trunk(string $presentedToken, bool $includeDisabled = false): ?array
     {
         if ($presentedToken === '') return null;
         $prefix = $GLOBALS['db_prefix'] ?? '';
         try {
+            // $includeDisabled (Phase 155): api/sip-ingest.php passes true so a
+            // DISABLED trunk's valid token is recognised and answered "trunk
+            // disabled" -- which its own comment always intended -- instead of
+            // 403 "bad bearer", which sent an administrator hunting for a token
+            // problem that did not exist. Authentication is unchanged: the
+            // token must still match exactly.
             $trunks = db_fetch_all(
-                "SELECT * FROM `{$prefix}pbx_trunks` WHERE `enabled` = 1"
+                $includeDisabled
+                    ? "SELECT * FROM `{$prefix}pbx_trunks`"
+                    : "SELECT * FROM `{$prefix}pbx_trunks` WHERE `enabled` = 1"
             );
         } catch (Exception $e) {
             return null;

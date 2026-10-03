@@ -106,25 +106,39 @@ $origExtension = _raw_setting_ar('allstar_relay_extension');
 allstar_relay_settings_save(['ssh_alias' => 'test-alias-xyz', 'extension' => '999']);
 t('settings_save() persists ssh_alias', _raw_setting_ar('allstar_relay_ssh_alias') === 'test-alias-xyz');
 t('settings_save() persists extension', _raw_setting_ar('allstar_relay_extension') === '999');
-allstar_relay_settings_save(['ssh_alias' => (string) $origSshAlias, 'extension' => (string) $origExtension]); // restore
+// Restore the ORIGINAL state exactly. On a fresh install neither row exists (orig === null), and
+// saving '' back through the validator throws (an extension must be 1-32 characters), so a null
+// original is restored by deleting the row, never by writing an empty value.
+foreach (['allstar_relay_ssh_alias' => $origSshAlias, 'allstar_relay_extension' => $origExtension] as $__n => $__v) {
+    if ($__v === null) {
+        db_query("DELETE FROM `{$prefix}settings` WHERE `name` = ?", [$__n]);
+    } else {
+        db_query("UPDATE `{$prefix}settings` SET `value` = ? WHERE `name` = ?", [(string) $__v, $__n]);
+    }
+}
 
+// Phase 155 (GH#108 S5): the host, SSH alias and AMI user used to default to the maintainer's
+// lab ("allstar-mock", 10.0.0.10, "ticketscad-relay"); there are no such defaults now
+// (tests/test_allstar_relay_honesty.php proves it against a database with no stored rows).
 $defaults = allstar_relay_settings();
-t('settings() has sane defaults when nothing is configured', $defaults['ami_port'] > 0 && $defaults['ssh_alias'] !== '');
+t('settings() still has sane defaults for the port and the dialplan extension', $defaults['ami_port'] > 0 && $defaults['extension'] !== '');
 
 // ── Static wiring guards ─────────────────────────────────────────────
 $api = (string) @file_get_contents('api/allstar-relay.php');
 t('api/allstar-relay.php: trigger is gated on action.dispatch_unit',
     strpos($api, "rbac_can('action.dispatch_unit')") !== false);
-t('api/allstar-relay.php: settings actions require is_admin()',
-    substr_count($api, 'is_admin()') >= 2);
+// Phase 155 (GH#108 S5): install-wide settings that name servers and hold a secret need
+// action.manage_config (Super Admin), not is_admin() (which an Org Admin can satisfy).
+t('api/allstar-relay.php: configuration needs action.manage_config',
+    strpos($api, "rbac_can('action.manage_config')") !== false && substr_count($api, 'ar_require_config_perm();') >= 3);
 t('api/allstar-relay.php: trigger is CSRF-checked', strpos($api, 'ar_csrf_check($input)') !== false);
 t('api/allstar-relay.php: every mutation is audited', substr_count($api, 'audit_log(') >= 2);
-t('api/allstar-relay.php: a masked "(set)" secret placeholder is never persisted as the real secret',
-    strpos($api, "'(set)'") !== false && strpos($api, "unset(\$input['ami_secret'])") !== false);
+t('inc/allstar-relay.php: a blank or placeholder secret never overwrites the stored one',
+    strpos((string) @file_get_contents('inc/allstar-relay.php'), "is_masked_secret_value(\$in[\$k])") !== false);
 
 $page = (string) @file_get_contents('incident-detail.php');
-t('incident-detail.php: AllStar Relay button is gated on action.dispatch_unit',
-    strpos($page, "rbac_can('action.dispatch_unit')") !== false
+t('incident-detail.php: the relay test button is gated on action.dispatch_unit AND the enabled switch',
+    strpos($page, "rbac_can('action.dispatch_unit') && allstar_relay_enabled()") !== false
     && strpos($page, 'btnAllstarRelay') !== false);
 
 $js = (string) @file_get_contents('assets/js/incident-detail.js');

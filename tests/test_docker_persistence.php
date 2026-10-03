@@ -138,6 +138,27 @@ foreach ($writePaths as $label => $hostPath) {
         . 'DESTROYED by `docker compose up -d --build`');
 }
 
+// TTS API keys. They used to be written to NEWUI_ROOT/keys/tts —
+// /var/www/html/keys/tts in the image — which is on NO volume, so every saved
+// Voice & Speech API key was destroyed by `docker compose up -d --build`. They
+// now live in a `tts` subdirectory of the keys directory, i.e. under the
+// app_keys volume. A directory BENEATH a mounted volume is persisted, so this
+// accepts a descendant; the exact-match checks above are untouched.
+require_once $root . '/inc/tts/keys.php';
+$ttsKeys = $toContainer(tts_keys_dir_for($root, false, null));
+$underMount = function (?string $path) use ($mounted): bool {
+    if ($path === null) { return false; }
+    foreach ($mounted as $mt) {
+        if ($path === $mt || strpos($path, $mt . '/') === 0) { return true; }
+    }
+    return false;
+};
+test('tts keys (tts_keys_dir_for) maps to a container path', $ttsKeys !== null);
+test("tts keys ($ttsKeys) sit under a mounted volume", $underMount($ttsKeys),
+    'mounted: ' . implode(', ', $mounted) . ' — unmounted, every saved TTS API key is destroyed by an update');
+test('the OLD in-tree TTS key path is not on any volume (the gap this closed)',
+    !$underMount('/var/www/html/keys/tts'));
+
 // ── The named volume must be declared, or compose refuses to start ──
 echo "\n-- Volume declarations --\n";
 preg_match('/\nvolumes:\n(.*)$/s', $compose, $vd);

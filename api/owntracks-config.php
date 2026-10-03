@@ -1043,6 +1043,12 @@ if ($action === 'get_member_diagnostics' && $method === 'GET') {
 // ─── action=link ───────────────────────────────────────────────
 if ($action === 'link' && $method === 'GET') {
     _admin_check();
+    // CSRF. This GET MINTS a tracking token for the member (and starts the old one's expiry
+    // window), so a forged <img src> could rotate someone's token and silently lock their phone
+    // out a week later. It is a GET because mode=file is a browser download (an iframe
+    // navigation can carry no header or body), so the token rides in the query string -- the
+    // same precedent as api/backup.php?action=download.
+    csrf_require([], true);
     $mid = (int) ($_GET['member_id'] ?? 0);
     $mode = (string) ($_GET['mode'] ?? 'url');
     if ($mid <= 0) json_error('member_id required');
@@ -1176,6 +1182,8 @@ if ($action === 'unit_status' && $method === 'GET') {
 // GET ?action=unit_link&responder_id=N&mode=qr|url|file[&tid=XX]
 if ($action === 'unit_link' && $method === 'GET') {
     _p117_unit_rbac();
+    // CSRF -- provisions a unit's OwnTracks device (token + location binding); see action=link.
+    csrf_require([], true);
     $rid  = (int) ($_GET['responder_id'] ?? 0);
     $mode = (string) ($_GET['mode'] ?? 'url');
     if ($rid <= 0) json_error('responder_id required');
@@ -1290,6 +1298,9 @@ if ($action === 'push_config' && $method === 'POST') {
 // Restrict accordingly.
 if ($action === 'push_pending' && $method === 'GET') {
     _admin_check();
+    // CSRF -- this GET CONSUMES the next queued outbox row (consumed_at is stamped), so it
+    // changes state; see action=link.
+    csrf_require([], true);
     $mid = (int) ($_GET['member_id'] ?? 0);
     if ($mid <= 0) json_error('member_id required');
     try {

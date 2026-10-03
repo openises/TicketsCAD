@@ -1,0 +1,61 @@
+# tools/csrf_coverage_audit.php -- verified false positives only.
+#
+# One entry per line:  "relative/path.php:LINE  reason".  The reason is mandatory (an entry with
+# none fails the run) and must say WHY a forged request gains nothing. An entry that no longer
+# matches a finding fails the run too, so this list cannot rot; when a line moves, fix the number.
+#
+# What belongs here, and what does not
+#
+#   A forged request is only dangerous if it makes the server change something the attacker wants
+#   changed. Every entry below is a write the request cannot steer: housekeeping the server does
+#   on its own schedule when any request happens to arrive (a lazy sweep, a purge of expired rows,
+#   a status stamp), a cache refilled from an upstream answer, a token the response hands back to
+#   a caller who -- being cross-site -- cannot read the response, or an idempotent registration
+#   keyed by a secret the client generated. NONE of them is "a state change we have decided not to
+#   protect": every endpoint that changes state because the CALLER asked it to has a csrf check, and
+#   the first run of this gate found seven such endpoints that did not (api/organizations.php,
+#   api/rbac.php, api/comm-identifiers.php, api/training.php, api/facility-capacity.php,
+#   api/owntracks-config.php's three GET actions, api/inbound-calls.php's heartbeat) -- those were
+#   FIXED, not baselined. If you are tempted to add a write here that a user's click causes, fix
+#   the endpoint instead.
+
+# -- GET that registers/touches the caller's own presence row -----------------------------------
+api/console-workstation-mutes.php:65  GET resolves the caller's workstation token to its presence row, creating it on first sight (idempotent upsert-and-touch keyed by an unguessable client-generated token, console_workstation_resolve()). A forged GET can at most create an unused presence row; it changes no mute, pairing or label.
+
+# -- GETs that cache or stamp what the SERVER learned, not what the request said ----------------
+api/dmr-lookup.php:173  GET lookup of a DMR id: caches the public RadioID.net answer in radioid_users. The cached row is what the upstream directory said, not request data, so a forged GET cannot choose its content.
+api/health.php:638  Service up/down bookkeeping recorded while the health view is computed (first sighting of a service). Derived from probes the server ran, never from request input.
+api/health.php:643  Same bookkeeping as health.php:638: the 'start' event row.
+api/health.php:687  Same bookkeeping: the crash/recovered/degraded/restart event row, derived from comparing this probe with the last one.
+api/health.php:695  Same bookkeeping: the service-state row stamped with the probe's own result.
+api/weather-proxy.php:240  Per-IP rate-limit counter file for the weather-tile proxy (throttle bookkeeping, not user state).
+api/weather-proxy.php:354  Fetched weather-tile cache file: the bytes are the upstream's response, keyed by a validated z/x/y.
+api/weather-proxy.php:487  Fetched weather-JSON cache file: the bytes are the upstream's response.
+
+# -- GET that stamps a bridge health probe it just ran ------------------------------------------
+api/dvswitch.php:232  channel_test_health adopts a bridge token ONLY when the bridge's own /health answered 200 to that token, i.e. the caller already holds the real secret; a forged request carries no such proof and the adoption is skipped. The row is not changed by the request's text.
+api/dvswitch.php:242  channel_test_health stamps last_seen_at / clears last_error after a successful bridge probe: status bookkeeping about the bridge, not request data.
+api/dvswitch.php:251  channel_test_health stamps last_error with the BRIDGE's own failure body after a failed probe: status bookkeeping, not request data.
+
+# -- GETs that mint a short-lived token and return it in the response body ----------------------
+api/dmr-token.php:58  Purge of 2-minute-old websocket tokens: expiry housekeeping.
+api/dmr-token.php:62  Mints a 2-minute single-use websocket token and RETURNS it in the response. A cross-site request cannot read that response (no permissive CORS header is sent anywhere in api/), so a forged request obtains nothing usable.
+api/zello-token.php:32  Purge of 2-minute-old websocket tokens: expiry housekeeping.
+api/zello-token.php:37  Mints a 2-minute websocket token and returns it in the response body; unreadable cross-site, see api/dmr-token.php:62.
+
+# -- Lazy, time-driven sweeps run from a read path (no cron daemon exists on the live hosts) ----
+api/incidents.php:28  auto_close_sweep(): closes incidents whose auto-close time has passed. Driven by the clock, takes no request input; it runs whenever any dispatcher loads the list.
+api/incidents.php:129  incident_activate_due_scheduled(): activates Scheduled incidents whose booked time has passed. Clock-driven, no request input.
+api/stream.php:302  auto_close_sweep() on the SSE stream connection; same sweep as api/incidents.php:28, clock-driven.
+api/stream.php:358  Purge of expired SSE event rows: retention housekeeping.
+api/net-checkins.php:91  net_prune(): trims the OPERATOR'S OWN net check-in entries older than the retention window, on the read path (no cron daemon). Takes no request input beyond the session's own user.
+api/par.php:139  par_broadcast_overdue(): the overdue-PAR alarm, raised when the poll finds a roll-call overdue. Clock-driven; it is the alarm this endpoint exists to raise, throttled by par_last_overdue_broadcast_at.
+api/weather-poll.php:41  Claims the NWS poll slot (weather_last_poll_at) so concurrent heartbeats do not double-poll. Throttled, takes no request input.
+api/weather-poll.php:45  weather_poll_run(): the throttled NWS poll that the dashboard heartbeat triggers. It ingests what the NWS said, not what the request said, and runs at most once per weather_poll_seconds however often it is requested.
+
+# -- Idempotent seed / library helper -----------------------------------------------------------
+api/facility-capacity.php:63  INSERT IGNORE of the eight stock capacity categories, run inline on every request: an idempotent default seed with no request data in it.
+api/owntracks-config.php:491  _ot_push_to_member() queues a config-push row. Reached only through helpers called from this file's csrf-guarded POST actions and, in OT_CONFIG_LIBRARY_ONLY mode, from api/incident-assign.php's own csrf-guarded assign action; it has no HTTP route of its own.
+
+# -- GET that stamps a read receipt on the caller's own row -------------------------------------
+api/messaging.php:124  Opening a message stamps read_at on the CALLER'S OWN recipient row (the unread dot clears). By design a view is a read; a forged GET could only clear one unread indicator for a message id the attacker already knows, and reveals nothing.

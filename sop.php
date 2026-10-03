@@ -47,8 +47,8 @@ $csrf     = csrf_token();
     <link rel="stylesheet" href="assets/vendor/bootstrap/bootstrap-icons.min.css">
 
     <!-- App CSS -->
-    <link rel="stylesheet" href="assets/css/dashboard.css">
-    <link rel="stylesheet" href="assets/css/sop.css">
+    <link rel="stylesheet" href="assets/css/dashboard.css?v=<?php echo file_exists(__DIR__ . '/assets/css/dashboard.css') ? filemtime(__DIR__ . '/assets/css/dashboard.css') : newui_version(); ?>">
+    <link rel="stylesheet" href="assets/css/sop.css?v=<?php echo file_exists(__DIR__ . '/assets/css/sop.css') ? filemtime(__DIR__ . '/assets/css/sop.css') : newui_version(); ?>">
 </head>
 <body>
 
@@ -325,9 +325,13 @@ $csrf     = csrf_token();
      an upstream release would have changed our code without a commit here. -->
 <script src="assets/vendor/marked/marked.min.js"></script>
 
+<!-- HTML sanitiser for the rendered markdown (GH#143 audit finding: stored XSS).
+     MUST load before sop.js. Vendored for the same reasons as marked above. -->
+<script src="assets/vendor/dompurify/purify.min.js"></script>
+
 <!-- App JS -->
-<script src="assets/js/theme-manager.js"></script>
-<script src="assets/js/sop.js?v=<?php echo newui_version(); ?>"></script>
+<script src="assets/js/theme-manager.js?v=<?php echo file_exists(__DIR__ . '/assets/js/theme-manager.js') ? filemtime(__DIR__ . '/assets/js/theme-manager.js') : newui_version(); ?>"></script>
+<script src="assets/js/sop.js?v=<?php echo file_exists(__DIR__ . '/assets/js/sop.js') ? filemtime(__DIR__ . '/assets/js/sop.js') : newui_version(); ?>"></script>
 
 </body>
 </html>

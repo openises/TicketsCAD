@@ -372,6 +372,29 @@ INSERT IGNORE INTO `permissions` (`code`, `name`, `category`, `description`) VAL
     ('action.patch_cross_class', 'Create Cross-Class Patch',       'action', 'Create (or renew) a patch that bridges amateur-class audio with commercial/PSTN-class audio, with the mandatory audited override and expiry'),
     ('action.manage_positions',  'Manage Console Positions (Admin)', 'action', 'Create/edit/delete named console positions (seats) and their default channel sets');
 
+-- Phase 155 (2026-10-02, GH#151/GH#129) -- digital voice bridge channels
+-- (DVMProject dvmbridge / USRP bridges). TIER 1 (Org Admin or above), the
+-- same tier as action.manage_matrix: creating one binds a UDP socket on the
+-- audio-matrix host and joins a radio network's audio to the console, and the
+-- DVMProject variant needs a recorded usage-policy acknowledgment. Listed in
+-- the admin_only tier-1 UPDATE below, in Dispatcher's NOT-IN exclusion and in
+-- BOTH Dispatcher repair-DELETEs, and in sql/run_00_rbac.php and
+-- sql/run_zzz_admin_only_reconcile.php.
+INSERT IGNORE INTO `permissions` (`code`, `name`, `category`, `description`) VALUES
+    ('action.manage_voice_bridges', 'Manage Digital Voice Bridges (Admin)', 'action', 'Create/edit/delete digital voice bridge channels (DVMProject / USRP), edit the FNE status settings, and acknowledge or withdraw the DVMProject usage-policy statement');
+-- GH#148 (Phase 155, 2026-10-02) -- towing / roadside vendor dispatch with a
+-- rotation list. action.dispatch_vendor is tier 0 (Dispatcher-default: logging
+-- a call to a tow company is a routine operational action, same posture as
+-- action.set_primary_unit; an install can revoke it in the Roles UI).
+-- action.manage_vendors is tier 1 (Org Admin or above): editing rotation order
+-- is ordinance-sensitive, so it is added to the admin_only tier-1 UPDATE below,
+-- to Dispatcher's NOT-IN exclusion list, and to BOTH Dispatcher repair-DELETEs.
+-- A tier-1 code missing any ONE of those places is how five prior RBAC
+-- exclusion-list leaks happened.
+INSERT IGNORE INTO `permissions` (`code`, `name`, `category`, `description`) VALUES
+    ('action.dispatch_vendor', 'Dispatch Towing / Roadside Vendor', 'action', 'Dispatch a towing / roadside-assistance company from an incident and record the outcome'),
+    ('action.manage_vendors',  'Manage Towing / Roadside Vendors',  'action', 'Manage vendor providers, rotation lists, service types and settings; void any dispatch record; export rotation history');
+
 -- Phase 145 (2026-08-19, GH#90) — facility-account portal. TWO permissions,
 -- deliberately given category 'facility_account' rather than 'screen'/
 -- 'action' — Operator's grant below sweeps `category IN ('screen','widget',
@@ -385,6 +408,34 @@ INSERT IGNORE INTO `permissions` (`code`, `name`, `category`, `description`) VAL
 INSERT IGNORE INTO `permissions` (`code`, `name`, `category`, `description`) VALUES
     ('screen.facility_portal',       'Facility Portal',              'facility_account', 'Access the facility self-service portal (own facility only)'),
     ('action.facility_self_report',  'Facility Self-Report Status',  'facility_account', "Update the caller's own linked facility's status/diversion and bed capacity");
+
+-- GH#142 (Phase 155) -- agency logo and branding. TWO permissions split by
+-- blast radius, the Phase 138/140 template. action.manage_branding is
+-- install-wide (the install-wide logo, ANY organization's logo, and the eleven
+-- branding settings): tier 2, Super Admin ONLY, so it is added to the Org
+-- Admin AND Dispatcher `NOT IN (...)` exclusions below (and to both repair
+-- DELETEs for each). action.manage_branding_org is org-scoped self-service
+-- (the caller's OWN organization's logo; the organization is forced
+-- server-side, never taken from the request): tier 1, reaches Org Admin by
+-- being deliberately ABSENT from the Org Admin exclusion, and is added to the
+-- Dispatcher exclusion and its repair DELETEs. Category 'action' keeps both
+-- out of Operator's and Read-Only's category sweeps. Neither gate may fall
+-- back to `is_admin()` (that fallback is the documented leak the moment two
+-- permissions are split by blast radius).
+INSERT IGNORE INTO `permissions` (`code`, `name`, `category`, `description`) VALUES
+    ('action.manage_branding',     'Manage Agency Branding (install-wide)', 'action', 'Upload or remove the install-wide agency logo, change any organization''s logo, and change the branding settings. Super Admin only.'),
+    ('action.manage_branding_org', 'Manage Own Org''s Logo',               'action', 'Upload or remove the caller''s OWN organization''s logo only. The organization is forced server-side, never taken from the request.');
+-- Phase 155 (2026-10-02, GH#144) — Notification Rules authoring. ONE code,
+-- admin_only TIER 2 (Super Admin ONLY): a rule mails/texts incident addresses
+-- to arbitrary recipients across EVERY organization, and the table has no
+-- org column - so there is no org-scoped self-service variant to hand an Org
+-- Admin (Decision 7). Therefore it is named in: the tier-2 UPDATE below, the
+-- Org Admin AND Dispatcher `NOT IN` exclusions + all four repair DELETEs, and
+-- (in sql/run_00_rbac.php / sql/run_zzz_admin_only_reconcile.php) the matching
+-- lists. The API gate is `rbac_can('action.manage_notification_rules')` with
+-- NO `|| is_admin()` fallback (Phase 138 lesson).
+INSERT IGNORE INTO `permissions` (`code`, `name`, `category`, `description`) VALUES
+    ('action.manage_notification_rules', 'Manage Notification Rules (install-wide)', 'action', 'Create, edit, enable, delete and test-send the notification rules that email/text/post incident details to people. Super Admin only.');
 
 -- ── admin_only classification (2026-08-22) ──
 -- MUST stay in sync with the matching block in sql/run_00_rbac.php --
@@ -415,7 +466,9 @@ UPDATE `permissions` SET `admin_only` = 2 WHERE `code` IN (
     'action.manage_audit_retention', 'action.manage_dispositions',
     'action.manage_public_board', 'action.manage_ics_form_types',
     'action.manage_org_routing', 'action.manage_org_routing_org',
-    'action.manage_org_relationships'
+    'action.manage_org_relationships',
+    'action.manage_branding',
+    'action.manage_notification_rules'
 );
 UPDATE `permissions` SET `admin_only` = 1 WHERE `code` IN (
     'action.manage_users', 'action.delete_incident', 'action.import_data',
@@ -423,6 +476,8 @@ UPDATE `permissions` SET `admin_only` = 1 WHERE `code` IN (
     'action.delete_ics_form', 'action.delete_equipment_log',
     'action.manage_public_board_org', 'action.manage_ics_form_types_org',
     'action.manage_matrix', 'action.manage_calls',
+    -- GH#142 (Phase 155) -- org-scoped self-service logo management.
+    'action.manage_branding_org',
     -- Phase 86 (2026-09-02, 5-persona design review) -- creating/escalating
     -- a major event and managing its unified-command roster are
     -- supervisor-tier actions by design (a part-time/junior dispatcher must
@@ -437,7 +492,14 @@ UPDATE `permissions` SET `admin_only` = 1 WHERE `code` IN (
     -- tier as other "configure the install" actions. action.patch_create
     -- is DELIBERATELY NOT in this list -- it's tier 0 (Dispatcher-default),
     -- see its own INSERT comment above.
-    'action.patch_cross_class', 'action.manage_positions'
+    'action.patch_cross_class', 'action.manage_positions',
+    -- Phase 155 (2026-10-02) -- digital voice bridge channels; same tier as
+    -- action.manage_matrix (see its permission INSERT above).
+    'action.manage_voice_bridges',
+    -- GH#148 (Phase 155, 2026-10-02) -- changing a towing rotation list's order
+    -- is ordinance-sensitive (a dispatcher must not be able to jump a company
+    -- to the front); dispatching a call (action.dispatch_vendor) stays tier 0.
+    'action.manage_vendors'
 );
 -- Propagate onto each code's canonical alias partner in BOTH directions
 -- (sql/run_rbac_v2.php's A8 step may already have created the canonical
@@ -493,6 +555,10 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
                           -- Phase 1 has no two-party-awareness mechanism for the receiving org,
                           -- so even the org-scoped variant stays Super-Admin-only by default.
                           'action.manage_org_routing', 'action.manage_org_routing_org',
+                          -- GH#142 (Phase 155) — the install-wide branding permission is
+                          -- Super-Admin-only (tier 2); Org Admin gets ONLY
+                          -- action.manage_branding_org (deliberately absent from this list).
+                          'action.manage_branding',
                           -- Phase 145 (2026-08-19, GH#90) — the facility-portal permissions are
                           -- for the dedicated Facility role (resolved by name, not id) ONLY.
                           -- Category alone already keeps them out of Operator/Read-Only's
@@ -502,6 +568,10 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
                           -- tests/test_org_relationships_rbac.php's own structural check expects
                           -- 'action.manage_org_relationships' to be the LAST entry in this list.
                           'screen.facility_portal', 'action.facility_self_report',
+                          -- Phase 155 (2026-10-02, GH#144) — notification-rule authoring is
+                          -- Super-Admin-only (tier 2). Placed BEFORE the Phase 143 entry, not
+                          -- after: that entry must stay the LAST one in this list.
+                          'action.manage_notification_rules',
                           -- Phase 143 (2026-08-17) — cross-org STANDING relationships. ONLY the
                           -- install-wide code is excluded -- action.manage_org_relationships_org
                           -- and action.activate_org_relationship are deliberately absent from
@@ -548,7 +618,8 @@ DELETE `role_permissions` FROM `role_permissions`
                         'action.manage_audit_retention', 'action.manage_dispositions',
                         'action.manage_public_board', 'action.manage_ics_form_types',
                         'action.manage_org_routing', 'action.manage_org_routing_org',
-                        'action.manage_org_relationships',
+                        'action.manage_org_relationships', 'action.manage_branding',
+                        'action.manage_notification_rules',
                         'screen.facility_portal', 'action.facility_self_report');
 
 DELETE rp FROM `role_permissions` rp
@@ -559,7 +630,8 @@ DELETE rp FROM `role_permissions` rp
                           'action.manage_audit_retention', 'action.manage_dispositions',
                           'action.manage_public_board', 'action.manage_ics_form_types',
                           'action.manage_org_routing', 'action.manage_org_routing_org',
-                          'action.manage_org_relationships',
+                          'action.manage_org_relationships', 'action.manage_branding',
+                          'action.manage_notification_rules',
                           'screen.facility_portal', 'action.facility_self_report');
 
 -- Dispatcher gets EVERYTHING except system admin tasks (60 of 65 permissions)
@@ -663,11 +735,26 @@ INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
                                        -- assumption going forward: EVERY exclusion-list addition needs
                                        -- both repair-DELETEs below, even for a permission created in
                                        -- the same commit as its own exclusion.
-        'action.patch_cross_class', 'action.manage_positions'  -- Phase 152 (2026-09-07) —
+        'action.manage_branding',      -- GH#142 (Phase 155) — install-wide agency branding is
+                                       -- Super-Admin-only (tier 2, same tier as action.manage_config)
+        'action.manage_branding_org',  -- GH#142 — even the org-scoped self-service logo variant is
+                                       -- withheld from Dispatcher; only Super Admin + Org Admin
+                                       -- (tier 1) manage their own organization's logo
+        'action.manage_notification_rules', -- Phase 155 (2026-10-02, GH#144) — notification-rule
+                                       -- authoring is Super-Admin-only (tier 2); also excluded from
+                                       -- Org Admin above and named in both repair-DELETE pairs.
+        'action.patch_cross_class', 'action.manage_positions',  -- Phase 152 (2026-09-07) —
                                        -- same tier as action.manage_matrix just above; a Dispatcher
                                        -- gets action.patch_create (tier 0, granted via this broad
                                        -- INSERT since it's not named here) but not the cross-class
                                        -- override or position/room administration.
+        'action.manage_voice_bridges',  -- Phase 155 (2026-10-02) — digital voice bridge channels
+                                       -- (tier 1, same as action.manage_matrix): Org Admin and Super
+                                       -- Admin only. Also needs both repair-DELETEs below.
+        'action.manage_vendors'        -- GH#148 (Phase 155, 2026-10-02) -- managing the towing
+                                       -- rotation lists is admin-only (roles 1-2, tier 1). A
+                                       -- Dispatcher still gets action.dispatch_vendor (tier 0,
+                                       -- granted via this broad INSERT since it is not named here).
     )
       AND `admin_only` = 0;
 
@@ -690,9 +777,13 @@ DELETE `role_permissions` FROM `role_permissions`
         'action.manage_ics_form_types', 'action.manage_ics_form_types_org',
         'action.manage_org_routing', 'action.manage_org_routing_org',
         'action.manage_org_relationships',
+        'action.manage_notification_rules',
         'screen.facility_portal', 'action.facility_self_report',
         'action.manage_matrix', 'action.manage_calls',
-        'action.patch_cross_class', 'action.manage_positions'
+        'action.patch_cross_class', 'action.manage_positions',
+        'action.manage_voice_bridges',
+        'action.manage_branding', 'action.manage_branding_org',
+        'action.manage_vendors'
       );
 
 DELETE rp FROM `role_permissions` rp
@@ -709,9 +800,13 @@ DELETE rp FROM `role_permissions` rp
         'action.manage_ics_form_types', 'action.manage_ics_form_types_org',
         'action.manage_org_routing', 'action.manage_org_routing_org',
         'action.manage_org_relationships',
+        'action.manage_notification_rules',
         'screen.facility_portal', 'action.facility_self_report',
         'action.manage_matrix', 'action.manage_calls',
-        'action.patch_cross_class', 'action.manage_positions'
+        'action.patch_cross_class', 'action.manage_positions',
+        'action.manage_voice_bridges',
+        'action.manage_branding', 'action.manage_branding_org',
+        'action.manage_vendors'
       );
 
 -- Operator gets all screens/widgets/fields + key operational actions (45 permissions)

@@ -85,13 +85,15 @@ $csrf     = csrf_token();
 
     <div class="alert alert-secondary small mb-3">
         <i class="bi bi-info-circle me-1"></i>
-        A <strong>trunk</strong> represents one SIP trunk or PBX line. A companion adapter
-        process (<code>services/sip-bridge/</code>) normalizes your PBX's native events
-        (Asterisk AMI/ARI, or a hosted provider's own webhook shape) and POSTs them to
-        <code>api/sip-ingest.php</code> using the trunk's bearer token below. TicketsCAD
-        itself never speaks SIP, AMI, or ARI directly.
+        A <strong>trunk</strong> represents one SIP trunk or PBX line. A small companion program
+        (the <strong>bridge</strong>, in <code>services/sip-bridge/</code>) has to run somewhere that can
+        reach both your phone system and this server; it watches your PBX (3CX, Asterisk/FreePBX, or a
+        hosted provider) and reports calls here using the trunk's token. <strong>Creating a trunk does
+        not connect anything by itself</strong> &mdash; use the <strong>Setup</strong> button on a trunk
+        for a ready-to-paste configuration and the steps to start the bridge. The
+        <strong>Bridge</strong> column turns green when the bridge is running and talking to this server.
         See <a href="documentation/?doc=INBOUND-SIP-CALLS" target="_blank" rel="noopener">the setup guide</a>
-        for the full adapter-deployment walkthrough.
+        for the full walkthrough.
     </div>
 
     <div class="card mb-3" id="stListPanel">
@@ -110,11 +112,12 @@ $csrf     = csrf_token();
                             <th class="text-end">Wrap-up (s)</th>
                             <th class="text-end">Reassign grace (s)</th>
                             <th>Token</th>
+                            <th>Bridge</th>
                             <th>Status</th>
-                            <th style="width:170px" class="text-end">Actions</th>
+                            <th style="width:210px" class="text-end">Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="stListRows"><tr><td colspan="8" class="text-body-secondary">Loading&hellip;</td></tr></tbody>
+                    <tbody id="stListRows"><tr><td colspan="9" class="text-body-secondary">Loading&hellip;</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -179,6 +182,64 @@ $csrf     = csrf_token();
             <i class="bi bi-trash me-1"></i>Delete Trunk</button>
         <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
         <button type="button" class="btn btn-primary btn-sm" id="stBtnSave"><i class="bi bi-save me-1"></i>Save Trunk</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════ Setup / connect-your-phone-system modal ══════════════════ -->
+<div class="modal fade" id="stSetupModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-plug me-2"></i>Connect your phone system &mdash; <span id="stSetupTrunkLabel"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+            <span class="fw-semibold">Bridge status:</span>
+            <span id="stSetupStatus" class="badge text-bg-secondary">Checking&hellip;</span>
+            <span id="stSetupStatusNote" class="small text-body-secondary"></span>
+        </div>
+
+        <div class="row g-2 mb-2">
+            <div class="col-md-5">
+                <label class="form-label form-label-sm mb-0" for="stPbxType">Which phone system?</label>
+                <select class="form-select form-select-sm" id="stPbxType">
+                    <option value="threecx">3CX (Call Control API)</option>
+                    <option value="ami">Asterisk / FreePBX (Manager Interface)</option>
+                    <option value="webhook">Hosted SIP provider (webhook)</option>
+                </select>
+            </div>
+            <div class="col-md-7">
+                <label class="form-label form-label-sm mb-0" for="stSetupUrl">TicketsCAD address <span class="text-body-secondary">(as the bridge computer will reach it)</span></label>
+                <input type="text" class="form-control form-control-sm font-monospace" id="stSetupUrl">
+            </div>
+        </div>
+
+        <ol class="small ps-3 mb-2" id="stSetupSteps"></ol>
+
+        <div class="d-flex align-items-center mb-1">
+            <span class="fw-semibold small">bridge.ini</span>
+            <span id="stSetupTokenNote" class="small text-body-secondary ms-2"></span>
+            <button class="btn btn-outline-secondary btn-sm ms-auto" type="button" id="stBtnCopyConfig"><i class="bi bi-clipboard me-1"></i>Copy</button>
+        </div>
+        <pre class="border rounded p-2 small mb-2" id="stConfigOut" style="max-height:260px; overflow:auto; white-space:pre;"></pre>
+
+        <div class="border rounded p-2 small">
+            <div class="fw-semibold mb-1"><i class="bi bi-megaphone me-1"></i>Test the TicketsCAD side first</div>
+            Rings one clearly-labelled <strong>TEST CALL</strong> on every dispatcher's screen for about 12 seconds
+            (banner and tone), then clears itself. It proves the part inside TicketsCAD works even before your
+            phone system is connected.
+            <div class="mt-1">
+                <button class="btn btn-sm btn-outline-primary" type="button" id="stBtnTestCall"><i class="bi bi-telephone-inbound me-1"></i>Send test call</button>
+                <span id="stTestCallNote" class="ms-2 text-body-secondary"></span>
+            </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
       </div>
     </div>
   </div>

@@ -12,6 +12,14 @@ on:
     branches: ['**']
   pull_request:
 
+# Least privilege (Phase 155): this job reads the repository and runs tests; it
+# writes nothing back. Without this block the token carries the repository's
+# default scopes, which on older repositories include write access.
+# tests/test_github_workflows_safety.php requires an explicit block on every
+# workflow in this directory.
+permissions:
+  contents: read
+
 jobs:
   fresh-install-and-test:
     name: fresh install + test suite
@@ -192,6 +200,17 @@ jobs:
       - name: AI-attribution audit (commit history + tracked files ↔ known attribution signatures)
         run: php tests/test_ai_attribution_audit.php
 
+      # Phase 155. Two tokenizing gates that derive their subject from the code instead of a list of
+      # files someone remembered (tools/audit_log_arity.php, tools/csrf_coverage_audit.php). The first
+      # found audit_log() calls that could never write a row; the second found api/rbac.php's
+      # grant_role (and six more endpoints) changing state with no CSRF check. Each test runs its tool
+      # over the real tree AND over fixtures for every wrong and every correct shape.
+      - name: audit_log() arity + reachability audit
+        run: php tests/test_audit_log_arity.php
+
+      - name: API CSRF coverage audit (session-authenticated writes ↔ a dominating csrf_verify())
+        run: php tests/test_api_csrf_coverage.php
+
       # Anti-rot gate for the published SBOM. An SBOM that is accurate once and
       # stale afterwards is worse than none, because it asserts a currency it
       # does not have. If a dependency, a vendored library version, or the
@@ -236,6 +255,15 @@ jobs:
       - name: Dependency vulnerability audit (composer.lock)
         run: composer audit --locked --no-interaction
 
+      - name: Install jsdom (dev-only, never shipped; lets the SOP sanitiser behaviour test run)
+        run: |
+          set -e
+          mkdir -p "$RUNNER_TEMP/jsdom"
+          cd "$RUNNER_TEMP/jsdom"
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund jsdom
+          echo "NODE_PATH=$RUNNER_TEMP/jsdom/node_modules" >> "$GITHUB_ENV"
+
       - name: Full test suite (HTTP-integration tests skipped)
         env:
           NEWUI_TEST_NO_HTTP: '1'
@@ -249,7 +277,20 @@ jobs:
           # is a hard dependency of test_browser_leg (Phase 152 prerequisite
           # #3). Install both so the suite matches what a real deploy needs.
           python3 -m pip install --quiet -r services/audio-matrix/requirements.txt
-          for t in test_matrix_core test_control_http test_dmr_leg test_service test_browser_leg test_fcc_gate test_intercom_reflector test_workstation_mute; do
+          # test_http_stream_leg was never in this list, so it never ran in CI
+          # (found while scoping GH#151); test_usrp_leg / test_usrp_service
+          # are the Phase 155 generic USRP leg (listen-only) and its service
+          # + control-plane wiring.
+          for t in test_matrix_core test_control_http test_dmr_leg test_service test_browser_leg test_fcc_gate test_intercom_reflector test_workstation_mute test_http_stream_leg test_usrp_leg test_usrp_service; do
             echo "── $t ──"
             python3 "services/audio-matrix/tests/$t.py"
+          done
+
+      - name: SIP/PBX bridge Python suite (Phase 155, mock 3CX + synthetic AMI events + mock TicketsCAD)
+        run: |
+          set -e
+          python3 -m pip install --quiet -r services/sip-bridge/requirements.txt
+          for t in test_threecx_tracker test_bridge_threecx_e2e test_bridge_config test_ami_tracker; do
+            echo "── $t ──"
+            python3 "services/sip-bridge/tests/$t.py"
           done

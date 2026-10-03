@@ -113,41 +113,21 @@ $now = date('Y-m-d H:i:s');
 if ($func === 0) {
     // Eric 2026-07-07 (training incident #217 "SummerFet"): booked
     // incidents must AUTO-ACTIVATE when their scheduled time arrives.
-    // Nothing ever promoted status 3 (scheduled) -> 2 (active), so
-    // scheduled events stayed "scheduled" through and past their event.
-    // Lazy activation on the hottest read path — every incidents-list
-    // request promotes due bookings first. Best-effort; never blocks
-    // the listing.
+    //
+    // Phase 155 (S0, GH#141/GH#147): this used to be an inline SELECT + bulk
+    // UPDATE + announce-the-selected-ids loop that (a) ran only here, so a
+    // booked time meant nothing to an External API consumer or a crew phone
+    // until somebody loaded this list, and (b) double-announced under normal
+    // polling (two dashboards selected the same due ids; one UPDATE won, both
+    // loops still audited and published). It is now ONE atomic per-ticket
+    // compare-and-set in inc/scheduled-incidents.php, shared with the 60-second
+    // timer (tools/scheduled_incidents_tick.php). It stays called from here so
+    // an install with no timer behaves exactly as it always did. Best-effort;
+    // never blocks the listing.
     try {
-        $due = db_fetch_all(
-            "SELECT `id` FROM `{$prefix}ticket`
-              WHERE `status` = 3 AND `booked_date` IS NOT NULL
-                AND `booked_date` <= NOW()
-                AND (`deleted_at` IS NULL)"
-        );
-        if ($due) {
-            db_query(
-                "UPDATE `{$prefix}ticket` SET `status` = 2, `updated` = NOW()
-                  WHERE `status` = 3 AND `booked_date` IS NOT NULL
-                    AND `booked_date` <= NOW() AND (`deleted_at` IS NULL)"
-            );
-            if (is_file(__DIR__ . '/../inc/audit.php')) require_once __DIR__ . '/../inc/audit.php';
-            if (is_file(__DIR__ . '/../inc/sse.php'))   require_once __DIR__ . '/../inc/sse.php';
-            foreach ($due as $d) {
-                $tid = (int) $d['id'];
-                if (function_exists('audit_log')) {
-                    audit_log('incident', 'update', 'ticket', $tid,
-                        "Scheduled incident #$tid auto-activated (booked time reached)");
-                }
-                if (function_exists('sse_publish_for_incident')) {
-                    try {
-                        sse_publish_for_incident('incident:update',
-                            ['ticket_id' => $tid, 'activated' => true], $tid);
-                    } catch (Throwable $sseE) { /* non-fatal */ }
-                }
-            }
-        }
-    } catch (Exception $e) {
+        require_once __DIR__ . '/../inc/scheduled-incidents.php';
+        incident_activate_due_scheduled(50);
+    } catch (Throwable $e) {
         error_log('[incidents] booked auto-activate failed: ' . $e->getMessage());
     }
 

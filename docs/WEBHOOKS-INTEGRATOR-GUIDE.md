@@ -368,9 +368,91 @@ accident.
 | `incident.updated` | Any field changed | `changes` object (per-field old → new), `updated_by` |
 | `incident.closed` | Status set to closed/terminal | `closed_at`, `closed_by`, `duration_seconds` |
 | `incident.reopened` | Closed incident reopened | `reopened_by`, `previous_close_time` |
+| `incident.status_changed` | ANY real status transition (Closed / Open / Scheduled, in any direction, from any route) — **exactly once per real change**; see [Status changes](#status-changes-incidentstatus_changed) below | `details` object: `ticket_id`, `incident_number`, `old_status`, `new_status`, `old_status_label`, `new_status_label`, `transition`, `source`, `actor_type`, `actor_id`, `actor_name`, plus `booked_date` / `problemend` / `disposition` / `cleared_assigns` where they apply |
 | `incident.deleted` | Soft-deleted | `deleted_by` |
 | `incident.note_added` | Activity note added | `note_id`, `note_text`, `note_by` |
 | `incident.primary_changed` | Primary/responsible unit set or cleared (Phase 151, GH#138) — **off by default**; fires only on installs with the Primary Unit setting enabled (Settings → Incident Lifecycle) | `ticket_id`, `previous_responder_id`, `previous_responder_name`, `new_responder_id`, `new_responder_name`, `reason` (`manual` \| `auto_single_unit` \| `unassigned`), `set_by`, `via_external_api` |
+
+#### Status changes (`incident.status_changed`)
+
+*Added in Phase 155 (GitHub #147). This is the one event to subscribe to if your
+system only needs to know "the incident's status changed" and wants the same
+payload no matter what caused it — you do not have to combine `incident.closed`,
+`incident.reopened`, `incident.updated` and a poll of the scheduled-incident
+list.*
+
+**What fires it.** One audit row (`incident` / `status_change` / `ticket`),
+written by the status writer itself, so every route is covered and none can word
+the payload differently:
+
+| `transition` | Meaning | Typical `source` |
+|---|---|---|
+| `closed` | any status → Closed | `ui`, `external_api`, `auto_close`, `major_incident_close` |
+| `reopened` | Closed → Open | `ui`, `external_api` |
+| `activated` | Scheduled → Open | `scheduled_activation` (the booked time arrived), `ui`, `external_api` |
+| `scheduled` | any status → Scheduled | `ui`, `external_api` |
+
+**What does not fire it.** A request for the status an incident ALREADY has
+(closing an already-closed incident, an integrator's retry) is a no-op: nothing
+is written, `problemend` is not re-stamped, no event of any kind is sent. A
+change that loses a race with another change to the same incident emits nothing
+either. Creating an incident does not emit it (`incident.created` already carries
+the status, and there is no "old" one). Moving the booked time of an already
+Scheduled incident is not a status change.
+
+**The delivery.** The standard envelope (see the signing and retry sections
+above), with `data` being the audit record. The integrator contract is the
+`details` object — flat, snake_case, ids/labels/timestamps only; **it never
+contains the incident's scope, address, description or any patient field**, so a
+security-labelled incident's text cannot reach a subscriber by ticking this box:
+
+```json
+{
+  "event_type": "incident.status_changed",
+  "timestamp": "2026-10-04T23:00:01Z",
+  "data": {
+    "category": "incident", "activity": "status_change", "target_type": "ticket",
+    "target_id": 412, "ticket_id": 412,
+    "summary": "Status transition on incident 26-0071: Scheduled → Open",
+    "actor_id": null, "actor_name": "System",
+    "event_time": "2026-10-04T23:00:01Z",
+    "details": {
+      "ticket_id": 412, "incident_number": "26-0071",
+      "old_status": 3, "new_status": 2,
+      "old_status_label": "Scheduled", "new_status_label": "Open",
+      "transition": "activated",
+      "source": "scheduled_activation",
+      "actor_type": "system", "actor_id": null, "actor_name": "System",
+      "booked_date": "2026-10-04 18:00:00",
+      "via_external_api": false
+    }
+  }
+}
+```
+
+`details` keys: `old_status`/`new_status` are `1` Closed, `2` Open, `3`
+Scheduled. `source` is `ui`, `external_api`, `auto_close`, `scheduled_activation`
+or `major_incident_close`. `actor_type` is `user`, `api_token` or `system`
+(`token_id` is added for `api_token`). `booked_date` appears when either side of
+the transition is Scheduled; `problemend`, `disposition` (`{id, code, label}` or
+`null`), `cleared_assigns` and `reset_responders` appear on a close. Datetimes
+inside `details` are the server's local time with no zone; the UTC instant of the
+change is the envelope's `event_time`.
+
+**Alongside, not instead of.** `incident.closed`, `incident.reopened` and
+`incident.updated` keep firing exactly as before for subscribers that depend on
+them, so an `incident.*` subscription now receives several events for one
+change. A close, for example, delivers `incident.status_changed`,
+`incident.closed` and `incident.close`. That last name is a second, older family
+— every browser-refresh event TicketsCAD publishes (`incident:close`,
+`incident:update`, ...) is also delivered to webhook subscribers with the colon
+turned into a dot, in a thinner payload (`ticket_id`, `new_status`,
+`status_label`). They are not part of the contract above; **subscribe to the
+specific event you want rather than `incident.*`**, or ignore the `incident.close`
+/ `incident.update` / `incident.note` family.
+
+**Idempotency.** Every delivery carries a stable `X-Webhook-Delivery` id across
+retries; deduplicate on it.
 
 ### Assignments
 
@@ -378,6 +460,15 @@ accident.
 |---|---|---|
 | `assign.created` | Responder assigned to an incident | `incident_id`, `responder_id`, `responder_name`, `assigned_by`, `role?` |
 | `assign.removed` | Responder unassigned from an incident | `incident_id`, `responder_id`, `removed_by` |
+
+> **Reserved units (Phase 155, GitHub #141).** When an install sets *Units
+> assigned to Scheduled incidents* to **Reserve until the booked time**, assigning
+> a unit to a Scheduled incident creates a *reservation*, not an assignment —
+> **no `assign.created` fires then**, because nothing has been dispatched. The
+> event fires when the unit is really dispatched (the booked time, or the
+> configured lead time before it), with `details.from_reservation: true` and the
+> `reservation_id`. Reserving and releasing are audited but are deliberately not
+> webhook events.
 
 ### Responders (units/equipment)
 
@@ -439,7 +530,7 @@ for them. Each requires (a) the relevant feature code to call
 `audit_log()` with the right tuple AND (b) a one-line addition to
 the allowlist in `inc/webhooks.php`.
 
-`incident.assigned`, `incident.unassigned`, `incident.status_changed`,
+`incident.assigned`, `incident.unassigned`,
 `incident.major_linked`, `incident.par_initiated`, `incident.par_ack`,
 `incident.par_overdue`, `responder.clocked_in`, `responder.clocked_out`,
 `responder.mayday`, `user.created`, `user.updated`, `user.disabled`,

@@ -47,7 +47,7 @@ t('...and additionally requires the channel to be currently SELECTED '
 $cjs = (string) @file_get_contents(__DIR__ . '/../assets/js/console.js');
 t('console.js sets data-real-ptt="1" ONLY when real matrix audio is engaged AND the operator '
     . 'holds TX permission -- never on a launcher, never without TX permission',
-    strpos($cjs, "if (matrixAudioOn && canTx) { strip.setAttribute('data-real-ptt', '1'); }") !== false);
+    strpos($cjs, "if (matrixAudioOn && canTx && !listenOnlyMatrix) { strip.setAttribute('data-real-ptt', '1'); }") !== false);
 
 echo "\n--- 2. No-silent-no-op: a press with nothing eligible shows a visible notice ---\n\n";
 t('an empty eligible set triggers a visible on-screen notice, not a silent return '

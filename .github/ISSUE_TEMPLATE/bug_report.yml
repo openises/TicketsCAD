@@ -17,6 +17,12 @@ body:
       placeholder: e.g. 4.2.2
     validations:
       required: true
+  - type: input
+    id: git-commit
+    attributes:
+      label: If you installed with git, which commit is it on?
+      description: "Run  git log -1 --format='%h %cd'  in your install folder and paste the line. The version number alone no longer says whether a particular fix is present, because fixes reach main between releases. Leave blank for a Docker image or a ZIP."
+      placeholder: e.g. 3a1f9c2 Fri Oct 2 14:11:00 2026 -0500
   - type: dropdown
     id: install-method
     attributes:
@@ -27,6 +33,17 @@ body:
         - Git clone on Windows (XAMPP or similar)
         - Uploaded a ZIP to shared hosting
         - Other / not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: live-operations
+    attributes:
+      label: Is this affecting live operations right now?
+      description: Only so a report from a real, current operation is read first. "No" is the normal answer and loses nothing.
+      options:
+        - Yes, right now
+        - No, found while testing or reviewing
+        - Not sure
     validations:
       required: true
   - type: input
@@ -61,3 +78,11 @@ body:
     attributes:
       label: What device / browser?
       placeholder: e.g. Windows laptop, Chrome; or iPhone, Safari
+  - type: checkboxes
+    id: health-check
+    attributes:
+      label: System Health
+      description: Most environment problems (a missing scheduled job, exposed folders, an uninstalled dependency) show up there in one screen.
+      options:
+        - label: I opened Settings, System Health, and pasted anything red (or it was all green).
+          required: false

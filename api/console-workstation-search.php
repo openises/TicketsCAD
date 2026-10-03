@@ -106,7 +106,7 @@ try {
                 json_error('Acoustic discovery is disabled on this install', 403);
             }
             sse_publish('comm:beacon_request', ['initiator_workstation_token' => $token], null, 'entitled');
-            audit_log('config', 'console.workstation_beacon_search', 'console_workstation', $myId,
+            audit_log('config', 'console.ws_beacon_search', 'console_workstation', $myId,
                 'Started an acoustic-discovery search for nearby workstations');
             json_response(['ok' => true]);
             break;
@@ -131,7 +131,7 @@ try {
                 matrix_control_apply_workstation_mute($matchToken, $token, true);
             }
             if (!empty($matched)) {
-                audit_log('config', 'console.workstation_beacon_matched', 'console_workstation', $myId,
+                audit_log('config', 'console.ws_beacon_matched', 'console_workstation', $myId,
                     'Acoustic discovery created ' . count($matched) . ' mute pairing(s)', ['matched' => $matched]);
             }
             json_response(['ok' => true, 'matched' => $matched]);

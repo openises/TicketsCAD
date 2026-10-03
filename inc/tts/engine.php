@@ -16,27 +16,13 @@
  *   browser Test-Listen, Opus for Zello, AMBE for DMR).
  *
  * API keys are NEVER in the DB: an engine's config_json carries a `key_ref`
- * filename under ../keys/tts/ (mode 0640, outside the webroot).
+ * filename in the TTS key directory (mode 0640). Where that directory is —
+ * and why it is NOT inside the application tree — is inc/tts/keys.php, which
+ * owns tts_keys_dir(), tts_read_key() and the one writer, tts_write_key().
  */
 
 require_once __DIR__ . '/../db.php';
-
-/** Directory holding TTS API-key files (outside the webroot). */
-function tts_keys_dir(): string
-{
-    return dirname(__DIR__, 2) . '/keys/tts';
-}
-
-/** Read an engine's API key from its 0640 key file (never from the DB). */
-function tts_read_key(?string $keyRef): string
-{
-    $keyRef = trim((string) $keyRef);
-    if ($keyRef === '') return '';
-    // Basename only — never let a stored value traverse out of the keys dir.
-    $path = tts_keys_dir() . '/' . basename($keyRef);
-    if (!is_file($path)) return '';
-    return trim((string) @file_get_contents($path));
-}
+require_once __DIR__ . '/keys.php';
 
 /** Load one engine row (decoded config). Returns null if missing/disabled-ok. */
 function tts_get_engine(int $engineId): ?array

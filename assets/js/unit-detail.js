@@ -69,6 +69,7 @@
                 renderAdditional(resp);
                 renderLocation(resp);
                 renderActiveAssignments(data.active_assignments);
+                renderFutureCommitments(data.future || []);
                 renderHistory(data.recent_assignments);
                 renderStats(data.stats);
                 renderUnitPersonnel(data.unit_personnel || []);
@@ -727,6 +728,26 @@
                 window.location.href = 'incident-detail.php?id=' + tid;
             });
         }
+    }
+
+    // ── Render: committed for later (GH#141, Phase 155) ──
+    // One chip per commitment (a reservation on a Scheduled incident, or a
+    // dispatch to one whose booked time is still ahead); each links to that
+    // incident. Hidden entirely when there are none.
+    function renderFutureCommitments(future) {
+        var el = document.getElementById('futureCommitments');
+        if (!el) return;
+        if (!future || !future.length || !window.TCADFutureChip) {
+            el.classList.add('d-none');
+            el.innerHTML = '';
+            return;
+        }
+        var html = '';
+        for (var i = 0; i < future.length; i++) {
+            html += window.TCADFutureChip.html([future[i]]);
+        }
+        el.innerHTML = html;
+        el.classList.remove('d-none');
     }
 
     // ── Render: Assignment History ──

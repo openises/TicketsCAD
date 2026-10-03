@@ -367,7 +367,7 @@
         else if (tab === 'login-settings')   loadLoginSettings();
         else if (tab === 'field-encryption') loadFieldEncryption();
         else if (tab === 'email-config')     loadEmailConfig();
-        else if (tab === 'email-lists')      loadEmailLists();
+        else if (tab === 'email-lists' && window.EmailListsAdmin) window.EmailListsAdmin.load();   // Phase 155 (GH#145)
         else if (tab === 'places')           loadPlaces();
         else if (tab === 'map-overlay-categories') loadMapOverlayCategories();
         else if (tab === 'sms-config')       loadSmsConfig();
@@ -387,6 +387,7 @@
         else if (tab === 'webhooks')         loadWebhooks();
         else if (tab === 'chat-settings')    loadChatSettings();
         else if (tab === 'external-api-tokens') loadExternalApiTokens();
+        else if (tab === 'notifications' && window.NotificationRulesAdmin) window.NotificationRulesAdmin.init();   // Phase 155 (GH#144)
     }
 
     function loadDatabaseInfo() {
@@ -1622,189 +1623,11 @@
 
     // ── Email Config ──
     // ════════════════════════════════════════════════════════════════
-    //  PHASE 41 — EMAIL DISTRIBUTION LISTS
+    //  EMAIL DISTRIBUTION LISTS — moved to assets/js/email-lists-admin.js
+    //  (Phase 155, GH#145). The Phase 41 code that lived here could only add a
+    //  typed address, put names into markup unescaped, and used window.__el_*
+    //  globals. config.js's tab dispatcher calls EmailListsAdmin.load().
     // ════════════════════════════════════════════════════════════════
-    var emailListsCache = [];
-    function loadEmailLists() {
-        var body = document.getElementById('emailListsBody');
-        if (!body) return;
-        body.innerHTML = '<div class="text-body-secondary p-3 small">Loading…</div>';
-        fetch('api/email-lists.php?action=list', { credentials: 'same-origin' })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                if (!data || data.error) {
-                    body.innerHTML = '<div class="text-danger p-3 small">' + escapeHtml(data && data.error || 'load failed') + '</div>';
-                    return;
-                }
-                emailListsCache = data.lists || [];
-                renderEmailLists();
-            });
-        // Idempotent wire-up of header buttons
-        var btnNew = document.getElementById('btnNewEmailList');
-        if (btnNew && !btnNew._phase41) {
-            btnNew._phase41 = true;
-            btnNew.addEventListener('click', openNewEmailListPrompt);
-        }
-        var btnImport = document.getElementById('btnImportEmailList');
-        if (btnImport && !btnImport._phase41) {
-            btnImport._phase41 = true;
-            btnImport.addEventListener('click', openEmailListImportPrompt);
-        }
-        var filter = document.getElementById('emailListFilter');
-        if (filter && !filter._phase41) {
-            filter._phase41 = true;
-            filter.addEventListener('input', renderEmailLists);
-        }
-    }
-
-    function renderEmailLists() {
-        var body = document.getElementById('emailListsBody');
-        if (!body) return;
-        var q = ((document.getElementById('emailListFilter') || {}).value || '').toLowerCase();
-        var lists = q ? emailListsCache.filter(function (l) { return (l.name + ' ' + (l.slug||'') + ' ' + (l.description||'')).toLowerCase().indexOf(q) !== -1; }) : emailListsCache;
-        if (!lists.length) {
-            body.innerHTML = '<div class="text-body-secondary p-3 small">No lists yet. Click <strong>New List</strong> above to create one.</div>';
-            return;
-        }
-        var html = '<div class="table-responsive"><table class="table table-sm table-hover mb-0">' +
-            '<thead><tr><th>Name</th><th>Slug</th><th>Description</th><th class="text-end">Members</th><th class="text-end">Actions</th></tr></thead><tbody>';
-        lists.forEach(function (l) {
-            html += '<tr>' +
-                '<td><span class="fw-semibold">' + escapeHtml(l.name) + '</span></td>' +
-                '<td class="font-monospace small text-body-secondary">' + escapeHtml(l.slug) + '</td>' +
-                '<td class="small">' + escapeHtml((l.description || '').substr(0, 80)) + '</td>' +
-                '<td class="text-end">' + (l.member_count || 0) + '</td>' +
-                '<td class="text-end">' +
-                '  <button class="btn btn-sm btn-outline-primary" onclick="window.__el_open(' + l.id + ')"><i class="bi bi-pencil me-1"></i>Manage</button> ' +
-                '  <button class="btn btn-sm btn-outline-danger" onclick="window.__el_archive(' + l.id + ')" title="Archive"><i class="bi bi-archive"></i></button>' +
-                '</td>' +
-                '</tr>';
-        });
-        html += '</tbody></table></div>';
-        body.innerHTML = html;
-    }
-
-    function openNewEmailListPrompt() {
-        var name = prompt('List name (e.g. "EOC Ops"):');
-        if (!name || !name.trim()) return;
-        var desc = prompt('Optional description:') || '';
-        fetch('api/email-lists.php?action=create', {
-            method: 'POST', credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ csrf_token: getCsrfToken(), name: name.trim(), description: desc })
-        }).then(function (r) { return r.json(); })
-          .then(function (data) {
-            if (data && data.error) return showAlert(data.error, 'danger');
-            showAlert('List "' + data.name + '" created.', 'success');
-            loadEmailLists();
-            window.__el_open(data.id);
-          });
-    }
-
-    function openEmailListImportPrompt() {
-        if (!emailListsCache.length) return showAlert('Create a list first.', 'warning');
-        var listId = parseInt(prompt('Target list id (' + emailListsCache.map(function(l){return l.id + '=' + l.name;}).join(', ') + '):'), 10);
-        if (!listId) return;
-        var csv = prompt('Paste CSV (one email per line; optional second column = name):');
-        if (!csv) return;
-        fetch('api/email-lists.php?action=import_csv', {
-            method: 'POST', credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ csrf_token: getCsrfToken(), list_id: listId, csv_text: csv })
-        }).then(function (r) { return r.json(); })
-          .then(function (data) {
-            if (data && data.error) return showAlert(data.error, 'danger');
-            showAlert('Imported ' + data.added + ' addresses. Skipped: ' + data.skipped + '.', data.skipped ? 'warning' : 'success');
-            loadEmailLists();
-          });
-    }
-
-    window.__el_archive = function (id) {
-        if (!confirm('Archive this list? Senders will no longer see it as a target.')) return;
-        fetch('api/email-lists.php?action=archive', {
-            method: 'POST', credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ csrf_token: getCsrfToken(), id: id })
-        }).then(function (r) { return r.json(); })
-          .then(function (data) {
-            if (data && data.error) return showAlert(data.error, 'danger');
-            showAlert('Archived.', 'info');
-            loadEmailLists();
-          });
-    };
-
-    window.__el_open = function (id) {
-        fetch('api/email-lists.php?action=detail&id=' + id, { credentials: 'same-origin' })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                if (!data || data.error) return showAlert(data && data.error || 'load failed', 'danger');
-                showEmailListDetail(data);
-            });
-    };
-
-    function showEmailListDetail(data) {
-        var list = data.list, members = data.members || [];
-        var modal = document.getElementById('emailListDetailModal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'emailListDetailModal';
-            modal.className = 'modal fade';
-            modal.tabIndex = -1;
-            modal.innerHTML = '<div class="modal-dialog modal-lg"><div class="modal-content">' +
-                '<div class="modal-header py-2"><h6 class="modal-title" id="elDetailTitle"></h6>' +
-                '<button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>' +
-                '<div class="modal-body" id="elDetailBody"></div>' +
-                '<div class="modal-footer py-2">' +
-                '<button class="btn btn-sm btn-outline-success" id="btnAddInlineEmail">Add inline address</button>' +
-                '<button class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>' +
-                '</div></div></div>';
-            document.body.appendChild(modal);
-        }
-        document.getElementById('elDetailTitle').textContent = 'Manage list: ' + list.name + ' (' + list.slug + ')';
-        var rows = members.length ? members.map(function (m) {
-            var label = m.member_type === 'member' ? (m.display_name || m.member_username) + ' &lt;' + (m.member_email || '?') + '&gt;'
-                      : m.member_type === 'constituent' ? (m.display_name || m.constituent_name) + ' &lt;' + (m.constituent_email || '?') + '&gt;'
-                      : m.member_type === 'inline' ? (m.display_name ? m.display_name + ' &lt;' + m.inline_email + '&gt;' : m.inline_email)
-                      : m.member_type === 'list' ? 'sub-list: ' + (m.sub_list_name || '#' + m.ref_id)
-                      : '?';
-            return '<tr><td><span class="badge bg-secondary">' + m.member_type + '</span></td><td>' + label + '</td>' +
-                   '<td class="text-end"><button class="btn btn-sm btn-outline-danger" onclick="window.__el_rm(' + m.id + ',' + list.id + ')"><i class="bi bi-x-lg"></i></button></td></tr>';
-        }).join('') : '<tr><td colspan="3" class="text-body-secondary text-center small">No members yet.</td></tr>';
-        document.getElementById('elDetailBody').innerHTML =
-            '<table class="table table-sm mb-0"><thead><tr><th>Type</th><th>Recipient</th><th class="text-end">Remove</th></tr></thead><tbody>' +
-            rows + '</tbody></table>';
-        var btn = document.getElementById('btnAddInlineEmail');
-        btn.onclick = function () {
-            var email = prompt('Email address:');
-            if (!email) return;
-            var name = prompt('Display name (optional):') || '';
-            fetch('api/email-lists.php?action=add_member', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ csrf_token: getCsrfToken(), list_id: list.id, member_type: 'inline', inline_email: email, display_name: name })
-            }).then(function (r) { return r.json(); })
-              .then(function (d) {
-                if (d && d.error) return showAlert(d.error, 'danger');
-                window.__el_open(list.id);
-                loadEmailLists();
-              });
-        };
-        new bootstrap.Modal(modal).show();
-    }
-
-    window.__el_rm = function (memberId, listId) {
-        if (!confirm('Remove this recipient?')) return;
-        fetch('api/email-lists.php?action=remove_member', {
-            method: 'POST', credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ csrf_token: getCsrfToken(), id: memberId })
-        }).then(function (r) { return r.json(); })
-          .then(function (data) {
-            if (data && data.error) return showAlert(data.error, 'danger');
-            window.__el_open(listId);
-            loadEmailLists();
-          });
-    };
 
     function getCsrfToken() { return (document.getElementById('csrfToken') || {}).value || ''; }
 
@@ -3641,7 +3464,7 @@
                     fetch('api/rbac.php', {
                         method: 'POST', credentials: 'same-origin',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'save_role', name: name, description: desc, sort_order: 10 })
+                        body: JSON.stringify({ csrf_token: getCsrfToken(), action: 'save_role', name: name, description: desc, sort_order: 10 })
                     })
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
@@ -3713,7 +3536,7 @@
                 fetch('api/rbac.php', {
                     method: 'POST', credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'migrate_levels' })
+                    body: JSON.stringify({ csrf_token: getCsrfToken(), action: 'migrate_levels' })
                 })
                 .then(function (r) { return r.json(); })
                 .then(function (data) {
@@ -3862,6 +3685,7 @@
                             method: 'POST', credentials: 'same-origin',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
+                                csrf_token: getCsrfToken(),
                                 action: 'save_role',
                                 id: roleId,
                                 name: newName,
@@ -3896,7 +3720,7 @@
                     fetch('api/rbac.php', {
                         method: 'POST', credentials: 'same-origin',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'set_permissions', role_id: roleId, permission_ids: ids })
+                        body: JSON.stringify({ csrf_token: getCsrfToken(), action: 'set_permissions', role_id: roleId, permission_ids: ids })
                     })
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
@@ -3927,7 +3751,7 @@
                     fetch('api/rbac.php', {
                         method: 'POST', credentials: 'same-origin',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'delete_role', id: roleId })
+                        body: JSON.stringify({ csrf_token: getCsrfToken(), action: 'delete_role', id: roleId })
                     })
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
@@ -10276,7 +10100,8 @@
                     contact_phone: (document.getElementById('orgContactPhone').value || '').trim(),
                     sort_order: parseInt(document.getElementById('orgSortOrder').value) || 0,
                     active: document.getElementById('orgActive').checked ? 1 : 0,
-                    parent_org_id: parentVal   // null = top-level
+                    parent_org_id: parentVal,   // null = top-level
+                    csrf_token: csrfToken
                 };
 
                 fetch('api/organizations.php', {
@@ -10338,7 +10163,7 @@
                     fetch('api/organizations.php', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'delete_org', id: parseInt(dId) })
+                        body: JSON.stringify({ action: 'delete_org', id: parseInt(dId), csrf_token: csrfToken })
                     })
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
@@ -10491,7 +10316,8 @@
                     lookup_url: (document.getElementById('commModeLookupUrl').value || '').trim(),
                     sort_order: parseInt(document.getElementById('commModeSortOrder').value) || 0,
                     enabled: document.getElementById('commModeEnabled').checked ? 1 : 0,
-                    notes: (document.getElementById('commModeNotes').value || '').trim()
+                    notes: (document.getElementById('commModeNotes').value || '').trim(),
+                    csrf_token: csrfToken
                 };
 
                 fetch('api/comm-identifiers.php', {
@@ -10558,7 +10384,7 @@
                     fetch('api/comm-identifiers.php', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'delete_mode', id: parseInt(dId) })
+                        body: JSON.stringify({ action: 'delete_mode', id: parseInt(dId), csrf_token: csrfToken })
                     })
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
@@ -12357,6 +12183,38 @@
     // reads webhook_url_allowlist directly) had no settings.php field at
     // all -- same generic-settings read/write shape as
     // bindWarnProximityDefault() above, just for a single textarea.
+    // GH#147 -- the two pure halves of "never silently drop a subscription's
+    // filters". A webhook subscription can carry filters this form has no
+    // checkbox for (an "incident.*" wildcard, or an event an API-created
+    // subscription names). Re-saving it in this form used to rebuild the filter
+    // list from the ticked boxes alone and DROP those. Kept as plain functions
+    // of their arguments so tests/test_gh147_event_checkbox_parity.php can run
+    // them under node.
+
+    // The filters in `events` that no checkbox (`knownValues`) can show.
+    function whOtherEvents(events, knownValues) {
+        var other = [];
+        var list = events || [];
+        for (var i = 0; i < list.length; i++) {
+            if (knownValues.indexOf(list[i]) === -1) other.push(list[i]);
+        }
+        return other;
+    }
+
+    // The list to save: the ticked checkboxes plus the remembered extras. "All
+    // Events" (*) already covers everything, so nothing is added alongside it.
+    function whMergeEvents(checkedValues, otherJson) {
+        var events = (checkedValues || []).slice();
+        var other = [];
+        try { other = JSON.parse(otherJson || '[]') || []; } catch (e) { other = []; }
+        if (events.indexOf('*') === -1) {
+            for (var i = 0; i < other.length; i++) {
+                if (events.indexOf(other[i]) === -1) events.push(other[i]);
+            }
+        }
+        return events;
+    }
+
     function bindWebhookAllowlistSetting() {
         var saveBtn = document.getElementById('btnSaveWebhookAllowlist');
         if (!saveBtn || saveBtn._webhookAllowlistBound) return;
@@ -12481,6 +12339,14 @@
                 });
             }
         }
+        // GH#147: let an admin deliberately drop the filters that have no checkbox.
+        var clearOtherBtn = document.getElementById('btnClearOtherEvents');
+        if (clearOtherBtn) {
+            clearOtherBtn.addEventListener('click', function () {
+                document.getElementById('webhookOtherEvents').value = '[]';
+                document.getElementById('webhookOtherEventsNote').classList.add('d-none');
+            });
+        }
 
         form.addEventListener('submit', function (e) {
             e.preventDefault();
@@ -12490,6 +12356,13 @@
             for (var j = 0; j < boxes.length; j++) {
                 events.push(boxes[j].value);
             }
+            // GH#147: filters this form has no checkbox for (an "incident.*"
+            // wildcard, or one an API-created subscription carries) were
+            // remembered when the subscription was opened; keep them, or
+            // simply re-saving would silently drop them. "All Events" (*)
+            // already covers everything, so nothing is added alongside it.
+            var otherField = document.getElementById('webhookOtherEvents');
+            events = whMergeEvents(events, otherField ? otherField.value : '[]');
             if (events.length === 0) {
                 showAlert('Select at least one event type', 'warning');
                 return;
@@ -12608,8 +12481,26 @@
         // Set event checkboxes
         var events = item ? (item.events || []) : [];
         var boxes = document.querySelectorAll('.wh-evt');
+        var knownValues = [];
         for (var i = 0; i < boxes.length; i++) {
             boxes[i].checked = (events.indexOf(boxes[i].value) !== -1);
+            knownValues.push(boxes[i].value);
+        }
+        // GH#147: remember the filters this form cannot show as a checkbox so a
+        // save writes them back instead of dropping them (see the submit handler).
+        var otherEvents = whOtherEvents(events, knownValues);
+        var otherField = document.getElementById('webhookOtherEvents');
+        if (otherField) otherField.value = JSON.stringify(otherEvents);
+        var otherNote = document.getElementById('webhookOtherEventsNote');
+        var otherText = document.getElementById('webhookOtherEventsText');
+        if (otherNote && otherText) {
+            if (otherEvents.length) {
+                otherText.textContent = 'Also subscribed (kept when you save): ' + otherEvents.join(', ') + '.';
+                otherNote.classList.remove('d-none');
+            } else {
+                otherText.textContent = '';
+                otherNote.classList.add('d-none');
+            }
         }
 
         panel.classList.add('show');

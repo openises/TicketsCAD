@@ -1,158 +1,308 @@
-# Browser Phone & AllStar Relay (Phase 153)
+# Browser Phone & AllStar Relay Test (Phase 153, updated Phase 155)
 
 **Audience:** administrators (setup) and dispatchers (the "Using it" sections).
-**Status:** built and live-verified against a real Asterisk PBX and a real
-mock AllStar relay node. Both are ordinary self-hosted Asterisk instances —
-this feature is not a hosted telephony service and ships nothing pre-wired to
-a real phone carrier.
 
 ## What it is
 
-Two related capabilities, both built on the SAME idea — a browser-native
-WebRTC phone, no separate softphone app to install:
+Two related capabilities. Neither ships pre-wired to a phone carrier, and
+neither is a hosted service: both need an ordinary self-hosted Asterisk server
+that you set up.
 
-1. **Browser calling.** Any workstation's browser can register directly
-   against an Asterisk PBX (over WSS) and place or receive calls through a
-   floating Phone widget, the same shape as the existing Zello/Radio
-   widgets. A **general number** rings every registered direct-station
-   workstation at once (a dispatch line — including whichever workstation
-   places the call, since the dialplan doesn't exclude the caller); a
-   **direct number** rings only the one workstation it's bound to.
-2. **AllStar relay.** A button on an incident's detail page relays a short
-   spoken summary of that incident to a second Asterisk instance — a stand-in
-   for a real AllStarLink ham-radio node — genuinely synthesizing speech,
-   delivering it, and playing it out there. It simulates a dispatcher calling
-   a responder over ham radio to page them about an incident, and reports
-   back real, measured proof of delivery (duration + loudness), not a bare
-   success flag.
+1. **Browser calling.** A workstation's browser registers directly with an
+   Asterisk PBX (over a secure WebSocket) and places or receives calls through a
+   floating **Phone** widget or a small standalone **Phone window** — no
+   separate softphone program to install. A **general number** rings every
+   registered direct-station workstation at once (including the workstation that
+   places the call, because the shipped dial plan does not exclude the caller);
+   a **direct number** rings only the one workstation it is bound to.
+2. **Relay test page.** An optional button on an incident page sends a short
+   spoken summary of the incident to a **simulated test node** (a plain Asterisk
+   server) and measures the recording that comes back. **This is not AllStarLink
+   and nothing in it keys a radio.** It is off until an administrator turns it
+   on. See [The relay test page](#the-relay-test-page-simulated-not-allstarlink).
 
-Full design rationale: `specs/phase-153-webrtc-telephony-allstar/{spec.md,plan.md}`.
+## What has and has not been verified
+
+Be clear about this before you promise anything to a group:
+
+- **Checked against real equipment (Phase 153):** the Asterisk side — ring
+  groups, direct numbers, the event stream — with real SIP clients; and that
+  JsSIP loads in a real browser and asks the server for its extension.
+- **Checked only against simulations (Phase 155):** the browser phone's logic
+  (registration, dialing, answering, errors) runs in automated tests against a
+  *fake* SIP library; the Asterisk bridge's one-row-per-call logic runs against
+  *synthetic* event sequences written from Asterisk's documentation. These prove
+  the code does what it is meant to do; they cannot prove a real browser and a
+  real PBX agree.
+- **Not yet validated live by the maintainer:** a real browser completing the
+  secure-WebSocket handshake and carrying two-way audio; the bridge against a
+  real ring-group call; the dial-plan header in
+  [One Answer](#one-answer-answering-here-also-claims-the-call). Treat the phone
+  as something to pilot with a small group first.
+
+## What you need
+
+- **A WebRTC-capable PBX.** JsSIP talks SIP over a WebSocket, so the PBX must
+  accept that (Asterisk with `res_http_websocket`/PJSIP, FreeSWITCH or Kamailio
+  style). A hosted SIP provider, or a PBX with no WebSocket transport, cannot be
+  reached directly; put an Asterisk or FreePBX server in between.
+- **An HTTPS page.** Browsers refuse microphone access on a plain `http://`
+  page. The widget says so, in words, instead of failing silently.
+- **A certificate the browser trusts** for the PBX's WebSocket address (see
+  [The one-time certificate step](#the-one-time-certificate-step)).
+- **Network path for audio.** There is **no STUN/TURN setting yet**. A browser on
+  a different network from the PBX (behind NAT) can end up with one-way audio or
+  none; keep browsers and PBX on the same network, or arrange the PBX's own NAT
+  handling, until that setting exists.
 
 ## Setting up phone extensions
 
-**Settings → Communications & Integrations → Phone Extensions** (or
-`phone-extensions-admin.php` directly), gated on `action.manage_calls` —
-the same permission Phase 149's Inbound Calls admin page uses (Super Admin
-and Org Admin by default).
+**Settings → Communications & Integrations → Phone Extensions**
+(`phone-extensions-admin.php`), gated on `action.manage_calls` (Super Admin and
+Org Admin by default).
 
-1. **PBX Connection panel** at the top — set the PBX's **WebSocket URL**
-   (e.g. `wss://your-asterisk-host:8089/ws`) and, optionally, the general
-   number for display. This is a single install-wide setting; every browser
-   reads it to know where to connect.
-2. **New Extension** — pick a 2-10 digit number, a label, and whether it's
-   the shared **general number** (check the box) or a **direct-station
-   number** (leave unchecked). Creating an extension mints a SIP
-   username/password shown **exactly once** — copy it immediately (this is
-   the same one-time-reveal convention as every other credential-minting
-   panel in this app, e.g. SIP trunk bearer tokens). The actual Asterisk-side
-   endpoint (its own `pjsip.conf` entry, or equivalent) has to exist
-   separately on the PBX with matching credentials — this page manages
-   TicketsCAD's OWN record of "which extension is this," not the PBX
-   itself.
-3. **Binding a direct number to a workstation** — paste that workstation's
-   own token (visible on its Console page, or inside the Phone widget's own
-   "not bound yet" panel) into the extension's **Workstation Token** field.
-   This targets ringing notifications at the operator currently logged in
-   at THAT specific browser/workstation instead of broadcasting to
-   everyone. An extension with no token bound just sits configured but
-   inactive.
+1. **PBX Connection** — set the PBX's **WebSocket URL** (for example
+   `wss://your-asterisk-host:8089/ws`) and, optionally, the general number to
+   display. One install-wide setting; every browser reads it.
+2. **New Extension** — pick a 2–10 digit number, a label, and whether it is the
+   shared **general number** or a **direct-station number**.
+   - **PBX password (optional).** The browser logs in to the PBX with this
+     extension's password, so it must **match the endpoint on the PBX**. Two ways:
+     - *You already have an endpoint on the PBX:* type its existing password
+       (8–128 characters, no spaces). Nothing on the PBX has to change. It is
+       **never displayed again and never written to the audit log**. On an
+       existing extension, typing a password here and saving **replaces** the
+       stored one.
+     - *You are creating the endpoint:* leave the box blank. A strong random
+       password is generated and shown **once** — copy it into the PBX's own
+       endpoint (`pjsip.conf` or equivalent). Rotate it from the same dialog.
+     (In `pjsip.conf` a semicolon starts a comment, so avoid one in a password
+     you will paste there.)
+   - The Asterisk-side endpoint must exist separately. This page manages
+     TicketsCAD's record of "which extension is this", not the PBX.
+3. **Binding a direct number to a workstation.** A workstation is identified by
+   a **token** its browser keeps (per browser profile — a different browser, or a
+   private window, is a different workstation). To find it:
+   - on that workstation, open the **Console** and click **Phone token** in the
+     workstation bar (it shows the token with a copy button); or
+   - open the Phone widget while it is not bound — it shows the same token; or
+   - when you are on the workstation yourself, in the extension dialog click
+     **This browser** next to *Workstation Token*.
 
-## Using the Phone widget
+   Paste it into the extension's *Workstation Token* field. A ring then targets
+   the operator currently logged in at that workstation instead of everyone. An
+   extension with no token just sits configured.
+4. **Two install-wide switches** (Super Admin only — `action.manage_config`; they
+   do not appear for an Org Admin):
+   - **Where the phone registers** — *The Console and the Phone window only*
+     (default) or *Every page*. A SIP registration lasts only as long as the page
+     that made it, and TicketsCAD is a multi-page application, so with *every
+     page* the extension drops off the PBX (and an active call ends) each time an
+     operator clicks to another page. The default registers in the **Phone
+     window**, which never navigates, plus the Console. Only one window of a
+     browser holds the registration at a time. Choose *every page* only if your
+     operators stay on one page.
+   - **Record calls from our own extensions as Constituents** — on by default.
+     When workstation 101 calls the general number, the caller is added to the
+     Constituents list under the extension's label (for example "Desk 1 (ext 101)"),
+     so the dispatcher who answers sees who is calling and the next call from that
+     desk finds the same record. Turn it off if you do not want your own desks in
+     the public contact list; a call from an extension then matches no Constituent.
 
-Open it from the phone icon in the navbar (next to Zello/Radio), gated on
-`screen.call_queue` — the same "who works the phones" permission Phase 149
-already established.
+## Using the Phone
 
-- **Not bound yet?** The widget shows its own workstation token with a copy
-  button — hand that to an administrator to bind on the Phone Extensions
-  page above.
-- **Bound:** the widget registers against the PBX automatically. The status
-  dot and footer text report registration state honestly — green/"Registered
-  as 101" once connected, red/"Disconnected from PBX" otherwise.
-- **Dialing:** use the on-screen keypad or type a number, then Call — or tap
-  the general-number shortcut button if one is configured.
-- **Incoming calls** show a banner with Answer/Decline; an active call shows
-  a timer, mute, and hang-up.
-- Detaches into its own window exactly like the Zello/Radio widgets (the
-  Detach button in its header), and its open/closed state survives page
-  navigation the same way theirs do.
+- **The navbar phone button** (gated on `screen.call_queue`, the existing "works
+  the phone" permission). On the Console it shows or hides the floating widget;
+  on any other page — under the default setting — it opens the **Phone window**.
+- **The Phone window** (`phone.php`) is a small window that holds the
+  registration and **keeps ringing while you work in other tabs**. Open it once at
+  the start of a shift and leave it open. If it is closed normally, the Console tab
+  takes the registration back within a few seconds (up to about twenty if the window
+  crashed rather than closed). If a second window of the same
+  browser tries to register while one already holds it, it says *"another window
+  of this browser is handling your calls"* and does not register (a double
+  registration rings twice and answers twice).
+- **On a page that does not register** the widget says *"The phone is active in
+  your Console or Phone window"* with an **Open the Phone window** link, instead
+  of the misleading "not bound" panel it used to show.
+- **Not bound yet?** On the Console or in the Phone window the widget shows this
+  workstation's token with a copy button — give it to an administrator.
+- **Dialing:** the keypad, or type a number and press **Enter**, or the
+  general-number shortcut. Dialing before the PBX has accepted the registration
+  says so instead of doing nothing.
+- **Incoming calls** show the caller, with **Answer** focused so **Enter**
+  answers, and **Decline**. An active call shows a timer, mute and hang-up. A
+  second incoming call while you are on one is rejected "busy". In the Phone
+  window the title bar flashes "(Incoming call)" so a window behind others is
+  noticed; the ringing tone and the banner come from the main pages, so keep a
+  TicketsCAD tab open too.
+- **Detach** (the widget's own button) still moves the widget into a picture-in-
+  picture window, but that window shares the page's JavaScript and ends with it;
+  use the **Phone window** when you need a call to survive navigation.
+
+### One Answer: answering here also claims the call
+
+TicketsCAD's inbound-call banner (Phase 149) and the browser phone used to be two
+separate things, so answering took two clicks. Now:
+
+- **Answer in the phone** answers the audio **and**, when the PBX tagged that
+  call (below), claims the matching call in the banner and opens the **New
+  Incident** form in a new tab — the same as clicking Answer in the banner.
+- **Answer in the banner** (on any page) claims the call, opens the New Incident
+  tab, **and** answers the matching ringing leg in the phone.
+- If nothing correlates (no tag, the bridge is not running, the call is already
+  someone else's) the audio is answered anyway and nothing else happens; answering
+  never depends on the bridge being up.
+- **One known gap:** a banner Answer only picks up a phone leg that is *already
+  ringing*. If your dial plan keeps the caller in an announcement or menu for a while
+  before the phones ring, the banner can appear first; if you click Answer there
+  before the phone starts ringing, click Answer in the phone as well when it does
+  (it will not open a second New Incident tab; the call is already yours).
+
+For the two to find each other, the leg that rings a browser must carry the PBX's
+call id in a SIP header, `X-Call-Linkedid`. **This snippet is written from the
+Asterisk documentation and has not been confirmed on the maintainer's PBX** —
+check it with `pjsip set logger on` and look for the header in the INVITE sent to
+the browser:
+
+```
+; extensions.conf (Asterisk 12 or later) -- UNVERIFIED on a live PBX
+[phone-leg-tag]
+exten => s,1,Set(PJSIP_HEADER(add,X-Call-Linkedid)=${CHANNEL(linkedid)})
+ same => n,Return()
+
+[from-internal]
+exten => 100,1,Dial(PJSIP/101&PJSIP/102&PJSIP/103,25,b(phone-leg-tag^s^1))
+```
+
+The Asterisk bridge (`services/sip-bridge/`, `mode = ami`) now reports **one**
+call per Asterisk Linkedid instead of one per channel, so a ring group no longer
+produces several banner rows; set `ami_context` in `bridge.ini` to the dial-plan
+context your trunk rings into so calls your own dispatchers place are not shown as
+ringing calls. See [INBOUND-SIP-CALLS.md](INBOUND-SIP-CALLS.md).
+
+### What the footer tells you
+
+| The footer says | What it means / what to do |
+|---|---|
+| *The PBX connection is not configured yet* | An administrator must set the PBX WebSocket URL. |
+| *Cannot reach the PBX … open https://host:8089/ once and accept the certificate* | First connection from this browser to a PBX with a self-signed certificate: visit that address once. Otherwise check the PBX address and the network. |
+| *The PBX rejected this extension's password* | The password on the Phone Extensions page does not match the PBX endpoint. Supply the PBX's password there. |
+| *Lost the connection to the PBX. Reconnecting automatically* | The PBX or the network dropped. It retries on its own. |
+| *Calls need a secure page … https://* | The page is open over plain `http://`; the browser will not allow the microphone. |
+| *Microphone blocked. Allow microphone access for this site* | The browser's microphone permission was refused; click the lock icon beside the address. |
+| *The call could not set up audio* | Microphone problem, PBX media settings, or NAT (see "What you need"). |
+| *Busy.* / *No answer.* / *That number does not exist on the PBX.* | As written. |
+| *Another window of this browser is handling your calls* | The Phone window (or another tab) holds the registration. |
 
 ### The one-time certificate step
 
-A self-hosted Asterisk PBX almost always uses a **self-signed TLS
-certificate** for its WSS signaling. The first time any given browser
-profile tries to register, the WebSocket connection will silently fail
-(shown honestly as "Disconnected from PBX") until that browser has been
-told to trust the certificate. **Fix: visit the PBX's plain HTTPS URL once**
-(same host/port as the WSS URL, e.g. `https://your-asterisk-host:8089/`)
-and click through the browser's security warning (Chrome: Advanced →
-Proceed). This is a one-time, per-browser-profile step — do it before
-troubleshooting anything else if a workstation's Phone widget won't
-register.
+A self-hosted Asterisk almost always uses a **self-signed certificate** for its
+WebSocket. The first time a browser profile tries to register, the connection
+fails until that browser trusts the certificate. **Visit the PBX's plain HTTPS
+address once** (same host and port as the WebSocket URL, for example
+`https://your-asterisk-host:8089/`) and click through the browser's warning
+(Chrome: Advanced → Proceed). One time per browser profile. A certificate from a
+real certificate authority avoids this and is strongly preferred.
 
-## Using the AllStar Relay
+## Callers become Constituents
 
-**On an incident's detail page**, dispatchers/anyone holding
-`action.dispatch_unit` see an **AllStar Relay** button in the toolbar. Click
-it and the button disables itself with a progress message for roughly
-20-30 seconds — this is a REAL delay, not a loading spinner masking
-instant work: the message is genuinely synthesized to speech, delivered to
-the relay node, and played out there in real time while a recorder
-captures it. When it completes, a toast reports the actual **duration** and
-**loudness (RMS)** measured from the recording that came back — concrete,
-checkable numbers, not a bare "sent" confirmation. A short/quiet result is
-flagged as inconclusive rather than claimed as success.
+When a call rings, TicketsCAD finds the caller's Constituent record — or creates a
+bare one holding just the number — so the dispatcher who answers sees who is
+calling and their history, using the New Incident form's existing caller-history
+prefill. Phone numbers are matched however they are written: `+1 612 555 1234`,
+`(612) 555-1234`, `612.555.1234` and `612-555-1234` are one person (the last ten
+digits are compared when both numbers have ten or more). Fewer than four digits
+match nothing, except a number that is one of your own extensions (see the switch
+above). Typing a seven-digit local number in the New Incident phone box still
+finds the ten-digit record; the automatic match on a ringing call is stricter so
+it never puts the wrong person's history in front of a dispatcher.
 
-The spoken message is built automatically from the incident's case number,
-type, location, and scope/description — there's no manual message-editing
-UI yet; that's a natural next increment if wanted.
+## The relay test page (simulated, not AllStarLink)
+
+An incident page can show a **Relay test page** button. It sends a spoken summary
+of that incident (case number, type, location, description) to a **plain Asterisk
+test server**, over SSH and the Asterisk Manager Interface, plays it out there and
+records it, then measures the recording (duration and loudness) so you can see the
+audio really arrived. **Nothing in it uses AllStarLink or keys a radio.** It
+exists to prove the relay path works end to end.
+
+It is **off** until a Super Admin turns it on, and it has no built-in server
+address (a fresh install points nowhere).
+
+1. **Settings → Communications & Integrations → AllStar Relay (test)**
+   (`allstar-relay-admin.php`, `action.manage_config`). Read the banner at the top
+   of the page, then fill in the **SSH alias** (a host entry in the web server
+   account's `~/.ssh/config` that can `ssh`/`scp` to the test node without a
+   password and run `sudo mv` there), the **AMI host, port, user and secret** (a
+   dedicated `manager.conf` user with `originate` permission only), and, under
+   *Advanced*, the dial-plan extension and the three folders on the test node
+   (plain absolute paths only — they end up in commands run on the test node).
+2. **Save**, then **Test saved connection**. It logs in to the Manager Interface
+   and logs out again — no audio, nothing sent — and tells you where it stopped
+   (cannot connect, not an AMI port, login refused). The secret is never shown
+   again; leave the box blank to keep the stored one.
+3. Switch **Enable the relay test** on. The button now appears for anyone who may
+   dispatch a unit (`action.dispatch_unit`).
+4. Click **Relay test page** on an incident. It takes about 20–30 seconds because
+   the message genuinely plays out in real time; the button disables itself, and
+   **you can keep working** (the request no longer holds your session). A toast
+   reports the measured duration and loudness; a short or quiet result is flagged
+   as inconclusive rather than called a success. The caller must be able to see
+   the incident (organization scoping applies).
+
+Every change to the settings, every connection test and every relay is in the
+audit log (setting changes name the fields that changed, never their values).
+
+### What is *not* available
+
+- **No AllStarLink.** No AllStar node receive, transmit, key-up, or connect and
+  disconnect exists in TicketsCAD. A real integration (a private AllStarLink node
+  and a voice leg in the audio matrix) is separate, unstarted work with no date.
+- **No radio.** Nothing here keys a transmitter.
+- **Listening to a repeater that publishes an audio stream** is possible today as a
+  receive-only Public Audio Stream channel; see
+  [AUDIO-MATRIX-SETUP.md](AUDIO-MATRIX-SETUP.md#listening-to-an-allstar-node-or-repeater-receive-only).
 
 ## How it fits together (for anyone extending this)
 
-- `inc/phone-extensions.php` / `api/phone-extensions.php` — extension CRUD,
-  PBX connection settings, and the `my_extension` lookup every browser's
-  Phone widget calls to resolve its own bound extension + credentials by
-  its workstation token (Phase 152's `console-workstation.js` convention).
+- `inc/phone-extensions.php` / `api/phone-extensions.php` — extension CRUD (a
+  supplied or generated password), PBX connection settings, the two Super-Admin
+  switches (`phone_register_scope`, `phone_internal_constituents`), and the
+  `my_extension` lookup every browser's phone calls to resolve its own extension
+  and credentials by its workstation token.
 - `assets/js/phone-widget.js` + `inc/phone-widget-template.php` +
-  `assets/css/phone-widget.css` — the floating widget itself, using
-  `assets/vendor/jssip/` (a locally-built bundle — JsSIP's npm package
-  ships no browser/UMD build at all).
-- `inc/allstar-relay.php` / `api/allstar-relay.php` — the relay: message
-  building, speech synthesis (this app's own TTS engine registry first,
-  falling back to `espeak-ng` run on the relay node itself when no engine
-  is configured), delivery over SSH/SCP, an AMI Originate call into the
-  relay node's dialplan, and a pure-PHP WAV parser to verify the resulting
-  recording.
-- `inc/inbound-calls.php`'s `_p153_resolve_extension()` /
-  `_p153_resolve_constituent()` — when a call rings a registered extension
-  (general or direct), the caller's number is resolved to a real
-  Constituent record automatically (creating one if none matches), reusing
-  Phase 149's existing New-Incident caller-history prefill with zero
-  additional client-side work.
+  `assets/css/phone-widget.css` — the widget; `assets/js/phone-dial-logic.js` — its
+  DOM-free logic (registration scope, the single-registrant election, the
+  `X-Call-Linkedid` reader, the plain-English failure text); `phone.php` — the
+  standalone window; `assets/js/console-workstation.js` — the workstation token,
+  loaded on every page by `inc/navbar.php`. JsSIP is `assets/vendor/jssip/` (a
+  locally built bundle; the npm package ships no browser build).
+- `inc/phone-match.php` — the one phone-number matcher used by the ringing-call
+  resolver and the manual `?phone=` lookup.
+- `inc/inbound-calls.php` / `api/inbound-calls.php` — Phase 149's call record;
+  `claim_by_provider` is the phone's Answer. `services/sip-bridge/bridge.py` —
+  `AmiCallTracker`, one call per Linkedid.
+- `inc/allstar-relay.php` / `api/allstar-relay.php` / `allstar-relay-admin.php` —
+  the relay test: message building, speech synthesis (this app's TTS engine
+  registry first, `espeak-ng` on the test node as a fallback), delivery over
+  SSH/SCP, an AMI Originate, and a pure-PHP WAV parser to verify the recording.
 
-## Out of scope (this phase)
+## Out of scope / known limits
 
-- **No real telephony-carrier integration.** Both PBX instances used to
-  build and verify this feature are self-hosted Asterisk boxes on a private
-  network — there is no SIP trunk to the public phone network, no
-  toll-free/DID provisioning, and no billing integration. Wiring a real
-  carrier trunk into the same Asterisk PBX is a separate, carrier-specific
-  task that doesn't change anything on the TicketsCAD side.
-- **No real AllStarLink node emulation.** The relay target is a plain
-  Asterisk dialplan (Answer → record → play → hang up), not `app_rpt` or
-  real RF hardware — deliberately, since there's no physical radio to back
-  a fuller emulation and the plain version already proves the thing that
-  matters (TicketsCAD can genuinely originate and verify delivery of a
-  real-time audio transmission to a separate instance).
-- **No manual message editing** for the AllStar relay (see above).
-- **The general number doesn't exclude the caller.** `Dial(PJSIP/101&PJSIP/102&PJSIP/103,25)`
-  rings every registered direct-station extension unconditionally — if the
-  workstation placing the call happens to be one of them, its own phone
-  rings too. A natural refinement (exclude the calling extension from the
-  Dial string) is straightforward to add later but isn't built yet.
-- **No call recording/archive** for browser-to-browser Phone widget calls
-  (Zello and DMR both have an archive; this doesn't yet).
-- **No encryption beyond standard WSS/TLS + SRTP** — nothing here changes
-  this project's existing HTTPS/TLS posture; see
-  `docs/security/architecture.md` for the project-wide cryptographic
-  inventory.
+- **No real telephony carrier.** Nothing here provisions or tests a trunk to the
+  public phone network, a toll-free number or billing. Dialing an outside number
+  only works if your PBX's dial plan routes it, and **nothing in TicketsCAD stops a
+  volunteer dialing an emergency number** — the PBX dial plan is the place to
+  enforce who may dial what; the browser holds the extension's password, so any
+  limit in the page is a guard rail against mistakes, not a security boundary.
+- **No keypad during a call, hold, transfer, call history or click-to-call from a
+  number on screen** yet.
+- **No STUN/TURN setting, no per-user extension binding** (it is per browser), and
+  no reference PBX configuration is shipped yet.
+- **The general number rings the caller too.** `Dial(PJSIP/101&PJSIP/102&PJSIP/103,25)`
+  rings every registered direct-station extension, including the one placing the
+  call.
+- **No call recording or archive** for browser calls.
+- **No encryption beyond standard WSS/TLS and SRTP** — see
+  `docs/security/architecture.md` for the project-wide cryptographic inventory.

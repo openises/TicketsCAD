@@ -33,6 +33,11 @@ require_once __DIR__ . '/../inc/api_guard.php';
 api_guard_install();
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../inc/functions.php';
+// audit_log() is called by the admin actions below (delete_bridge, ...). It was never
+// loaded on this path, so deleting a bridge answered HTTP 500 "delete failed" AFTER the
+// bridge was already deleted -- "Call to undefined function audit_log()" is an Error,
+// which the catch (Throwable) turned into the error the beta tester reported.
+require_once __DIR__ . '/../inc/audit.php';
 
 $prefix  = $GLOBALS['db_prefix'] ?? '';
 $method  = $_SERVER['REQUEST_METHOD'];

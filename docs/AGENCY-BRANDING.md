@@ -1,0 +1,163 @@
+# Agency logo and branding
+
+**Audience:** administrators (setting it up), dispatchers (what they will see), IT and security reviewers (how it is built and what it can and cannot do).
+
+TicketsCAD can show **your agency's own logo** instead of the generic radio-tower icon on the sign-in screen, as a **letterhead on everything you print** (incident pages, reports, ICS forms), on the **public incident board**, and, if you choose, in the **top bar** of every page. Nothing changes for an install that never uploads a logo: every page renders exactly as it did before.
+
+Reached at **Settings → Application — Presentation → Agency Logo & Branding** (`branding-admin.php`).
+
+---
+
+## Five-minute setup
+
+1. Open **Settings → Application — Presentation → Agency Logo & Branding**.
+2. Under **Install-wide logo**, choose your logo file (PNG or JPEG) in the **For light backgrounds** slot and click **Upload**.
+3. Look at the **Live preview** on the right: the sign-in card, the top bar and a printed page. Nothing is saved until you click Upload or Save.
+4. Optional: add a second image **For dark backgrounds**, or leave it and let dark theme put your logo on a white plate (the default).
+5. Optional: under **Where it appears**, change what shows where, then **Save settings**.
+
+That is all. A new logo takes effect on the next page load.
+
+---
+
+## What you can upload
+
+| | |
+|---|---|
+| **Accepted** | PNG and JPEG always. WebP only when this server's PHP can decode it (the standard Docker image cannot). |
+| **Refused, with a message that says what to do** | **SVG** (it can carry script: export your logo as a PNG), GIF, ICO, PDF, animated PNG, animated WebP, and anything that is not really an image whatever its file name says. |
+| **Size** | Up to 2 MB uploaded, at most 6000 pixels on a side and 16 million pixels in total. |
+| **What happens to it** | The server decodes the picture and **re-encodes** it: hidden metadata (camera and GPS tags, colour profiles, text chunks) is removed, anything appended to the file is discarded, and a large image is reduced (to 1200 pixels on its long edge, and further if needed) so the stored copy fits **256 KB**. Transparency is kept. No surface shows a logo taller than 96 pixels, so you lose nothing visible. |
+| **Photographs** | A photograph or very detailed artwork can be too complex to fit 256 KB even after reduction, and is refused with a message to use a simpler logo. |
+| **Without the PHP GD extension** | A PNG or JPEG is stored exactly as uploaded (a PNG is still cut off after its end marker). The page warns you that metadata was **not** removed. Enable GD and re-upload to get the full treatment. |
+
+> If a phone photo comes out sideways: the re-encode drops the camera's orientation tag along with the rest of the metadata. Rotate the file before uploading. (A logo is rarely a camera photo.)
+
+---
+
+## Where the logo appears
+
+Each place has its own switch under **Where it appears**, so an agency that does not want its name on a public sign-in page can still have it on paper.
+
+| Surface | What shows | Switch (default) |
+|---|---|---|
+| **Sign-in screen** | The install-wide logo in place of the radio-tower icon. Nothing is known about a visitor before they sign in, so this is always the install-wide logo. The title and version stay. | `branding_login` (on) |
+| **Printed pages** | A letterhead at the top of every printed page that includes the top bar (dashboard, incident detail, roster, situation, call board, reports and the rest). Built when the page loads, so it is already there when you press Print. Print always uses the light-background image. | `branding_print` (on) |
+| **ICS forms (print / Save as PDF)** | The same letterhead above the form title, for all nine built-in form types and custom types, embedded in the document so a saved PDF or saved HTML is self-contained. The form uses the **organization that owns its incident**; a form with no incident uses the viewer's organization, then the install-wide logo. | `branding_print` (on) |
+| **Public incident board** | The logo above the board title (the shared board uses the install-wide logo; an organization's board uses that organization's). | `branding_public_board` (on) |
+| **Top bar of every page** | Your logo in place of the product mark. **Off by default.** The About page always keeps the product mark and credits. | `branding_navbar` = `product` (agency to opt in) |
+
+**Not changed on purpose:** the About page, CSV exports, Winlink ICS-213 XML, e-mail (many installs are LAN-only and mail clients block remote images), the home-screen app icon, and the documentation viewer.
+
+### Printed text line
+
+Pages that print have always carried a small text line, "Tickets CAD - Printed <date>". By default (`branding_print_banner` = `replace`) the logo takes its place. Choose `keep` to keep the text line and add the logo above it. On ICS forms the footer follows the same switch: "Generated <date>" when replaced, the original "Generated by Tickets CAD v4" when kept.
+
+### Size and alignment
+
+Sizes are small / medium / large (never pixel values you type): sign-in 48 / 72 / 96 px, letterhead 36 / 60 / 84 px. The letterhead can be left, centered (default) or right aligned.
+
+---
+
+## Organizations (multi-agency installs)
+
+If the install has **two or more active organizations**, an **Organization logos** card appears.
+
+- An organization with its **own** logo uses it on its own printed pages and board.
+- One **without** a logo uses its **parent organization's**, then the grandparent's (up to 8 levels), then the install-wide logo.
+- An organization's dark-background image is only ever read from the **same** organization that supplied its light one, so one agency's identity is never mixed with another's.
+- A **Super Admin** can set any organization's logo. An **Org Admin** sees and changes **only their own organization's** logo (see Permissions).
+- A Super Admin can switch organization logos **off** entirely (`branding_org_logos`): every page then uses the install-wide logo. The organization logos are **kept**, just ignored, and an Org Admin's upload is refused with a message saying so.
+
+Single-organization installs never see any of this.
+
+Removing an organization's **light** logo also removes its dark one (a dark logo with no light logo would be an invisible orphan). Deleting an organization deletes its logos.
+
+---
+
+## Dark theme
+
+Two images per scope: **light** (for light backgrounds, required) and **dark** (for dark backgrounds, optional). Pages show the right one for the current theme. If you upload only a light logo, **Dark theme, when there is no logo for dark backgrounds** decides:
+
+- **Put the logo on a white plate** (default): the light logo sits on a white rounded plate in dark theme, so a dark logo stays legible with no second upload.
+- **Show it as it is.**
+
+The sign-in screen's Day/Night toggle changes this live, without a reload.
+
+---
+
+## Permissions
+
+| Permission | Who has it by default | What it allows |
+|---|---|---|
+| `action.manage_branding` | **Super Admin only** (tier 2) | The install-wide logo, **any** organization's logo, and all eleven settings. |
+| `action.manage_branding_org` | **Super Admin and Org Admin** (tier 1) | Upload or remove **your own** organization's logo only. |
+
+Neither is held by Dispatcher, Operator, Read-Only or Field Unit, and the Roles & Permissions screen will not let you grant them to a role below their tier.
+
+How "your own organization" is decided matters: it comes from your **role assignments**, not from the organization shown in the top bar. Exactly one organization-scoped assignment carrying the permission means that organization. **No** such assignment (for example an Org Admin whose role is global rather than scoped to one organization), or assignments in **two or more** organizations, means "no organization on this account": the page says so and every write is refused. A request that names a different organization is refused outright, never quietly redirected to your own.
+
+Every change is written to the audit log (category `config`): uploads, replacements, removals, settings changes (old and new values) and **refused uploads** (so a probing attempt is visible). Audit entries never contain image bytes.
+
+---
+
+## The eleven settings
+
+All live in the `settings` table, are validated when read (an unrecognised value means "use the default", whichever way it got there), and are edited only through the admin page by `action.manage_branding`.
+
+| Setting | Values | Default | Effect |
+|---|---|---|---|
+| `branding_login` | 1 / 0 | 1 | Logo on the sign-in screen instead of the icon. |
+| `branding_navbar` | product / agency | product | Top-bar mark. |
+| `branding_print` | 1 / 0 | 1 | Print letterhead (pages, reports, ICS forms). |
+| `branding_public_board` | 1 / 0 | 1 | Logo on the public incident board. |
+| `branding_org_logos` | 1 / 0 | 1 | Organization-specific logos. |
+| `branding_dark_fallback` | plate / as_is | plate | Dark theme with no dark image. |
+| `branding_login_size` | small / medium / large | medium | Sign-in logo height. |
+| `branding_print_size` | small / medium / large | medium | Letterhead height. |
+| `branding_print_align` | left / center / right | center | Letterhead alignment. |
+| `branding_print_banner` | replace / keep | replace | Text line vs logo on paper. |
+| `branding_logo_alt` | text, up to 100 characters | empty (then "Agency logo") | Alternative text read by screen readers. Name your agency. |
+
+---
+
+## For IT and security reviewers
+
+**Where the image lives.** In the database, in `branding_logos`, as base64 text in a MEDIUMTEXT column, and **nowhere else**. No file is ever written: there is no path to traverse, no extension to derive, nothing for the web server to execute, no directory permission to get wrong, no new Docker volume, no IIS or nginx rule to keep in sync. The logo is part of every backup and restore automatically (`tests/test_gh142_branding_backup_restore.php` runs the project's own dump writer, restores the table and compares every column of a logo as large as the cap allows). Asset keys are generated so they can never look like a number: the backup writes a value that PHP considers numeric without quotes, and a key such as `12345e678...` would come back from a restore as a floating-point number and the logo would silently vanish. `tests/test_gh142_branding_nofs.php` tokenizes the branding code and fails on any filesystem-write call.
+
+**Upload handling.** Never trusts the client's file name or MIME type. The bytes are sniffed three independent ways (own magic bytes, `getimagesizefromstring`, `finfo`) and must agree. A decompression-bomb guard reads only the header dimensions **before** anything is decoded (a tiny file claiming 30000 x 30000 pixels is refused without allocating). A decode failure is a refusal; the original bytes are never stored as a fallback. CSRF is verified on every write; the upload is read from PHP's own temporary file after `is_uploaded_file()`.
+
+**Serving.** The sign-in screen needs the logo before anyone is signed in, so `api/branding-logo.php?k=<32 hex>` is public. The key is a **random capability**, regenerated on every upload: there are no sequential ids to enumerate (one agency's URL cannot be used to find another's), a replaced logo has a new URL and the old one returns 404, and that is why responses can be cached for a year. An unknown key, a malformed key, a missing table and a corrupt row all return the **identical** 404. The endpoint never starts a session (no cookie), sends the stored allow-listed Content-Type, `X-Content-Type-Options: nosniff`, a sandboxed `default-src 'none'` CSP, `Cross-Origin-Resource-Policy: same-origin`, `X-Robots-Tag: noindex`, an ETag with 304 support, re-verifies the body against its stored SHA-256, and is rate limited per client address (240 per minute).
+
+**Mid-upgrade installs.** If the code is updated but `php sql/run_migrations.php` has not run, every reader returns "no logo" (pages render as before), the admin page shows a banner naming the command, and every write returns 409 with the same text.
+
+**Standards of the surrounding project.** Settings are written only by the one endpoint and read by named readers; RBAC gates use `rbac_can()` alone (never an `is_admin()` fallback, which would hand the install-wide control to an Org Admin who holds `action.manage_config`); the SBOM does not change (no new library).
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely cause | What to do |
+|---|---|---|
+| Sign-in still shows the radio-tower icon | No install-wide logo uploaded, or **Show the logo on the login screen** is off | Upload under Install-wide logo; check the switch. Organization logos are never used on the sign-in screen. |
+| New logo does not appear | Browser or CDN cached the old page | Reload. The image URL changes on every upload, so the logo itself is never stale; a stale **page** can be. |
+| Printed page has no logo | Printing branding off, no logo for the viewer's organization **and** no install-wide logo, or the page was opened with scripts blocked | Check **Print the logo as a letterhead** and that a logo exists; reload and print again. |
+| Printed page shows the text line and the logo | Text line mode is **keep** | Choose **Replace it with the logo**. |
+| Logo prints blank | The browser was told to print before the image finished loading (a very slow connection) | Reload the page and wait for the logo to show on screen before printing. |
+| "No organization on this account" | Your Org Admin role is global, or you hold the role in more than one organization | Ask a Super Admin to scope your role to the one organization. |
+| "Organization logos are switched off" | A Super Admin turned `branding_org_logos` off | Ask a Super Admin. |
+| "Upload the logo for light backgrounds first" | Dark image uploaded before a light one | Upload the light logo first. |
+| Upload refused: "SVG images are not accepted" | SVG is never accepted | Export your logo as a PNG. |
+| Upload refused: larger than 256 KB even after reducing | Photograph or very detailed artwork | Use a simpler logo. |
+| Admin page banner "branding tables are missing" | Migration not run | `php sql/run_migrations.php` on the server. |
+| Page warns about the GD extension | PHP GD not enabled | Enable it, then re-upload so metadata is stripped. |
+
+---
+
+## Developer notes
+
+- Library: `inc/branding.php`. Serving: `api/branding-logo.php`. Admin: `api/branding-admin.php` and `branding-admin.php`. Letterhead: `assets/js/print-letterhead.js`. Styles: `assets/css/branding.css` (shared with the admin preview, so the preview cannot drift) and `assets/css/branding-admin.css`.
+- Public board JSON gains `board.logo_url` (always a relative `api/branding-logo.php?k=<32 hex>`) and `board.logo_alt` **only** when a logo applies and `branding_public_board` is on; the page validates the exact shape before it becomes an `<img src>`.
+- ICS: `branding_ics_letterhead()` is called from `generatePrintHtml()`; with no logo the document is byte-for-byte unchanged (`tests/test_ics_forms_builtin_regression.php`).
+- Tests: `tests/test_gh142_branding_*.php` (schema, upload, authz, serve, resolution, surfaces, letterhead JS, admin JS, no-op, no-filesystem).
+- Spec and build log: `specs/phase-155-community-backlog/142-agency-logo-and-143-recheck.md`.

@@ -6,8 +6,10 @@ body:
   - type: markdown
     attributes:
       value: >-
-        Questions are welcome — there is no separate forum or chat channel, so
-        this is the right place.
+        Questions are welcome here. For a quick or general question, or to ask
+        whether anyone has already done what you are trying to do, the
+        [Google Group](https://groups.google.com/g/open-source-cad) is also a
+        good place. Use this form when you would like the question tracked.
 
 
         **Please don't include real names, addresses, phone numbers, patient

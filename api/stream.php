@@ -131,6 +131,14 @@ if (!$userIsAdmin) {
             // action.manage_matrix admins (see inc/sse.php's plain
             // sse_publish() call in api/matrix-channel-state.php).
             'comm:%'      => ['screen.console'],
+            // GH#148 (Phase 155) — towing / roadside dispatch changes on an incident
+            // (vendor:dispatch, published by vendor_publish_dispatch_sse()). Only a caller who can
+            // SEE the Towing / Roadside card (action.dispatch_vendor) needs them; the payload is
+            // just {ticket_id, dispatch_id, status} and the refresh it triggers is re-authorised
+            // by api/vendor-dispatch.php. Org-scoped like call:% below: the publisher names the
+            // organizations that can work the incident, and an event with no org ids is the
+            // single-agency fallback that reaches every holder of the permission.
+            'vendor:%'    => ['action.dispatch_vendor'],
         ];
         foreach ($entPermMap as $pfx => $perms) {
             foreach ($perms as $p) {
@@ -181,7 +189,7 @@ if ($userIsAdmin) {
     // (both group-scoped and the 'entitled' no-allocates fallback), exactly
     // as the read path already lets them view the entity itself.
     foreach ($entitledPrefixes as $pfx) {
-        if ($pfx === 'call:%') {
+        if ($pfx === 'call:%' || $pfx === 'vendor:%') {
             // Phase 149 (2026-08-22) — org-scoping layered on top of
             // 'entitled' (plan.md §6): a NULL visibility_ids row (an
             // install-wide, NULL-org trunk) matches unconditionally; a

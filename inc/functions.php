@@ -254,6 +254,41 @@ function csrf_verify(string $token): bool
 }
 
 /**
+ * The CSRF token THIS request carries: the X-CSRF-Token header (what roles.js and
+ * profile.js send), else a csrf_token field in the decoded JSON/form body, else --
+ * only when $allowQuery -- a csrf_token query parameter. The query form exists for
+ * a state-changing GET that a browser performs as a NAVIGATION (a file download
+ * cannot set a header or a body); api/backup.php's download is the precedent.
+ *
+ * @param array $input  the request's decoded JSON body (or $_POST)
+ */
+function csrf_request_token(array $input = [], bool $allowQuery = false): string
+{
+    $header = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    if (is_string($header) && $header !== '') { return $header; }
+    if (isset($input['csrf_token']) && is_string($input['csrf_token'])) { return $input['csrf_token']; }
+    if ($allowQuery && isset($_GET['csrf_token']) && is_string($_GET['csrf_token'])) { return $_GET['csrf_token']; }
+    return '';
+}
+
+/**
+ * Reject the request with HTTP 403 unless it carries this session's CSRF token.
+ * Call it BEFORE the first statement that changes anything:
+ *
+ *     csrf_require($input);
+ *
+ * tools/csrf_coverage_audit.php recognises this call as a rejecting guard, and
+ * fails the suite for a session-authenticated endpoint that changes state
+ * without one (or without an equivalent csrf_verify() guard).
+ */
+function csrf_require(array $input = [], bool $allowQuery = false): void
+{
+    if (!csrf_verify(csrf_request_token($input, $allowQuery))) {
+        json_error('Invalid CSRF token', 403);
+    }
+}
+
+/**
  * Phase 12 (2026-06-11): get_level_text() is a thin compatibility shim
  * that ignores its argument and returns the current user's RBAC role
  * name via current_role_name() (defined in inc/rbac.php).

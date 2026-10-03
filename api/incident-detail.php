@@ -572,6 +572,30 @@ try {
     $primaryCandidates = [];
 }
 
+// GH#141 (Phase 155) — units RESERVED for this (Scheduled) incident: committed
+// for later, NOT dispatched, so deliberately not part of `assignments` above.
+// try/catch => [] on an install that has not run the migration. A viewer who
+// reached the incident through a cross-org share below assist tier sees the unit
+// and the state only -- never who reserved it, the role, or the free-text note.
+$reservations = [];
+$reservationSettings = ['mode' => 'immediate', 'lead_minutes' => 0];
+try {
+    require_once __DIR__ . '/../inc/assign-reservations.php';
+    $reservations = assign_reservations_for_ticket($id);
+    $reservationSettings = ['mode' => assign_reservation_mode(), 'lead_minutes' => assign_reservation_lead_minutes()];
+    $shareRedactTier = ($shareCtx !== null) ? ($shareCtx['redaction_tier'] ?? $shareCtx['access_tier']) : null;
+    if ($shareRedactTier !== null && $shareRedactTier !== 'assist') {
+        foreach ($reservations as &$resRow) {
+            $resRow['reserved_by_name'] = '';
+            $resRow['role'] = '';
+            $resRow['outcome_note'] = '';
+        }
+        unset($resRow);
+    }
+} catch (Throwable $e) {
+    $reservations = [];
+}
+
 ini_set('display_errors', $prevDisplay);
 
 json_response([
@@ -579,4 +603,6 @@ json_response([
     'assignments'        => $assignments,
     'actions'            => $actions,
     'primary_candidates' => $primaryCandidates,
+    'reservations'       => $reservations,
+    'reservation_settings' => $reservationSettings,
 ]);
