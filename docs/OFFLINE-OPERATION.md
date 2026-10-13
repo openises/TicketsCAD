@@ -426,8 +426,10 @@ This matters, and it is easy to get wrong.
   forbidding you from caching them. **For a US agency this is the cleanest
   source there is**, and TicketsCAD already supports these providers.
 - **OpenStreetMap data** — free to use under the ODbL licence, but you **must**
-  keep the "© OpenStreetMap contributors" credit visible on the map. TicketsCAD
-  displays it already; do not remove it.
+  keep the "© OpenStreetMap contributors" credit visible on the map. TicketsCAD's
+  built-in OpenStreetMap layers show it already. With your own tile server (the
+  "custom" provider), type it into **Map credit** in Settings → Map Settings: until
+  you do, the map shows only "Configured provider".
 - **Do not bulk-download from `tile.openstreetmap.org`.** The OpenStreetMap
   Foundation's tile usage policy explicitly prohibits it. Those servers are
   donated. Render your own tiles from OSM data, or use USGS.
@@ -448,6 +450,8 @@ This matters, and it is easy to get wrong.
    - Tile provider: **Custom**
    - Tile server URL:
      `http://YOUR-SERVER:8000/services/yourarea/tiles/{z}/{x}/{y}.png`
+   - Map credit: `© OpenStreetMap contributors` (for tiles made from OpenStreetMap
+     data; the licence requires it)
 7. Reload a map page and confirm the basemap draws. Then **unplug the internet
    and confirm it still draws** — that is the only test that counts.
 

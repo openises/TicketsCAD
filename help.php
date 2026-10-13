@@ -516,7 +516,7 @@ geocoder. If that matters for your deployment, host geocoding internally.</p>
             <td>account.mapbox.com &mdash; sign up for a free account, copy the default public token.</td>
             <td>50,000 free map loads/month, then $0.60/1,000.</td></tr>
         <tr><td><strong>Custom URL</strong> (Azure Maps, MapTiler, Stadia, Thunderforest, your own tileserver, etc.)</td>
-            <td>Sign up with the provider, get their tile URL template, paste it into the <strong>Custom URL</strong> field. Substitute the key in the template (e.g. <code>?key={key}</code> with the key value in <strong>API Key</strong>).</td>
+            <td>Sign up with the provider, get their tile URL template, paste it into the <strong>Custom URL</strong> field. Substitute the key in the template (e.g. <code>?key={key}</code> with the key value in <strong>API Key</strong>). Fill in <strong>Map credit</strong> with the credit the provider requires; tiles made from OpenStreetMap data need &ldquo;&copy; OpenStreetMap contributors&rdquo;.</td>
             <td>Varies by provider.</td></tr>
     </tbody>
 </table>

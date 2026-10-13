@@ -54,6 +54,7 @@ $tile_provider   = (string) (get_variable('tile_provider')   ?: '');
 $tile_server_url = (string) (get_variable('tile_server_url') ?: '');
 $tile_api_key    = (string) (get_variable('tile_api_key')    ?: '');
 $tile_mode       = (string) (get_variable('tile_mode')       ?: '');
+$tile_attribution = (string) (get_variable('tile_attribution') ?: '');
 $tile_cache_raw  = get_variable('tile_cache_days');
 $tile_cache_days = ($tile_cache_raw !== false && $tile_cache_raw !== '' && $tile_cache_raw !== null)
                         ? (int) $tile_cache_raw : null;
@@ -61,7 +62,7 @@ $tile_cache_days = ($tile_cache_raw !== false && $tile_cache_raw !== '' && $tile
 // tile_api_key is a tile-scoped key (Bing/Mapbox tile keys are designed to
 // be embedded in client tile URLs) — flagged in the security review, not a
 // master credential.
-$tile = resolve_tile_config($tile_provider, $tile_server_url, $tile_api_key, $tile_mode, $tile_cache_days);
+$tile = resolve_tile_config($tile_provider, $tile_server_url, $tile_api_key, $tile_mode, $tile_cache_days, $tile_attribution);
 
 json_response(array_merge([
     'def_lat'         => (float) ($lat !== '' && $lat !== null ? $lat : 39.8283),

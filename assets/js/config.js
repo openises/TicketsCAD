@@ -6773,6 +6773,12 @@
             updateTilePreview();
         });
 
+        // The preview's corner shows the map credit once it is typed.
+        var attrInput = document.getElementById('setTileAttribution');
+        if (attrInput) {
+            attrInput.addEventListener('change', updateTilePreview);
+        }
+
         // Test/refresh button
         var testBtn = document.getElementById('btnTestTiles');
         if (testBtn) {
@@ -6874,10 +6880,15 @@
             ? window.makeTileLayer
             : function (u, o) { return L.tileLayer(u, o); };
 
+        // Show the administrator's map credit exactly as the live maps will
+        // (escaped - Leaflet renders attribution as HTML).
+        var attrInput = document.getElementById('setTileAttribution');
+        var attrText = attrInput ? attrInput.value.trim() : '';
+
         _tilePreviewLayer = makeLayer(url, {
             subdomains: subdomains,
             maxZoom: 19,
-            attribution: 'Preview'
+            attribution: attrText ? esc(attrText) : 'Preview'
         }).addTo(_tilePreviewMap);
 
         if (statusEl && isQuadkey) {

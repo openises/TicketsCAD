@@ -107,13 +107,16 @@ function tile_sanitize_url(string $url): string
  *                                 visible by design for Bing/Mapbox)
  * @param string      $mode       tile_mode setting ('proxy' | 'direct' | '')
  * @param int|null    $cacheDays  tile_cache_days setting, or null
+ * @param string      $attribution tile_attribution setting: the map credit for
+ *                                 the configured provider (plain text; the
+ *                                 browser escapes it before Leaflet renders it)
  * @return array{
  *   tile_provider:string, tile_server_url:string, tile_url:string,
  *   tile_api_key:string, tile_mode:string, tile_cache_days:?int,
- *   tile_is_quadkey:bool, has_custom_tile:bool
+ *   tile_is_quadkey:bool, has_custom_tile:bool, tile_attribution:string
  * }
  */
-function resolve_tile_config(string $provider, string $serverUrl, string $apiKey, string $mode, ?int $cacheDays): array
+function resolve_tile_config(string $provider, string $serverUrl, string $apiKey, string $mode, ?int $cacheDays, string $attribution = ''): array
 {
     $templates = tile_provider_templates();
 
@@ -166,5 +169,38 @@ function resolve_tile_config(string $provider, string $serverUrl, string $apiKey
         'tile_cache_days' => $cacheDays,
         'tile_is_quadkey' => $isQuadkey,
         'has_custom_tile' => ($url !== ''),
+        'tile_attribution' => tile_attribution_normalize($attribution),
     ];
+}
+
+/**
+ * Normalise the administrator's map credit (the tile_attribution setting).
+ *
+ * The credit for the configured tile provider was hard-coded to "Configured
+ * provider", so an install serving OpenStreetMap-derived tiles from its own
+ * server (the route docs/OFFLINE-OPERATION.md recommends) could not show the
+ * "(c) OpenStreetMap contributors" credit the OpenStreetMap licence requires.
+ *
+ * Plain text only. Control characters become spaces, runs of whitespace
+ * collapse, and it is capped at TILE_ATTRIBUTION_MAX characters. It is NOT
+ * HTML-escaped here: Leaflet inserts attribution as HTML, so the one place
+ * that renders it (assets/js/map-prefs.js customAttribution()) escapes it, and
+ * escaping twice would show "&amp;copy;" on the map.
+ */
+const TILE_ATTRIBUTION_MAX = 200;
+
+function tile_attribution_normalize(string $text): string
+{
+    if (function_exists('mb_convert_encoding')) {
+        // Replace any invalid UTF-8 rather than store bytes a browser would mangle.
+        $text = (string) mb_convert_encoding($text, 'UTF-8', 'UTF-8');
+    }
+    $text = (string) preg_replace('/[\x00-\x1F\x7F]+/u', ' ', $text);
+    $text = trim((string) preg_replace('/\s+/u', ' ', $text));
+    if (function_exists('mb_substr')) {
+        $text = mb_substr($text, 0, TILE_ATTRIBUTION_MAX, 'UTF-8');
+    } else {
+        $text = substr($text, 0, TILE_ATTRIBUTION_MAX);
+    }
+    return rtrim($text);
 }

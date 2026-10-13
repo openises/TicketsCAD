@@ -3382,6 +3382,21 @@ foreach ($personnelSections as $sec) {
                         </div>
                     </div>
 
+                    <!-- Map credit for the configured provider -->
+                    <div class="mt-2" style="max-width:640px">
+                        <label for="setTileAttribution" class="form-label form-label-sm">
+                            Map credit (attribution)
+                        </label>
+                        <input type="text" class="form-control form-control-sm" id="setTileAttribution" data-key="tile_attribution"
+                               maxlength="200" placeholder="&copy; OpenStreetMap contributors">
+                        <div class="form-text small">
+                            Shown in the corner of every map that uses the provider configured here.
+                            Tiles made from OpenStreetMap data, including SOSM downloads and most
+                            self-hosted tile servers, must credit &ldquo;&copy; OpenStreetMap contributors&rdquo;.
+                            Leave it empty to show &ldquo;Configured provider&rdquo;. Plain text only.
+                        </div>
+                    </div>
+
                     <!-- Provider-specific info panel -->
                     <div class="mt-2 small" id="tileProviderInfo"></div>
 

@@ -170,8 +170,20 @@
      * Build the Leaflet options for the configured custom provider,
      * including Bing t0..t7 subdomains when the template uses t{s}.
      */
+    /**
+     * The map credit for the configured provider (the tile_attribution
+     * setting). Leaflet inserts attribution as HTML and this text is typed by
+     * an administrator, so it is escaped (safeEsc, below): it can carry a (c)
+     * sign but never markup. Empty keeps the old generic credit.
+     */
+    function customAttribution(cfg) {
+        var text = (cfg && typeof cfg.tile_attribution === 'string') ? cfg.tile_attribution : '';
+        if (!text) return 'Configured provider';
+        return safeEsc(text);
+    }
+
     function customOpts(cfg) {
-        var opts = { attribution: 'Configured provider', maxZoom: 19 };
+        var opts = { attribution: customAttribution(cfg), maxZoom: 19 };
         // Bing-style t{s} subdomains run 0..7; google mt{s} run 0..3.
         if (cfg.tile_url && cfg.tile_url.indexOf('t{s}') !== -1) {
             opts.subdomains = '01234567';

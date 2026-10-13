@@ -1190,6 +1190,14 @@ if ($section === 'settings') {
                 $value = assign_reservation_normalize_setting($key, $value);
             }
 
+            // The map credit for the configured tile provider. Plain text, no
+            // control characters, at most 200 characters; the map escapes it
+            // when it renders (inc/tile-config.php tile_attribution_normalize()).
+            if ($key === 'tile_attribution') {
+                require_once __DIR__ . '/../inc/tile-config.php';
+                $value = tile_attribution_normalize((string) $value);
+            }
+
             try {
                 // Upsert via ON DUPLICATE KEY UPDATE (requires unique index on name)
                 db_query(
