@@ -67,6 +67,13 @@ turns them on.
   Setup window's `PASTE-THE-TRUNK-TOKEN-HERE` placeholder before trying the network, and ignores quote
   marks or spaces around a token pasted into `bridge.ini`. Update with `git pull`; `--check` then prints
   `bridge 1.1.1`.
+- **A custom tile provider showed "Configured provider" instead of the map's real credit.** Tiles made
+  from OpenStreetMap data, such as SOSM downloads or your own offline tile server, must credit
+  "© OpenStreetMap contributors", and there was no way to say so. Settings → Map Settings now has a
+  **Map credit (attribution)** field under Tile URL Template; whatever you type there is shown on every
+  map that uses that provider, and the preview shows it straight away. Plain text, up to 200 characters.
+  Leave it empty to keep "Configured provider". `docs/OFFLINE-OPERATION.md` wrongly said the credit was
+  already shown for a custom server; it now says to fill in this field.
 - **Email-list recipients never worked** in notifications (the engine read a column that does not exist
   and the error was swallowed), `{incident_type}` was blank in every notification, and the severity and
   incident-type filters were ignored for "unit assigned".
