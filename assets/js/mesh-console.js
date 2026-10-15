@@ -1220,8 +1220,16 @@
             loader.then(function (d) {
                 if (meshMap) { _meshMapInitInflight = false; return; }
                 meshMap = L.map('meshMap').setView([d.lat, d.lng], d.zoom);
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(meshMap);
+                // The shared basemap (map-prefs.js): honours the configured tile
+                // provider, the install's default basemap and proxy mode, so this
+                // map works on an offline install like every other map.
+                if (window.MapPrefs) {
+                    var meshBase = window.MapPrefs.addDefaultBasemap(meshMap);
+                    window.MapPrefs.addLayerControl(meshMap, { currentBase: meshBase, includeWeather: false });
+                } else {
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(meshMap);
+                }
                 _meshMapInitInflight = false;
                 refreshMap(); // re-run now that the map exists
             });

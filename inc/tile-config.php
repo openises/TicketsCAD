@@ -189,6 +189,83 @@ function resolve_tile_config(string $provider, string $serverUrl, string $apiKey
  */
 const TILE_ATTRIBUTION_MAX = 200;
 
+/**
+ * Which basemap a map starts on when the user has not chosen one themselves
+ * (the tile_default_basemap setting).
+ *
+ *   'user'       — Street in light mode, Dark in dark mode. Today's behaviour,
+ *                  and the default on every install.
+ *   'configured' — the provider configured in Settings → Tile Providers. For an
+ *                  install whose maps must work without the internet: until
+ *                  2026-10-15 a configured provider was only ever an EXTRA entry
+ *                  in the layer switcher, so every map still started on
+ *                  OpenStreetMap and drew nothing offline.
+ *
+ * A user's own choice (Display Preferences, or the layer switcher on a map)
+ * always wins over this.
+ */
+const TILE_DEFAULT_BASEMAP_VALUES = ['user', 'configured'];
+
+function tile_default_basemap_normalize(string $value): string
+{
+    $value = strtolower(trim($value));
+    return in_array($value, TILE_DEFAULT_BASEMAP_VALUES, true) ? $value : 'user';
+}
+
+/**
+ * The tile settings every map needs, read from the `settings` table: the
+ * resolve_tile_config() payload plus `tile_default_basemap`. One function, so
+ * api/map-config.php and the page bootstrap in inc/navbar.php cannot disagree.
+ *
+ * `tile_default_basemap` is 'configured' only when a provider really is
+ * configured; a 'configured' setting with no provider reads as 'user'.
+ */
+function tile_config_payload(): array
+{
+    $get = static function (string $name): string {
+        if (!function_exists('get_variable')) { return ''; }
+        $v = get_variable($name);
+        return ($v === false || $v === null) ? '' : (string) $v;
+    };
+    $cacheRaw = $get('tile_cache_days');
+    $tile = resolve_tile_config(
+        $get('tile_provider'),
+        $get('tile_server_url'),
+        $get('tile_api_key'),
+        $get('tile_mode'),
+        $cacheRaw !== '' ? (int) $cacheRaw : null,
+        $get('tile_attribution')
+    );
+    $default = tile_default_basemap_normalize($get('tile_default_basemap'));
+    $tile['tile_default_basemap'] = ($default === 'configured' && $tile['has_custom_tile']) ? 'configured' : 'user';
+    return $tile;
+}
+
+/**
+ * The part of tile_config_payload() written into every signed-in page as
+ * window.TILE_CONFIG (inc/navbar.php), so a map can start on the configured
+ * provider without waiting for a fetch.
+ *
+ * Only what assets/js/map-prefs.js needs to build the layer. The tile API key
+ * is included only when the browser fetches tiles directly, because then it
+ * is in every tile request anyway; when tiles come through the proxy the
+ * browser never needs it, so it is not written into the page.
+ */
+function tile_config_client_bootstrap(array $payload): array
+{
+    $proxied = ($payload['tile_effective_mode'] ?? '') === 'proxy' && !empty($payload['tile_proxy_url']);
+    return [
+        'has_custom_tile'      => (bool) ($payload['has_custom_tile'] ?? false),
+        'tile_provider'        => (string) ($payload['tile_provider'] ?? ''),
+        'tile_url'             => (string) ($payload['tile_url'] ?? ''),
+        'tile_api_key'         => $proxied ? '' : (string) ($payload['tile_api_key'] ?? ''),
+        'tile_effective_mode'  => (string) ($payload['tile_effective_mode'] ?? ''),
+        'tile_proxy_url'       => (string) ($payload['tile_proxy_url'] ?? ''),
+        'tile_attribution'     => (string) ($payload['tile_attribution'] ?? ''),
+        'tile_default_basemap' => (string) ($payload['tile_default_basemap'] ?? 'user'),
+    ];
+}
+
 function tile_attribution_normalize(string $text): string
 {
     if (function_exists('mb_convert_encoding')) {

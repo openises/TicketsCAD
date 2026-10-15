@@ -315,6 +315,12 @@ theme-color: assets/js/app.js :: style="color:#fd7e14"
 theme-color: assets/js/app.js :: style="color:#ff6600"
 theme-color: assets/js/config.js :: style="width:12px;height:12px;border-radius:50%;background:#0d6efd;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,...
 theme-color: assets/js/config.js :: style="width:8px;height:8px;border-radius:50%;background:#6c757d;border:1px solid #fff;opacity:0.6;cursor:grab"
+# Legend swatch for uncategorised map markups: it must be the same purple as the
+# markup lines drawn on the map (map-prefs.js `mk.line_color || '#9b59b6'`), which
+# is a data colour, not a theme colour. Same case as the app.js entry above. It
+# was always here; the scanner could not see it until regex literals were
+# handled (2026-10-15).
+theme-color: assets/js/map-prefs.js :: style="color:#9b59b6"
 theme-color: assets/js/owntracks-provision.js :: style="background:#e7f3ff;border:1px solid #5aa9e6;border-radius:6px;padding:10px 12px;margin-top:14px"
 theme-color: assets/js/owntracks-provision.js :: style="background:#fff0f0;border:1px solid #d35a5a;border-radius:6px;padding:10px 12px;margin-top:10px"
 theme-color: assets/js/owntracks-provision.js :: style="background:#fff8e1;border:1px solid #f0c14b;border-radius:6px;padding:10px 12px;margin-top:16px"

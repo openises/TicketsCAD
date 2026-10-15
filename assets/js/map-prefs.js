@@ -156,6 +156,29 @@
     var _configFetched = false;
     var _configPromise = null;
 
+    // The install-wide starting basemap (tile_default_basemap): 'user' keeps
+    // Street/Dark; 'configured' starts every map on the configured provider
+    // unless the user has chosen a basemap themselves.
+    var _installDefault = 'user';
+    var _injectedApplied = false;
+
+    /**
+     * Use the tile settings inc/navbar.php wrote into the page
+     * (window.TILE_CONFIG), if any. They are there before any map is built,
+     * so a map can START on the configured provider; the fetch below arrives
+     * too late for that (the first basemap is already drawn). Pages without
+     * the navbar still get the fetch. Safe to call any number of times.
+     */
+    function applyInjectedConfig() {
+        if (_injectedApplied) return;
+        var cfg = window.TILE_CONFIG;
+        if (!cfg || typeof cfg !== 'object') return;
+        _injectedApplied = true;
+        mergeCustomProvider(cfg);
+        _configFetched = true;
+        if (!_configPromise && typeof Promise === 'function') { _configPromise = Promise.resolve(); }
+    }
+
     /**
      * Substitute the API-key placeholders in a tile URL template.
      * Bing/Mapbox tile keys are designed to be client-visible in the tile
@@ -199,6 +222,7 @@
      * stored template + key become a ready-to-use URL.
      */
     function mergeCustomProvider(cfg) {
+        if (cfg && cfg.tile_default_basemap === 'configured') { _installDefault = 'configured'; }
         if (!cfg || !cfg.has_custom_tile || !cfg.tile_url) return;
         var url = applyApiKey(cfg.tile_url, cfg.tile_api_key || '');
         var label = 'Configured';
@@ -237,6 +261,7 @@
      * without try/catch. Subsequent calls reuse the same promise.
      */
     function loadConfig() {
+        applyInjectedConfig();
         if (_configPromise) return _configPromise;
         _configPromise = new Promise(function (resolve) {
             if (typeof fetch !== 'function') { _configFetched = true; resolve(); return; }
@@ -545,6 +570,7 @@
          * @returns {L.TileLayer}
          */
         makeLayer: function (key) {
+            applyInjectedConfig();
             var def = TILE_DEFS[key] || TILE_DEFS.street;
             return buildProviderLayer(def);
         },
@@ -581,7 +607,29 @@
          * @returns {string}
          */
         getCustomLabel: function () {
+            applyInjectedConfig();
             return TILE_DEFS.custom ? TILE_DEFS.custom.label : '';
+        },
+
+        /**
+         * The install-wide starting basemap an admin chose in Map Settings:
+         * 'configured' (the configured provider) or 'user' (Street/Dark).
+         * @returns {string}
+         */
+        getInstallDefault: function () {
+            applyInjectedConfig();
+            return (_installDefault === 'configured' && TILE_DEFS.custom) ? 'configured' : 'user';
+        },
+
+        /**
+         * The basemap key this user explicitly chose for the current theme, or
+         * '' when they never chose one (the install default applies).
+         * @returns {string}
+         */
+        getUserChoice: function () {
+            var prefs = readPrefs();
+            var isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+            return (isDark ? prefs.basemapDark : prefs.basemapLight) || '';
         },
 
         /**
@@ -589,9 +637,14 @@
          * @returns {string} 'street' | 'dark' | 'terrain'
          */
         getBasemap: function () {
+            applyInjectedConfig();
             var prefs = readPrefs();
             var isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
-            return isDark ? (prefs.basemapDark || 'dark') : (prefs.basemapLight || 'street');
+            var chosen = isDark ? prefs.basemapDark : prefs.basemapLight;
+            // A user's own choice wins, even over the install default.
+            if (chosen && TILE_DEFS[chosen]) return chosen;
+            if (_installDefault === 'configured' && TILE_DEFS.custom) return 'custom';
+            return isDark ? 'dark' : 'street';
         },
 
         /**
@@ -601,11 +654,9 @@
          */
         setBasemap: function (theme, value) {
             var prefs = readPrefs();
-            if (theme === 'dark') {
-                prefs.basemapDark = value;
-            } else {
-                prefs.basemapLight = value;
-            }
+            var key = (theme === 'dark') ? 'basemapDark' : 'basemapLight';
+            // '' means "no choice of my own": follow the install default.
+            if (value) { prefs[key] = value; } else { delete prefs[key]; }
             writePrefs(prefs);
         },
 
@@ -659,6 +710,7 @@
         addLayerControl: function (mapInstance, options) {
             if (!mapInstance || typeof L === 'undefined') return null;
             if (mapInstance._ticketsLayerCtl) return mapInstance._ticketsLayerCtl;
+            applyInjectedConfig();
             options = options || {};
             var includeWeather = options.includeWeather !== false;
             var position = options.position || 'topright';
@@ -714,6 +766,9 @@
                 position: position
             }).addTo(mapInstance);
             mapInstance._ticketsLayerCtl = ctl;
+            // The configured provider was already in TILE_DEFS (page bootstrap),
+            // so it is in baseMaps; the late fold-in below must not add it twice.
+            if (TILE_DEFS.custom) { ctl._ticketsCustomAdded = true; }
 
             // Per-user layer visibility, shared with the dashboard and the
             // situation screen so one preference governs every surface. These

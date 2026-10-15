@@ -30,7 +30,7 @@ radius:
 
 | Permission | Who holds it | Controls |
 |---|---|---|
-| `action.manage_public_board` | Super Admin only | The shared board's master switch, address precision ceiling, excluded groups, default publish delay, rate limiting, and the Incident Type Rules panel (which incident *types* never publish or show presence-only — this data is shared across every organization, since `in_types` is one table, not per-org). |
+| `action.manage_public_board` | Super Admin only | The shared board's master switch, address precision ceiling, excluded groups, default publish delay, rate limiting, the board's map tiles (see "Map tiles" below), and the Incident Type Rules panel (which incident *types* never publish or show presence-only — this data is shared across every organization, since `in_types` is one table, not per-org). |
 | `action.manage_public_board_org` | Super Admin + Org Admin | Enable/disable and set the URL slug for the caller's **own** organization's board only. The organization id is resolved server-side from the caller's actual RBAC grant — never from anything the browser sends, and never guessed from session state — so an Org Admin cannot reach another organization's row even by crafting a request. |
 
 An Org Admin who opens `public-board-admin.php` sees only the
@@ -129,6 +129,69 @@ ever reaches either board:
   public page, for low-bandwidth visitors (rural residents, lobby
   displays on whatever connection is available) — every fact the map
   would show is already duplicated as text in the incident cards.
+
+## Map tiles
+
+The board's map shows **OpenStreetMap** by default. A Super Admin can
+point it at a different public tile service in the **Map tiles for the
+public board** panel of `public-board-admin.php`. The setting applies to
+the shared board and every organization's board alike. Two settings:
+
+| Setting | Meaning |
+|---|---|
+| `public_board_tile_url` | The tile address, e.g. `https://tiles.example.org/{z}/{x}/{y}.png`. **Empty means OpenStreetMap** — the default, and what every install shows until someone changes it. |
+| `public_board_tile_attribution` | The map credit shown in the corner of the map. Plain text, up to 200 characters. Used only when a tile address is set; OpenStreetMap's own credit is shown otherwise. |
+
+**What choosing an address publishes — read this before changing it:**
+
+- **Anyone who can open the public board can see the address.** Their
+  browser downloads the tiles from it directly; the request does not pass
+  through your TicketsCAD server.
+- **Never use an address containing an API key, token, password or
+  signature.** Everything in the address is published to every visitor,
+  who can copy it and spend your quota.
+- **Do not use a private or internal address** such as your own offline
+  tile server on your network. The address is published to every visitor
+  (which tells them about your internal network), and it usually will not
+  work for them anyway, because their browsers cannot reach your network.
+- **The server behind the address must cope with traffic from the
+  public**, and you must follow that service's terms of use. Every
+  visitor's browser counts against it.
+
+**Why the board does not use your main map settings or the tile proxy.**
+The rest of TicketsCAD follows `Settings → Tile Providers`, and can fetch
+tiles through TicketsCAD's own tile proxy (`api/tile-proxy.php`). Neither
+is used for the public board: the main tile configuration may carry an API
+key (Mapbox, CARTO), and the tile proxy only answers signed-in users
+so it can never become an open relay that strangers use to download tiles
+through your server. The board therefore has its own setting, which
+publishes only the two values above and nothing else.
+
+**What the server checks when you save:**
+
+- Refused (with a message, nothing is saved): an address that does not
+  start with `https://` or `http://` and a server name (this rules out
+  `javascript:`, `data:` and addresses starting with `//`); a user name or
+  password in the address (`user:password@`); an address without `{z}`,
+  `{x}` and `{y}`; the `{key}` and `{q}` placeholders (and any placeholder
+  other than `{z}`, `{x}`, `{y}`, `{s}` and `{r}`); spaces or control
+  characters; more than 2048 characters.
+- Saved, with a warning on screen: a query string that looks like it
+  carries a key (`key=`, `apikey=`, `api_key=`, `token=`,
+  `access_token=`, `sig=`, `signature=` — some providers issue keys that
+  are meant to be public, so this is your call); a server name that looks
+  private or internal (a private IP address, `localhost`, a single-word
+  name, `.local`, `.lan`, `.internal` and similar); a custom address with
+  no map credit.
+- The map credit is stored as typed (control characters removed, at most
+  200 characters). The board escapes it before the map shows it, so
+  markup in it is displayed as text, never run.
+
+If a value somehow ends up in the database that would not pass these
+checks (edited directly in SQL, say), the board ignores it and shows
+OpenStreetMap. The public board page only requests tiles once it has
+loaded these settings, so a board pointed elsewhere never fetches
+OpenStreetMap tiles first.
 
 ## Checking whether it's on
 

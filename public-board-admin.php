@@ -265,6 +265,67 @@ $csrf        = csrf_token();
             </div>
         </div>
     </div>
+
+    <!-- ══════════════════ Panel 5: Map tiles (install-wide) ══════════════════
+         Board-only setting. Deliberately NOT the app's own tile provider
+         (Settings > Tile Providers) or the tile proxy: those may carry an API key and are
+         for signed-in users only. Validated server-side by
+         pb_validate_board_tile_settings() (inc/public-board.php). -->
+    <div class="card mb-4" id="pbPanelTiles">
+        <div class="card-header"><i class="bi bi-map me-2"></i>Map tiles for the public board</div>
+        <div class="card-body">
+            <p class="text-body-secondary small mb-2">
+                The map on the public board shows <strong>OpenStreetMap</strong> unless you enter a different
+                public tile address here. This setting is used only by the public board.
+            </p>
+            <div class="alert alert-warning small" id="pbTileSecurityNote">
+                <div class="fw-semibold mb-1"><i class="bi bi-shield-exclamation me-1"></i>Read this before you change it</div>
+                <ul class="mb-0 ps-3">
+                    <li><strong>Anyone who can open the public board can see this address.</strong> Their web browser
+                        downloads the map pictures (tiles) from it directly; the request does not pass through this
+                        server.</li>
+                    <li><strong>Never use an address that contains an API key, token, password or signature.</strong>
+                        Everything in the address is published to every visitor, who can copy it and use it
+                        themselves.</li>
+                    <li><strong>Do not use a private or internal address</strong>, for example your own
+                        offline tile server on your network. The address is still published to every visitor, which
+                        tells them about your internal network, and it usually will not work for them anyway because their
+                        browsers cannot reach it.</li>
+                    <li><strong>The server behind the address must be able to cope with traffic from the public</strong>,
+                        and you must follow that service's terms of use. Many free services limit or forbid heavy use,
+                        and every visitor's browser counts.</li>
+                    <li>TicketsCAD's tile proxy and the main map settings (Settings &gt; Tile Providers) are <strong>not</strong>
+                        used for the public board, so a key you entered there is never sent here.</li>
+                    <li>Leave the address empty to keep OpenStreetMap.</li>
+                </ul>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-8">
+                    <label class="form-label form-label-sm mb-0" for="pbTileUrl">Tile address (leave empty for OpenStreetMap)</label>
+                    <input type="text" class="form-control form-control-sm font-monospace" id="pbTileUrl"
+                           maxlength="2048" autocomplete="off" spellcheck="false"
+                           placeholder="https://tiles.example.org/{z}/{x}/{y}.png">
+                    <div class="form-text">Must start with <code>https://</code> or <code>http://</code> and contain
+                        <code>{z}</code>, <code>{x}</code> and <code>{y}</code>. <code>{s}</code> (sub-domain) and
+                        <code>{r}</code> (high-resolution suffix) may also be used. Addresses that need
+                        <code>{key}</code> or <code>{q}</code> are refused, and so is a user name or password in the
+                        address.</div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label form-label-sm mb-0" for="pbTileAttribution">Map credit</label>
+                    <input type="text" class="form-control form-control-sm" id="pbTileAttribution" maxlength="200"
+                           autocomplete="off" placeholder="&copy; OpenStreetMap contributors">
+                    <div class="form-text">Plain text, up to 200 characters, shown in the corner of the map. Most
+                        tile services require a credit. Used only when a tile address is set; OpenStreetMap's own
+                        credit is shown otherwise.</div>
+                </div>
+            </div>
+            <div class="alert alert-warning small mt-3 mb-0 d-none" id="pbTileWarnings" role="status"></div>
+            <div class="mt-3">
+                <button class="btn btn-sm btn-primary" id="pbSaveTiles"><i class="bi bi-save me-1"></i>Save map tiles</button>
+            </div>
+        </div>
+    </div>
     <?php endif; ?>
 </main>
 

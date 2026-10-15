@@ -82,11 +82,18 @@ is_true($rk['tile_attribution'] === 'Something', 'carried for a known provider k
 echo "\n-- 3. Wiring: endpoint, save path, Settings field, preview --\n";
 // ─────────────────────────────────────────────────────────────────────────
 
+// Since 2026-10-15 the settings are read in one place, tile_config_payload()
+// (inc/tile-config.php), shared by api/map-config.php and inc/navbar.php.
 $mc = (string) file_get_contents($base . '/api/map-config.php');
-is_true(preg_match("/get_variable\\(\\s*'tile_attribution'\\s*\\)/", $mc) === 1,
-    'api/map-config.php reads the tile_attribution setting');
-is_true(preg_match('/resolve_tile_config\([^;]*\$tile_attribution\s*\)/', $mc) === 1,
-    'api/map-config.php passes it to resolve_tile_config()');
+$tc = (string) file_get_contents($base . '/inc/tile-config.php');
+$payloadFn = '';
+if (preg_match('/function tile_config_payload\(\): array\s*\{(.*?)\n\}/s', $tc, $m)) { $payloadFn = $m[1]; }
+is_true(strpos($payloadFn, "\$get('tile_attribution')") !== false,
+    'tile_config_payload() reads the tile_attribution setting');
+is_true(preg_match('/resolve_tile_config\([^;]*\$get\(\'tile_attribution\'\)\s*\)/s', $payloadFn) === 1,
+    'tile_config_payload() passes it to resolve_tile_config()');
+is_true(strpos($mc, '$tile = tile_config_payload();') !== false,
+    'api/map-config.php sends that payload');
 
 $ca = (string) file_get_contents($base . '/api/config-admin.php');
 is_true(preg_match("/\\\$key === 'tile_attribution'\\)\\s*\\{[^}]*tile_attribution_normalize\\(/s", $ca) === 1,

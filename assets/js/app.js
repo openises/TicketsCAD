@@ -992,16 +992,26 @@
                 maxZoom: 19,
                 className: 'dark-tiles',
             });
-            // Add the preferred default basemap from user prefs
-            var prefKey = window.MapPrefs ? window.MapPrefs.getBasemap() : 'street';
             var prefDash = { street: osmLayer, dark: darkLayer, terrain: usgsTopoLayer };
-            (prefDash[prefKey] || osmLayer).addTo(map);
-
             var baseLayers = {
                 'Open Streetmaps': osmLayer,
                 'USGS Topo': usgsTopoLayer,
                 'Dark': darkLayer
             };
+
+            // The configured tile provider, when the page already has it
+            // (inc/navbar.php writes it in). Being in baseLayers from the start
+            // also lets a saved choice of it be restored below.
+            var dashCustomLabel = (window.MapPrefs && window.MapPrefs.getCustomLabel) ? window.MapPrefs.getCustomLabel() : '';
+            if (dashCustomLabel) {
+                prefDash.custom = window.MapPrefs.makeLayer('custom');
+                baseLayers[dashCustomLabel] = prefDash.custom;
+            }
+
+            // Start on the user's own choice, else the install default
+            // (Settings -> Tile Providers -> "Default basemap for everyone").
+            var prefKey = window.MapPrefs ? window.MapPrefs.getBasemap() : 'street';
+            (prefDash[prefKey] || osmLayer).addTo(map);
 
             // ── Data Layer Groups ──
             // Added per the SHIPPED default here; MapLayerPrefs.bind() below
@@ -1079,6 +1089,7 @@
 
             // Layer control first, then zoom below it
             var layersControl = L.control.layers(baseLayers, overlays, { collapsed: true, position: 'topright' });
+            if (dashCustomLabel) { layersControl._ticketsCustomAdded = true; }
             layersControl.addTo(map);
             window._mapLayersControl = layersControl;
             window._mapOverlays = overlays;

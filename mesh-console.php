@@ -792,6 +792,8 @@ CAD_TOKEN=&lt;the-token-above&gt;</pre>
 <!-- Phase 39E: Leaflet for node map -->
 <script src="assets/vendor/leaflet/leaflet.js"></script>
 <script src="assets/js/leaflet-mobile-fit.js?v=<?php echo function_exists("asset_v")?asset_v("assets/js/leaflet-mobile-fit.js"):newui_version(); ?>"></script>
+<script src="assets/js/leaflet-quadkey.js"></script>
+<script src="assets/js/map-prefs.js?v=<?php echo asset_v('assets/js/map-prefs.js'); ?>"></script>
 <script src="assets/js/mesh-console.js?v=<?php echo newui_version() . '-' . @filemtime(__DIR__ . '/assets/js/mesh-console.js'); ?>"></script>
 </body>
 </html>

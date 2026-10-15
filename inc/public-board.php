@@ -645,3 +645,222 @@ function pb_valid_public_board_slug(string $slug): bool
 }
 
 } // end if (!function_exists('pb_valid_public_board_slug'))
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Map tiles for the public board (2026-10-15)
+// ═══════════════════════════════════════════════════════════════════════
+//
+// The public board is read by ANONYMOUS visitors, so it deliberately does
+// not use the app's own tile provider (tile_provider / tile_server_url /
+// tile_api_key, resolved by inc/tile-config.php and served to signed-in
+// users by api/map-config.php): that configuration may carry an API key,
+// and the tile proxy (api/tile-proxy.php) is sign-in only so it can never
+// become an open relay. Instead the board has its own two settings:
+//
+//   public_board_tile_url          empty = OpenStreetMap (the default)
+//   public_board_tile_attribution  the map credit, plain text
+//
+// Whatever an administrator puts in public_board_tile_url is PUBLISHED to
+// every visitor and fetched by their browsers directly. The validator below
+// refuses the shapes that can never be right on a public page (non-http
+// schemes, credentials in the address, key/quadkey placeholders the board
+// cannot fill), and returns soft warnings for shapes that are usually a
+// mistake but sometimes intended (a key-looking query parameter, a private
+// or internal host). The save still succeeds with a warning.
+
+if (!function_exists('pb_board_tile_default')) {
+
+require_once __DIR__ . '/tile-config.php';
+
+/** Longest tile address the board accepts. */
+function pb_board_tile_url_max(): int
+{
+    return 2048;
+}
+
+/**
+ * The OpenStreetMap default — what the board has always shown. The
+ * attribution here is the plain-text form for API consumers; public-board.php
+ * keeps its own linked HTML credit for this default.
+ *
+ * @return array{url:string,attribution:string,is_default:bool}
+ */
+function pb_board_tile_default(): array
+{
+    return [
+        'url'         => 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        'attribution' => "\u{00A9} OpenStreetMap contributors",
+        'is_default'  => true,
+    ];
+}
+
+/**
+ * Query-string parameter names that usually carry a credential. A match is a
+ * soft warning, not a refusal: some providers issue public tokens meant to
+ * be shown in a browser.
+ *
+ * @return string[]
+ */
+function pb_board_tile_key_param_names(): array
+{
+    return ['key', 'apikey', 'api_key', 'token', 'access_token', 'sig', 'signature'];
+}
+
+/**
+ * True when $host is obviously not reachable from the public internet:
+ * loopback, RFC 1918 / link-local / reserved IP literals, `localhost`, a
+ * single-label name, or a common internal-only suffix. Heuristic only —
+ * used for a soft warning, never to refuse a save.
+ */
+function pb_board_tile_host_looks_private(string $host): bool
+{
+    $host = strtolower(trim($host));
+    if ($host === '') return false;
+    if ($host[0] === '[' && substr($host, -1) === ']') {
+        $host = substr($host, 1, -1);
+    }
+    if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
+        return filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false;
+    }
+    // Ignore Leaflet's {s} sub-domain placeholder when judging the name.
+    $name = str_replace('{s}', 'a', $host);
+    if ($name === 'localhost' || strpos($name, '.') === false) return true;
+    foreach (['.localhost', '.local', '.lan', '.internal', '.intranet', '.corp', '.home.arpa'] as $suffix) {
+        if (substr($name, -strlen($suffix)) === $suffix) return true;
+    }
+    return false;
+}
+
+/**
+ * Validate the two public-board tile settings an administrator submitted.
+ *
+ * URL rules (empty means "use OpenStreetMap" and is always valid):
+ *   - http:// or https:// with a host; never javascript:, data:, or a
+ *     protocol-relative //host address;
+ *   - no spaces or control characters, at most pb_board_tile_url_max();
+ *   - no user:password@ in the address;
+ *   - must contain {z}, {x} and {y}; {s} (sub-domain) and {r} (Leaflet's
+ *     high-resolution suffix) are also allowed. Any other {placeholder} is
+ *     refused — the board has nothing to fill it with, and {key} / {q}
+ *     specifically mean "needs an API key" / "Bing quadkey", neither of
+ *     which a public page can or should supply.
+ * Attribution: tile_attribution_normalize() — plain text, control
+ * characters removed, at most TILE_ATTRIBUTION_MAX (200) characters. Stored
+ * as typed (NOT HTML-escaped here); public-board.php escapes it before
+ * Leaflet renders it.
+ *
+ * @return array{ok:bool,error:?string,url:string,attribution:string,warnings:string[]}
+ */
+function pb_validate_board_tile_settings(string $url, string $attribution): array
+{
+    $url  = trim($url);
+    $attr = tile_attribution_normalize($attribution);
+    $fail = function (string $msg) use ($url, $attr): array {
+        return ['ok' => false, 'error' => $msg, 'url' => $url, 'attribution' => $attr, 'warnings' => []];
+    };
+
+    if ($url === '') {
+        return ['ok' => true, 'error' => null, 'url' => '', 'attribution' => $attr, 'warnings' => []];
+    }
+
+    if (strlen($url) > pb_board_tile_url_max()) {
+        return $fail('The tile address is too long (at most ' . pb_board_tile_url_max() . ' characters).');
+    }
+    if (preg_match('/[\x00-\x20\x7F]/', $url)) {
+        return $fail('The tile address must not contain spaces or control characters.');
+    }
+    if (tile_sanitize_url($url) === '' || !preg_match('#^https?://[^/?\#]+#i', $url)) {
+        return $fail('The tile address must start with https:// or http:// followed by a server name '
+            . '(javascript:, data: and addresses starting with // are not allowed).');
+    }
+    $authority = (string) preg_replace('#^https?://([^/?\#]*).*$#is', '$1', $url);
+    if (strpos($authority, '@') !== false) {
+        return $fail('The tile address must not contain a user name or password (user:password@). '
+            . 'Anything in this address is shown to every visitor.');
+    }
+
+    preg_match_all('/\{([^{}]*)\}/', $url, $m);
+    $placeholders = $m[1];
+    foreach ($placeholders as $ph) {
+        $lower = strtolower($ph);
+        if ($lower === 'key' || $lower === 'apikey' || $lower === 'api_key'
+            || $lower === 'token' || $lower === 'access_token') {
+            return $fail('The tile address must not use {' . $ph . '}. The public board never sends an API key; '
+                . 'use a tile service that does not need one.');
+        }
+        if ($lower === 'q') {
+            return $fail('The tile address must not use {q} (Bing-style quadkey). Use a service with '
+                . '{z}/{x}/{y} tile addresses.');
+        }
+        if (!in_array($ph, ['s', 'z', 'x', 'y', 'r'], true)) {
+            return $fail('The tile address contains an unsupported placeholder {' . $ph . '}. '
+                . 'Only {z}, {x}, {y}, {s} and {r} can be used.');
+        }
+    }
+    foreach (['z', 'x', 'y'] as $need) {
+        if (!in_array($need, $placeholders, true)) {
+            return $fail('The tile address must contain {z}, {x} and {y}.');
+        }
+    }
+
+    $warnings = [];
+    $qPos = strpos($url, '?');
+    if ($qPos !== false) {
+        $query = substr($url, $qPos + 1);
+        $hash  = strpos($query, '#');
+        if ($hash !== false) $query = substr($query, 0, $hash);
+        $hits = [];
+        foreach (explode('&', $query) as $pair) {
+            if ($pair === '') continue;
+            $name = strtolower(urldecode(explode('=', $pair, 2)[0]));
+            if (in_array($name, pb_board_tile_key_param_names(), true)) $hits[] = $name;
+        }
+        if (!empty($hits)) {
+            $warnings[] = 'The tile address looks like it carries a key or token (' . implode(', ', array_unique($hits))
+                . '=). Every visitor to the public board can read it. Only keep it if the provider says '
+                . 'this key is meant to be public, and restrict it to your site in the provider\'s settings.';
+        }
+    }
+    $host = (string) parse_url($url, PHP_URL_HOST);
+    if (pb_board_tile_host_looks_private($host)) {
+        $warnings[] = 'The tile server "' . $host . '" looks like a private or internal address. It is shown to '
+            . 'every visitor, and their browsers usually cannot reach it, so the map will be blank for them.';
+    }
+    if ($attr === '') {
+        $warnings[] = 'No map credit entered. Most tile services require one (for example '
+            . "\u{00A9} OpenStreetMap contributors).";
+    }
+
+    return ['ok' => true, 'error' => null, 'url' => $url, 'attribution' => $attr, 'warnings' => $warnings];
+}
+
+/**
+ * The tile configuration the anonymous board API publishes. Reads ONLY the
+ * two public_board_tile_* settings — never tile_provider, tile_server_url or
+ * tile_api_key. Empty, missing, or (defensively) a stored value that no
+ * longer passes pb_validate_board_tile_settings() all resolve to the
+ * OpenStreetMap default, so a value written by some other route (direct
+ * SQL, an older build) can never reach visitors unvalidated.
+ *
+ * @return array{url:string,attribution:string,is_default:bool}
+ */
+function pb_board_tile_config(): array
+{
+    $rawUrl  = function_exists('get_variable') ? get_variable('public_board_tile_url') : false;
+    $rawAttr = function_exists('get_variable') ? get_variable('public_board_tile_attribution') : false;
+    $url  = is_string($rawUrl) ? $rawUrl : '';
+    $attr = is_string($rawAttr) ? $rawAttr : '';
+
+    if (trim($url) === '') {
+        return pb_board_tile_default();
+    }
+    $v = pb_validate_board_tile_settings($url, $attr);
+    if (!$v['ok']) {
+        error_log('[public-board] stored public_board_tile_url is not valid (' . $v['error']
+            . '); serving the OpenStreetMap default instead.');
+        return pb_board_tile_default();
+    }
+    return ['url' => $v['url'], 'attribution' => $v['attribution'], 'is_default' => false];
+}
+
+} // end if (!function_exists('pb_board_tile_default'))

@@ -134,11 +134,20 @@ foreach ($eligible as $row) {
 // a 304; omitted entirely when null so an unbranded install's ETag is unchanged.
 $logoUrl = function_exists('branding_public_logo_url') ? branding_public_logo_url($orgId) : null;
 
+// The board's own map tiles (public_board_tile_url / _attribution) — NEVER the
+// app's tile_provider / tile_api_key, and never the sign-in-only tile proxy.
+// pb_board_tile_config() returns the OpenStreetMap default when the setting is
+// empty (or a stored value fails validation). Part of the cache key only when
+// an administrator configured something, so an unconfigured install's ETag is
+// unchanged.
+$mapTiles = pb_board_tile_config();
+
 $configVersion = sha1( // NOSONAR S4790: HTTP cache key only, not a security context — no secret or auth material is hashed here
     $precision . '|'
     . (string) get_variable('public_board_excluded_groups') . '|'
     . (string) get_variable('public_board_default_delay_secs')
     . ($logoUrl !== null ? '|logo:' . $logoUrl : '')
+    . (empty($mapTiles['is_default']) ? '|tiles:' . $mapTiles['url'] . '|' . $mapTiles['attribution'] : '')
 );
 $etag = '"' . sha1($maxUpdatedTs . ':' . count($incidents) . ':' . $configVersion) . '"'; // NOSONAR S4790: HTTP cache key only, not a security context
 header('ETag: ' . $etag);
@@ -180,6 +189,9 @@ if ($logoUrl !== null) {
     $boardEnvelope['logo_url'] = $logoUrl;
     $boardEnvelope['logo_alt'] = branding_logo_alt();
 }
+// {url, attribution, is_default}. The attribution is plain text; public-board.php
+// escapes it before Leaflet (which renders attribution as HTML) sees it.
+$boardEnvelope['map_tiles'] = $mapTiles;
 echo json_encode([
     'board'     => $boardEnvelope,
     'incidents' => $incidents,

@@ -411,11 +411,15 @@ the place to start.</p>
                 'title' => 'Tile Providers — Map Basemap Reference',
                 'body'  => '
 <p>TicketsCAD ships with a registry of tile (basemap) providers. An admin
-picks the default in <strong>Settings &raquo; Tile Providers</strong>; individual
-dispatchers can also switch between any of the configured providers from
-each map&#39;s layer-control widget. This reference covers what every
-built-in option is, whether it needs a key, and what attribution it
-requires.</p>
+picks a provider in <strong>Settings &raquo; Tile Providers</strong>, and with
+<strong>Default basemap for everyone</strong> decides whether every map starts on
+it (choose &ldquo;The provider configured above&rdquo; for an install whose maps must
+work without the internet; otherwise maps start on Street, or Dark in dark mode).
+Individual dispatchers can still switch between providers from each map&#39;s
+layer-control widget, or pick their own default in Display Preferences; a
+dispatcher&#39;s own choice wins until they set it back to &ldquo;Install
+default&rdquo;. This reference covers what every built-in option is, whether it
+needs a key, and what attribution it requires.</p>
 
 <h6>Tile Mode &mdash; who fetches the tiles</h6>
 <p>Every map tile your browser requests tells the provider which patch of
@@ -728,6 +732,7 @@ geocoder. If that matters for your deployment, host geocoding internally.</p>
 <p><strong>Nothing new to configure per-incident.</strong> The board respects whatever Security Label is already applied to an incident &mdash; a call marked with a label that disallows broadcast simply never appears on the public board, the same way it is already kept off other broadcast-facing surfaces. Apply Security Labels the way you normally would for a sensitive call and this is handled automatically.</p>
 <p>Administrators can also mark specific incident <em>types</em> (not individual incidents) as never publishing, or as showing only a generic label with no address &mdash; a one-time setup decision, not something chosen per call.</p>
 <p>Address detail is capped by a board-wide precision setting (exact / street-only / city-only / hidden) configured at <strong>Settings &gt; Communications &amp; Integrations &gt; Public Board</strong>. Not sure whether the board is currently enabled? Check <strong>Settings &gt; System Health</strong>, which reports its status.</p>
+<p>The board&rsquo;s map shows OpenStreetMap unless an administrator enters a different public tile address on that same page (<strong>Map tiles for the public board</strong>). That address is shown to every visitor, so it must never contain an API key, token or password, and it should not be an internal server &mdash; visitors&rsquo; browsers fetch tiles from it directly. The main <strong>Tile Providers</strong> settings and TicketsCAD&rsquo;s tile proxy are never used for the public board.</p>
 <p>See <code>docs/PUBLIC-INCIDENT-BOARD.md</code> in the repository for the full setup and security details.</p>
 '
             ],

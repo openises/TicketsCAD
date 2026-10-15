@@ -1261,12 +1261,13 @@ foreach ($personnelSections as $sec) {
             </div>
 
             <h6 class="mt-3"><i class="bi bi-map me-1"></i>Map Basemap</h6>
-            <p class="text-body-secondary small mb-2">Choose which basemap loads by default for each theme. You can still switch basemaps from the layer control on any map.</p>
+            <p class="text-body-secondary small mb-2">Choose which basemap loads by default for each theme, in this browser. &ldquo;Install default&rdquo; follows the administrator's choice in Settings &raquo; Tile Providers. You can still switch basemaps from the layer control on any map.</p>
             <div class="row g-2 mb-3">
                 <div class="col-md-6">
                     <label for="basemapLight" class="form-label form-label-sm">Light theme basemap</label>
                     <select class="form-select form-select-sm" id="basemapLight">
-                        <option value="street" selected>Street Map (OSM)</option>
+                        <option value="" selected>Install default</option>
+                        <option value="street">Street Map (OSM)</option>
                         <option value="dark">Dark (CartoDB)</option>
                         <option value="terrain">Terrain (OpenTopo)</option>
                     </select>
@@ -1274,8 +1275,9 @@ foreach ($personnelSections as $sec) {
                 <div class="col-md-6">
                     <label for="basemapDark" class="form-label form-label-sm">Dark theme basemap</label>
                     <select class="form-select form-select-sm" id="basemapDark">
+                        <option value="" selected>Install default</option>
                         <option value="street">Street Map (OSM)</option>
-                        <option value="dark" selected>Dark (CartoDB)</option>
+                        <option value="dark">Dark (CartoDB)</option>
                         <option value="terrain">Terrain (OpenTopo)</option>
                     </select>
                 </div>
@@ -3394,6 +3396,23 @@ foreach ($personnelSections as $sec) {
                             Tiles made from OpenStreetMap data, including SOSM downloads and most
                             self-hosted tile servers, must credit &ldquo;&copy; OpenStreetMap contributors&rdquo;.
                             Leave it empty to show &ldquo;Configured provider&rdquo;. Plain text only.
+                        </div>
+                    </div>
+
+                    <!-- Which basemap every map starts on -->
+                    <div class="mt-2" style="max-width:640px">
+                        <label for="setTileDefaultBasemap" class="form-label form-label-sm">
+                            Default basemap for everyone
+                        </label>
+                        <select class="form-select form-select-sm" id="setTileDefaultBasemap" data-key="tile_default_basemap">
+                            <option value="user">Street (Dark in dark mode) &mdash; today&rsquo;s behaviour</option>
+                            <option value="configured">The provider configured above</option>
+                        </select>
+                        <div class="form-text small">
+                            Which basemap a map starts on. Choose &ldquo;The provider configured above&rdquo; when your
+                            maps must work without the internet (your own tile server): otherwise every map starts on
+                            OpenStreetMap, which needs the internet. A user who has picked a basemap themselves
+                            (Display Preferences, or the layer switcher on a map) keeps their choice.
                         </div>
                     </div>
 

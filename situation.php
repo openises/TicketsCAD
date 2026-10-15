@@ -532,6 +532,7 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
 
     // ── Map Initialization ──
     var osmLight, cartoDark, topoMap; // basemap references for theme switching
+    var sitPrefMap = {};               // basemap key -> layer, incl. 'custom' when configured
     // Eric 2026-07-03 (EOC event) — track whether the user has taken
     // manual control of the view. Once they do, refresh cycles must
     // never re-zoom or re-center; they can hit the ★ button to opt
@@ -607,28 +608,38 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
         // Expose for draw controls script
         window._sitMap = map;
 
-        // Base layers
-        osmLight = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        // Base layers, from the shared map code (map-prefs.js) so they honour
+        // proxy mode; the literal URLs are only the fallback.
+        var MP = window.MapPrefs;
+        osmLight = MP ? MP.makeLayer('street') : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OSM', maxZoom: 19
         });
-        cartoDark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        cartoDark = MP ? MP.makeLayer('dark') : L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
             attribution: '&copy; CartoDB', maxZoom: 19
         });
-        topoMap = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+        topoMap = MP ? MP.makeLayer('terrain') : L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenTopoMap', maxZoom: 17
         });
-
-        // Set tileLayer reference and add preferred default basemap
-        var prefKey = window.MapPrefs ? window.MapPrefs.getBasemap() : (document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'dark' : 'street');
-        var prefMap = { street: osmLight, dark: cartoDark, terrain: topoMap };
-        tileLayer = prefMap[prefKey] || osmLight;
-        tileLayer.addTo(map);
-
+        sitPrefMap = { street: osmLight, dark: cartoDark, terrain: topoMap };
         var baseMaps = {
             'Street Map': osmLight,
             'Dark': cartoDark,
             'Terrain': topoMap
         };
+
+        // The configured tile provider, when the page already has it
+        // (inc/navbar.php writes it in); otherwise folded in below once fetched.
+        var sitCustomLabel = (MP && MP.getCustomLabel) ? MP.getCustomLabel() : '';
+        if (sitCustomLabel) {
+            sitPrefMap.custom = MP.makeLayer('custom');
+            baseMaps[sitCustomLabel] = sitPrefMap.custom;
+        }
+
+        // Start on the user's own choice, else the install default
+        // (Settings -> Tile Providers -> "Default basemap for everyone").
+        var prefKey = MP ? MP.getBasemap() : (document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'dark' : 'street');
+        tileLayer = sitPrefMap[prefKey] || osmLight;
+        tileLayer.addTo(map);
 
         // Weather overlays via caching proxy (fail gracefully if no API key)
         var weatherOpts = { opacity: 0.5, maxZoom: 19, errorTileUrl: '' };
@@ -726,6 +737,7 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
         };
 
         sitLayersControl = L.control.layers(baseMaps, overlays, { collapsed: true, position: 'topright' }).addTo(map);
+        if (sitCustomLabel) { sitLayersControl._ticketsCustomAdded = true; }
 
         // ── Per-user layer visibility ──
         // This screen previously persisted NOTHING: every overlay here was
@@ -1995,15 +2007,18 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
             for (var i = 0; i < mutations.length; i++) {
                 if (mutations[i].attributeName === 'data-bs-theme') {
                     var isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
-                    if (isDark) {
-                        if (map.hasLayer(osmLight)) map.removeLayer(osmLight);
-                        if (map.hasLayer(topoMap)) map.removeLayer(topoMap);
-                        if (!map.hasLayer(cartoDark)) cartoDark.addTo(map);
-                    } else {
-                        if (map.hasLayer(cartoDark)) map.removeLayer(cartoDark);
-                        if (map.hasLayer(topoMap)) map.removeLayer(topoMap);
-                        if (!map.hasLayer(osmLight)) osmLight.addTo(map);
+                    // The basemap for the new theme: the user's choice for it,
+                    // else the install default (which may be the configured
+                    // provider, e.g. an offline tile server), else Dark/Street.
+                    var key = window.MapPrefs ? window.MapPrefs.getBasemap() : (isDark ? 'dark' : 'street');
+                    var target = sitPrefMap[key] || (isDark ? cartoDark : osmLight);
+                    for (var k in sitPrefMap) {
+                        if (sitPrefMap.hasOwnProperty(k) && sitPrefMap[k] !== target && map.hasLayer(sitPrefMap[k])) {
+                            map.removeLayer(sitPrefMap[k]);
+                        }
                     }
+                    if (!map.hasLayer(target)) target.addTo(map);
+                    tileLayer = target;
                 }
             }
         });

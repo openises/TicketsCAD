@@ -375,6 +375,8 @@ $active_page = 'aprs-map';
 
 <script src="assets/vendor/bootstrap/bootstrap.bundle.min.js"></script>
 <script src="assets/vendor/leaflet/leaflet.js"></script>
+<script src="assets/js/leaflet-quadkey.js"></script>
+<script src="assets/js/map-prefs.js?v=<?php echo asset_v('assets/js/map-prefs.js'); ?>"></script>
 <script src="assets/vendor/gridstack/gridstack-all.js"></script>
 <script>
 (function () {
@@ -407,9 +409,13 @@ $active_page = 'aprs-map';
         // 2026-06-29 (Eric beta) — basemap selector. Adds a layers
         // control to the map's top-right with multiple tile providers.
         // User pick persisted in localStorage. Default = Streets (OSM).
-        var streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19, attribution: '&copy; OpenStreetMap'
-        });
+        // Streets comes from the shared map code (map-prefs.js) so it honours
+        // proxy mode like every other map; the literal URL is only the fallback.
+        var streets = (window.MapPrefs && window.MapPrefs.makeLayer)
+            ? window.MapPrefs.makeLayer('street')
+            : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19, attribution: '&copy; OpenStreetMap'
+            });
         var satellite = L.tileLayer(
             'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
             { maxZoom: 19, attribution: 'Tiles &copy; Esri' }
@@ -446,9 +452,22 @@ $active_page = 'aprs-map';
             'Dark':               dark
         };
 
-        // Restore saved basemap or fall back to Streets
-        var savedBase = localStorage.getItem('aprsMapBasemap') || 'Streets (OSM)';
-        var initialLayer = baseMaps[savedBase] || streets;
+        // The provider configured in Settings -> Tile Providers (an offline
+        // install's own tile server, for example) is offered here too.
+        var configuredName = '';
+        if (window.MapPrefs && window.MapPrefs.getCustomLabel && window.MapPrefs.getCustomLabel()) {
+            configuredName = window.MapPrefs.getCustomLabel();
+            baseMaps[configuredName] = window.MapPrefs.makeLayer('custom');
+        }
+
+        // Restore this page's saved basemap. With none saved, start where the
+        // install says ("Default basemap for everyone" in Tile Providers), else
+        // on Streets.
+        var savedBase = '';
+        try { savedBase = localStorage.getItem('aprsMapBasemap') || ''; } catch (e) { savedBase = ''; }
+        var defaultName = (configuredName && window.MapPrefs.getInstallDefault
+            && window.MapPrefs.getInstallDefault() === 'configured') ? configuredName : 'Streets (OSM)';
+        var initialLayer = baseMaps[savedBase] || baseMaps[defaultName] || streets;
         initialLayer.addTo(map);
 
         L.control.layers(baseMaps, null, {

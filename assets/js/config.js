@@ -1393,7 +1393,7 @@
                         '<div class="col-md-3 col-sm-4 col-6">' +
                         '  <label class="form-label form-label-sm" title="' + escHtml(r.description || '') + '">' + escHtml(r.name) + '</label>' +
                         '  <div class="input-group input-group-sm">' +
-                        '    <input type="number" class="form-control role-timeout" min="0" max="14400" placeholder="inherit" data-role-id="' + r.id + '" value="' + escHtml(v) + '">' +
+                        '    <input type="number" class="form-control form-control-sm role-timeout" min="0" max="14400" placeholder="inherit" data-role-id="' + r.id + '" value="' + escHtml(v) + '">' +
                         '    <span class="input-group-text">min</span>' +
                         '  </div>' +
                         '</div>';
@@ -2105,7 +2105,8 @@
         // Phase 43b — basemap switcher so admins can match drawings against
         // satellite imagery, topo, dark, etc. Eric's use case: lining up
         // operational zones against a printed satellite-view festival map.
-        var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        // Streets through the shared map code (proxy mode); literal = fallback.
+        var osm = window.MapPrefs ? window.MapPrefs.makeLayer('street') : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap', maxZoom: 19,
         });
         var esriSat = L.tileLayer(
@@ -2136,7 +2137,16 @@
             'USGS Imagery Topo':       usgsTopo,
             'Dark':                    dark,
         };
-        (baseMap[savedBase] || osm).addTo(moEditor.map);
+        // The configured tile provider (an offline install's own tile server,
+        // for example), and it is the starting map when the install default
+        // says so and nothing is saved here.
+        var moStart = osm;
+        if (window.MapPrefs && window.MapPrefs.getCustomLabel && window.MapPrefs.getCustomLabel()) {
+            var moCustom = window.MapPrefs.makeLayer('custom');
+            baseMap[window.MapPrefs.getCustomLabel()] = moCustom;
+            if (window.MapPrefs.getInstallDefault() === 'configured') { moStart = moCustom; }
+        }
+        (baseMap[savedBase] || moStart).addTo(moEditor.map);
         L.control.layers(baseMap, null, { collapsed: false, position: 'topright' }).addTo(moEditor.map);
         moEditor.map.on('baselayerchange', function (e) {
             try { localStorage.setItem('newui_overlay_editor_base', e.name); } catch (_) {}
@@ -5054,8 +5064,24 @@
         // Read current map prefs
         var mapPrefs = {};
         try { mapPrefs = JSON.parse(localStorage.getItem('ticketsMapPrefs')) || {}; } catch (e) { mapPrefs = {}; }
-        if (basemapLightSelect) basemapLightSelect.value = mapPrefs.basemapLight || 'street';
-        if (basemapDarkSelect) basemapDarkSelect.value = mapPrefs.basemapDark || 'dark';
+        // The configured provider can be chosen too, once an admin set one up.
+        var customLabel = (window.MapPrefs && window.MapPrefs.getCustomLabel) ? window.MapPrefs.getCustomLabel() : '';
+        [basemapLightSelect, basemapDarkSelect].forEach(function (sel) {
+            if (!sel || !customLabel || sel.querySelector('option[value="custom"]')) return;
+            var opt = document.createElement('option');
+            opt.value = 'custom';
+            opt.textContent = customLabel + ' (configured provider)';
+            sel.appendChild(opt);
+        });
+        // '' = "Install default": no choice of this user's own.
+        if (basemapLightSelect) {
+            basemapLightSelect.value = mapPrefs.basemapLight || '';
+            if (basemapLightSelect.value !== (mapPrefs.basemapLight || '')) basemapLightSelect.value = '';
+        }
+        if (basemapDarkSelect) {
+            basemapDarkSelect.value = mapPrefs.basemapDark || '';
+            if (basemapDarkSelect.value !== (mapPrefs.basemapDark || '')) basemapDarkSelect.value = '';
+        }
 
         // Save handler
         saveBtn.addEventListener('click', function () {
@@ -5075,8 +5101,8 @@
             } else {
                 var mp = {};
                 try { mp = JSON.parse(localStorage.getItem('ticketsMapPrefs')) || {}; } catch (e) { mp = {}; }
-                if (basemapLightSelect) mp.basemapLight = basemapLightSelect.value;
-                if (basemapDarkSelect) mp.basemapDark = basemapDarkSelect.value;
+                if (basemapLightSelect) { if (basemapLightSelect.value) { mp.basemapLight = basemapLightSelect.value; } else { delete mp.basemapLight; } }
+                if (basemapDarkSelect) { if (basemapDarkSelect.value) { mp.basemapDark = basemapDarkSelect.value; } else { delete mp.basemapDark; } }
                 try { localStorage.setItem('ticketsMapPrefs', JSON.stringify(mp)); } catch (e) { /* ignore */ }
             }
 
@@ -6644,27 +6670,35 @@
 
         _mapDefaultsMap = L.map(container, { zoomControl: true }).setView([lat, lng], zoom);
 
-        // Tile layers
-        var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap',
-            maxZoom: 19
-        }).addTo(_mapDefaultsMap);
+        // Tile layers: the shared basemap and switcher (map-prefs.js), so this
+        // preview starts on the same map the rest of the install does,
+        // including the configured provider. The literal layers are the
+        // fallback when map-prefs.js is not loaded.
+        if (window.MapPrefs) {
+            var mdBase = window.MapPrefs.addDefaultBasemap(_mapDefaultsMap);
+            window.MapPrefs.addLayerControl(_mapDefaultsMap, { currentBase: mdBase, includeWeather: false });
+        } else {
+            var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap',
+                maxZoom: 19
+            }).addTo(_mapDefaultsMap);
 
-        var darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; CartoDB',
-            maxZoom: 19
-        });
+            var darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; CartoDB',
+                maxZoom: 19
+            });
 
-        var topoLayer = L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}', {
-            attribution: 'USGS',
-            maxZoom: 20
-        });
+            var topoLayer = L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'USGS',
+                maxZoom: 20
+            });
 
-        L.control.layers({
-            'Street': osmLayer,
-            'Dark': darkLayer,
-            'Satellite/Topo': topoLayer
-        }, null, { collapsed: true, position: 'topright' }).addTo(_mapDefaultsMap);
+            L.control.layers({
+                'Street': osmLayer,
+                'Dark': darkLayer,
+                'Satellite/Topo': topoLayer
+            }, null, { collapsed: true, position: 'topright' }).addTo(_mapDefaultsMap);
+        }
 
         // Crosshair marker at center
         _mapDefaultsCrosshair = L.marker([lat, lng], {
@@ -7953,10 +7987,14 @@
     function buildWarnLocMap(defLat, defLng, defZoom) {
         warnLocMap = L.map('warnLocMap', { zoomControl: true }).setView([defLat, defLng], defZoom);
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OSM',
-            maxZoom: 19
-        }).addTo(warnLocMap);
+        if (window.MapPrefs) {
+            window.MapPrefs.addDefaultBasemap(warnLocMap);
+        } else {
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OSM',
+                maxZoom: 19
+            }).addTo(warnLocMap);
+        }
 
         // Click to place / move marker
         warnLocMap.on('click', function (e) {
@@ -11475,10 +11513,14 @@
 
         _gfDrawMap = L.map(container, { zoomControl: true }).setView([lat, lng], zoom);
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap',
-            maxZoom: 19
-        }).addTo(_gfDrawMap);
+        if (window.MapPrefs) {
+            window.MapPrefs.addDefaultBasemap(_gfDrawMap);
+        } else {
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap',
+                maxZoom: 19
+            }).addTo(_gfDrawMap);
+        }
 
         _gfMarkupsLayer = L.layerGroup().addTo(_gfDrawMap);
 
@@ -12815,9 +12857,13 @@
             }
 
             map = L.map('aprsTabMap', { zoomControl: true }).setView([45.0, -93.0], 7);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap', maxZoom: 18
-            }).addTo(map);
+            if (window.MapPrefs) {
+                window.MapPrefs.addDefaultBasemap(map);
+            } else {
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; OpenStreetMap', maxZoom: 18
+                }).addTo(map);
+            }
 
             var sinceSel = document.getElementById('aprsTabMapSince');
             if (sinceSel) sinceSel.addEventListener('change', loadStations);
@@ -13043,9 +13089,13 @@
         modalEl.addEventListener('shown.bs.modal', function () {
             if (!map) {
                 map = L.map('aprsFilterMap', { zoomControl: true }).setView([45.0, -93.0], 6);
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '&copy; OpenStreetMap', maxZoom: 18
-                }).addTo(map);
+                if (window.MapPrefs) {
+                    window.MapPrefs.addDefaultBasemap(map);
+                } else {
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '&copy; OpenStreetMap', maxZoom: 18
+                    }).addTo(map);
+                }
                 map.on('click', function (e) {
                     center = e.latlng;
                     render();

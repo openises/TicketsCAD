@@ -618,27 +618,39 @@
 
     // ── Basemap + Weather Layer Controls ──
     function addMapLayers(mapInstance) {
-        // Base layers
-        var osmLight = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        // Base layers, from the shared map code (map-prefs.js) when it is
+        // loaded so they honour proxy mode; the literal URLs are only the
+        // fallback.
+        var MP = window.MapPrefs;
+        var osmLight = MP ? MP.makeLayer('street') : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OSM', maxZoom: 19
         });
-        var cartoDark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        var cartoDark = MP ? MP.makeLayer('dark') : L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
             attribution: '&copy; CartoDB', maxZoom: 19
         });
-        var topoMap = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+        var topoMap = MP ? MP.makeLayer('terrain') : L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenTopoMap', maxZoom: 17
         });
-
-        // Add the preferred default basemap from user prefs
-        var prefKey = window.MapPrefs ? window.MapPrefs.getBasemap() : (document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'dark' : 'street');
         var prefMap = { street: osmLight, dark: cartoDark, terrain: topoMap };
-        (prefMap[prefKey] || osmLight).addTo(mapInstance);
-
         var baseMaps = {
             'Street Map': osmLight,
             'Dark': cartoDark,
             'Terrain': topoMap
         };
+
+        // The configured tile provider, when the page already has it
+        // (inc/navbar.php writes it in); otherwise it is folded in below once
+        // fetched.
+        var customLabel = (MP && MP.getCustomLabel) ? MP.getCustomLabel() : '';
+        if (customLabel) {
+            prefMap.custom = MP.makeLayer('custom');
+            baseMaps[customLabel] = prefMap.custom;
+        }
+
+        // Start on the user's own choice, else the install default
+        // (Settings -> Tile Providers -> "Default basemap for everyone").
+        var prefKey = MP ? MP.getBasemap() : (document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'dark' : 'street');
+        (prefMap[prefKey] || osmLight).addTo(mapInstance);
 
         // Weather overlays via caching proxy (fail gracefully if no API key)
         var weatherOpts = { opacity: 0.5, maxZoom: 19, errorTileUrl: '' };
@@ -655,6 +667,7 @@
         };
 
         var unitsLayersControl = L.control.layers(baseMaps, overlays, { collapsed: true, position: 'topright' }).addTo(mapInstance);
+        if (customLabel) { unitsLayersControl._ticketsCustomAdded = true; }
 
         // Per-user layer visibility, shared with every other map surface.
         if (window.MapLayerPrefs) {

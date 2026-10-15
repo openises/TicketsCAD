@@ -108,10 +108,41 @@
             setVal('pbRlRequests', c.public_board_rate_limit_requests || '30');
             setVal('pbRlWindow', c.public_board_rate_limit_window_secs || '60');
             excludedGroupsRaw = c.public_board_excluded_groups || '';
+            setVal('pbTileUrl', c.public_board_tile_url || '');
+            setVal('pbTileAttribution', c.public_board_tile_attribution || '');
+            renderTileWarnings(res.warnings);
             updateMasterBadge(lastLoadedEnabled);
             updatePrecisionPreview();
             renderExcludedGroupsSelect(); // in case types already loaded first
         });
+    }
+
+    // Panel 5 — the server's soft warnings about the public-board tile address
+    // (a key-looking query parameter, a private host, no map credit). The save
+    // still succeeded; these stay on screen until the cause is fixed.
+    // Rendered with DOM methods only.
+    function renderTileWarnings(list) {
+        var box = document.getElementById('pbTileWarnings');
+        if (!box) return;
+        box.textContent = '';
+        list = (list && list.length) ? list : [];
+        if (list.length === 0) {
+            box.classList.add('d-none');
+            return;
+        }
+        var head = document.createElement('div');
+        head.className = 'fw-semibold mb-1';
+        head.textContent = 'Saved, but please check:';
+        box.appendChild(head);
+        var ul = document.createElement('ul');
+        ul.className = 'mb-0 ps-3';
+        list.forEach(function (w) {
+            var li = document.createElement('li');
+            li.textContent = String(w);
+            ul.appendChild(li);
+        });
+        box.appendChild(ul);
+        box.classList.remove('d-none');
     }
 
     function updateMasterBadge(enabled) {
@@ -122,8 +153,8 @@
     }
 
     // Reads every board-wide setting field currently in the DOM (across
-    // panels 1/3/4 — there is only ONE combined settings row server-side,
-    // save_settings always writes all six keys together) and POSTs it.
+    // panels 1/3/4/5 — save_settings writes the six board-wide keys together,
+    // plus the two map-tile keys whenever they are sent) and POSTs it.
     // $ack === true sends the pre-enable acknowledgment flag.
     function postSettings(ack) {
         var payload = {
@@ -134,6 +165,12 @@
             public_board_rate_limit_requests: val('pbRlRequests') || '30',
             public_board_rate_limit_window_secs: val('pbRlWindow') || '60'
         };
+        // Only when the panel is on the page, so the server never blanks a
+        // stored tile address because a field it expected was absent.
+        if (document.getElementById('pbTileUrl')) {
+            payload.public_board_tile_url = val('pbTileUrl');
+            payload.public_board_tile_attribution = val('pbTileAttribution');
+        }
         if (ack) payload.public_board_ack_sensitive_types = 1;
         return postJson('save_settings', payload).then(function (res) {
             if (res.error) {
@@ -148,7 +185,13 @@
                 }
                 return res;
             }
-            toast('Settings saved.', 'success');
+            var warnings = (res.warnings && res.warnings.length) ? res.warnings : [];
+            renderTileWarnings(warnings);
+            if (warnings.length > 0) {
+                toast('Settings saved, with a warning about the map tile address. See the Map tiles panel.', 'warning');
+            } else {
+                toast('Settings saved.', 'success');
+            }
             lastLoadedEnabled = checked('pbEnabled');
             updateMasterBadge(lastLoadedEnabled);
             return res;
@@ -663,6 +706,7 @@
         on('pbSaveMaster', 'click', saveMasterSettings);
         on('pbSaveExcluded', 'click', saveExcludedGroups);
         on('pbSaveRate', 'click', saveRateLimits);
+        on('pbSaveTiles', 'click', function () { postSettings(false); });
         on('pbSensitiveAck', 'change', function () {
             var confirmEl = document.getElementById('pbSensitiveConfirm');
             if (confirmEl) confirmEl.disabled = !this.checked;

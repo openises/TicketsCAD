@@ -349,9 +349,54 @@ require_once __DIR__ . '/config.php';
         return a.length > 100 ? a.substring(0, 100) : a;
     }
 
+    /**
+     * Escape text for a context that is parsed as HTML. Leaflet inserts a
+     * layer's attribution into its attribution control as HTML, so the
+     * administrator's plain-text map credit must pass through here first.
+     * Pure string replacement -- no DOM, no markup parsing.
+     */
+    function pbEscapeHtml(s) {
+        if (s === null || s === undefined) return '';
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    var PB_OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    var PB_OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+
+    /**
+     * Which tiles the board's map uses. PURE: takes the API's board envelope,
+     * returns { url, attribution, isDefault }. The API sends map_tiles =
+     * { url, attribution, is_default } from the board's OWN settings
+     * (public_board_tile_url / _attribution) -- never the app's tile provider
+     * or the sign-in-only tile proxy. OpenStreetMap, with its existing linked
+     * credit, whenever the field is missing, marked default, or not an
+     * http(s) address with {z}/{x}/{y} (the server already refuses anything
+     * else; this is a second check). A configured credit is plain text and is
+     * escaped here, because Leaflet renders attribution as HTML.
+     */
+    function pbTileLayerSpec(board) {
+        var t = board && board.map_tiles;
+        var url = (t && typeof t.url === 'string') ? t.url : '';
+        var usable = !!t && t.is_default !== true
+            && /^https?:\/\/[^\/?#\s]+/i.test(url)
+            && url.indexOf('{z}') !== -1 && url.indexOf('{x}') !== -1 && url.indexOf('{y}') !== -1;
+        if (!usable) {
+            return { url: PB_OSM_TILE_URL, attribution: PB_OSM_ATTRIBUTION, isDefault: true };
+        }
+        var credit = (typeof t.attribution === 'string') ? t.attribution : '';
+        return { url: url, attribution: pbEscapeHtml(credit), isDefault: false };
+    }
+
     var PublicBoardRender = {
         logoUrl: pbLogoUrl,
         logoAlt: pbLogoAlt,
+        escapeHtml: pbEscapeHtml,
+        tileLayerSpec: pbTileLayerSpec,
         locationText: pbLocationText,
         metaText: pbMetaText,
         createCard: pbCreateCard,
@@ -375,6 +420,12 @@ require_once __DIR__ . '/config.php';
         precisionLevel: 'block',
         map: null,
         markerLayer: null,
+        // Tile layer spec from the API (pbTileLayerSpec). null until the first
+        // board response arrives, so the map never fetches OpenStreetMap
+        // tiles for a board an administrator pointed somewhere else.
+        tileSpec: null,
+        tileLayer: null,
+        tileLayerKey: '',
         leafletLoading: false,
         leafletCallbacks: []
     };
@@ -446,6 +497,8 @@ require_once __DIR__ . '/config.php';
         }
 
         pbState.precisionLevel = (data && data.board && data.board.precision_level) || 'block';
+        pbState.tileSpec = pbTileLayerSpec(data && data.board);
+        pbApplyTileLayer();
         pbUpdateMap();
 
         pbSetStatus('Updated ' + new Date().toLocaleTimeString());
@@ -460,6 +513,24 @@ require_once __DIR__ . '/config.php';
             emptyEl.style.display = '';
         }
         pbSetStatus('');
+    }
+
+    /**
+     * Add (or replace) the map's tile layer from pbState.tileSpec. Only the
+     * spec's url and its already-escaped attribution reach Leaflet. Does
+     * nothing until both the map and the board's tile settings exist.
+     */
+    function pbApplyTileLayer() {
+        if (!pbState.map || typeof L === 'undefined' || !pbState.tileSpec) return;
+        var spec = pbState.tileSpec;
+        var key = spec.url + '\n' + spec.attribution;
+        if (pbState.tileLayer && pbState.tileLayerKey === key) return;
+        if (pbState.tileLayer) pbState.map.removeLayer(pbState.tileLayer);
+        pbState.tileLayer = L.tileLayer(spec.url, {
+            attribution: spec.attribution,
+            maxZoom: 19
+        }).addTo(pbState.map);
+        pbState.tileLayerKey = key;
     }
 
     function pbUpdateMap() {
@@ -537,10 +608,9 @@ require_once __DIR__ . '/config.php';
             // container.
             pbState.map = L.map('pbMap', { keyboard: false, attributionControl: true });
             pbState.map.setView([39.5, -98.35], 4); // sane US-wide default until data arrives
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-                maxZoom: 19
-            }).addTo(pbState.map);
+            // Tiles come from the board's own setting (OpenStreetMap unless an
+            // administrator chose otherwise) -- see pbTileLayerSpec().
+            pbApplyTileLayer();
             pbState.markerLayer = L.layerGroup().addTo(pbState.map);
             pbUpdateMap();
         });

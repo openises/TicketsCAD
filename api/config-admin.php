@@ -1197,6 +1197,13 @@ if ($section === 'settings') {
                 require_once __DIR__ . '/../inc/tile-config.php';
                 $value = tile_attribution_normalize((string) $value);
             }
+            // Which basemap maps start on when a user has not chosen one:
+            // 'user' (Street/Dark, the default) or 'configured'. Anything else
+            // is stored as 'user'.
+            if ($key === 'tile_default_basemap') {
+                require_once __DIR__ . '/../inc/tile-config.php';
+                $value = tile_default_basemap_normalize((string) $value);
+            }
 
             try {
                 // Upsert via ON DUPLICATE KEY UPDATE (requires unique index on name)

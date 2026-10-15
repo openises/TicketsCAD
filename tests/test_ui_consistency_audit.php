@@ -366,6 +366,60 @@ if (is_file($baselineFile)) {
         'an empty baseline with a non-empty tree means the rules stopped matching');
 }
 
+// ── Regex literals (2026-10-15) ────────────────────────────────────────────
+// The JS scanners tracked strings one character at a time and did not know
+// about regex literals, so the quote in `.replace(/"/g, '&quot;')` opened a
+// "string" that inverted the rest of the file. map-prefs.js hid a real
+// theme-color finding that way while the identical line in app.js was
+// reported. A quote inside a regex must not hide a later finding.
+echo "\n-- regex literals --\n";
+require_once $base . '/tools/ui_extract.php';
+
+$rx = $tmp . '/regex';
+@mkdir($rx . '/assets/js', 0777, true);
+file_put_contents($rx . '/assets/js/esc.js', <<<'JS'
+(function () {
+    'use strict';
+    function esc(s) {
+        return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;').replace(/[`"']/g, '');
+    }
+    var half = total / 2, ratio = (a + b) / 'x'.length;
+    var html = '<span style="color:#123abc">&#9679;</span> Legend';
+    window.Esc = { esc: esc, html: html, half: half, ratio: ratio };
+})();
+JS);
+[$code, $out] = uia_run($tool, $rx);
+is_true(strpos($out, 'style="color:#123abc"') !== false,
+    'a quote inside a regex no longer hides a later theme-color finding', $out);
+
+// Division must not be mistaken for a regex: the literal after it still counts.
+$stripped = ui_js_strip_comments("var a = x / 2; var s = 'it\\'s'; // c\nvar t = \"q\";");
+is_true(strpos($stripped, "'it\\'s'") !== false && strpos($stripped, '"q"') !== false,
+    'division is not read as a regex, so the strings after it survive', $stripped);
+
+$stripped = ui_js_strip_comments("x.replace(/\"/g, '&quot;'); var m = '<b>';");
+is_true(strpos($stripped, "'<b>'") !== false && strpos($stripped, '/ /g') !== false,
+    'a regex body is blanked and its delimiters and flags kept', $stripped);
+is_true(strlen($stripped) === strlen("x.replace(/\"/g, '&quot;'); var m = '<b>';"),
+    'blanking a regex keeps every byte offset');
+
+$stripped = ui_js_strip_comments("if (/[/\"]/.test(s)) { v = '<i>'; }");
+is_true(strpos($stripped, "'<i>'") !== false,
+    'a slash inside a [...] class does not end the regex', $stripped);
+
+$stripped = ui_js_strip_comments("return /x'/.test(s) ? '<u>' : '';");
+is_true(strpos($stripped, "'<u>'") !== false,
+    'a regex after `return` is recognised', $stripped);
+
+$code = ui_js_code_only("var re = /`/g; var n = 1;");
+is_true(strpos($code, '`') === false && strpos($code, 'var n = 1;') !== false,
+    'ui_js_code_only blanks a backtick inside a regex instead of reporting it', $code);
+
+$code = ui_js_code_only("var q = a /b; var r = `tpl`;");
+is_true(strpos($code, '`tpl`') !== false,
+    'ui_js_code_only still sees a real backtick after a division', $code);
+
 // The tool must refuse to run under a web SAPI — every script under tools/ is
 // reachable over HTTP on a default install until the web server is hardened.
 foreach (['tools/ui_consistency_audit.php', 'tools/ui_extract.php'] as $rel) {

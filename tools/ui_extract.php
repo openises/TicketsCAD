@@ -119,9 +119,84 @@ function ui_chunk_line(int $chunkStartLine, string $chunkText, int $offset): int
 }
 
 /**
+ * Where a JS regular-expression literal starting at $i ends, or -1 if the `/`
+ * at $i does not start one.
+ *
+ * WHY: both scanners below track string state one character at a time. Before
+ * 2026-10-15 neither knew about regex literals, so the quote in
+ * `.replace(/"/g, '&quot;')` (assets/js/map-prefs.js safeEsc()) opened a
+ * "string" that ran to the next quote, and every later string, comment and
+ * line of code in the file was read inverted. The consequence was concrete:
+ * the theme-color rule could not see `style="color:#9b59b6"` further down
+ * map-prefs.js, while the identical line in app.js was reported.
+ *
+ * A `/` that is not `//` or `/*` starts a regex when the previous significant
+ * token cannot end an expression: nothing yet, an operator or opening
+ * punctuation, a `}`, or a keyword such as `return`/`typeof`. After an
+ * identifier, a number, `)`, `]` or a string it is division. The literal must
+ * close on the same line (a regex cannot contain a raw newline); if it does
+ * not, the `/` is treated as division after all, which is always the safe
+ * reading. A `/` inside a `[...]` class does not close it, and `\x` escapes
+ * are skipped. Flags (`g`, `i`, `m`, ...) are included in the span.
+ *
+ * @param string $lastSig  last significant character emitted in code state
+ *                         ('' at the start of the file)
+ * @param string $lastWord the identifier ending at $lastSig, when $lastSig is
+ *                         a word character
+ */
+function ui_js_regex_end(string $code, int $i, string $lastSig, string $lastWord): int
+{
+    static $keywords = [
+        'return' => 1, 'typeof' => 1, 'case' => 1, 'do' => 1, 'else' => 1, 'in' => 1,
+        'of' => 1, 'instanceof' => 1, 'new' => 1, 'delete' => 1, 'void' => 1,
+        'throw' => 1, 'yield' => 1, 'await' => 1,
+    ];
+    if ($lastSig !== '') {
+        if (ctype_alnum($lastSig) || $lastSig === '_' || $lastSig === '$') {
+            if (!isset($keywords[$lastWord])) { return -1; }
+        } elseif (strpos(")]\"'`/", $lastSig) !== false) {
+            return -1;
+        }
+    }
+    $len = strlen($code);
+    $j = $i + 1;
+    $inClass = false;
+    while ($j < $len) {
+        $ch = $code[$j];
+        if ($ch === "\n" || $ch === "\r") { return -1; }
+        if ($ch === '\\') { $j += 2; continue; }
+        if ($inClass) {
+            if ($ch === ']') { $inClass = false; }
+        } elseif ($ch === '[') {
+            $inClass = true;
+        } elseif ($ch === '/') {
+            break;
+        }
+        $j++;
+    }
+    if ($j >= $len) { return -1; }
+    $j++;
+    while ($j < $len && ctype_alpha($code[$j])) { $j++; }
+    return $j;
+}
+
+/**
+ * The regex literal $code[$i..$end) with its body blanked to spaces: the
+ * delimiters and flags stay, so the result still reads as a regex and every
+ * byte offset is unchanged. A pattern is never markup, so nothing is lost.
+ */
+function ui_js_blank_regex(string $code, int $i, int $end): string
+{
+    $close = strrpos(substr($code, $i, $end - $i), '/');
+    return '/' . str_repeat(' ', max(0, $close - 1)) . substr($code, $i + $close, $end - $i - $close);
+}
+
+/**
  * Remove JS comments, preserving every byte position and newline.
  *
- * String literals are KEPT — markup lives inside them.
+ * String literals are KEPT — markup lives inside them. Regex literal BODIES are
+ * blanked (see ui_js_regex_end()): a quote inside a pattern must not open a
+ * string for this scanner or for ui_js_string_chunks(), which reads its output.
  */
 function ui_js_strip_comments(string $code): string
 {
@@ -129,6 +204,7 @@ function ui_js_strip_comments(string $code): string
     $len = strlen($code);
     $i = 0;
     $state = '';   // '' | '"' | "'" | '`' | '//' | '/*'
+    $lastSig = ''; $word = ''; $inWord = false;
     while ($i < $len) {
         $c = $code[$i];
         $n = $i + 1 < $len ? $code[$i + 1] : '';
@@ -136,11 +212,27 @@ function ui_js_strip_comments(string $code): string
             if ($c === '"' || $c === "'" || $c === '`') { $state = $c; $out .= $c; $i++; continue; }
             if ($c === '/' && $n === '/') { $state = '//'; $out .= '  '; $i += 2; continue; }
             if ($c === '/' && $n === '*') { $state = '/*'; $out .= '  '; $i += 2; continue; }
+            if ($c === '/') {
+                $end = ui_js_regex_end($code, $i, $lastSig, $word);
+                if ($end > 0) {
+                    $out .= ui_js_blank_regex($code, $i, $end);
+                    $i = $end; $lastSig = '/'; $word = ''; $inWord = false;
+                    continue;
+                }
+            }
+            if (ctype_alnum($c) || $c === '_' || $c === '$') {
+                if (!$inWord) { $word = ''; $inWord = true; }
+                $word .= $c; $lastSig = $c;
+            } elseif (ctype_space($c)) {
+                $inWord = false;
+            } else {
+                $inWord = false; $word = ''; $lastSig = $c;
+            }
             $out .= $c; $i++; continue;
         }
         if ($state === '"' || $state === "'" || $state === '`') {
             if ($c === '\\') { $out .= $c . $n; $i += 2; continue; }
-            if ($c === $state) { $state = ''; }
+            if ($c === $state) { $state = ''; $lastSig = $c; $word = ''; $inWord = false; }
             $out .= $c; $i++; continue;
         }
         if ($state === '//') {
@@ -158,7 +250,9 @@ function ui_js_strip_comments(string $code): string
 /**
  * Remove JS comments AND string literals, preserving byte positions.
  * What is left is executable syntax — the only safe input for a rule about
- * arrow functions, let/const or template literals.
+ * arrow functions, let/const or template literals. Regex literals are blanked
+ * the same way (ui_js_regex_end()), so a backtick or quote inside a pattern is
+ * neither a finding nor the start of a string.
  */
 function ui_js_code_only(string $code): string
 {
@@ -166,6 +260,7 @@ function ui_js_code_only(string $code): string
     $len = strlen($code);
     $i = 0;
     $state = '';
+    $lastSig = ''; $word = ''; $inWord = false;
     while ($i < $len) {
         $c = $code[$i];
         $n = $i + 1 < $len ? $code[$i + 1] : '';
@@ -173,11 +268,27 @@ function ui_js_code_only(string $code): string
             if ($c === '"' || $c === "'") { $state = $c; $out .= ' '; $i++; continue; }
             if ($c === '/' && $n === '/') { $state = '//'; $out .= '  '; $i += 2; continue; }
             if ($c === '/' && $n === '*') { $state = '/*'; $out .= '  '; $i += 2; continue; }
+            if ($c === '/') {
+                $end = ui_js_regex_end($code, $i, $lastSig, $word);
+                if ($end > 0) {
+                    $out .= str_repeat(' ', $end - $i);
+                    $i = $end; $lastSig = '/'; $word = ''; $inWord = false;
+                    continue;
+                }
+            }
+            if (ctype_alnum($c) || $c === '_' || $c === '$') {
+                if (!$inWord) { $word = ''; $inWord = true; }
+                $word .= $c; $lastSig = $c;
+            } elseif (ctype_space($c)) {
+                $inWord = false;
+            } else {
+                $inWord = false; $word = ''; $lastSig = $c;
+            }
             $out .= $c; $i++; continue;   // backticks survive: that IS the finding
         }
         if ($state === '"' || $state === "'") {
             if ($c === '\\') { $out .= '  '; $i += 2; continue; }
-            if ($c === $state) { $state = ''; }
+            if ($c === $state) { $state = ''; $lastSig = $c; $word = ''; $inWord = false; }
             $out .= ($c === "\n") ? "\n" : ' ';
             $i++; continue;
         }

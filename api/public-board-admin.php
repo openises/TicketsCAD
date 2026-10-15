@@ -8,8 +8,11 @@
  * settings with no server-side check):
  *
  *   action.manage_public_board      — install-wide. Super Admin only.
- *       Covers: the six board-wide settings, the shared in_types publish
- *       rules, and editing ANY org's public_board_enabled/slug row.
+ *       Covers: the six board-wide settings, the board's own map tiles
+ *       (public_board_tile_url / public_board_tile_attribution — validated
+ *       by pb_validate_board_tile_settings(), published to every anonymous
+ *       visitor), the shared in_types publish rules, and editing ANY org's
+ *       public_board_enabled/slug row.
  *   action.manage_public_board_org  — org-scoped self-service. Super Admin
  *       + Org Admin. Covers ONLY organizations.public_board_enabled/slug
  *       for the CALLER'S OWN org — the org id is forced server-side, never
@@ -116,6 +119,7 @@ if ($method === 'GET' && $action === 'settings') {
         'public_board_enabled', 'public_board_address_precision',
         'public_board_excluded_groups', 'public_board_default_delay_secs',
         'public_board_rate_limit_requests', 'public_board_rate_limit_window_secs',
+        'public_board_tile_url', 'public_board_tile_attribution',
     ];
     try {
         $rows = db_fetch_all(
@@ -125,7 +129,14 @@ if ($method === 'GET' && $action === 'settings') {
         $cfg = [];
         foreach ($keys as $k) $cfg[$k] = null;
         foreach ($rows as $r) $cfg[$r['name']] = $r['value'];
-        json_response(['settings' => $cfg]);
+        // The same soft warnings save_settings returns, recomputed for what is
+        // stored now, so the admin page shows them on load and not only right
+        // after a save.
+        $tileCheck = pb_validate_board_tile_settings(
+            (string) ($cfg['public_board_tile_url'] ?? ''),
+            (string) ($cfg['public_board_tile_attribution'] ?? '')
+        );
+        json_response(['settings' => $cfg, 'warnings' => $tileCheck['ok'] ? $tileCheck['warnings'] : []]);
     } catch (Throwable $e) {
         json_error_safe('Failed to load settings.', $e, 'public_board.get_settings');
     }
@@ -231,6 +242,32 @@ if ($method === 'POST' && $action === 'save_settings') {
 
     $newEnabled = !empty($input['public_board_enabled']) ? '1' : '0';
 
+    // Map tiles for the public board (public_board_tile_url / _attribution).
+    // Only written when the request carries them, so a client that predates
+    // these fields cannot blank an administrator's choice by saving another
+    // panel. Validated BEFORE anything is written: a refused address leaves
+    // every setting as it was. Soft warnings (a key-looking query parameter,
+    // a private host, no credit) do not block the save; they are returned.
+    $tileWrites   = [];
+    $tileWarnings = [];
+    if (array_key_exists('public_board_tile_url', $input) || array_key_exists('public_board_tile_attribution', $input)) {
+        $tileUrlIn = array_key_exists('public_board_tile_url', $input)
+            ? (string) $input['public_board_tile_url']
+            : (string) (get_variable('public_board_tile_url') ?: '');
+        $tileAttrIn = array_key_exists('public_board_tile_attribution', $input)
+            ? (string) $input['public_board_tile_attribution']
+            : (string) (get_variable('public_board_tile_attribution') ?: '');
+        $tileCheck = pb_validate_board_tile_settings($tileUrlIn, $tileAttrIn);
+        if (!$tileCheck['ok']) {
+            json_error((string) $tileCheck['error']);
+        }
+        $tileWrites = [
+            'public_board_tile_url'         => $tileCheck['url'],
+            'public_board_tile_attribution' => $tileCheck['attribution'],
+        ];
+        $tileWarnings = $tileCheck['warnings'];
+    }
+
     try {
         // ── Server-side re-check of the pre-enable sensitive-type warning
         // (security/value-mission review finding #1, plan.md §9 panel 1):
@@ -263,7 +300,7 @@ if ($method === 'POST' && $action === 'save_settings') {
             'public_board_default_delay_secs'     => (string) $delay,
             'public_board_rate_limit_requests'    => (string) $rlRequests,
             'public_board_rate_limit_window_secs' => (string) $rlWindow,
-        ];
+        ] + $tileWrites;
         foreach ($writes as $k => $v) {
             db_query(
                 "INSERT INTO " . db_table('settings') . " (`name`, `value`) VALUES (?, ?)
@@ -274,7 +311,7 @@ if ($method === 'POST' && $action === 'save_settings') {
         audit_log('config', 'update', 'public_board_settings', 0,
             'Updated public-board settings (enabled=' . $newEnabled . ', precision=' . $precision . ')',
             $writes);
-        json_response(['saved' => true]);
+        json_response(['saved' => true, 'warnings' => $tileWarnings]);
     } catch (Throwable $e) {
         json_error_safe('Save failed. Check server logs.', $e, 'public_board.save_settings');
     }

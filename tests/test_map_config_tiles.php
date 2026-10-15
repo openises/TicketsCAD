@@ -139,10 +139,15 @@ if (strpos($code, "require_once __DIR__ . '/../inc/tile-config.php'") !== false)
 } else {
     bad('map-config.php includes helper');
 }
-if (strpos($code, 'resolve_tile_config(') !== false) {
-    ok('map-config.php calls resolve_tile_config()');
+// Since 2026-10-15 the settings are read once, in tile_config_payload()
+// (inc/tile-config.php), which calls resolve_tile_config(); inc/navbar.php
+// uses the same function, so the page bootstrap and this endpoint agree.
+$helperSrc = (string) file_get_contents(__DIR__ . '/../inc/tile-config.php');
+if (strpos($code, 'tile_config_payload()') !== false
+    && preg_match('/function tile_config_payload\(\): array\s*\{.*?resolve_tile_config\(/s', $helperSrc)) {
+    ok('map-config.php gets its payload from tile_config_payload() -> resolve_tile_config()');
 } else {
-    bad('map-config.php calls resolve_tile_config()');
+    bad('map-config.php gets its payload from tile_config_payload() -> resolve_tile_config()');
 }
 if (preg_match('/json_response\s*\(\s*array_merge\(/', $code)) {
     ok('map-config.php merges the tile payload into its JSON response');

@@ -46,23 +46,16 @@ if ($title === '' || $title === null) $title = get_variable('map_area_title');
 // Resolution + URL sanitization live in inc/tile-config.php so they can be
 // unit-tested without the auth/session machinery this endpoint requires.
 //
-// Defensive: each get_variable() returns false when the row is missing
-// (different installs have different schema/settings ages) — coerce to ''.
-require_once __DIR__ . '/../inc/tile-config.php';
-
-$tile_provider   = (string) (get_variable('tile_provider')   ?: '');
-$tile_server_url = (string) (get_variable('tile_server_url') ?: '');
-$tile_api_key    = (string) (get_variable('tile_api_key')    ?: '');
-$tile_mode       = (string) (get_variable('tile_mode')       ?: '');
-$tile_attribution = (string) (get_variable('tile_attribution') ?: '');
-$tile_cache_raw  = get_variable('tile_cache_days');
-$tile_cache_days = ($tile_cache_raw !== false && $tile_cache_raw !== '' && $tile_cache_raw !== null)
-                        ? (int) $tile_cache_raw : null;
-
+// tile_config_payload() reads the settings (a missing row reads as '') and
+// adds tile_default_basemap; inc/navbar.php writes the same payload into every
+// signed-in page as window.TILE_CONFIG, so the two cannot disagree.
+//
 // tile_api_key is a tile-scoped key (Bing/Mapbox tile keys are designed to
 // be embedded in client tile URLs) — flagged in the security review, not a
 // master credential.
-$tile = resolve_tile_config($tile_provider, $tile_server_url, $tile_api_key, $tile_mode, $tile_cache_days, $tile_attribution);
+require_once __DIR__ . '/../inc/tile-config.php';
+
+$tile = tile_config_payload();
 
 json_response(array_merge([
     'def_lat'         => (float) ($lat !== '' && $lat !== null ? $lat : 39.8283),

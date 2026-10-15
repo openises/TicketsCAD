@@ -1645,6 +1645,21 @@ if (function_exists('get_variable')) {
     }
 }
 
+// 2026-10-15 — the configured tile provider, SYNCHRONOUSLY, for the same
+// reason as TILE_PROXY: a map that must start on the admin's own tile server
+// (an offline install) cannot wait for api/map-config.php; until it arrived
+// every map had already drawn OpenStreetMap. Signed-in pages only; see
+// tile_config_client_bootstrap() for what is and is not written.
+$_tile_config_js = null;
+if (!empty($_SESSION['user_id'])) {
+    try {
+        require_once __DIR__ . '/tile-config.php';
+        $_tile_config_js = tile_config_client_bootstrap(tile_config_payload());
+    } catch (Throwable $e) {
+        error_log('[tile-config] navbar bootstrap failed: ' . $e->getMessage());
+    }
+}
+
 $_geocoding_js = ['mode' => 'server', 'requested' => 'server', 'reason' => '',
                   'provider' => 'nominatim', 'label' => '', 'endpoint' => 'api/geocode.php',
                   'direct_base' => '', 'unsupported' => []];
@@ -1659,6 +1674,7 @@ try {
 window.GEOCODING           = <?php echo json_encode($_geocoding_js); ?>;
 window.MAP_STATUS_BANNER   = <?php echo json_encode((bool) $_map_status_banner); ?>;
 window.TILE_PROXY          = <?php echo json_encode($_tile_proxy_js); ?>;
+window.TILE_CONFIG         = <?php echo json_encode($_tile_config_js, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 window.MAP_LAYER_PREFS     = <?php echo json_encode($_map_layer_prefs_js); ?>;
 window.STALE_LOCATION_MIN  = <?php echo (int) $_stale_loc_min; ?>;
 window.LIST_PAGE_SIZE      = <?php echo (int) $_list_page_size; ?>;

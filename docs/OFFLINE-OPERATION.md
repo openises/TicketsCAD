@@ -343,7 +343,7 @@ That gives you a genuinely useful, zero-software offline measure:
 > background when the connection dies.
 
 Raise the limits first, or the cache will evict your work
-(**Settings → Map Settings**):
+(**Settings → Tile Providers**):
 
 | Setting | Default | Suggested for offline resilience |
 |---|---|---|
@@ -428,7 +428,7 @@ This matters, and it is easy to get wrong.
 - **OpenStreetMap data** — free to use under the ODbL licence, but you **must**
   keep the "© OpenStreetMap contributors" credit visible on the map. TicketsCAD's
   built-in OpenStreetMap layers show it already. With your own tile server (the
-  "custom" provider), type it into **Map credit** in Settings → Map Settings: until
+  "custom" provider), type it into **Map credit** in Settings → Tile Providers: until
   you do, the map shows only "Configured provider".
 - **Do not bulk-download from `tile.openstreetmap.org`.** The OpenStreetMap
   Foundation's tile usage policy explicitly prohibits it. Those servers are
@@ -446,12 +446,17 @@ This matters, and it is easy to get wrong.
    ```
    mbtileserver --dir /var/lib/tiles --port 8000
    ```
-6. In TicketsCAD: **Settings → Map Settings**
+6. In TicketsCAD: **Settings → Tile Providers**
    - Tile provider: **Custom**
    - Tile server URL:
      `http://YOUR-SERVER:8000/services/yourarea/tiles/{z}/{x}/{y}.png`
    - Map credit: `© OpenStreetMap contributors` (for tiles made from OpenStreetMap
      data; the licence requires it)
+   - Default basemap for everyone: **The provider configured above**. Without
+     this, every map still starts on OpenStreetMap, which needs the internet, and
+     each user would have to switch layers by hand. A user who has chosen a
+     basemap themselves (Display Preferences, or a map's layer switcher) keeps it;
+     setting their Display Preferences back to "Install default" undoes that.
 7. Reload a map page and confirm the basemap draws. Then **unplug the internet
    and confirm it still draws** — that is the only test that counts.
 

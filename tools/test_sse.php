@@ -157,7 +157,12 @@ try {
 
 // Test 9: EventBus.js syntax check (ES5 compliance)
 echo "[Test 9] event-bus.js ES5 compliance... ";
-$js = file_get_contents(__DIR__ . '/../assets/js/event-bus.js');
+// Check the CODE, not the comments: event-bus.js explains itself in prose
+// that contains backticks and the phrase "cross-class", which a raw-text scan
+// reported as a template literal and a class keyword. ui_js_code_only()
+// (tools/ui_extract.php) blanks comments, strings and regex literals.
+require_once __DIR__ . '/ui_extract.php';
+$js = ui_js_code_only((string) file_get_contents(__DIR__ . '/../assets/js/event-bus.js'));
 $es6Patterns = [
     '/\blet\s/' => 'let keyword',
     '/\bconst\s/' => 'const keyword',

@@ -21,6 +21,7 @@
 $root = dirname(__DIR__);
 
 $pages = [
+    'aprs-map.php', 'mesh-console.php',
     'facilities.php', 'facility-detail.php', 'facility-edit.php',
     'incident-detail.php', 'index.php', 'map-overlays.php', 'net-control.php',
     'new-incident.php', 'settings.php', 'situation.php', 'unit-detail.php',

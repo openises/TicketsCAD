@@ -5,6 +5,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [4.2.28] — 2026-10-15
+
 **Administrators, after updating:** run `php sql/run_migrations.php`, then create the one-minute
 `ticketscad-scheduled-incidents` timer described under "Scheduled-incident activation" in
 `docs/MAINTENANCE-RUNBOOK.md` (Windows installs get it from `tools\run-scheduled-jobs.bat`). Nothing
