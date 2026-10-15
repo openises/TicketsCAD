@@ -28,25 +28,63 @@
     // based on that provider's terms, and only the permitted ones are listed
     // in window.TILE_PROXY.allowed.
     //
-    // Note which ones that leaves direct: Dark and Light (CARTO) and Satellite
-    // (Esri) are NOT proxyable under their terms, so those basemaps still
-    // disclose the viewport to their provider even with proxy mode on. That is
-    // deliberate and visible rather than quietly violating someone's terms —
-    // an install that wants tiles never to leave its network should pick
-    // Street (OSM) or Terrain, or configure a USGS / self-hosted provider.
+    // Note which ones that leaves direct: Dark and Light when they come from
+    // CARTO, and Satellite (Esri), are NOT proxyable under their terms, so
+    // those basemaps still disclose the viewport to their provider even with
+    // proxy mode on. That is deliberate and visible rather than quietly
+    // violating someone's terms — an install that wants tiles never to leave
+    // its network should pick Street (OSM) or Terrain, or configure a USGS /
+    // self-hosted provider.
+    //
+    // Dark and Light (2026-10-15). CARTO's Dark Matter and Positron need a key
+    // since September 2026: without one, CARTO answers every tile with an "API
+    // KEY REQUIRED" watermark, which is what every dark-mode user's maps showed.
+    // Until applyCartoKey() hears of a key (Settings -> Tile Providers -> "CARTO
+    // key", see inc/tile-config.php tile_carto_key_resolve()), both are drawn
+    // from OpenStreetMap through a colour filter instead: no key, no watermark,
+    // and proxyable like Street.
+    var OSM_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    var OSM_CREDIT = '&copy; OpenStreetMap contributors';
+    var CARTO_LAYERS = {
+        dark:  { label: 'Dark',  provider: 'cartodb_dark',     style: 'dark_all',
+                 filter: 'invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%)' },
+        light: { label: 'Light', provider: 'cartodb_positron', style: 'light_all',
+                 filter: 'grayscale(100%) brightness(105%) contrast(90%)' }
+    };
+    var _cartoKey = '';
+
+    /**
+     * The TILE_DEFS entry for Dark or Light: CARTO when there is a key,
+     * otherwise OpenStreetMap with the layer's colour filter.
+     */
+    function cartoLayerDef(which, key) {
+        var spec = CARTO_LAYERS[which];
+        if (key) {
+            return {
+                label: spec.label,
+                provider: spec.provider,
+                url: 'https://basemaps.cartocdn.com/rastertiles/' + spec.style +
+                     '/{z}/{x}/{y}.png?key=' + encodeURIComponent(key),
+                opts: { attribution: OSM_CREDIT + ' &copy; CARTO', maxZoom: 19 }
+            };
+        }
+        return {
+            label: spec.label,
+            provider: 'osm',
+            url: OSM_URL,
+            opts: { attribution: OSM_CREDIT, maxZoom: 19 },
+            filter: spec.filter
+        };
+    }
+
     var TILE_DEFS = {
         street: {
             label: 'Street',
             provider: 'osm',
-            url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-            opts: { attribution: '&copy; OpenStreetMap contributors', maxZoom: 19 }
+            url: OSM_URL,
+            opts: { attribution: OSM_CREDIT, maxZoom: 19 }
         },
-        dark: {
-            label: 'Dark',
-            provider: 'cartodb_dark',
-            url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-            opts: { attribution: '&copy; OpenStreetMap contributors &copy; CARTO', maxZoom: 19 }
-        },
+        dark: cartoLayerDef('dark', ''),
         terrain: {
             label: 'Terrain',
             provider: 'opentopomap',
@@ -66,13 +104,19 @@
             url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
             opts: { attribution: 'Tiles &copy; Esri', maxZoom: 19 }
         },
-        light: {
-            label: 'Light',
-            provider: 'cartodb_positron',
-            url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-            opts: { attribution: '&copy; OpenStreetMap contributors &copy; CARTO', maxZoom: 19 }
-        }
+        light: cartoLayerDef('light', '')
     };
+
+    /**
+     * Point Dark and Light at CARTO with this key, or back at the
+     * OpenStreetMap fallback when the key is empty. Replacing the entries
+     * keeps their place in TILE_DEFS, so the layer switcher order is unchanged.
+     */
+    function applyCartoKey(key) {
+        _cartoKey = (typeof key === 'string') ? key : '';
+        TILE_DEFS.dark = cartoLayerDef('dark', _cartoKey);
+        TILE_DEFS.light = cartoLayerDef('light', _cartoKey);
+    }
 
     // ── The tile_mode decision, in ONE place ─────────────────────────────
     //
@@ -135,7 +179,17 @@
             opts = copyOpts(def.opts);
             delete opts.subdomains;
         }
-        return buildLayer(url, opts);
+        var layer = buildLayer(url, opts);
+        if (def.filter && typeof layer.on === 'function') {
+            // The keyless Dark/Light: OpenStreetMap recoloured. Leaflet builds a
+            // fresh container each time the layer is added, so set it on 'add'.
+            var filter = def.filter;
+            layer.on('add', function () {
+                var box = (typeof this.getContainer === 'function') ? this.getContainer() : null;
+                if (box) { box.style.filter = filter; }
+            });
+        }
+        return layer;
     }
 
     function readPrefs() {
@@ -222,6 +276,7 @@
      * stored template + key become a ready-to-use URL.
      */
     function mergeCustomProvider(cfg) {
+        if (cfg && typeof cfg.carto_api_key === 'string') { applyCartoKey(cfg.carto_api_key); }
         if (cfg && cfg.tile_default_basemap === 'configured') { _installDefault = 'configured'; }
         if (!cfg || !cfg.has_custom_tile || !cfg.tile_url) return;
         var url = applyApiKey(cfg.tile_url, cfg.tile_api_key || '');
@@ -609,6 +664,16 @@
         getCustomLabel: function () {
             applyInjectedConfig();
             return TILE_DEFS.custom ? TILE_DEFS.custom.label : '';
+        },
+
+        /**
+         * Whether Dark and Light come from CARTO (a CARTO key is configured)
+         * rather than the recoloured OpenStreetMap fallback.
+         * @returns {boolean}
+         */
+        hasCartoKey: function () {
+            applyInjectedConfig();
+            return _cartoKey !== '';
         },
 
         /**

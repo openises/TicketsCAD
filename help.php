@@ -440,9 +440,9 @@ providers&#39; terms do not permit a third party to cache and re-serve their
 tiles, and TicketsCAD will not breach them on your behalf &mdash; those
 providers always go direct. <em>OpenStreetMap, OSM Humanitarian, OpenTopoMap,
 USGS and your own tile server can be proxied. CARTO, Esri, Mapbox, Google and
-Bing cannot.</em> In practice that means the <strong>Dark</strong>,
-<strong>Light</strong> and <strong>Satellite</strong> basemaps still reach out
-from the browser even in proxy mode. The live per-provider verdict is shown in
+Bing cannot.</em> In practice that means the <strong>Satellite</strong>
+basemap, and <strong>Dark</strong> and <strong>Light</strong> when a CARTO key is
+set, still reach out from the browser even in proxy mode. The live per-provider verdict is shown in
 Settings &raquo; Tile Providers.</p>
 <p class="mb-1"><strong>Two things worth setting:</strong></p>
 <ul>
@@ -505,6 +505,15 @@ geocoder. If that matters for your deployment, host geocoding internally.</p>
     with dozens of dispatchers, a CDN-backed paid plan (Mapbox,
     MapTiler, Stadia, Azure Maps) is more appropriate.
 </p>
+
+<p><strong>The Dark and Light basemaps.</strong> Every map offers Dark and
+Light, and Dark is where maps start in dark mode. They are drawn by CARTO, which
+since September 2026 needs a free key for them (carto.com/basemaps/apikey &mdash;
+no account). Enter it in Settings &raquo; Tile Providers &raquo; &ldquo;CARTO key
+for the Dark and Light maps&rdquo;. Without a key, Dark and Light are drawn from
+OpenStreetMap instead, recoloured, rather than showing CARTO&rsquo;s &ldquo;API
+key required&rdquo; tiles. When the provider configured in Tile Providers is a
+CARTO one, its key is used for Dark and Light as well.</p>
 
 <h6>Requires an API key</h6>
 <table class="table table-sm table-bordered">

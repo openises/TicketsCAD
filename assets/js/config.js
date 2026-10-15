@@ -2123,9 +2123,11 @@
             'https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}',
             { attribution: 'USGS', maxZoom: 20 }
         );
-        var dark = L.tileLayer(
-            'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-            { attribution: '&copy; CartoDB', maxZoom: 19 }
+        // CARTO with the configured CARTO key, else OpenStreetMap recoloured
+        // (map-prefs.js); CARTO's keyless address draws "API KEY REQUIRED".
+        var dark = window.MapPrefs ? window.MapPrefs.makeLayer('dark') : L.tileLayer(
+            'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+            { attribution: '&copy; OpenStreetMap', maxZoom: 19 }
         );
         // Default to OSM unless the admin previously picked something else.
         var savedBase = null;
@@ -6683,11 +6685,8 @@
                 maxZoom: 19
             }).addTo(_mapDefaultsMap);
 
-            var darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; CartoDB',
-                maxZoom: 19
-            });
-
+            // No Dark here: CARTO needs a key now (map-prefs.js handles it), and
+            // this branch only runs when map-prefs.js failed to load.
             var topoLayer = L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'USGS',
                 maxZoom: 20
@@ -6695,7 +6694,6 @@
 
             L.control.layers({
                 'Street': osmLayer,
-                'Dark': darkLayer,
                 'Satellite/Topo': topoLayer
             }, null, { collapsed: true, position: 'topright' }).addTo(_mapDefaultsMap);
         }

@@ -84,6 +84,10 @@ function build_csp_policy(): string {
             // it must stay listed for anyone who switches to direct.
             . "https://*.tile.opentopomap.org "
             . "https://*.basemaps.cartocdn.com "
+            // The keyed CARTO address (GH#150, and the built-in Dark/Light
+            // with a CARTO key) is the bare host, which the wildcard above
+            // does not match: a CSP `*.` only covers subdomains (2026-10-15).
+            . "https://basemaps.cartocdn.com "
             . "https://tile.openweathermap.org "
             // openweathermap.org (no `tile.`) serves the City Weather marker
             // icons. Only the TILE host was listed, so those icons were

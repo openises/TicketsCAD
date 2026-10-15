@@ -213,6 +213,41 @@ function tile_default_basemap_normalize(string $value): string
 }
 
 /**
+ * The CARTO key the BUILT-IN Dark and Light basemaps use (2026-10-15).
+ *
+ * CARTO began requiring a free key on basemaps.cartocdn.com in September 2026;
+ * a request without one is answered with an "API KEY REQUIRED" watermark tile
+ * instead of the map. GH#150 gave the CARTO presets of the configured provider
+ * a key, but the Dark and Light layers every map offers (assets/js/map-prefs.js)
+ * kept calling the old keyless address, and Dark is where every dark-mode user's
+ * maps start.
+ *
+ * The dedicated carto_api_key setting wins. Failing that, when the configured
+ * provider is itself a CARTO preset, its tile_api_key is the same kind of key
+ * and is used. Otherwise '' — and the built-in Dark and Light are then drawn
+ * from OpenStreetMap (map-prefs.js), never the watermark.
+ *
+ * The key cannot be kept from the browser: CARTO designs it to travel in every
+ * tile URL, and its terms do not allow the tile proxy to fetch for it. Only the
+ * characters a URL can carry unescaped are kept, so a stray paste cannot change
+ * the URL around it.
+ */
+function tile_carto_key_resolve(string $cartoKey, string $provider, string $tileApiKey): string
+{
+    $clean = static function (string $key): string {
+        return (string) preg_replace('/[^A-Za-z0-9._~-]/', '', trim($key));
+    };
+    $key = $clean($cartoKey);
+    if ($key !== '') {
+        return $key;
+    }
+    if (strpos($provider, 'cartodb_') === 0) {
+        return $clean($tileApiKey);
+    }
+    return '';
+}
+
+/**
  * The tile settings every map needs, read from the `settings` table: the
  * resolve_tile_config() payload plus `tile_default_basemap`. One function, so
  * api/map-config.php and the page bootstrap in inc/navbar.php cannot disagree.
@@ -238,6 +273,11 @@ function tile_config_payload(): array
     );
     $default = tile_default_basemap_normalize($get('tile_default_basemap'));
     $tile['tile_default_basemap'] = ($default === 'configured' && $tile['has_custom_tile']) ? 'configured' : 'user';
+    $tile['carto_api_key'] = tile_carto_key_resolve(
+        $get('carto_api_key'),
+        $get('tile_provider'),
+        $get('tile_api_key')
+    );
     return $tile;
 }
 
@@ -263,6 +303,9 @@ function tile_config_client_bootstrap(array $payload): array
         'tile_proxy_url'       => (string) ($payload['tile_proxy_url'] ?? ''),
         'tile_attribution'     => (string) ($payload['tile_attribution'] ?? ''),
         'tile_default_basemap' => (string) ($payload['tile_default_basemap'] ?? 'user'),
+        // CARTO is never proxied, so the built-in Dark and Light layers always
+        // need the key in the browser (tile_carto_key_resolve()).
+        'carto_api_key'        => (string) ($payload['carto_api_key'] ?? ''),
     ];
 }
 

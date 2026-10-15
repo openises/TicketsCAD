@@ -387,10 +387,17 @@ $mpSrc = (string) file_get_contents($base . '/assets/js/map-prefs.js');
 is_true(strpos($mpSrc, 'window.TILE_PROXY') !== false,
     'map-prefs.js reads window.TILE_PROXY (this is the wiring that never existed)');
 // Every basemap must declare which provider its tiles come from, or the
-// policy cannot be applied to it.
-$defBlock = substr($mpSrc, strpos($mpSrc, 'var TILE_DEFS'), 2600);
+// policy cannot be applied to it. Since 2026-10-15 Dark and Light are built by
+// cartoLayerDef() from CARTO_LAYERS (CARTO with a key, OpenStreetMap without),
+// so the declarations run from CARTO_LAYERS to the end of TILE_DEFS: 2 CARTO
+// ids + the 'osm' fallback + Street, Terrain and Satellite.
+$defStart = strpos($mpSrc, 'var CARTO_LAYERS');
+$defEnd   = strpos($mpSrc, 'function applyCartoKey');
+$defBlock = ($defStart !== false && $defEnd !== false) ? substr($mpSrc, $defStart, $defEnd - $defStart) : '';
 $provCount = preg_match_all('/provider:\s*\'/', $defBlock);
-is_true($provCount >= 5, 'every built-in basemap declares its provider id', (string) $provCount);
+is_true($provCount >= 6, 'every built-in basemap declares its provider id', (string) $provCount);
+is_true(strpos($defBlock, "dark: cartoLayerDef('dark'") !== false && strpos($defBlock, "cartoLayerDef('light'") !== false,
+    'Dark and Light are built by cartoLayerDef(), which declares a provider on both branches');
 // And no layer may still be built from the raw def URL, bypassing the decision.
 is_true(preg_match('/buildLayer\(\s*def\.url/', $mpSrc) !== 1,
     'no basemap is still constructed straight from def.url (bypassing the mode)');
@@ -468,9 +475,14 @@ check('street layer keeps its attribution when proxied',
 check('proxied layer drops the meaningless subdomains option',
       streetLayer.options.subdomains === undefined);
 
+// No CARTO key in this page (no window.TILE_CONFIG): Dark is OpenStreetMap
+// recoloured, so it is proxied like Street and never reaches CARTO's keyless
+// address, which now serves "API KEY REQUIRED" (2026-10-15). The keyed CARTO
+// case is covered by tests/test_carto_builtin_key.php.
 var darkLayer = MP.makeLayer('dark');
-check('dark layer stays direct (CARTO terms)', darkLayer.url.indexOf('cartocdn.com') !== -1, darkLayer.url);
-check('dark layer keeps its attribution', /CARTO/.test(darkLayer.options.attribution || ''),
+check('keyless dark layer is proxied OpenStreetMap, not CARTO', darkLayer.url.indexOf('api/tile-proxy.php') === 0 &&
+      darkLayer.url.indexOf('cartocdn.com') === -1, darkLayer.url);
+check('keyless dark layer credits OpenStreetMap', /OpenStreetMap/.test(darkLayer.options.attribution || ''),
       darkLayer.options.attribution);
 
 var terrainLayer = MP.makeLayer('terrain');

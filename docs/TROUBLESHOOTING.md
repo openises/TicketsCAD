@@ -586,9 +586,12 @@ are actually going to:
 - Requests to `https://tile.openstreetmap.org/...` (or another provider's host) —
   you are in **direct** mode for that basemap. Check the status code there.
 
-Note that both can be true at once: Street and Terrain proxy, while Dark, Light
-and Satellite always go direct because CARTO's and Esri's terms do not permit
-proxying. See [SECURITY.md § Map tiles: proxy vs direct](../SECURITY.md#map-tiles-proxy-vs-direct).
+Note that both can be true at once: Street and Terrain proxy (and so do Dark
+and Light when no CARTO key is set, because they are then OpenStreetMap), while
+Satellite, and Dark and Light with a CARTO key, always go direct because Esri's
+and CARTO's terms do not permit proxying. If Dark or Light shows "API KEY
+REQUIRED" on every tile, CARTO is rejecting the key: check Settings → Tile
+Providers → "CARTO key for the Dark and Light maps". See [SECURITY.md § Map tiles: proxy vs direct](../SECURITY.md#map-tiles-proxy-vs-direct).
 
 **Fix A:** Settings → Tile Providers. Use a different provider
 or supply the key.

@@ -625,8 +625,8 @@
         var osmLight = MP ? MP.makeLayer('street') : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OSM', maxZoom: 19
         });
-        var cartoDark = MP ? MP.makeLayer('dark') : L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; CartoDB', maxZoom: 19
+        var cartoDark = MP ? MP.makeLayer('dark') : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OSM', maxZoom: 19
         });
         var topoMap = MP ? MP.makeLayer('terrain') : L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenTopoMap', maxZoom: 17

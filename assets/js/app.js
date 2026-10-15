@@ -966,9 +966,10 @@
             // inc/navbar.php injects server-side — so the decision is made
             // BEFORE the first tile request, not after an async fetch).
             //
-            // Of the three below, OSM and USGS are proxyable; CARTO's terms do
-            // not permit it, so Dark keeps going direct to their CDN. See
-            // inc/tile-proxy.php for the per-provider verdicts.
+            // OSM and USGS are proxyable. Dark comes from MapPrefs: CARTO's Dark
+            // Matter when a CARTO key is configured (CARTO's terms keep that one
+            // direct), otherwise OpenStreetMap recoloured, which is proxyable.
+            // See inc/tile-proxy.php for the per-provider verdicts.
             var tileUrl = function (provider, direct) {
                 return (window.MapPrefs && window.MapPrefs.tileUrlFor)
                     ? window.MapPrefs.tileUrlFor(provider, direct)
@@ -985,13 +986,15 @@
                 maxZoom: 20,
             });
 
-            var darkUrl = tileUrl('cartodb_dark',
-                'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png');
-            var darkLayer = L.tileLayer(darkUrl, {
-                attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-                maxZoom: 19,
-                className: 'dark-tiles',
-            });
+            // Since September 2026 CARTO needs a key; the old keyless address
+            // drew "API KEY REQUIRED" on every tile (2026-10-15).
+            var darkLayer = window.MapPrefs ? window.MapPrefs.makeLayer('dark') : L.tileLayer(osmUrl, osmOpts);
+            if (window.MapPrefs && window.MapPrefs.hasCartoKey && window.MapPrefs.hasCartoKey()) {
+                // .dark-tiles (widgets.css) brightens CARTO's Dark Matter. Not for
+                // the recoloured fallback, which is already tuned. Read when the
+                // layer is added, so setting it here is in time.
+                darkLayer.options.className = 'dark-tiles';
+            }
             var prefDash = { street: osmLayer, dark: darkLayer, terrain: usgsTopoLayer };
             var baseLayers = {
                 'Open Streetmaps': osmLayer,

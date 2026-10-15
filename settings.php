@@ -3416,6 +3416,24 @@ foreach ($personnelSections as $sec) {
                         </div>
                     </div>
 
+                    <!-- CARTO key for the built-in Dark and Light basemaps (2026-10-15) -->
+                    <div class="mt-2" style="max-width:640px">
+                        <label for="setCartoApiKey" class="form-label form-label-sm">
+                            CARTO key for the Dark and Light maps
+                        </label>
+                        <input type="text" class="form-control form-control-sm" id="setCartoApiKey" data-key="carto_api_key"
+                               data-secret="1" maxlength="128" autocomplete="off" placeholder="Not set">
+                        <div class="form-text small">
+                            Every map offers Dark and Light basemaps drawn by CARTO, and Dark is where maps start in dark
+                            mode. Since September 2026 CARTO needs a key for them: it is free and needs no account
+                            (<a href="https://carto.com/basemaps/apikey" target="_blank" rel="noopener">carto.com/basemaps/apikey</a>).
+                            Without a key, Dark and Light are drawn from OpenStreetMap instead, recoloured. The key goes
+                            from each dispatcher&rsquo;s browser to CARTO with every map tile; that is how CARTO designs
+                            it. When this is empty and the provider configured above is a CARTO one, that provider&rsquo;s
+                            key is used.
+                        </div>
+                    </div>
+
                     <!-- Provider-specific info panel -->
                     <div class="mt-2 small" id="tileProviderInfo"></div>
 

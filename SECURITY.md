@@ -274,15 +274,17 @@ breaching them on your behalf:
 | USGS National Map (topo, imagery) | **Yes** | US federal public domain, no access constraints |
 | OpenTopoMap | **Yes** | CC-BY-SA; the project asks for caching |
 | Your own / custom tile URL | **Yes** | Your infrastructure, your call |
-| CARTO (Light, Dark basemaps) | No — direct | Free use is scoped to CARTO grantees; no re-serving grant found |
+| CARTO (Light, Dark basemaps when a CARTO key is set) | No — direct | Free use is scoped to CARTO grantees; no re-serving grant found |
 | Esri ArcGIS Online (incl. Satellite) | No — direct | Master Agreement bars storing Data or offering it on behalf of third parties |
 | Mapbox | No — direct | Product Terms forbid distributing tiles from a cache or by proxying |
 | Google, Bing | No — direct | Terms forbid caching and non-SDK access; both are also unlicensed or retired for this use — migrate away |
 
-Practical consequence: the **Dark**, **Light** and **Satellite** basemaps come
-from CARTO and Esri, so those still contact their provider from the browser even
-with proxy mode on. **Street** (OpenStreetMap) and **Terrain** (OpenTopoMap) are
-proxied. An install that wants tiles never to reach a third party from a
+Practical consequence: the **Satellite** basemap comes from Esri, and the
+**Dark** and **Light** basemaps come from CARTO once a CARTO key is set (Settings →
+Tile Providers → "CARTO key for the Dark and Light maps"), so those contact their
+provider from the browser even with proxy mode on. Without a CARTO key, Dark and
+Light are OpenStreetMap recoloured and are proxied like **Street**; **Terrain**
+(OpenTopoMap) is proxied too. An install that wants tiles never to reach a third party from a
 dispatcher's browser should standardise on Street/Terrain, or configure USGS or
 an internal tile server. Settings → Tile Providers shows the live per-provider
 verdict and the current cache usage.

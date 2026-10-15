@@ -434,14 +434,15 @@ $active_page = 'aprs-map';
             { maxZoom: 19, attribution: '&copy; Esri', opacity: 0.85 }
         );
         var satelliteHybrid = L.layerGroup([satellite, hybrid_labels]);
-        var dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', {
-            maxZoom: 19, attribution: '&copy; OpenStreetMap, &copy; CARTO',
-            subdomains: 'abcd'
-        });
-        var light = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
-            maxZoom: 19, attribution: '&copy; OpenStreetMap, &copy; CARTO',
-            subdomains: 'abcd'
-        });
+        // Dark and Light come from MapPrefs: CARTO with the configured CARTO
+        // key, else OpenStreetMap recoloured. CARTO's old keyless address now
+        // draws "API KEY REQUIRED" on every tile (2026-10-15).
+        var dark = (window.MapPrefs && window.MapPrefs.makeLayer)
+            ? window.MapPrefs.makeLayer('dark')
+            : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' });
+        var light = (window.MapPrefs && window.MapPrefs.makeLayer)
+            ? window.MapPrefs.makeLayer('light')
+            : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' });
 
         var baseMaps = {
             'Streets (OSM)':      streets,

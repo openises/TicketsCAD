@@ -233,7 +233,7 @@ key `map_area_title` for older installs. Either works.
 |------------------|-----------------------------------|------------------|
 | Open Streetmaps  | Standard OSM street map           | No               |
 | USGS Topo        | US Geological Survey topographic  | No               |
-| Dark             | CartoDB dark theme for night use  | No               |
+| Dark             | CARTO Dark Matter with a CARTO key, else OpenStreetMap recoloured | Optional: a free CARTO key (Settings → Tile Providers) |
 
 ### Overlay layers (toggle independently)
 
