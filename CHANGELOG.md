@@ -5,6 +5,14 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Security
+
+- **`symfony/http-foundation` updated from 6.4.42 to 6.4.48** for CVE-2026-108082, a denial of service
+  through a crafted `Cache-Control` request header. TicketsCAD does not call the affected code: the
+  package arrives with the Ratchet library that the Zello proxy runs on, and inside Ratchet only the
+  session component uses it, which TicketsCAD does not load. It is updated so `composer audit` stays
+  clean. After `git pull`, run `composer install` to pick up the new version.
+
 ## [4.2.28] — 2026-10-15
 
 **Administrators, after updating:** run `php sql/run_migrations.php`, then create the one-minute
