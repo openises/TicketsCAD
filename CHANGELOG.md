@@ -13,6 +13,40 @@ turns them on.
 
 ### Added
 
+- **Default basemap for everyone** (Settings → Tile Providers). An administrator who configures their
+  own tile server can now make it the map every user starts on. Until now a configured provider was only
+  an extra choice in each map's layer switcher, so every map still started on OpenStreetMap or CARTO,
+  which need the internet: an offline install showed blank maps until each person switched layers on each
+  map. The choices are "Street (Dark in dark mode)", today's behaviour and the default, and "The provider
+  configured above". A user's own choice still wins; Display Preferences now has "Install default" to go
+  back to the administrator's choice, and can pick the configured provider too. See
+  `docs/OFFLINE-OPERATION.md` section 5.
+- **Public incident board map tiles.** The public board, which anonymous visitors see, has its own map
+  tile setting in its install-wide settings (Super Admin), OpenStreetMap unless you change it. It never
+  uses the main tile settings or the tile proxy. The settings panel explains what publishing a tile
+  address means, refuses addresses that carry a password, an API key placeholder or a non-web scheme,
+  and warns about an address that looks like it carries a key or points at a private network. Guide:
+  `docs/PUBLIC-INCIDENT-BOARD.md`.
+- **Communications Console v2.** A rebuilt console: channel strips with their own push-to-talk, monitor
+  and volume; patching and grouping channels, with a regulatory guard against joining amateur and
+  non-amateur channels; recall of recent traffic; named dispatcher positions with live presence; an
+  always-on dispatcher-to-dispatcher intercom; while one workstation transmits, nearby workstations stop
+  playing that audio so it does not echo (neighbours paired by hand or found automatically by an inaudible
+  tone); and physical push-to-talk from a USB game controller or foot switch, or the backtick key. Guides:
+  `docs/COMMS-CONSOLE-GUIDE.md`, `docs/AUDIO-MATRIX-SETUP.md`, and a low-cost DIY foot switch in
+  `hardware/foot-switch-ptt-digispark/`.
+- **Browser phone.** Phone extensions (a general number that rings everyone, or a direct number for one
+  workstation) answered in a floating Phone window, using your own SIP PBX over WebSocket; an inbound
+  caller is matched to, or added as, a Contact. Guide: `docs/PHONE-TELEPHONY-GUIDE.md`. Tested against a
+  lab Asterisk PBX.
+- **Quick incident notes** (GH#135): press `N` on the Incidents dashboard widget to add a note to the
+  selected incident; incident notes now appear in Recent Events.
+- **Primary / responsible unit** (GH#138, off by default): Settings → Incident Lifecycle → Primary /
+  Responsible Unit lets dispatchers mark one unit as responsible for an incident (a star on the incident
+  page), or fills it in automatically when exactly one unit is assigned. It survives the unit clearing,
+  fires an `incident.primary_changed` webhook and is available through the External API. Guide:
+  `docs/PRIMARY-UNIT-GUIDE.md`.
+- DMR (DVSwitch) channels can be deleted permanently (GH#140).
 - **Notification Rules** (Settings → Communications & Integrations → Notification Rules, Super Admin
   only). Choose an event (incident created or closed, severity raised, unit dispatched or cleared, and
   others), who is told (a user, a roster member, an address or phone number, an email list, a Slack or
@@ -40,9 +74,16 @@ turns them on.
 - A 3CX mode for the inbound-call bridge (`services/sip-bridge`), a bridge "connected" indicator, a setup
   dialog that writes `bridge.ini`, and a Send test call button. It needs 3CX's Call Control API (3CX AI
   Edition) and has been tested against a simulator of 3CX only.
+- For maintainers: commit and file checks that block AI attribution lines, and a Semgrep SQL-injection
+  scan of the PHP code, both run in CI.
 
 ### Changed
 
+- **Every map uses the shared map settings.** The Units, Facilities and Situation maps, the APRS map, the
+  Mesh Console map and the maps inside Settings now take their basemaps from the same code as the other
+  maps, so they follow the configured tile provider, the default above and proxy mode. Before, some of
+  them always fetched OpenStreetMap directly from the browser, even in proxy mode.
+- The Zello panel is styled and available on every page, as the Radio panel already was.
 - Scheduled incidents become Open in one atomic, timer-driven step instead of as a side effect of
   somebody loading the incident list, so a booked time now means something to the External API, the
   mobile screen and the incident page too. Closing a Major Incident now clears its units and fires the
@@ -69,7 +110,7 @@ turns them on.
   `bridge 1.1.1`.
 - **A custom tile provider showed "Configured provider" instead of the map's real credit.** Tiles made
   from OpenStreetMap data, such as SOSM downloads or your own offline tile server, must credit
-  "© OpenStreetMap contributors", and there was no way to say so. Settings → Map Settings now has a
+  "© OpenStreetMap contributors", and there was no way to say so. Settings → Tile Providers now has a
   **Map credit (attribution)** field under Tile URL Template; whatever you type there is shown on every
   map that uses that provider, and the preview shows it straight away. Plain text, up to 200 characters.
   Leave it empty to keep "Configured provider". `docs/OFFLINE-OPERATION.md` wrongly said the credit was
@@ -87,9 +128,26 @@ turns them on.
 - The About page linked a Google Group that does not exist; it now links open-source-cad.
 - SOP pages: tables wider than the screen scroll horizontally, and the stylesheet and script links are
   versioned so a cached copy cannot hide a fix.
+- Webhook event checkboxes saved the wrong event names, so only "All Events" ever delivered anything; the
+  SSRF guard's allow-list also had no settings field (GH#134).
+- The command bar cheat sheet is now generated from the real commands instead of maintained by hand
+  (GH#136).
+- The Zello proxy port setting never reached the browser (GH#137).
+- Named map overlay categories were visible only to Super Admins; other roles saw a single
+  "Uncategorised markups" toggle. Saved Markups also has its own icon now (GH#139).
+- The External API's PATCH ignored `status`, its own documented example, and had no way to set a
+  disposition (GH#146).
+- Incident-number date tokens could appear as literal text (GH#149).
+- CARTO basemaps (Dark, Light) now need a free CARTO API key, and the presets carry a `{key}` placeholder
+  for it; a manual tile address edit could also be discarded (GH#150).
+- OwnTracks monitoring modes were off by one: Quiet, Manual, Significant and Move are -1, 0, 1 and 2
+  (GH#152).
 
 ### Security
 
+- **Recent Events no longer shows other organizations' incident notes.** The feed behind the Situation
+  screen's Recent Events panel had no organization scoping or security-label redaction, so a dispatcher
+  could see another organization's notes, or notes from a security-labelled incident.
 - **SOP pages sanitise rendered markdown** (DOMPurify). Anyone allowed to edit SOP pages could previously
   run script in an administrator's browser; the page now refuses to render if the sanitiser does not load.
 - Seven endpoints that changed state without checking a CSRF token now check it, and a test fails if a
