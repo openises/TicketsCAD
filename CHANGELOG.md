@@ -5,6 +5,12 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [4.2.29] — 2026-10-15
+
+**Administrators, after updating:** run `composer install` as well as `php sql/run_migrations.php`, to
+pick up the library update under Security below. If your maps use Dark or Light, get a free CARTO key
+(see Fixed) and enter it in Settings → Tile Providers.
+
 ### Fixed
 
 - **The Dark and Light maps showed "API KEY REQUIRED" on every tile.** CARTO, which draws them,
