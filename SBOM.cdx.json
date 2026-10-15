@@ -2,10 +2,10 @@
     "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
     "bomFormat": "CycloneDX",
     "specVersion": "1.6",
-    "serialNumber": "urn:uuid:c539987e-1eb6-55b9-b4ee-3fb56f2c866f",
-    "version": 50,
+    "serialNumber": "urn:uuid:8e2ccd0f-1b9f-5270-84ee-639d4c75b52c",
+    "version": 51,
     "metadata": {
-        "timestamp": "2026-10-15T06:59:35Z",
+        "timestamp": "2026-10-15T14:25:31Z",
         "lifecycles": [
             {
                 "phase": "pre-build"
@@ -52,7 +52,7 @@
         "properties": [
             {
                 "name": "ticketscad:content-digest",
-                "value": "5af1385659995cc7275a5ffa974588706b6f848f547cbccb19af91a3203f8d2f"
+                "value": "0a9fee1a35f17fce606c1f76a98f36880a64cfc94e3d7733a21e7bc61f3c4966"
             },
             {
                 "name": "ticketscad:standard",
@@ -2240,10 +2240,10 @@
         },
         {
             "type": "library",
-            "bom-ref": "pkg:composer/symfony/http-foundation@6.4.42#php-composer",
+            "bom-ref": "pkg:composer/symfony/http-foundation@6.4.48#php-composer",
             "name": "symfony/http-foundation",
             "publisher": "symfony",
-            "version": "6.4.42",
+            "version": "6.4.48",
             "description": "Defines an object-oriented layer for the HTTP specification",
             "scope": "required",
             "licenses": [
@@ -2253,7 +2253,7 @@
                     }
                 }
             ],
-            "purl": "pkg:composer/symfony/http-foundation@6.4.42",
+            "purl": "pkg:composer/symfony/http-foundation@6.4.48",
             "externalReferences": [
                 {
                     "type": "vcs",
@@ -2263,15 +2263,15 @@
             "properties": [
                 {
                     "name": "ticketscad:identifier",
-                    "value": "pkg:composer/symfony/http-foundation@6.4.42"
+                    "value": "pkg:composer/symfony/http-foundation@6.4.48"
                 },
                 {
                     "name": "ticketscad:identifier",
-                    "value": "git-commit:23dcf8e0f59cbbfa9d2894f58fd8be6833794372"
+                    "value": "git-commit:b1721caa556f32d150d9a14bb0a3fc4b86dfda33"
                 },
                 {
                     "name": "ticketscad:note",
-                    "value": "Pinned commit: 23dcf8e0f59cbbfa9d2894f58fd8be6833794372"
+                    "value": "Pinned commit: b1721caa556f32d150d9a14bb0a3fc4b86dfda33"
                 },
                 {
                     "name": "ticketscad:unknown",
@@ -3906,7 +3906,7 @@
                 "pkg:composer/spomky-labs/base64url@2.0.4#php-composer",
                 "pkg:composer/spomky-labs/pki-framework@1.4.2#php-composer",
                 "pkg:composer/symfony/deprecation-contracts@3.7.1#php-composer",
-                "pkg:composer/symfony/http-foundation@6.4.42#php-composer",
+                "pkg:composer/symfony/http-foundation@6.4.48#php-composer",
                 "pkg:composer/symfony/polyfill-mbstring@1.38.2#php-composer",
                 "pkg:composer/symfony/polyfill-php80@1.37.0#php-composer",
                 "pkg:composer/symfony/polyfill-php82@1.38.1#php-composer",
@@ -3954,7 +3954,7 @@
                 "pkg:composer/ratchet/rfc6455@0.3.1#php-composer",
                 "pkg:composer/react/event-loop@1.6.0#php-composer",
                 "pkg:composer/react/socket@1.17.0#php-composer",
-                "pkg:composer/symfony/http-foundation@6.4.42#php-composer",
+                "pkg:composer/symfony/http-foundation@6.4.48#php-composer",
                 "pkg:composer/symfony/routing@6.4.41#php-composer"
             ]
         },
@@ -4094,7 +4094,7 @@
             "dependsOn": []
         },
         {
-            "ref": "pkg:composer/symfony/http-foundation@6.4.42#php-composer",
+            "ref": "pkg:composer/symfony/http-foundation@6.4.48#php-composer",
             "dependsOn": [
                 "pkg:composer/symfony/deprecation-contracts@3.7.1#php-composer",
                 "pkg:composer/symfony/polyfill-mbstring@1.38.2#php-composer",
