@@ -78,7 +78,21 @@ if ($port > 0) {
               'smtp_user' => '', 'smtp_pass' => '', 'email_from' => 'cad@example.invalid', 'email_from_name' => 'P155 CAD'] as $k => $v) {
         p155_set_setting($k, $v);
     }
-    $transcript = static function (): string { global $logFile; return (string) file_get_contents($logFile); };
+    // The fake server logs from its own process, so the client can finish a
+    // session before the server has written that session's last lines. Wait
+    // until every connection it opened is logged as closed before reading or
+    // clearing the transcript. Without this, on a busy CI runner the QUIT line
+    // arrived after the read (5 commands seen as 4) and then landed in the
+    // freshly cleared transcript of the next check (2026-10-15, run 38778045546).
+    $settle = static function (): void {
+        global $logFile;
+        for ($i = 0; $i < 50; $i++) {
+            $log = (string) file_get_contents($logFile);
+            if (substr_count($log, "=== connection ===\n") === substr_count($log, "=== closed ===\n")) return;
+            usleep(100000);
+        }
+    };
+    $transcript = static function () use ($settle): string { global $logFile; $settle(); return (string) file_get_contents($logFile); };
     // The commands the server saw OUTSIDE a DATA block, in order: what the sender really COMMANDED.
     $wire = static function (string $t): array {
         $cmds = []; $in = false;
@@ -90,7 +104,7 @@ if ($port > 0) {
         }
         return $cmds;
     };
-    $reset = static function (): void { global $logFile; file_put_contents($logFile, ''); };
+    $reset = static function () use ($settle): void { global $logFile; $settle(); file_put_contents($logFile, ''); };
 
     // 1. A hostile body: a lone "." then commands.
     $reset();

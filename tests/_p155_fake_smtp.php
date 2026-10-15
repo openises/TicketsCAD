@@ -63,4 +63,7 @@ while (true) {
         else say($conn, '502 5.5.2 command not recognized', $logFile);
     }
     fclose($conn);
+    // The test reads the transcript from another process; this marker tells it
+    // the session is fully logged (see $settle in test_notification_adapters.php).
+    file_put_contents($logFile, "=== closed ===\n", FILE_APPEND);
 }
