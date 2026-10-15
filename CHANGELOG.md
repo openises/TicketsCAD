@@ -5,6 +5,17 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Dark and Light maps showed "API KEY REQUIRED" on every tile.** CARTO, which draws them,
+  began requiring a free key in September 2026, and the built-in Dark and Light layers still used
+  CARTO's old keyless address. Dark is where maps start in dark mode, so most maps were affected.
+  Get a key at carto.com/basemaps/apikey (free, no account) and enter it in Settings → Tile
+  Providers → "CARTO key for the Dark and Light maps". Until a key is set, Dark and Light are drawn
+  from OpenStreetMap instead, recoloured, and go through the tile proxy like Street. The browser's
+  security policy also blocked CARTO's keyed address, which affected CARTO chosen as the configured
+  provider too (#150); it is now allowed.
+
 ### Security
 
 - **`symfony/http-foundation` updated from 6.4.42 to 6.4.48** for CVE-2026-108082, a denial of service
