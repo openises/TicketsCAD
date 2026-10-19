@@ -5,21 +5,51 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+**Administrators, after updating:** run `php sql/run_migrations.php` (Docker installs do this when the
+container starts). It converts the State / Province table to UTF-8 so accented names store correctly.
+
+### Added
+
+- Every form in FEMA's NIMS ICS Forms Booklet is now built in: ICS 201, 203, 204, 207, 208, 208 HM, 209,
+  210, 211, 215, 215A, 217A, 218, the 219 Resource Status Cards (219-1 to 219-8 and 219-10), 220, 225,
+  230-CG and 233-CG, with FEMA's block numbers, order and printed layout. The form picker is a compact
+  grouped list with a "Find a form" box. (GH#154)
+- Settings → Application — Geographic Data → **States / Provinces**: edit the list behind every State
+  dropdown; a configuration wizard with built-in lists for the United States (48 or 50 states, with
+  options for DC, the territories, the armed-forces codes and the freely associated states), Canada,
+  Mexico, Australia, New Zealand, the United Kingdom, Ireland, Germany, Brazil and India; replace or add
+  with a preview of the saved records that use any code being removed; CSV import and export; and an
+  optional rename of the field label (for example to "Province"). See `docs/STATES-AND-PROVINCES.md`.
+  (GH#153)
+
+### Changed
+
+- ICS 205 has FEMA's eleven block 4 columns (including Channel Name/Talkgroup, N or W per frequency,
+  separate RX and TX Tone/NAC, Mode and Remarks), and ICS 214 has blocks 3 to 6 (Name, ICS Position,
+  Home Agency, Resources Assigned) and a date on every log entry. ICS 213, 213 RR, 202, 205A, 206 and
+  221 were corrected to FEMA's blocks; ICS 214a is labelled as the pre-2010 individual log. Every form
+  prints FEMA's title and Prepared by block. Forms saved earlier open and print with all their data; an
+  old value that moved to a new FEMA block is shown there and stored there the next time the form is
+  saved. Details: `docs/ICS-FORMS.md`. (GH#154)
+- Saving an ICS form is now recorded in the audit log (only deleting one was before).
+- New Incident's address lookup matches a state or province whose name carries accents, and uses the
+  ISO code the geocoder returns, so Canadian and Mexican addresses fill the State field.
+
 ### Fixed
 
-- GH#154: map old ICS 214 team data by FEMA's block instructions.
-- GH#154: drop four UI-consistency baseline entries the change made stale.
-- GH#153: name the right command for adding the unique key after a conflict.
-- docs: GH#154 ICS forms guide, help topic and user guide.
-- GH#154: build the ICS 219 cards, 220, 225, 230-CG and 233-CG; compact form picker.
-- GH#153: validate every target list again inside apply/preview.
-- GH#139: keep the Draw Toolbar comment straight after #sitOverlay.
-- GH#154: build ICS 201, 203, 204, 207, 208, 208 HM, 209, 210, 211, 215, 215A, 217A, 218.
-- GH#154: ICS 213, 213 RR, 202, 205A, 206 and 221 match the FEMA forms.
-- GH#153: configurable State / Province list with a configuration wizard.
-- GH#154: ICS 205 and ICS 214 match the FEMA forms; one shared form engine.
-- GH#139: EOC markup panel - escape quotes in names, accept only hex colours.
-- GH#139: EOC display drew every map markup twice; one place to show or hide.
+- The Situation Overview (EOC) display drew every saved map markup twice, so turning a category off in
+  the layers control left a copy on the map. The layers control is now the only place markups are drawn
+  and shown or hidden, and a category turned off stays off after a reload; the panel at the bottom,
+  renamed Edit Markups, only renames, deletes or hides a markup for everyone. (GH#139)
+
+### Security
+
+- The EOC display's markup panel put markup names into HTML attributes without escaping quotes, so a
+  user allowed to edit markups could name one to run script in the browser of anyone who opened the
+  panel. Names are now escaped, colours must be hex values and ids integers.
+- Table cells on printed ICS forms were outside the content that security-label redaction blanks, so a
+  label set to hide content left table rows (radio channels, log entries, hospitals) visible.
+- The map-markups API returned raw database error text to the browser; it now logs it on the server.
 
 ## [4.2.29] — 2026-10-15
 
