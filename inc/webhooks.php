@@ -522,6 +522,49 @@ function webhook_process_retries() {
     $prefix = $GLOBALS['db_prefix'] ?? '';
     $retried = 0;
     $deadLettered = 0;
+    $expired = 0;
+
+    // The stale-work cutoff (inc/scheduled-jobs.php). Loaded lazily: that file
+    // requires inc/audit.php, which loads this one.
+    if (!function_exists('sched_stale_cutoff_min') && is_file(__DIR__ . '/scheduled-jobs.php')) {
+        require_once __DIR__ . '/scheduled-jobs.php';
+    }
+    $cutoffMin = function_exists('sched_stale_cutoff_min') ? sched_stale_cutoff_min() : 0;
+
+    // ── Stale pass ──
+    // A retry that has been due for longer than sched_stale_cutoff_min was
+    // missed because nothing was running this job. On Docker, before
+    // 2026-10-19, that was every install and every failed delivery ever: the
+    // image had no scheduler. Sending such a retry now would tell the
+    // receiving system about an incident from weeks ago as if it had just
+    // happened. It is dead-lettered instead, with the reason written into the
+    // row — the same "expired, never silently dropped" contract the PAR and
+    // message sweeps follow (inc/scheduled-jobs.php) — and an admin can still
+    // replay it (api/webhooks.php action=replay). One statement, so a large
+    // backlog clears in one tick instead of blocking fresh retries for hours.
+    if ($cutoffMin > 0) {
+        try {
+            $st = db_query(
+                "UPDATE `{$prefix}webhook_deliveries` d
+                   JOIN `{$prefix}webhook_subscriptions` s ON s.id = d.subscription_id
+                    SET d.`status` = 'dead_letter', d.`dead_lettered_at` = NOW(),
+                        d.`error` = LEFT(CONCAT('expired: retry was due ',
+                                DATE_ADD(d.`created_at`, INTERVAL POW(2, d.`attempt`) * 30 SECOND),
+                                ', more than sched_stale_cutoff_min=', ?, ' min ago; not sent ',
+                                '(replay it to send it now)',
+                                IFNULL(CONCAT('; last error: ', d.`error`), '')), 512)
+                  WHERE d.`status` = 'failed'
+                    AND d.`dead_lettered_at` IS NULL
+                    AND s.`active` = 1
+                    AND d.`attempt` < COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(s.retry_policy_json, '$.max_attempts')) AS UNSIGNED), 5)
+                    AND d.`created_at` < DATE_SUB(NOW(), INTERVAL (POW(2, d.`attempt`) * 30 + ? * 60) SECOND)",
+                [$cutoffMin, $cutoffMin]
+            );
+            $expired = $st->rowCount();
+        } catch (Exception $e) {
+            error_log('webhook_process_retries: stale pass failed: ' . $e->getMessage());
+        }
+    }
 
     // ── Retry pass ──
     try {
@@ -537,7 +580,7 @@ function webhook_process_retries() {
              LIMIT 50"
         );
     } catch (Exception $e) {
-        return ['retried' => 0, 'dead_lettered' => 0, 'error' => $e->getMessage()];
+        return ['retried' => 0, 'dead_lettered' => 0, 'expired' => $expired, 'error' => $e->getMessage()];
     }
 
     foreach ($rows as $row) {
@@ -589,13 +632,13 @@ function webhook_process_retries() {
              SET d.status = 'dead_letter', d.dead_lettered_at = NOW()
              WHERE d.status = 'failed'
                AND d.dead_lettered_at IS NULL
-               AND d.attempt >= CAST(JSON_UNQUOTE(JSON_EXTRACT(COALESCE(s.retry_policy_json, '{\"max_attempts\":5}'), '$.max_attempts')) AS UNSIGNED)"
+               AND d.attempt >= COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(s.retry_policy_json, '$.max_attempts')) AS UNSIGNED), 5)"
         );
         $deadLettered = $result instanceof PDOStatement ? $result->rowCount() : 0;
 
         // Update dead_letter_count on each affected subscription. Cheap
         // recompute on the affected set rather than threading deltas.
-        if ($deadLettered > 0) {
+        if ($deadLettered + $expired > 0) {
             db_query(
                 "UPDATE `{$prefix}webhook_subscriptions` s
                  SET dead_letter_count = (SELECT COUNT(*) FROM `{$prefix}webhook_deliveries` d
@@ -607,7 +650,7 @@ function webhook_process_retries() {
         // Dead-letter sweep failure is non-fatal — retries continue
     }
 
-    return ['retried' => $retried, 'dead_lettered' => $deadLettered];
+    return ['retried' => $retried, 'dead_lettered' => $deadLettered, 'expired' => $expired];
 }
 
 /**

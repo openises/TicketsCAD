@@ -335,6 +335,23 @@ echo "$SIG"
 
 7 attempts span 31+ hours. After that we stop retrying and the delivery row is marked `permanently_failed`. You can manually re-fire from the admin UI.
 
+> **Correction (2026-10-19) — what the code actually does.** The table above
+> describes a planned schedule, not the shipped one. Retries are made by the
+> background job `tools/webhook_retry_tick.php` (every minute; in Docker by the
+> `scheduler` service). After attempt *n* fails, the next attempt is made no
+> sooner than 2ⁿ × 30 seconds later — 1, 2, 4, then 8 minutes — up to the
+> subscription's `max_attempts` (default **5**); a delivery that uses up its
+> attempts is marked `dead_letter` and can be replayed by an administrator.
+> Every attempt of one logical delivery carries the same `X-Webhook-Delivery`
+> id.
+>
+> **Stale retries are not sent.** If a retry has been due for longer than
+> `sched_stale_cutoff_min` (default 60 minutes) — because nothing was running
+> the retry job, as on every Docker install before the scheduler service
+> existed — it is marked `dead_letter` with the reason in its `error` field
+> instead of being sent, so your endpoint is never told about an old event as
+> if it had just happened. An administrator can still replay it.
+
 ### Special status codes
 
 - **410 Gone** — TicketsCAD interprets as "you've moved this endpoint" and auto-disables the webhook (admin re-enables after fixing the URL).

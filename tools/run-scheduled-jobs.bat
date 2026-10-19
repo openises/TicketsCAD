@@ -14,37 +14,34 @@ REM    schtasks /Create /TN "TicketsCAD Background Jobs" /SC MINUTE /MO 1 ^
 REM      /RU SYSTEM /RL HIGHEST /F ^
 REM      /TR "C:\inetpub\wwwroot\TicketsCAD\tools\run-scheduled-jobs.bat"
 REM
-REM  One minute is Windows' minimum repeat interval. par_tick,
-REM  pending_messages_tick and channel_receive_tick are all genuinely 60s
-REM  jobs; audit_log_purge_tick and message_log_purge_tick are documented as
-REM  "run once a day" -- that describes the RETENTION cadence, not how often
-REM  this script may safely call them. Both are idempotent cutoff-date
-REM  queries (SELECT eligible rows / DELETE WHERE created_at < cutoff):
-REM  calling them every minute costs one cheap query on the minutes nothing
-REM  is due and is otherwise correct. One task drives all nine ticks: fewer
-REM  moving parts than nine separate tasks, and they are always in step.
-REM  (channel_receive_tick, added Phase 134, is a no-op sweep -- 0 channels
-REM  polled -- on any install that hasn't opted a channel in to inbound
-REM  polling, so scheduling it unconditionally alongside the others is safe
-REM  and harmless. org_relationship_activation_cleanup, added Phase 143, is
-REM  the same shape: a no-op sweep -- 0 expired-but-open activations -- on
-REM  any install that has never used a standing cross-org relationship.
-REM  inbound_calls_tick, added Phase 149, is the same shape again: a no-op
-REM  sweep -- 0 wrapup folds, 0 stale claims -- on any install with zero
-REM  configured inbound-call trunks. scheduled_incidents_tick, added Phase 155,
-REM  is the same shape once more: with no Scheduled incident due and no unit
-REM  reservation waiting it activates nothing and promotes nothing -- and it
-REM  is the job that makes a booked time arrive when nobody has a dispatch
-REM  board open.)
+REM  WHAT IT RUNS (since 2026-10-19): this file no longer lists the jobs one
+REM  by one. It hands the work to tools\run-scheduled-jobs.php --once, the same
+REM  runner the Docker "scheduler" service uses, which knows EVERY job and its
+REM  interval -- every job in sched_job_registry() (inc/scheduled-jobs.php)
+REM  plus the runner-only ones in inc/scheduled-job-runner.php (automatic
+REM  backups, expired-grant cleanup, weather polling, the patch-rail
+REM  regulatory audit). Listing them here is how the audit-log and
+REM  message-log purges went missing from this file for months (2026-08-14)
+REM  and how webhook retries never ran on Windows at all; there is now one
+REM  list, and tests/test_scheduled_jobs_windows.php asserts the runner covers
+REM  every registered job.
 REM
-REM  audit_log_purge_tick and message_log_purge_tick were missing from this
-REM  file entirely until 2026-08-14 -- each got a systemd timer the day it
-REM  shipped (Phase 133, GH#42), but this file never got the matching line.
-REM  Exactly the "shipped the job, forgot the Windows wiring" gap this whole
-REM  runner exists to prevent. tests/test_scheduled_jobs_windows.php now
-REM  asserts the runner invokes EVERY job sched_job_registry() knows about,
-REM  driven from the registry itself rather than a hardcoded job list, so
-REM  this can't silently happen a third time.
+REM  Called every minute, the runner runs each job only when it is due: the
+REM  one-minute jobs every time, the daily purges once a day (it remembers
+REM  each job's last start in cache\job-state), backups when a backup is due.
+REM  Each job runs as its own process, so one failing or hanging job cannot
+REM  stop the others, and a hung one is killed after its timeout. One minute
+REM  is Windows' minimum repeat interval, so the 15-second inbound-call sweep
+REM  runs once a minute here.
+REM
+REM  One consequence worth knowing: the runner waits for the jobs it started,
+REM  so on the run that takes a backup this task stays busy until the backup
+REM  is written, and Task Scheduler skips the minutes in between ("do not
+REM  start a new instance"). Those jobs simply run on the next minute.
+REM
+REM  Each job's output is appended to cache\job-logs\<script>.log (the same
+REM  file names as before); failures are also written to
+REM  cache\job-logs\run-scheduled-jobs.log.
 REM
 REM  Verify it is FIRING, not merely registered -- those look identical from
 REM  the Task Scheduler UI. Watch the run counter climb on
@@ -54,8 +51,9 @@ REM    schtasks /Query /TN "TicketsCAD Background Jobs" /V /FO LIST
 REM
 REM  PHP: uses php.exe from PATH. Override by setting TICKETSCAD_PHP to a full
 REM  path before calling, e.g. in the task's environment or by editing the
-REM  SET line below. It must be php.exe (the CLI binary) -- both scripts
-REM  refuse to run under a non-CLI SAPI, so php-cgi.exe will not work.
+REM  SET line below. It must be php.exe (the CLI binary) -- the runner and
+REM  every job refuse to run under a non-CLI SAPI, so php-cgi.exe will not
+REM  work.
 REM ---------------------------------------------------------------------------
 
 setlocal
@@ -79,34 +77,9 @@ if errorlevel 1 (
 
 set "RC=0"
 
-"%TICKETSCAD_PHP%" tools\par_tick.php >> "%LOGDIR%\par_tick.log" 2>&1
+"%TICKETSCAD_PHP%" tools\run-scheduled-jobs.php --once "--log-dir=%LOGDIR%" >> "%LOGDIR%\run-scheduled-jobs.log" 2>&1
 if errorlevel 1 set "RC=1"
 
-"%TICKETSCAD_PHP%" tools\pending_messages_tick.php >> "%LOGDIR%\pending_messages_tick.log" 2>&1
-if errorlevel 1 set "RC=1"
-
-"%TICKETSCAD_PHP%" tools\channel_receive_tick.php >> "%LOGDIR%\channel_receive_tick.log" 2>&1
-if errorlevel 1 set "RC=1"
-
-"%TICKETSCAD_PHP%" tools\audit_log_purge_tick.php >> "%LOGDIR%\audit_log_purge_tick.log" 2>&1
-if errorlevel 1 set "RC=1"
-
-"%TICKETSCAD_PHP%" tools\message_log_purge_tick.php >> "%LOGDIR%\message_log_purge_tick.log" 2>&1
-if errorlevel 1 set "RC=1"
-
-"%TICKETSCAD_PHP%" tools\org_relationship_cleanup_tick.php >> "%LOGDIR%\org_relationship_cleanup_tick.log" 2>&1
-if errorlevel 1 set "RC=1"
-
-"%TICKETSCAD_PHP%" tools\inbound_calls_tick.php >> "%LOGDIR%\inbound_calls_tick.log" 2>&1
-if errorlevel 1 set "RC=1"
-
-"%TICKETSCAD_PHP%" tools\matrix_expiry_warning_tick.php >> "%LOGDIR%\matrix_expiry_warning_tick.log" 2>&1
-if errorlevel 1 set "RC=1"
-
-"%TICKETSCAD_PHP%" tools\scheduled_incidents_tick.php >> "%LOGDIR%\scheduled_incidents_tick.log" 2>&1
-if errorlevel 1 set "RC=1"
-
-REM All nine jobs always run: a failure in one must not stop the others. The
-REM exit code reports whether any of them failed, so Task Scheduler's
-REM "Last Run Result" is meaningful.
+REM The runner's exit code reports whether any job failed, so Task
+REM Scheduler's "Last Run Result" is meaningful.
 exit /b %RC%

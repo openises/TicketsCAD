@@ -159,7 +159,7 @@ You can query the log directly (`SELECT * FROM newui_audit_log WHERE category = 
 
 API: `POST /api/rbac.php` with `{action: 'expire_due_grants'}`.
 
-There is no scheduled cron in NewUI today; an admin can wire `php tools/expire_grants.php` (TODO) into a system cron, or simply call the API endpoint periodically. Expired grants are excluded from `rbac_can()` whether or not they've been swept — the sweep is bookkeeping, not a security boundary.
+`tools/expire_grants.php` runs hourly wherever `tools/run-scheduled-jobs.php` drives the background jobs — the Docker `scheduler` service and the Windows Task Scheduler entry both do; on a host using per-job systemd timers, wire it into its own timer or call the API endpoint periodically. Expired grants are excluded from `rbac_can()` whether or not they've been swept — the sweep is bookkeeping, not a security boundary.
 
 ### Toggling the security settings
 

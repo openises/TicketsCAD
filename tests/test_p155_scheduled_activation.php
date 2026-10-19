@@ -159,8 +159,15 @@ t('scheduled_incidents_tick is a registered job', isset($reg['scheduled_incident
 t('it runs every 60 seconds', ($reg['scheduled_incidents_tick']['interval_s'] ?? 0) === 60);
 t('its command names the real tick script',
     strpos((string) ($reg['scheduled_incidents_tick']['command'] ?? ''), 'scheduled_incidents_tick.php') !== false);
+// Since 2026-10-19 the Windows .bat (and the Docker scheduler) hand the work to
+// tools/run-scheduled-jobs.php, whose job table is built from the registry.
+require_once __DIR__ . '/../inc/scheduled-job-runner.php';
 $bat = (string) file_get_contents(__DIR__ . '/../tools/run-scheduled-jobs.bat');
-t('the Windows runner invokes it too', strpos($bat, 'scheduled_incidents_tick.php') !== false);
+$runnerJobs = sched_runner_jobs();
+t('the Windows runner invokes it too',
+    stripos($bat, 'run-scheduled-jobs.php') !== false
+    && ($runnerJobs['scheduled_incidents_tick']['script'] ?? '') === 'tools/scheduled_incidents_tick.php'
+    && !empty($runnerJobs['scheduled_incidents_tick']['exists']));
 
 // The "shipped default is not usage" rule, asserted differentially so it holds
 // whatever other fixtures happen to exist: a far-future booking must not change

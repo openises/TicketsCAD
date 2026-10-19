@@ -77,9 +77,13 @@ $isWin = sched_is_windows();
 foreach ($reg as $key => $def) {
     sw_ok("{$key} declares a unit", !empty($def['unit']));
     sw_ok("{$key} declares what that unit IS", !empty($def['unit_kind']));
+    // 2026-10-19: a third runtime, Docker, names the `scheduler` compose
+    // service. sched_unit_kind() decides; it is asserted against the
+    // platform here and its Docker branch in tests/test_docker_scheduler_service.php.
+    $expectKind = $isWin ? 'schtasks' : (sched_is_docker() ? 'docker' : 'systemd');
     sw_ok("{$key} unit_kind matches the platform",
-        $def['unit_kind'] === ($isWin ? 'schtasks' : 'systemd'),
-        "unit_kind={$def['unit_kind']} isWin=" . var_export($isWin, true));
+        $def['unit_kind'] === $expectKind,
+        "unit_kind={$def['unit_kind']} expected={$expectKind}");
 
     if ($isWin) {
         // The whole point: a Windows admin must never be handed a systemd
@@ -88,6 +92,10 @@ foreach ($reg as $key => $def) {
             strpos($def['unit'], '.timer') === false, "unit={$def['unit']}");
         sw_ok("{$key} command uses Windows path separators",
             strpos($def['command'], 'tools\\') !== false, "command={$def['command']}");
+    } elseif ($expectKind === 'docker') {
+        sw_ok("{$key} names the scheduler service in Docker", $def['unit'] === 'scheduler', "unit={$def['unit']}");
+        sw_ok("{$key} command uses POSIX path separators",
+            strpos($def['command'], 'tools/') !== false, "command={$def['command']}");
     } else {
         sw_ok("{$key} names a systemd timer on Linux",
             substr($def['unit'], -6) === '.timer', "unit={$def['unit']}");
@@ -145,12 +153,21 @@ sw_ok('tools/run-scheduled-jobs.bat ships', is_file($jobsBat));
 $jobs = is_file($jobsBat) ? (string) file_get_contents($jobsBat) : '';
 
 // Derive the expected job list from the REGISTRY, not a hardcoded pair --
-// this is the whole point of the 2026-08-14 addendum above. Every job's
-// command names a script under tools/ (or tools\ on Windows) — the runner
-// (a static file, always Windows-syntax on disk regardless of the host this
-// TEST happens to run on) must invoke that exact script. sched_job_registry()
-// reflects THIS host's platform, so on a Linux CI runner the separator is
-// '/', not '\\' — match either.
+// this is the whole point of the 2026-08-14 addendum above.
+//
+// 2026-10-19: the .bat no longer names the jobs one by one — that list is how
+// two purges went missing from it, and how webhook retries never ran on
+// Windows at all. It hands the work to tools\run-scheduled-jobs.php --once,
+// the same runner the Docker `scheduler` service uses, whose job table is
+// built FROM the registry. So assert both halves: the .bat calls the runner,
+// and the runner runs every registered job's script.
+require_once __DIR__ . '/../inc/scheduled-job-runner.php';
+sw_ok('job runner hands the work to tools\\run-scheduled-jobs.php',
+    stripos($jobs, 'tools\\run-scheduled-jobs.php') !== false);
+sw_ok('...in --once mode (Task Scheduler calls it every minute)',
+    preg_match('~run-scheduled-jobs\.php\s+--once~i', $jobs) === 1);
+sw_ok('...keeping the per-job log files in cache\\job-logs', strpos($jobs, '--log-dir=') !== false);
+$runnerJobs = sched_runner_jobs();
 foreach ($reg as $key => $def) {
     if (!preg_match('~tools[\\\\/](\w+\.php)~', (string) $def['command'], $m)) {
         sw_ok("{$key}'s command names a tools/*.php script (registry sanity)", false,
@@ -158,7 +175,9 @@ foreach ($reg as $key => $def) {
         continue;
     }
     $script = $m[1];
-    sw_ok("job runner invokes {$key} ({$script})", strpos($jobs, $script) !== false);
+    sw_ok("job runner invokes {$key} ({$script})",
+        isset($runnerJobs[$key]) && basename((string) $runnerJobs[$key]['script']) === $script
+        && !empty($runnerJobs[$key]['exists']));
 }
 
 sw_ok('job runner does NOT pause (Task Scheduler has no keyboard)',

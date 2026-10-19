@@ -117,6 +117,37 @@ function sched_is_windows(): bool {
 }
 
 /**
+ * Is this install running inside the shipped Docker image?
+ *
+ * Reported on the project's Google Group on 2026-10-17 by an operator running
+ * TicketsCAD in Docker under Coolify: until then the Docker deployment ran
+ * NONE of these jobs. The image has no cron, no systemd and no loop, so every
+ * job below was "never run" on every Docker install, and the Status page told
+ * the admin to run `systemctl is-active cron` inside a container that has
+ * neither — the same dead end GH#18 was for Windows.
+ *
+ * The Dockerfile sets TICKETSCAD_RUNTIME=docker for every container built from
+ * it (app, scheduler, voice proxies). /.dockerenv is the fallback for an image
+ * someone built themselves from an older Dockerfile.
+ */
+function sched_is_docker(): bool {
+    $rt = getenv('TICKETSCAD_RUNTIME');
+    if ($rt !== false && $rt !== '') return strtolower((string) $rt) === 'docker';
+    return !sched_is_windows() && @is_file('/.dockerenv');
+}
+
+/**
+ * What runs the background jobs on this install, as the registry's
+ * 'unit_kind': 'schtasks' (Windows Task Scheduler), 'docker' (the `scheduler`
+ * service in docker-compose.yml) or 'systemd' (a timer per job).
+ */
+function sched_unit_kind(): string {
+    if (sched_is_windows()) return 'schtasks';
+    if (sched_is_docker())  return 'docker';
+    return 'systemd';
+}
+
+/**
  * The background jobs this install expects something to be running.
  *
  * 'interval_s'  how often it should run.
@@ -127,25 +158,35 @@ function sched_is_windows(): bool {
  *               on Linux, a Task Scheduler task name on Windows. Naming a
  *               systemd timer to a Windows admin is worse than saying
  *               nothing, so this is platform-derived rather than fixed.
- * 'unit_kind'   'systemd' | 'schtasks' — what 'unit' IS, so a consumer can
- *               render the right verb around it.
+ * 'unit_kind'   'systemd' | 'schtasks' | 'docker' — what 'unit' IS, so a
+ *               consumer can render the right verb around it.
  * 'command'     the underlying command, path-separated for this platform.
  *
- * On Windows both ticks are driven by a single Task Scheduler entry running
- * tools\run-scheduled-jobs.bat every minute: Windows' minimum repeat interval
- * is one minute, which matches both jobs' interval_s, and one task is less to
- * get wrong than two. So both rows legitimately name the same task.
+ * On Windows every job is driven by a single Task Scheduler entry running
+ * tools\run-scheduled-jobs.bat every minute, and in Docker by the `scheduler`
+ * service; both hand the work to tools/run-scheduled-jobs.php, which runs each
+ * job below at its own interval_s (plus the few runner-only jobs listed in
+ * inc/scheduled-job-runner.php). So on those two platforms every row
+ * legitimately names the same task/service.
  */
 function sched_job_registry(): array {
-    $win = sched_is_windows();
+    $win  = sched_is_windows();
+    $kind = sched_unit_kind();
+    // One place decides what to call the thing that runs a job, so a new job
+    // cannot get the platform branch wrong.
+    $unit = static function (string $systemdTimer) use ($kind): string {
+        if ($kind === 'schtasks') return 'TicketsCAD Background Jobs';
+        if ($kind === 'docker')   return 'scheduler';
+        return $systemdTimer;
+    };
 
     return [
         'par_tick' => [
             'label'      => 'PAR scheduler',
             'interval_s' => 60,
             'grace_mult' => 15,
-            'unit'       => $win ? 'TicketsCAD Background Jobs' : 'ticketscad-par-tick.timer',
-            'unit_kind'  => $win ? 'schtasks' : 'systemd',
+            'unit'       => $unit('ticketscad-par-tick.timer'),
+            'unit_kind'  => $kind,
             'command'    => $win ? 'php tools\\par_tick.php' : 'php tools/par_tick.php',
             'purpose'    => 'Initiates due PAR cycles and marks unanswered units missed',
         ],
@@ -153,8 +194,8 @@ function sched_job_registry(): array {
             'label'      => 'Notification + pending message sweep',
             'interval_s' => 60,
             'grace_mult' => 15,
-            'unit'       => $win ? 'TicketsCAD Background Jobs' : 'ticketscad-pending-msg.timer',
-            'unit_kind'  => $win ? 'schtasks' : 'systemd',
+            'unit'       => $unit('ticketscad-pending-msg.timer'),
+            'unit_kind'  => $kind,
             'command'    => $win ? 'php tools\\pending_messages_tick.php' : 'php tools/pending_messages_tick.php',
             // Since 2026-07-31 this job carries the outbound notifications
             // too: push, webhooks, SMS, e-mail and Slack were moved off the
@@ -173,8 +214,8 @@ function sched_job_registry(): array {
             'label'      => 'Audit log retention purge',
             'interval_s' => 86400,
             'grace_mult' => 3,
-            'unit'       => $win ? 'TicketsCAD Background Jobs' : 'ticketscad-audit-purge.timer',
-            'unit_kind'  => $win ? 'schtasks' : 'systemd',
+            'unit'       => $unit('ticketscad-audit-purge.timer'),
+            'unit_kind'  => $kind,
             'command'    => $win ? 'php tools\\audit_log_purge_tick.php' : 'php tools/audit_log_purge_tick.php',
             'purpose'    => 'Archives and removes audit-log rows older than the configured retention window',
         ],
@@ -185,8 +226,8 @@ function sched_job_registry(): array {
             'label'      => 'Message log retention purge',
             'interval_s' => 86400,
             'grace_mult' => 3,
-            'unit'       => $win ? 'TicketsCAD Background Jobs' : 'ticketscad-message-log-purge.timer',
-            'unit_kind'  => $win ? 'schtasks' : 'systemd',
+            'unit'       => $unit('ticketscad-message-log-purge.timer'),
+            'unit_kind'  => $kind,
             'command'    => $win ? 'php tools\\message_log_purge_tick.php' : 'php tools/message_log_purge_tick.php',
             'purpose'    => 'Removes outbound message-log rows (SMS/e-mail/Slack deliveries) older than the configured retention window',
         ],
@@ -198,8 +239,8 @@ function sched_job_registry(): array {
             'label'      => 'Inbound channel poll (Telegram/Slack)',
             'interval_s' => 60,
             'grace_mult' => 15,
-            'unit'       => $win ? 'TicketsCAD Background Jobs' : 'ticketscad-channel-receive-tick.timer',
-            'unit_kind'  => $win ? 'schtasks' : 'systemd',
+            'unit'       => $unit('ticketscad-channel-receive-tick.timer'),
+            'unit_kind'  => $kind,
             'command'    => $win ? 'php tools\\channel_receive_tick.php' : 'php tools/channel_receive_tick.php',
             'purpose'    => 'Polls opted-in channels (e.g. Telegram, Slack) for inbound messages and '
                           . 'routes them to the sender\'s assigned incident',
@@ -218,8 +259,8 @@ function sched_job_registry(): array {
             'label'      => 'Standing-relationship activation cleanup',
             'interval_s' => 300,
             'grace_mult' => 3,
-            'unit'       => $win ? 'TicketsCAD Background Jobs' : 'ticketscad-org-relationship-cleanup.timer',
-            'unit_kind'  => $win ? 'schtasks' : 'systemd',
+            'unit'       => $unit('ticketscad-org-relationship-cleanup.timer'),
+            'unit_kind'  => $kind,
             'command'    => $win ? 'php tools\\org_relationship_cleanup_tick.php' : 'php tools/org_relationship_cleanup_tick.php',
             'purpose'    => 'Closes out (deactivated_at) activation windows that have already expired by the read-time predicate, for audit-trail hygiene only',
         ],
@@ -234,8 +275,8 @@ function sched_job_registry(): array {
             'label'      => 'Inbound call wrap-up / staleness sweep',
             'interval_s' => 15,
             'grace_mult' => 15,
-            'unit'       => $win ? 'TicketsCAD Background Jobs' : 'ticketscad-inbound-calls-tick.timer',
-            'unit_kind'  => $win ? 'schtasks' : 'systemd',
+            'unit'       => $unit('ticketscad-inbound-calls-tick.timer'),
+            'unit_kind'  => $kind,
             'command'    => $win ? 'php tools\\inbound_calls_tick.php' : 'php tools/inbound_calls_tick.php',
             'purpose'    => 'Folds wrapped-up calls to ended once wrapup_seconds elapses, and flags claims whose heartbeat has lapsed as stale',
         ],
@@ -251,8 +292,8 @@ function sched_job_registry(): array {
             'label'      => 'Scheduled-incident activation',
             'interval_s' => 60,
             'grace_mult' => 15,
-            'unit'       => $win ? 'TicketsCAD Background Jobs' : 'ticketscad-scheduled-incidents.timer',
-            'unit_kind'  => $win ? 'schtasks' : 'systemd',
+            'unit'       => $unit('ticketscad-scheduled-incidents.timer'),
+            'unit_kind'  => $kind,
             'command'    => $win ? 'php tools\\scheduled_incidents_tick.php' : 'php tools/scheduled_incidents_tick.php',
             'purpose'    => 'Turns Scheduled incidents Open at their booked time, and dispatches units reserved for them',
         ],
@@ -272,10 +313,26 @@ function sched_job_registry(): array {
             'label'      => 'Communications Console patch-rail expiry warning',
             'interval_s' => 60,
             'grace_mult' => 15,
-            'unit'       => $win ? 'TicketsCAD Background Jobs' : 'ticketscad-matrix-expiry-warning.timer',
-            'unit_kind'  => $win ? 'schtasks' : 'systemd',
+            'unit'       => $unit('ticketscad-matrix-expiry-warning.timer'),
+            'unit_kind'  => $kind,
             'command'    => $win ? 'php tools\\matrix_expiry_warning_tick.php' : 'php tools/matrix_expiry_warning_tick.php',
             'purpose'    => 'Fires a comm:route_expiring SSE warning before a live cross-class patch-rail bridge expires -- bookkeeping only, never affects whether the route keeps mixing',
+        ],
+        // Webhook retries (Phase 94 Stage 5) shipped with an example systemd
+        // timer (tools/newui-webhook-retry.timer.example) but no heartbeat and
+        // no registry row, so an install that never installed the timer had
+        // webhooks that failed once and never retried, and nothing said so.
+        // Registered 2026-10-19 alongside the Docker scheduler. Required only
+        // while a failed delivery is actually waiting to be retried.
+        'webhook_retry' => [
+            'label'      => 'Webhook delivery retries',
+            'interval_s' => 60,
+            'grace_mult' => 15,
+            'unit'       => $unit('newui-webhook-retry.timer'),
+            'unit_kind'  => $kind,
+            'command'    => $win ? 'php tools\\webhook_retry_tick.php' : 'php tools/webhook_retry_tick.php',
+            'purpose'    => 'Retries failed webhook deliveries with exponential backoff, and dead-letters ones that '
+                          . 'ran out of attempts or waited longer than the stale-work cutoff',
         ],
     ];
 }
@@ -609,6 +666,23 @@ function sched_job_required(string $jobKey): array {
         return ['required' => false, 'why' => 'No enabled patch-rail routes carry an expiry (the patch rail may be unused, or every current route is same-class with no expires_at set)'];
     }
 
+    if ($jobKey === 'webhook_retry') {
+        // Same "shipped default configuration is not evidence of use" rule as
+        // every job above: an install with no webhooks, or whose deliveries all
+        // succeeded, does not need the retry job and must not turn red for it.
+        // A failed delivery that is still eligible for a retry does need it.
+        try {
+            $n = (int) db_fetch_value(
+                "SELECT COUNT(*) FROM `{$prefix}webhook_deliveries` d
+                   JOIN `{$prefix}webhook_subscriptions` s ON s.id = d.subscription_id
+                  WHERE d.`status` = 'failed' AND d.`dead_lettered_at` IS NULL AND s.`active` = 1");
+            if ($n > 0) {
+                return ['required' => true, 'why' => "{$n} failed webhook deliver" . ($n === 1 ? 'y is' : 'ies are') . ' waiting to be retried'];
+            }
+        } catch (Exception $e) {}
+        return ['required' => false, 'why' => 'No failed webhook deliveries are waiting to be retried'];
+    }
+
     return ['required' => false, 'why' => 'Unknown job'];
 }
 
@@ -705,16 +779,38 @@ function sched_jobs_status(?int $now = null): array {
         'notifications' => $notify,
         'severity' => $worst,
         'platform' => sched_is_windows() ? 'windows' : 'unix',
-        'remedy'   => sched_is_windows()
-            ? 'A job that has never run usually means nothing is scheduled to run it. '
+        'runtime'  => sched_unit_kind(),
+        'remedy'   => sched_jobs_remedy(sched_unit_kind()),
+    ];
+}
+
+/**
+ * What an admin should do when a job has never run, in the vocabulary of the
+ * thing that is supposed to be running it on THIS install. Telling a Docker or
+ * Windows admin to type `systemctl` is worse than saying nothing.
+ */
+function sched_jobs_remedy(string $kind): string {
+    if ($kind === 'schtasks') {
+        return 'A job that has never run usually means nothing is scheduled to run it. '
             . 'Windows has no systemd — these jobs need a Task Scheduler entry. Check with: '
             . 'schtasks /Query /TN "TicketsCAD Background Jobs" — "cannot find the file specified" '
             . 'means nothing is scheduled. See docs/INSTALL-WINDOWS-IIS.md, '
-            . '"The background jobs need Task Scheduler", for the one command that creates it.'
-            : 'A job that has never run usually means no scheduler is installed. '
-            . 'Check with: systemctl is-active cron — "not-found" means nothing is '
-            . 'scheduled. See docs/MAINTENANCE-RUNBOOK.md for the systemd timer units.',
-    ];
+            . '"The background jobs need Task Scheduler", for the one command that creates it.';
+    }
+    if ($kind === 'docker') {
+        return 'A job that has never run usually means nothing is running the scheduler. '
+            . 'In Docker the background jobs are run by the "scheduler" service in docker-compose.yml '
+            . '(php tools/run-scheduled-jobs.php --loop). Check with: docker compose ps scheduler — '
+            . 'if it is not listed, your docker-compose.yml predates it. Platforms that run one '
+            . 'container per service (Coolify and similar) can instead run '
+            . 'php tools/run-scheduled-jobs.php --once every minute as a scheduled task in the app '
+            . 'container. See docs/DOCKER.md, "Background jobs".';
+    }
+    return 'A job that has never run usually means no scheduler is installed. '
+        . 'Check with: systemctl is-active cron — "not-found" means nothing is '
+        . 'scheduled. See docs/MAINTENANCE-RUNBOOK.md for the systemd timer units, or run every '
+        . 'job from one place with php tools/run-scheduled-jobs.php (--loop as a service, or '
+        . '--once every minute).';
 }
 
 function _sched_ago(?int $s): string {

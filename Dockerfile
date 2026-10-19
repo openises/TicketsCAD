@@ -52,6 +52,10 @@ RUN { \
 # ── Composer (vendored PHP deps: ratchet, web-push, php-jwt) ─────────────────
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 ENV COMPOSER_ALLOW_SUPERUSER=1
+# Tells the app it is running in this image, so Settings → System Health says
+# "check the scheduler service" instead of "run systemctl" when a background
+# job has not run (inc/scheduled-jobs.php, sched_is_docker()).
+ENV TICKETSCAD_RUNTIME=docker
 WORKDIR /var/www/html
 
 # Install PHP dependencies first so the vendor layer caches across app changes.

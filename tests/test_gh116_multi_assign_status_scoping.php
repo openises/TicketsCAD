@@ -432,12 +432,32 @@ try {
         'got ' . ($rowG9a['status_id'] ?? 'null'));
 
     // Same-action switch, already-stamped timestamp, via the DISPATCHER path.
+    // Backdate the stamp first: without it the check passed whenever both
+    // calls landed in the same second, which hid that this path re-stamped
+    // on_scene on every on_scene-mapped pick (found 2026-10-19 when it failed
+    // under full-suite load).
+    db_query("UPDATE `{$prefix}assigns` SET `on_scene` = DATE_SUB(NOW(), INTERVAL 5 MINUTE),
+              `responding` = DATE_SUB(NOW(), INTERVAL 9 MINUTE) WHERE id = ?", [$aidG]);
     $onSceneTsBefore = db_fetch_value("SELECT `on_scene` FROM `{$prefix}assigns` WHERE id = ?", [$aidG]);
+    $respondingTsBeforeG = db_fetch_value("SELECT `responding` FROM `{$prefix}assigns` WHERE id = ?", [$aidG]);
     $r9b = assign_update_status_internal($aidG, $sOnScene2, $userId);
     is_true(empty($r9b['errors'] ?? []), 'dispatcher path: switching G to the second on_scene-mapped status succeeds', implode(';', $r9b['errors'] ?? []));
     $rowG9b = db_fetch_one("SELECT `on_scene`, `status_id` FROM `{$prefix}assigns` WHERE id = ?", [$aidG]);
     is_true((string) ($rowG9b['on_scene'] ?? '') === (string) $onSceneTsBefore,
-        'dispatcher path: on_scene TIMESTAMP unchanged (already stamped)');
+        'dispatcher path: on_scene TIMESTAMP unchanged (already stamped)',
+        'before ' . $onSceneTsBefore . ', after ' . ($rowG9b['on_scene'] ?? 'null'));
+    $r9c = assign_update_status_internal($aidG, 'responding', $userId);
+    $respG9c = db_fetch_value("SELECT `responding` FROM `{$prefix}assigns` WHERE id = ?", [$aidG]);
+    is_true(empty($r9c['errors'] ?? []) && (string) $respG9c === (string) $respondingTsBeforeG,
+        'dispatcher path: picking a responding status again keeps the first responding time',
+        'before ' . $respondingTsBeforeG . ', after ' . $respG9c);
+    // Back to the second on_scene status (section 10 reads it); the arrival
+    // time must survive this round trip too.
+    assign_update_status_internal($aidG, $sOnScene2, $userId);
+    $onSceneG9d = db_fetch_value("SELECT `on_scene` FROM `{$prefix}assigns` WHERE id = ?", [$aidG]);
+    is_true((string) $onSceneG9d === (string) $onSceneTsBefore,
+        'dispatcher path: returning to an on_scene status keeps the first arrival time',
+        'before ' . $onSceneTsBefore . ', after ' . $onSceneG9d);
     is_true((int) ($rowG9b['status_id'] ?? 0) === $sOnScene2,
         'FIX: dispatcher path also keeps status_id current on a same-action switch with no new timestamp',
         'expected ' . $sOnScene2 . ', got ' . ($rowG9b['status_id'] ?? 'null'));

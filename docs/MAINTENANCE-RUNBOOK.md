@@ -67,6 +67,41 @@ sudo crontab -l -u www-data          # only meaningful if cron is installed
 php tools/check-health.php           # includes the Scheduled background jobs section
 ```
 
+### Or: one runner for every job (Docker, Windows, or any host)
+
+`php tools/run-scheduled-jobs.php` knows every job below and its interval, so
+one scheduler entry covers all of them — including the ones that never had a
+timer of their own here (webhook retries, expired-grant cleanup, weather
+polling, the patch-rail regulatory audit, the automatic backup). It is what
+the Docker `scheduler` service runs (`--loop`, see `docs/DOCKER.md` §4a) and
+what `tools\run-scheduled-jobs.bat` runs on Windows (`--once`, every minute).
+On a Linux host you can use it instead of the per-job timers:
+
+```ini
+# /etc/systemd/system/ticketscad-jobs.service — runs every job, forever
+[Unit]
+Description=TicketsCAD background jobs
+After=network-online.target mariadb.service
+
+[Service]
+User=www-data
+ExecStart=/usr/bin/php /var/www/newui/tools/run-scheduled-jobs.php --loop
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+…or one cron line, `* * * * * www-data php /var/www/newui/tools/run-scheduled-jobs.php --once`
+(it remembers each job's last start, so daily jobs still run once a day).
+`--list` shows every job and when it last started. Each job runs as its own
+process with a timeout, and never as two copies at once.
+
+**Use one or the other on a host, not both.** The runner's per-job locks keep
+two copies of the runner from overlapping, but the per-job timers below call
+the jobs directly and know nothing about those locks.
+
 ### Scheduled background jobs — systemd timer units
 
 Use these when there is no cron daemon (they need no extra package). One
@@ -366,6 +401,11 @@ sudo systemctl enable --now ticketscad-matrix-expiry-warning.timer
 # units) -- the same activation still happens whenever someone loads the incident
 # list, but only this timer makes it happen with nobody watching:
 sudo systemctl enable --now ticketscad-scheduled-incidents.timer
+# Webhook retries (a registered job since 2026-10-19 — Settings → System Health turns
+# red while a failed delivery waits on it). Copy the shipped example units first:
+#   sudo cp tools/newui-webhook-retry.service.example /etc/systemd/system/newui-webhook-retry.service
+#   sudo cp tools/newui-webhook-retry.timer.example   /etc/systemd/system/newui-webhook-retry.timer
+sudo systemctl enable --now newui-webhook-retry.timer
 sudo systemctl list-timers --all | grep ticketscad
 sudo journalctl -u ticketscad-par-tick.service -n 20 --no-pager
 
@@ -409,7 +449,8 @@ fresh `scheduled_send_at`. Expiry is reversible by design.
 | `tools/message_log_purge_tick.php` | daily | Removes outbound message-log rows (SMS/e-mail/Slack delivery-status rows) older than `message_log_retention_days`, if that setting is nonzero. Off by default. | Nothing while disabled. Once `message_log_retention_days` is turned on, install the timer BEFORE (not after) — otherwise the job is stuck at "never run" and the Status page reports it **Critical**, correctly. |
 | `tools/org_relationship_cleanup_tick.php` | every 5 min | Stamps `deactivated_at` on standing cross-org relationship activations whose `max_activation_minutes` window has already elapsed by the read-time predicate; fires the `relationship_deactivated` audit entry (`auto_expired: true`). **Non-authoritative** — access is already gone via the read-time predicate before this job ever runs; it only closes the audit record. | Nothing — the audit trail lags reality (a `deactivated_at` that should be set stays NULL a little longer), but nobody's access changes. **Flagged on the Status page** only once an expired-but-open activation actually exists. |
 | location-reports trim *(planned)* | daily 03:30 | Same idea for `location_reports`; same workaround | DB bloat; map slowness |
-| backup *(planned)* | daily 02:00 | No all-in-one script yet — use `mysqldump` via cron per [BACKUP-RECOVERY-RUNBOOK.md](BACKUP-RECOVERY-RUNBOOK.md) | No fresh backup if a disaster hits |
+| `tools/webhook_retry_tick.php` | every minute | Retries failed webhook deliveries with backoff; dead-letters ones out of attempts, and ones whose retry is more than `sched_stale_cutoff_min` overdue (so a job that was not running does not send old events as new). | Failed webhooks are never retried. **Flagged on the Status page** while a failed delivery is waiting. |
+| `tools/backup_run.php` | hourly | Takes the automatic, verified backup when one is due (Settings → Backup / Maintenance sets the interval). Without a scheduler, backups are attempted opportunistically on page loads instead. | Backups depend on someone loading a page; the Status page warns when the last good backup is stale. |
 | `certbot renew` | twice daily (auto) | Renews Let's Encrypt cert | TLS cert expires; site breaks |
 
 **Verify the audit-log purge is doing its job** (only meaningful once

@@ -434,7 +434,7 @@ See
 ## 5. The background jobs need Task Scheduler
 
 **This one is not cosmetic and it does not announce itself.** TicketsCAD has
-five background jobs. On Linux they are driven by systemd timers. Windows has
+a set of background jobs. On Linux they are driven by systemd timers. Windows has
 no systemd, so unless you create a scheduled task **they never run at all** —
 and everything else keeps working, so there is nothing to notice.
 
@@ -445,11 +445,14 @@ and everything else keeps working, so there is nothing to notice.
 | `channel_receive_tick` | Inbound Telegram/Slack messages never get routed to a sender's assigned incident, on any install that has opted a channel in (off by default — harmless if you haven't). |
 | `audit_log_purge_tick` | If Settings → Audit Log → Retention is configured with a nonzero window, old audit-log rows are never archived or removed — the table just keeps growing. Disabled by default. |
 | `message_log_purge_tick` | Same as above, for the outbound message log (Settings → Pending Messages → Message Log Retention). Disabled by default. |
+| `inbound_calls_tick`, `scheduled_incidents_tick`, `webhook_retry_tick`, `backup_run`, and the rest | Finished inbound calls stay in wrap-up, Scheduled incidents open only when someone loads the incident list, failed webhooks are never retried, backups wait for a page load. `php tools\run-scheduled-jobs.php --list` shows every job the runner knows. |
 
-The last two are documented as "run once a day" — that describes how often
-they actually find work to do, not how often it's safe to call them. Both
-are simple cutoff-date queries and are harmless (a cheap no-op) to run every
-minute alongside the others, which is exactly what the shipped runner does.
+The shipped runner (`tools\run-scheduled-jobs.bat`, which hands the work to
+`tools\run-scheduled-jobs.php --once`) knows every job and its interval, and
+runs each only when it is due: the one-minute jobs every minute, the daily
+purges once a day, the backup when a backup is due. Each job runs as its own
+process, so one that fails or hangs cannot stop the others, and each job's
+output is appended to `cache\job-logs\<job>.log`.
 
 On the install that reported this, the first manual run cleared a backlog that
 had been accumulating since install day:
@@ -462,8 +465,8 @@ Nineteen units and sixteen cycles, none of which had ever timed out.
 
 ### Create the task
 
-One entry, every minute, running all five ticks. One minute is Windows'
-minimum repeat interval and it matches every job's polling interval. From an
+One entry, every minute, running every job. One minute is Windows' minimum
+repeat interval, so the 15-second inbound-call sweep runs once a minute here. From an
 **elevated** prompt, with the path adjusted to your install:
 
 ```powershell
@@ -474,8 +477,12 @@ schtasks /Create /TN "TicketsCAD Background Jobs" /SC MINUTE /MO 1 `
 
 `tools\run-scheduled-jobs.bat` ships with TicketsCAD. It uses `php` from `PATH`;
 set `TICKETSCAD_PHP` to a full path if PHP is not on `PATH`. It must be
-**`php.exe`, not `php-cgi.exe`** — both scripts refuse to run under a non-CLI
-SAPI.
+**`php.exe`, not `php-cgi.exe`** — the runner and every job refuse to run under
+a non-CLI SAPI.
+
+On the minute that takes a backup the task stays busy until the backup is
+written, and Task Scheduler skips the minutes in between; those jobs run on the
+next minute.
 
 ### Verify it is *firing*, not merely registered
 

@@ -1,7 +1,7 @@
-# TicketsCAD NewUI v4 — full deployment stack (app + MariaDB).
+# TicketsCAD NewUI v4 — full deployment stack (app + scheduler + MariaDB).
 #
 #   1. cp .env.example .env      # then edit the passwords in .env
-#   2. docker compose up -d      # builds the app image, starts DB + app
+#   2. docker compose up -d      # builds the app image, starts DB + app + scheduler
 #   3. open http://localhost:8081  (admin password is printed in the logs:
 #                                   docker compose logs app | grep -i password)
 #
@@ -10,6 +10,10 @@
 # the encryption keys live in named volumes so they survive container recreation
 # — `up -d --build` replaces the container, and anything not on a volume dies
 # with it.
+#
+# The `scheduler` service runs the background jobs (PAR, notifications, the
+# inbound-call sweep, retention purges, backups ...). Without it none of them
+# run — see docs/DOCKER.md, "Background jobs".
 #
 # UPGRADING FROM A COMPOSE FILE WITHOUT `app_backups`: any backup already sitting
 # in the old container is in its writable layer and will NOT migrate into the new
@@ -112,6 +116,67 @@ services:
       # volume from the `volumes:` block at the bottom. Keep the container side
       # at /var/www/backups — /var/www/html is served.
       # - ./backups:/var/www/backups
+
+  # ── Background jobs ─────────────────────────────────────────────────────────
+  #   Runs every scheduled job at its own interval: the inbound-call wrap-up
+  #   sweep (every 15 s), the PAR scheduler, the notification and held-message
+  #   sweep, scheduled-incident activation, webhook retries, the retention
+  #   purges, expired-grant cleanup, weather polling, and the automatic backups.
+  #   Before this service existed NOTHING in the Docker deployment ran any of
+  #   them (reported 2026-10-17): finished calls never left the Inbound Calls
+  #   page, PAR never marked a unit missed, and Settings → System Health showed
+  #   every job as "never run". See docs/DOCKER.md, "Background jobs".
+  #
+  #   Same image as `app` (nothing extra to build or pull). It does NOT install
+  #   or migrate the database — the app container owns that; this one waits
+  #   until the database is installed and then starts. It mounts the same
+  #   volumes as `app`, because the jobs write to them (a backup lands in
+  #   app_backups, and so on) and their per-job locks live in app_cache.
+  #
+  #   Its log:  docker compose logs -f scheduler
+  #   Run one job now:  docker compose exec scheduler php tools/run-scheduled-jobs.php --once --force --only=backup
+  scheduler:
+    build: .
+    image: ticketscad-newui:local
+    container_name: ticketscad_scheduler
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      app:
+        condition: service_started
+    # The jobs run as the web server's user, so whatever they write (a backup
+    # archive, a cache file) is owned by the account the app reads it as.
+    user: www-data
+    # A real init as PID 1: forwards `docker compose stop` to the runner, and
+    # reaps the job processes it starts.
+    init: true
+    environment:
+      NEWUI_DB_HOST: db
+      NEWUI_DB_NAME: ${NEWUI_DB_NAME:-newui}
+      NEWUI_DB_USER: ${NEWUI_DB_USER:-newui}
+      NEWUI_DB_PASS: ${NEWUI_DB_PASS:-newui}
+      NEWUI_BASE_URL: ${NEWUI_BASE_URL:-http://localhost:8081}
+    # Write config.php from the environment (unless one is mounted), then run
+    # the loop. Never docker-entrypoint.sh: that installs/migrates the schema,
+    # and two containers doing it at once corrupts the install.
+    entrypoint: ["sh", "-c", "[ -f /var/www/html/config.php ] || php /var/www/html/docker-config-gen.php; exec php /var/www/html/tools/run-scheduled-jobs.php --loop"]
+    healthcheck:
+      test: ["CMD", "php", "/var/www/html/tools/run-scheduled-jobs.php", "--health"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
+    volumes:
+      - app_uploads:/var/www/html/uploads
+      - app_cache:/var/www/html/cache
+      - app_backups:/var/www/backups
+      - app_keys:/var/www/keys
+      - app_tile_cache:/var/www/tile-cache
+      - app_geocode_cache:/var/www/geocode-cache
+      - app_zello_audio:/var/www/zello-audio
+      # If you mount your own config.php into `app`, mount it here too:
+      # - ./config.php:/var/www/html/config.php:ro
 
   # ── Optional voice features: browser push-to-talk over Zello + DMR ──────────
   #   Start with:   docker compose --profile voice up -d

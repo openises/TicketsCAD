@@ -39,7 +39,7 @@ cd ticketscad
 cp .env.example .env
 nano .env          # change NEWUI_DB_PASS and DB_ROOT_PASSWORD at minimum
 
-# 3. Build and start (app + database)
+# 3. Build and start (app + database + the scheduler that runs the background jobs)
 docker compose up -d --build
 
 # 4. Watch the first-run install finish (schema + admin user)
@@ -101,7 +101,7 @@ and image rebuilds:
 |---------------|---------------------------|---------------------------------------------------------|
 | `db_data`     | `/var/lib/mysql`          | The entire database.                                     |
 | `app_uploads` | `/var/www/html/uploads`   | Attachments, photos, uploaded files.                    |
-| `app_cache`   | `/var/www/html/cache`     | Weather-overlay tiles and NWS lookups. |
+| `app_cache`   | `/var/www/html/cache`     | Weather-overlay tiles and NWS lookups, and `job-state/` — each background job's lock and last-run time, shared by `app` and `scheduler` (§4a). |
 | `app_tile_cache` | `/var/www/tile-cache`  | Basemap tiles fetched by `api/tile-proxy.php`. **Outside `/var/www/html`** — this cache records which map areas the install has viewed, which inside the webroot would be readable without logging in. Regenerable, but keep it on a volume: a rebuild that empties it makes the install re-fetch every tile at once, which is the load spike tile providers ask us not to cause. |
 | `app_geocode_cache` | `/var/www/geocode-cache` | Address-lookup cache (`inc/geocode.php`). **Outside `/var/www/html`**, same reasoning as `app_tile_cache`; regenerable but worth keeping on a volume so a rebuild doesn't re-hit the geocoding provider for every cached address at once. |
 | `app_backups` | `/var/www/backups`        | Archives written by `tools/backup_run.php` and Settings → Backup / Maintenance. **Outside `/var/www/html`** — that is the Apache DocumentRoot, and an archive inside it was downloadable by anyone who guessed the filename (v4.2.3). |
@@ -180,6 +180,109 @@ docker compose exec db sh -c 'exec mariadb-dump -uroot -p"$MARIADB_ROOT_PASSWORD
 
 ---
 
+## 4a. Background jobs (the `scheduler` service)
+
+TicketsCAD has jobs that must run on a timer whether or not anyone is signed in.
+On a Linux server they are systemd timers; on Windows, a Task Scheduler entry.
+In Docker they are run by the **`scheduler` service** in `docker-compose.yml`,
+which runs `php tools/run-scheduled-jobs.php --loop` from the same image as the
+app.
+
+| Job | Every | What it does |
+|---|---|---|
+| `inbound_calls_tick` | 15 s | Moves finished calls out of wrap-up on the Inbound Calls page, and flags a claimed call whose dispatcher has gone quiet. |
+| `pending_messages_tick` | 1 min | Sends queued notifications (push, webhooks, SMS, e-mail, Slack) and messages held for a security label. |
+| `par_tick` | 1 min | Starts PAR checks that are due and marks units that did not answer. |
+| `scheduled_incidents_tick` | 1 min | Opens Scheduled incidents at their booked time and dispatches units reserved for them. |
+| `channel_receive_tick` | 1 min | Polls Telegram / Slack for inbound messages (only when turned on). |
+| `webhook_retry` | 1 min | Retries failed webhook deliveries. |
+| `matrix_expiry_warning` | 1 min | Warns before a Communications Console patch-rail bridge expires. |
+| `weather_poll` | 1 min | Polls NWS weather alerts (only when turned on). |
+| `org_relationship_activation_cleanup` | 5 min | Closes out expired cross-org activation windows in the audit trail. |
+| `matrix_regulatory_audit` | 15 min | Checks patch-rail routes for an unacknowledged amateur/commercial mix. |
+| `backup` | hourly | Takes the automatic backup when one is due (Settings → Backup / Maintenance sets how often). |
+| `expire_grants` | hourly | Removes role grants whose expiry has passed. |
+| `audit_log_purge`, `message_log_purge` | daily | Retention purges (only when a retention period is set). |
+
+**Before this service existed, nothing in the Docker deployment ran any of
+these** (reported on the project's Google Group, 2026-10-17): finished calls
+never left the Inbound Calls page, a unit that missed a PAR check was never
+marked, Scheduled incidents opened only when someone loaded the incident list,
+and Settings → System Health listed every job as "never run".
+
+How it behaves:
+
+- It **does not** install or migrate the database — the `app` container does
+  that. The scheduler waits until the database is installed and any migration
+  the app is applying has finished, then starts.
+- Each job runs as its own process, so one that fails cannot stop the others. A
+  job that hangs is killed (with anything it started) after a generous timeout
+  and runs again at its next interval.
+- Never two copies of a job at once. Each job's lock and last-run time live in
+  `cache/job-state` on the `app_cache` volume, which `app` and `scheduler`
+  share — so a restarted scheduler resumes its schedule rather than running
+  everything again, and a `--once` run in the `app` container (below) cannot
+  overlap the scheduler.
+- Work that went undone while nothing was running is **not** acted on
+  retroactively. Every job ignores work more than `sched_stale_cutoff_min`
+  minutes (default 60) past due and records it as expired, with the reason —
+  so starting the scheduler on an install that has never had one does not
+  send a burst of month-old notifications or PAR alarms. Failed webhook
+  deliveries older than that are dead-lettered (and can still be replayed)
+  rather than sent.
+
+Check that it is working:
+
+```bash
+docker compose ps scheduler            # "Up ... (healthy)"
+docker compose logs -f scheduler       # failures, the hourly/daily jobs' output, a summary every 15 min
+docker compose exec scheduler php tools/run-scheduled-jobs.php --list   # every job + when it last started
+```
+
+…and **Settings → System Health → Scheduled background jobs** shows each job's
+last successful run; the counts climb as the jobs run.
+
+Run one job now (any job key from `--list`):
+
+```bash
+docker compose exec scheduler php tools/run-scheduled-jobs.php --once --force --only=backup
+```
+
+### If your compose file predates the `scheduler` service
+
+Update to a `docker-compose.yml` that has it and run `docker compose up -d --build`;
+the new service starts on its own. If you maintain your own compose file, copy
+the `scheduler:` block from the shipped one — it needs the same image, the same
+`NEWUI_DB_*` environment and **the same volumes** as `app`.
+
+### Coolify and other platforms
+
+If your platform deploys this repository's `docker-compose.yml` (Coolify's
+"Docker Compose" build pack does), the `scheduler` service comes with it —
+nothing more to do.
+
+If you run only the app container, run the jobs from the platform's scheduler
+instead, **every minute**, inside the app container, as the web server user:
+
+```bash
+su -s /bin/sh www-data -c "php /var/www/html/tools/run-scheduled-jobs.php --once"
+```
+
+In Coolify that is a **Scheduled Task** on the application with the frequency
+`* * * * *` and the command above. With a host crontab it is:
+
+```cron
+* * * * * docker exec -u www-data <app-container> php tools/run-scheduled-jobs.php --once
+```
+
+`--once` runs whatever is due and exits, so the daily jobs still run once a day
+and backups only when due. Run it as `www-data`, not root: files a job creates
+(a backup archive, a cache directory) must belong to the user the web server
+reads them as. Running both the `scheduler` service **and** a `--once` task is
+safe (they share the per-job locks) but pointless — pick one.
+
+---
+
 ## 5. Upgrading
 
 Schema migrations run **automatically** on container start — so an upgrade is just
@@ -234,6 +337,7 @@ git checkout v4.0.0 && docker compose up -d --build
 ```bash
 docker compose ps                 # container status
 docker compose logs -f app        # follow app logs
+docker compose logs -f scheduler  # follow the background jobs (see §4a)
 docker compose logs -f db         # follow database logs
 docker compose restart app        # restart just the app
 docker compose down               # stop (data volumes preserved)

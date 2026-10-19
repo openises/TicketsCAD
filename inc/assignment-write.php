@@ -618,10 +618,21 @@ function assign_update_status_internal(int $assignId, $newStatusInput, int $user
             // function makes, using the SAME effective status id already
             // resolved for _assign_set_responder_status() below.
             $effStatusId = $newStatusId > 0 ? $newStatusId : _assign_status_id_by_action('responding');
-            db_query(
-                "UPDATE `{$prefix}assigns` SET `responding` = ?, `status_id` = ? WHERE `id` = ?",
-                [$now, $effStatusId, $assignId]
-            );
+            // Stamp-once, like the facility legs below and the unit-status
+            // path (inc/responder-write.php): picking a second
+            // responding-mapped status (or the same one again) keeps the
+            // first time, so the turnout interval is not silently moved.
+            if (empty($assign['responding']) || substr((string) $assign['responding'], 0, 4) === '0000') {
+                db_query(
+                    "UPDATE `{$prefix}assigns` SET `responding` = ?, `status_id` = ? WHERE `id` = ?",
+                    [$now, $effStatusId, $assignId]
+                );
+            } else {
+                db_query(
+                    "UPDATE `{$prefix}assigns` SET `status_id` = ? WHERE `id` = ?",
+                    [$effStatusId, $assignId]
+                );
+            }
             _assign_log_action($ticketId, $respName . ' responding', 21, $userId);
             // GH#59: prefer the SPECIFIC status the caller picked (mirrors
             // the 'clear' branch below) -- falling straight to
@@ -632,18 +643,28 @@ function assign_update_status_internal(int $assignId, $newStatusInput, int $user
 
         } elseif ($newStatus === 'on_scene') {
             $effStatusId = $newStatusId > 0 ? $newStatusId : _assign_status_id_by_action('on_scene');
-            // Auto-back-fill responding if it wasn't set
-            if (empty($assign['responding']) || substr($assign['responding'], 0, 4) === '0000') {
-                db_query(
-                    "UPDATE `{$prefix}assigns` SET `responding` = ?, `on_scene` = ?, `status_id` = ? WHERE `id` = ?",
-                    [$now, $now, $effStatusId, $assignId]
-                );
-            } else {
-                db_query(
-                    "UPDATE `{$prefix}assigns` SET `on_scene` = ?, `status_id` = ? WHERE `id` = ?",
-                    [$now, $effStatusId, $assignId]
-                );
+            // Stamp-once: switching between two on_scene-mapped statuses
+            // ("On Scene" -> "At Scene") used to overwrite the arrival time
+            // with NOW(), moving the travel/response/scene intervals
+            // (GH#64). Only status_id follows the new pick once arrived.
+            // Auto-back-fill responding if it wasn't set.
+            $sets = [];
+            $vals = [];
+            if (empty($assign['responding']) || substr((string) $assign['responding'], 0, 4) === '0000') {
+                $sets[] = '`responding` = ?';
+                $vals[] = $now;
             }
+            if (empty($assign['on_scene']) || substr((string) $assign['on_scene'], 0, 4) === '0000') {
+                $sets[] = '`on_scene` = ?';
+                $vals[] = $now;
+            }
+            $sets[] = '`status_id` = ?';
+            $vals[] = $effStatusId;
+            $vals[] = $assignId;
+            db_query(
+                "UPDATE `{$prefix}assigns` SET " . implode(', ', $sets) . " WHERE `id` = ?",
+                $vals
+            );
             _assign_log_action($ticketId, $respName . ' on scene', 22, $userId);
             // GH#59: same fix as 'responding' above -- an install with
             // BOTH "On Scene" and "At Scene" mapped to incident_action=
