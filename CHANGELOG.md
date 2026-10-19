@@ -7,6 +7,9 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 **Administrators, after updating:** run `php sql/run_migrations.php` (Docker installs do this when the
 container starts). It converts the State / Province table to UTF-8 so accented names store correctly.
+**Docker installs:** `git pull && docker compose up -d --build` now also starts the new `scheduler`
+service; until it runs, none of the background jobs run (see Fixed). **Windows installs:** the existing
+Task Scheduler entry for `tools\run-scheduled-jobs.bat` keeps working and now runs every job.
 
 ### Added
 
@@ -21,6 +24,11 @@ container starts). It converts the State / Province table to UTF-8 so accented n
   with a preview of the saved records that use any code being removed; CSV import and export; and an
   optional rename of the field label (for example to "Province"). See `docs/STATES-AND-PROVINCES.md`.
   (GH#153)
+- `tools/run-scheduled-jobs.php`: one runner for every background job, each at its own interval, one
+  process per job, never two copies of a job at once, a hung job stopped with everything it started.
+  `--loop` for a container, `--once` for cron, Coolify scheduled tasks or Windows Task Scheduler, plus
+  `--list` and `--health`. A `scheduler` service in `docker-compose.yml` runs it from the app image. See
+  `docs/DOCKER.md` section 4a.
 
 ### Changed
 
@@ -34,6 +42,12 @@ container starts). It converts the State / Province table to UTF-8 so accented n
 - Saving an ICS form is now recorded in the audit log (only deleting one was before).
 - New Incident's address lookup matches a state or province whose name carries accents, and uses the
   ISO code the geocoder returns, so Canadian and Mexican addresses fill the State field.
+- Webhook delivery retries are a registered background job with a row on Settings → System Health. A
+  retry more than an hour overdue is recorded as dead (with the reason) instead of being delivered late,
+  so starting the job does not send weeks-old events as if they were new. A retry setting saved without a
+  maximum number of attempts is treated as 5.
+- `tools/run-scheduled-jobs.bat` hands everything to the new runner; it had listed nine jobs by hand and
+  missed webhook retries, expired-grant cleanup, weather polling and scheduled backups.
 
 ### Fixed
 
@@ -41,6 +55,15 @@ container starts). It converts the State / Province table to UTF-8 so accented n
   the layers control left a copy on the map. The layers control is now the only place markups are drawn
   and shown or hidden, and a category turned off stays off after a reload; the panel at the bottom,
   renamed Edit Markups, only renames, deletes or hides a markup for everyone. (GH#139)
+- Docker ran none of the background jobs: nothing in the image or the compose file scheduled them, so
+  scheduled-call activation, PAR roll-calls, the notification and held-message sweep, the inbound-call
+  wrap-up sweep, webhook retries and the log retention purges never ran, and automatic backups ran only
+  when someone loaded a page. Finished calls stayed on the Inbound Calls page. Reported on the Google
+  Group. The new `scheduler` service runs them.
+- On the Incident page, picking an on-scene or responding status for a unit that already had one (for
+  example "On Scene" then "At Scene") overwrote its arrival or responding time with the time of the
+  click, which moved the travel, response and scene intervals in the Intervals report (GH#64). The first
+  time is now kept, as it already was for status changes from the unit's own screen.
 
 ### Security
 
