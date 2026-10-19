@@ -2,11 +2,30 @@
 /**
  * Phase 84-followup: seed the states_translator table.
  *
- * Symptom: on training the State dropdown on new-incident.php showed
- * only "—" because states_translator had 0 rows. Eric tried entering
+ * Symptom (Phase 84): on training the State dropdown on new-incident.php
+ * showed only "—" because states_translator had 0 rows. Eric tried entering
  * "Cedar Rapids IA" and couldn't pick a state.
  *
- * Idempotent: INSERT IGNORE on (id, name, code). Safe to re-run.
+ * GH#153 (2026-10-19): the list is now an administrator's to change
+ * (Settings → States / Provinces), so this seed must never undo that. It now
+ * seeds ONLY when BOTH are true:
+ *   - the table is empty, and
+ *   - nobody has ever changed the list through the Settings page
+ *     (settings.states_list_customized, written by inc/states.php).
+ * The old version INSERT IGNOREd the 52 US rows by id on every run, so after
+ * an administrator replaced the list with Canadian provinces (new ids), the
+ * next run of this script would have put all fifty states back beside them.
+ *
+ * The rows come from inc/state-presets.php (the one copy of the preset data):
+ * the 50 states plus the District of Columbia. The stray legacy row
+ * ('England', 'UK') the old seed carried is no longer seeded; installs that
+ * already have it keep it until an administrator removes it.
+ *
+ * sql/base_schema.sql no longer seeds this table either, so this script is
+ * the single place a fresh install gets its list (tools/install_fresh.php
+ * runs every sql/run_*.php).
+ *
+ * Idempotent. Exits non-zero only when the table is missing or the seed fails.
  *
  * Usage:  php sql/run_phase84_states_seed.php
  */
@@ -14,6 +33,7 @@
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only'); }
 
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../inc/states.php';
 
 $prefix = $GLOBALS['db_prefix'] ?? '';
 
@@ -28,48 +48,34 @@ try {
 }
 echo "Rows before: {$before}\n";
 
-$rows = [
-    [1,  'Alabama',              'AL'], [2,  'Alaska',         'AK'],
-    [3,  'Arizona',              'AZ'], [4,  'Arkansas',       'AR'],
-    [5,  'California',           'CA'], [6,  'Colorado',       'CO'],
-    [7,  'Connecticut',          'CT'], [8,  'Delaware',       'DE'],
-    [9,  'Florida',              'FL'], [10, 'Georgia',        'GA'],
-    [11, 'Hawaii',               'HI'], [12, 'Idaho',          'ID'],
-    [13, 'Illinois',             'IL'], [14, 'Indiana',        'IN'],
-    [15, 'Iowa',                 'IA'], [16, 'Kansas',         'KS'],
-    [17, 'Kentucky',             'KY'], [18, 'Louisiana',      'LA'],
-    [19, 'Maine',                'ME'], [20, 'Maryland',       'MD'],
-    [21, 'Massachusetts',        'MA'], [22, 'Michigan',       'MI'],
-    [23, 'Minnesota',            'MN'], [24, 'Mississippi',    'MS'],
-    [25, 'Missouri',             'MO'], [26, 'Montana',        'MT'],
-    [27, 'Nebraska',             'NE'], [28, 'Nevada',         'NV'],
-    [29, 'New Hampshire',        'NH'], [30, 'New Jersey',     'NJ'],
-    [31, 'New Mexico',           'NM'], [32, 'New York',       'NY'],
-    [33, 'North Carolina',       'NC'], [34, 'North Dakota',   'ND'],
-    [35, 'Ohio',                 'OH'], [36, 'Oklahoma',       'OK'],
-    [37, 'Oregon',               'OR'], [38, 'Pennsylvania',   'PA'],
-    [39, 'Rhode Island',         'RI'], [40, 'South Carolina', 'SC'],
-    [41, 'South Dakota',         'SD'], [42, 'Tennessee',      'TN'],
-    [43, 'Texas',                'TX'], [44, 'Utah',           'UT'],
-    [45, 'Vermont',              'VT'], [46, 'Virginia',       'VA'],
-    [47, 'Washington',           'WA'], [48, 'West Virginia',  'WV'],
-    [49, 'Wisconsin',            'WI'], [50, 'Wyoming',        'WY'],
-    [51, 'England',              'UK'], [52, 'District of Columbia', 'DC'],
-];
+if ($before > 0) {
+    echo "[SKIP] the list already has {$before} entries — never seeded over an existing list\n";
+    exit(0);
+}
+if (states_is_customized()) {
+    echo "[SKIP] the list is empty because an administrator emptied it in Settings → States / Provinces — left empty\n";
+    exit(0);
+}
 
+$built = states_build_selection(['us50' => ['dc']]);
 $inserted = 0;
-foreach ($rows as $r) {
-    try {
+try {
+    foreach ($built['rows'] as [$code, $name]) {
         db_query(
-            "INSERT IGNORE INTO `{$prefix}states_translator` (id, name, code) VALUES (?, ?, ?)",
-            [$r[0], $r[1], $r[2]]
+            "INSERT IGNORE INTO `{$prefix}states_translator` (`code`, `name`) VALUES (?, ?)",
+            [$code, $name]
         );
         $inserted++;
-    } catch (Exception $e) {
-        echo "[WARN] {$r[1]}: " . $e->getMessage() . "\n";
     }
+} catch (Exception $e) {
+    fwrite(STDERR, "[ERR] seeding failed: " . $e->getMessage() . "\n");
+    exit(1);
 }
 
 $after = (int) db_fetch_value("SELECT COUNT(*) FROM `{$prefix}states_translator`");
-echo "Rows after: {$after} (attempted {$inserted} inserts; existing rows preserved)\n";
+if ($after !== count($built['rows'])) {
+    fwrite(STDERR, "[ERR] expected " . count($built['rows']) . " rows after seeding, found {$after}\n");
+    exit(1);
+}
+echo "Rows after: {$after} (the 50 US states + DC)\n";
 echo "\nDone.\n";

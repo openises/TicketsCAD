@@ -89,7 +89,8 @@ t("situation refresh intervals are configurable (get_setting), not hard-coded",
 
 // ── #60/#46 — situation control gets the shared per-category markup overlays ──
 t("#60: situation.php attaches MapPrefs.addMarkupOverlays (dashboard-parity layer toggles)",
-    (bool) preg_match('/MapPrefs\.addMarkupOverlays\(map, sitLayersControl\)/', $s) &&
+    // GH#139 added an options argument ({ uncategorisedDefaultVisible: true }).
+    (bool) preg_match('/MapPrefs\.addMarkupOverlays\(map, sitLayersControl(?:, \{[^)]*\})?\)/', $s) &&
     strpos($s, '_ticketsMarkupAdded') !== false);
 
 // ── #49 — facility status colours come from the CONFIGURED colours ──

@@ -8,6 +8,7 @@
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../inc/severity.php';
+require_once __DIR__ . '/../inc/states.php';
 
 // Suppress PHP warnings/notices from corrupting JSON output
 $prevDisplay = ini_get('display_errors');
@@ -125,10 +126,20 @@ if (empty($responders)) {
 $sev_colors = severity_color_map();
 $severity_levels = severity_levels_for_json();
 
-// States for address dropdown
-$states = safe_fetch_all(
-    "SELECT `code`, `name` FROM `{$prefix}states_translator` ORDER BY `name`"
-);
+// States for address dropdown (GH#153: Settings → States / Provinces edits
+// this list). states_from_db tells the browser the list was READ — so an
+// empty list means "an administrator emptied it", not "could not load", and
+// assets/js/states-select.js no longer substitutes the US states for it.
+$statesFromDb = true;
+try {
+    $states = array_map(static function ($r) {
+        return ['code' => $r['code'], 'name' => $r['name']];
+    }, states_list());
+} catch (Throwable $e) {
+    error_log('[incident-types] could not read states_translator: ' . $e->getMessage());
+    $states = [];
+    $statesFromDb = false;
+}
 
 // Signals — UNION `signals` + `codes`.
 // Issue #31 (a beta tester + a beta tester, 2026-07-02..2026-07-03): two tables
@@ -205,6 +216,7 @@ json_response([
     'sev_colors'       => $sev_colors,
     'severity_levels'  => $severity_levels,
     'states'           => $states,
+    'states_from_db'   => $statesFromDb,
     'signals'          => $signals,
     'major_incidents'  => $major_incidents,
 ]);

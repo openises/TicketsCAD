@@ -3514,8 +3514,9 @@ CREATE TABLE `states_translator` (
   `id` int(4) NOT NULL AUTO_INCREMENT,
   `name` varchar(64) NOT NULL,
   `code` varchar(4) NOT NULL,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=53 DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_states_code` (`code`)
+) ENGINE=InnoDB AUTO_INCREMENT=53 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --

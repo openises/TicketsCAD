@@ -153,7 +153,8 @@ if ($method === 'POST') {
             }
             audit_log('config', $input['id'] ? 'update' : 'create', 'markup_category', $id, "Saved markup category '{$category}'");
         } catch (Exception $e) {
-            json_error('Failed: ' . $e->getMessage());
+            error_log('map-markups save_category: ' . $e->getMessage());
+            json_error('Failed to save the category');
         }
         json_response(['success' => true, 'id' => $id]);
     }
@@ -261,24 +262,46 @@ if ($method === 'POST') {
                 audit_log('map', 'create', 'markup', $id, "Created map markup '{$name}'");
             }
         } catch (Exception $e) {
-            json_error('Failed to save: ' . $e->getMessage());
+            error_log('map-markups save: ' . $e->getMessage());
+            json_error('Failed to save the markup');
         }
         json_response(['success' => true, 'id' => $id]);
     }
 
     // ── Toggle visibility ──
+    // line_status hides or shows a markup on EVERY map for EVERY user. When
+    // the caller says which state it wants (`visible` 0/1) that state is set;
+    // flipping whatever is stored meant a second click (or a second tab,
+    // or a retried request) did the opposite of what the user asked for.
+    // Without `visible` it still flips, for older callers. GH#139.
     if ($action === 'toggle_visibility') {
         $id = intval($input['id'] ?? 0);
         if (!$id) json_error('Missing id');
+        $hasVisible = array_key_exists('visible', $input) && $input['visible'] !== null && $input['visible'] !== '';
         try {
-            db_query(
-                "UPDATE " . db_table('mmarkup') . " SET line_status = IF(line_status = 1, 0, 1) WHERE id = ?",
-                [$id]
-            );
+            if ($hasVisible) {
+                $visible = ((int) $input['visible']) === 1 ? 1 : 0;
+                db_query(
+                    "UPDATE " . db_table('mmarkup') . " SET line_status = ? WHERE id = ?",
+                    [$visible, $id]
+                );
+            } else {
+                db_query(
+                    "UPDATE " . db_table('mmarkup') . " SET line_status = IF(line_status = 1, 0, 1) WHERE id = ?",
+                    [$id]
+                );
+            }
+            $now = db_fetch_value("SELECT line_status FROM " . db_table('mmarkup') . " WHERE id = ?", [$id]);
         } catch (Exception $e) {
-            json_error('Failed: ' . $e->getMessage());
+            error_log('map-markups toggle_visibility: ' . $e->getMessage());
+            json_error('Failed to change the markup');
         }
-        json_response(['success' => true]);
+        if ($now === false || $now === null) json_error('Markup not found', 404);
+        $now = ((int) $now) === 1 ? 1 : 0;
+        // audit_log() catches its own failures, so it cannot undo the change.
+        audit_log('map', 'update', 'markup', $id,
+            $now ? "Showed map markup #{$id} on all maps" : "Hid map markup #{$id} on all maps");
+        json_response(['success' => true, 'id' => $id, 'visible' => $now]);
     }
 
     // ── Phase 43c: import shapes from GeoJSON / KML ──
@@ -367,7 +390,8 @@ if ($method === 'POST') {
                 );
                 $imported++;
             } catch (Exception $e) {
-                $errors[] = $s['name'] . ': ' . $e->getMessage();
+                error_log('map-markups import: ' . $e->getMessage());
+                $errors[] = $s['name'] . ': could not be saved';
             }
         }
         audit_log('map', 'import', 'markup', 0,
@@ -383,7 +407,8 @@ if ($method === 'POST') {
             db_query("DELETE FROM " . db_table('mmarkup') . " WHERE id = ?", [$id]);
             audit_log('map', 'delete', 'markup', $id, "Deleted map markup #{$id}");
         } catch (Exception $e) {
-            json_error('Delete failed: ' . $e->getMessage());
+            error_log('map-markups delete: ' . $e->getMessage());
+            json_error('Failed to delete the markup');
         }
         json_response(['success' => true]);
     }

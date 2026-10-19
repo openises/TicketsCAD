@@ -58,6 +58,12 @@ $sitBoardRefreshSecs = max(5, (int) get_setting('situation_board_refresh_secs', 
 $sitResetOffscreenRaw = get_variable('situation_reset_on_offscreen');
 $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw === '')
     ? 1 : ((int) $sitResetOffscreenRaw ? 1 : 0);
+
+// GH#139 — the draw toolbar and the markup edit panel only do anything for a
+// user who may change markups (api/map-markups.php refuses every write
+// without action.manage_map), so they are rendered only for that user.
+// Showing and hiding overlays is the layer control's job, for everyone.
+$sitCanManageMap = rbac_can('action.manage_map');
 ?>
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="<?php echo $bs_theme; ?>">
@@ -472,22 +478,27 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
     </div>
 
     <!-- Draw Toolbar -->
+<?php if ($sitCanManageMap): ?>
     <div id="drawToolbar">
-        <button class="draw-btn" id="drawMarker" title="Place marker"><i class="bi bi-geo-alt"></i></button>
-        <button class="draw-btn" id="drawCircle" title="Draw circle"><i class="bi bi-circle"></i></button>
-        <button class="draw-btn" id="drawPolyline" title="Draw line"><i class="bi bi-pencil"></i></button>
-        <button class="draw-btn" id="drawPolygon" title="Draw polygon"><i class="bi bi-pentagon"></i></button>
-        <button class="draw-btn" id="drawFinish" title="Finish polygon/line" style="display:none;background:var(--bs-success);color:#fff;"><i class="bi bi-check-lg"></i></button>
-        <button class="draw-btn" id="drawCancel" title="Cancel drawing" style="display:none;"><i class="bi bi-x-lg text-danger"></i></button>
+        <button type="button" class="draw-btn" id="drawMarker" title="Place marker"><i class="bi bi-geo-alt"></i></button>
+        <button type="button" class="draw-btn" id="drawCircle" title="Draw circle"><i class="bi bi-circle"></i></button>
+        <button type="button" class="draw-btn" id="drawPolyline" title="Draw line"><i class="bi bi-pencil"></i></button>
+        <button type="button" class="draw-btn" id="drawPolygon" title="Draw polygon"><i class="bi bi-pentagon"></i></button>
+        <button type="button" class="draw-btn" id="drawFinish" title="Finish polygon/line" style="display:none;background:var(--bs-success);color:#fff;"><i class="bi bi-check-lg"></i></button>
+        <button type="button" class="draw-btn" id="drawCancel" title="Cancel drawing" style="display:none;"><i class="bi bi-x-lg text-danger"></i></button>
         <hr style="margin:2px 0;border-color:var(--bs-border-color);">
-        <button class="draw-btn" id="toggleMarkups" title="Toggle saved markups"><i class="bi bi-pin-map"></i></button>
+        <button type="button" class="draw-btn" id="toggleMarkups" title="Edit saved markups" aria-controls="markupsPanel" aria-expanded="false"><i class="bi bi-pin-map"></i></button>
     </div>
 
-    <!-- Markups Toggle Panel -->
+    <!-- Markup Edit Panel (GH#139): rename / hide for everyone / delete.
+         It does not draw anything and has no show/hide checkboxes — showing
+         and hiding overlays is done only in the layer control (top right). -->
     <div id="markupsPanel">
-        <div class="fw-semibold mb-1"><i class="bi bi-pin-map me-1"></i>Saved Markups</div>
+        <div class="fw-semibold mb-1"><i class="bi bi-pin-map me-1"></i>Edit Markups</div>
+        <div class="text-body-secondary mb-1" style="max-width:220px;">To show or hide markups on this map, use the layers button (top right).</div>
         <div id="markupsList"><small class="text-body-secondary">Loading...</small></div>
     </div>
+<?php endif; ?>
 </div>
 
 <!-- Vendor JS -->
@@ -787,9 +798,19 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
         // routes, ...) the dashboard and unit detail/edit maps already have,
         // so an operator can turn individual overlays on/off here too. Shared
         // logic in map-prefs.js; each category persists its own on/off state.
+        //
+        // GH#139 — these groups are the ONLY place markups are drawn on this
+        // page and the ONLY place to show or hide them. The markup edit panel
+        // further down used to draw every markup again on a layer of its own,
+        // so turning a category off here left a second copy on the map that
+        // had to be turned off again in the panel. The panel now edits and
+        // asks these groups to redraw (MapPrefs.getMarkupOverlays(map)).
+        // Markups drawn on this screen are uncategorised, and they were always
+        // shown here, so "Uncategorised markups" starts on until the user
+        // turns it off.
         if (window.MapPrefs && typeof window.MapPrefs.addMarkupOverlays === 'function'
             && !sitLayersControl._ticketsMarkupAdded) {
-            window.MapPrefs.addMarkupOverlays(map, sitLayersControl);
+            window.MapPrefs.addMarkupOverlays(map, sitLayersControl, { uncategorisedDefaultVisible: true });
             sitLayersControl._ticketsMarkupAdded = true;
         }
 
@@ -2182,7 +2203,11 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
     // GH #74 — expose the map-manage permission so the markup list can show
     // edit/delete affordances only to users who can actually manage markups
     // (the API gates delete/save on action.manage_map anyway).
-    var canManageMap = <?php echo (function_exists('rbac_can') && rbac_can('action.manage_map')) ? 'true' : 'false'; ?>;
+    var canManageMap = <?php echo $sitCanManageMap ? 'true' : 'false'; ?>;
+
+    // GH#139 — the toolbar and the edit panel are only rendered for a user
+    // who can change markups; without them there is nothing to wire up.
+    if (!canManageMap || !document.getElementById('drawToolbar')) return;
 
     // Wait for the Leaflet map instance
     var map = null;
@@ -2190,8 +2215,10 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
     var drawPoints = [];
     var drawPreview = null;
     var drawLayer = null;
-    var markupGroup = L.layerGroup();
-    var markupLayers = {}; // id -> layer
+    // GH#139 — this script no longer keeps a layer of its own. Markups are
+    // drawn once, by the per-category groups in the layer control
+    // (MapPrefs.addMarkupOverlays in initMap); after any change this script
+    // asks those groups to redraw.
 
     function getMap() {
         // The map is stored in the Leaflet container
@@ -2279,9 +2306,7 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
             return;
         }
 
-        markupGroup.addTo(map);
-
-        // Load saved markups
+        // Fill the edit panel's list (the map drawing is the layer control's).
         loadMarkups();
 
         // Wire up toolbar buttons
@@ -2481,6 +2506,11 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
         .then(function(resp) {
             if (resp.success || resp.id) {
                 loadMarkups();
+                // Redraw the ONE copy (the layer-control groups) and make sure
+                // the group the new markup lands in is switched on, so what
+                // the user just drew is on the map. Markups drawn here are
+                // uncategorised (category_id 0).
+                refreshMapMarkups(data.category_id || 0);
             }
         })
         .catch(function(err) {
@@ -2488,61 +2518,27 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
         });
     }
 
-    // ── Load Saved Markups ──
+    // GH#139 — after any change, redraw the markups in the layer control's
+    // per-category groups (map-prefs.js). `showCategory` (optional) switches
+    // that category's group on, for a markup the user has just created.
+    function refreshMapMarkups(showCategory) {
+        var ctl = (window.MapPrefs && typeof window.MapPrefs.getMarkupOverlays === 'function')
+            ? window.MapPrefs.getMarkupOverlays(map) : null;
+        if (!ctl) return;
+        var p = ctl.reload();
+        if (showCategory !== undefined && typeof ctl.show === 'function') {
+            p.then(function () { return ctl.show(showCategory); });
+        }
+    }
+
+    // ── Load Saved Markups (the edit panel's list; nothing is drawn here) ──
     function loadMarkups() {
         fetch('api/map-markups.php', { credentials: 'same-origin' })
             .then(function(r) { return r.json(); })
             .then(function(data) {
-                var markups = data.markups || [];
-                renderMarkupsOnMap(markups);
-                renderMarkupsList(markups);
+                renderMarkupsList(data.markups || []);
             })
-            .catch(function() {});
-    }
-
-    function renderMarkupsOnMap(markups) {
-        markupGroup.clearLayers();
-        markupLayers = {};
-
-        for (var i = 0; i < markups.length; i++) {
-            var m = markups[i];
-            if (parseInt(m.line_status, 10) !== 1) continue;
-
-            var coords = [];
-            try { coords = JSON.parse(m.line_data || '[]'); } catch (e) { continue; }
-            if (!coords.length) continue;
-
-            var layer = null;
-            var type = (m.line_type || 'P').toUpperCase();
-            var style = {
-                color: m.line_color || '#FF0000',
-                weight: parseInt(m.line_width, 10) || 2,
-                opacity: parseFloat(m.line_opacity) || 0.5
-            };
-
-            if (parseInt(m.filled, 10) === 1) {
-                style.fillColor = m.fill_color || m.line_color || '#FF0000';
-                style.fillOpacity = parseFloat(m.fill_opacity) || 0.2;
-                style.fill = true;
-            }
-
-            if (type === 'M' && coords[0]) {
-                layer = L.marker([coords[0][0], coords[0][1]]);
-            } else if (type === 'C' && coords[0]) {
-                var radius = parseInt(m.line_ident, 10) || 100;
-                layer = L.circle([coords[0][0], coords[0][1]], { radius: radius, color: style.color, weight: style.weight, opacity: style.opacity, fillColor: style.fillColor || style.color, fillOpacity: style.fillOpacity || 0.2 });
-            } else if (type === 'P') {
-                layer = L.polygon(coords, style);
-            } else if (type === 'L') {
-                layer = L.polyline(coords, style);
-            }
-
-            if (layer) {
-                layer.bindPopup('<strong>' + escHtml(m.line_name || '') + '</strong><br><small>' + escHtml(m.category_name || '') + '</small>');
-                markupGroup.addLayer(layer);
-                markupLayers[m.id] = layer;
-            }
-        }
+            .catch(function(err) { console.error('Loading markups failed:', err); });
     }
 
     function renderMarkupsList(markups) {
@@ -2555,33 +2551,40 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
         var html = '';
         for (var i = 0; i < markups.length; i++) {
             var m = markups[i];
-            var checked = parseInt(m.line_status, 10) === 1 ? ' checked' : '';
+            var shown = parseInt(m.line_status, 10) === 1;
             var nm = m.line_name || 'Unnamed';
-            html += '<div class="markup-item">';
-            html += '<input type="checkbox" class="form-check-input" data-markup-id="' + m.id + '"' + checked + ' style="width:14px;height:14px;">';
-            html += '<span class="markup-swatch" style="background:' + escHtml(m.line_color || '#FF0000') + ';"></span>';
-            html += '<label class="flex-grow-1">' + escHtml(nm) + '</label>';
+            var mid = parseInt(m.id, 10) || 0;
+            html += '<div class="markup-item' + (shown ? '' : ' opacity-50') + '">';
+            html += '<span class="markup-swatch" style="background:' + safeColor(m.line_color) + ';"></span>';
+            html += '<span class="flex-grow-1">' + escHtml(nm)
+                  + (m.category_name ? ' <small class="text-body-secondary">(' + escHtml(m.category_name) + ')</small>' : '')
+                  + (shown ? '' : ' <small class="text-body-secondary">&mdash; hidden for everyone</small>')
+                  + '</span>';
+            // GH#139 — an EDIT, not a view toggle: it changes the saved markup
+            // for every user on every map, so it is a labelled button, not a
+            // checkbox next to the layer control's checkboxes.
+            html += '<button type="button" class="btn btn-sm btn-link p-0 me-1 text-body-secondary" '
+                  + 'data-vis-markup="' + mid + '" data-vis-to="' + (shown ? 0 : 1) + '" '
+                  + 'title="' + (shown ? 'Hide this markup on every map, for every user' : 'Show this markup again on every map') + '">'
+                  + '<i class="bi ' + (shown ? 'bi-eye-slash' : 'bi-eye') + '"></i></button>';
             // GH #74 — edit (rename) + delete, so markups drawn in the EOC view
-            // aren't permanent. Shown only to users who can manage the map.
-            if (canManageMap) {
-                html += '<button type="button" class="btn btn-sm btn-link p-0 me-1 text-body-secondary" '
-                      + 'data-edit-markup="' + m.id + '" data-markup-name="' + escHtml(nm) + '" title="Rename markup">'
-                      + '<i class="bi bi-pencil"></i></button>';
-                html += '<button type="button" class="btn btn-sm btn-link p-0 text-danger" '
-                      + 'data-del-markup="' + m.id + '" data-markup-name="' + escHtml(nm) + '" title="Delete markup">'
-                      + '<i class="bi bi-trash"></i></button>';
-            }
+            // aren't permanent.
+            html += '<button type="button" class="btn btn-sm btn-link p-0 me-1 text-body-secondary" '
+                  + 'data-edit-markup="' + mid + '" data-markup-name="' + escHtml(nm) + '" title="Rename markup">'
+                  + '<i class="bi bi-pencil"></i></button>';
+            html += '<button type="button" class="btn btn-sm btn-link p-0 text-danger" '
+                  + 'data-del-markup="' + mid + '" data-markup-name="' + escHtml(nm) + '" title="Delete markup">'
+                  + '<i class="bi bi-trash"></i></button>';
             html += '</div>';
         }
         listEl.innerHTML = html;
 
-        // Wire up toggle checkboxes
-        var checks = listEl.querySelectorAll('input[data-markup-id]');
-        for (var c = 0; c < checks.length; c++) {
-            checks[c].addEventListener('change', function() {
-                var id = this.getAttribute('data-markup-id');
-                var visible = this.checked ? 1 : 0;
-                toggleMarkupVisibility(id, visible);
+        // GH#139 — hide / show for everyone.
+        var viss = listEl.querySelectorAll('[data-vis-markup]');
+        for (var v = 0; v < viss.length; v++) {
+            viss[v].addEventListener('click', function() {
+                setMarkupVisibility(this.getAttribute('data-vis-markup'),
+                                    parseInt(this.getAttribute('data-vis-to'), 10) === 1 ? 1 : 0);
             });
         }
 
@@ -2609,7 +2612,9 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
         }
     }
 
-    function toggleMarkupVisibility(id, visible) {
+    // Hide (visible 0) or show (visible 1) a markup for every user. The API
+    // sets the value sent rather than flipping whatever is stored.
+    function setMarkupVisibility(id, visible) {
         fetch('api/map-markups.php', {
             method: 'POST',
             credentials: 'same-origin',
@@ -2617,8 +2622,12 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
             body: JSON.stringify({ action: 'toggle_visibility', id: parseInt(id, 10), visible: visible, csrf_token: csrfToken })
         })
         .then(function(r) { return r.json(); })
-        .then(function() { loadMarkups(); })
-        .catch(function() {});
+        .then(function(res) {
+            if (res && res.error) { alert('Could not change the markup: ' + res.error); }
+            loadMarkups();
+            refreshMapMarkups();
+        })
+        .catch(function() { alert('Could not change the markup.'); });
     }
 
     // GH #74 — delete a markup (API delete already exists, RBAC + audit gated).
@@ -2633,6 +2642,7 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
         .then(function(res) {
             if (res && res.error) { alert('Delete failed: ' + res.error); return; }
             loadMarkups();
+            refreshMapMarkups();
         })
         .catch(function() { alert('Delete failed.'); });
     }
@@ -2670,6 +2680,7 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
             .then(function(res) {
                 if (res && res.error) { alert('Rename failed: ' + res.error); return; }
                 loadMarkups();
+                refreshMapMarkups();
             });
         })
         .catch(function() { alert('Rename failed.'); });
@@ -2678,16 +2689,28 @@ $sitResetOffscreen = ($sitResetOffscreenRaw === false || $sitResetOffscreenRaw =
     function toggleMarkupsPanel() {
         var panel = document.getElementById('markupsPanel');
         panel.classList.toggle('show');
-        if (panel.classList.contains('show')) {
+        var open = panel.classList.contains('show');
+        document.getElementById('toggleMarkups').setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open) {
             loadMarkups();
         }
     }
 
+    // Escapes for element text AND attribute values. The text-node trick
+    // alone leaves quotes alone, and the markup list puts names inside
+    // double-quoted attributes (data-markup-name), so a markup NAMED with a
+    // quote could break out of the attribute. GH#139 review.
     function escHtml(str) {
-        if (!str) return '';
+        if (str === null || str === undefined || str === '') return '';
         var div = document.createElement('div');
-        div.appendChild(document.createTextNode(str));
-        return div.innerHTML;
+        div.appendChild(document.createTextNode(String(str)));
+        return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    // A markup colour goes into a style attribute: accept only #rgb/#rrggbb
+    // (with optional alpha), never free text.
+    function safeColor(c) {
+        return /^#[0-9a-fA-F]{3,8}$/.test(String(c || '')) ? String(c) : '#FF0000';
     }
 
     // Start when DOM and map are ready

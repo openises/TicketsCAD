@@ -147,7 +147,7 @@ function quick_note_ics214_forms_for_incident(int $ticketId): array {
 
 /**
  * Copy or move a note into an ICS-214's Activity Log rows. Unlike the
- * incident activity log above, a 214 row IS literally {time, activity} --
+ * incident activity log above, a 214 row IS literally {date, time, activity} --
  * so `time` here is the note's own ORIGINAL capture time, not "now".
  */
 function quick_note_copy_to_ics214_internal(int $userId, int $noteId, int $formId, bool $move): array {
@@ -166,7 +166,10 @@ function quick_note_copy_to_ics214_internal(int $userId, int $noteId, int $formI
     if (!is_array($data)) $data = [];
     if (!isset($data['activity_log']) || !is_array($data['activity_log'])) $data['activity_log'] = [];
 
+    // GH#154: FEMA block 7 is "Date/Time" -- the row carries the capture
+    // DATE as well as its time, so a log spanning midnight stays in order.
     $data['activity_log'][] = [
+        'date'     => date('Y-m-d', strtotime($note['captured_at'])),
         'time'     => date('H:i', strtotime($note['captured_at'])),
         'activity' => $note['note_text'],
     ];

@@ -307,6 +307,7 @@ function _build_sidebar(string $base, string $current): string
             ['HTTPS-SETUP',                 'Enabling HTTPS'],
             ['HTTPS-VERIFICATION',          'HTTPS verification & trusted proxies'],
             ['WEB-SERVER-HARDENING',        'Web server hardening'],
+            ['STATES-AND-PROVINCES',        'States / Provinces list'],
             ['MAINTENANCE-RUNBOOK',         'Maintenance runbook'],
             ['TROUBLESHOOTING',             'Troubleshooting'],
             ['BACKUP-RECOVERY-RUNBOOK',     'Backup + recovery'],
@@ -328,6 +329,7 @@ function _build_sidebar(string $base, string $current): string
         'For users' => [
             ['NEWUI-USER-GUIDE',            'User guide'],
             ['PAR-CHECK-GUIDE',             'PAR checks'],
+            ['ICS-FORMS',                   'ICS forms (FEMA)'],
             ['scheduling',                  'Scheduling'],
             ['TRAINING-CURRICULUM',         'Training curriculum (24 modules)'],
         ],

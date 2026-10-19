@@ -4565,13 +4565,16 @@ Indexes:
 
 ### `states_translator`
 
-Engine: InnoDB · Collation: latin1_swedish_ci
+Engine: InnoDB · Collation: utf8mb4_unicode_ci
 
 | Column | Type | Null | Key | Default | Extra |
 |---|---|---|---|---|---|
 | `id` | int(4) | NO | PRI |  | auto_increment |
 | `name` | varchar(64) | NO |  |  |  |
-| `code` | varchar(4) | NO |  |  |  |
+| `code` | varchar(4) | NO | UNI |  |  |
+
+Indexes:
+- `UNIQUE KEY uk_states_code` (code)
 
 ### `stats_settings`
 

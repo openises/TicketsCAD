@@ -15,16 +15,72 @@
     var csrfToken       = '';     // CSRF token from page
     var incidentData    = null;   // Linked incident data (if any)
     var currentCustomTypeId = 0;  // Phase 140: which ics_form_types row, when form_type === 'custom'
+    // GH#154: built-in type labels/colours, from ics_builtin_badge_map()
+    // (inc/ics-forms-builtin.php) via the page's #icsFormTypeMeta element.
+    var icsTypeMeta = {};
 
     // ── Init ──
     document.addEventListener('DOMContentLoaded', function () {
         csrfToken = document.getElementById('csrfToken')
             ? document.getElementById('csrfToken').value : '';
+        var metaEl = document.getElementById('icsFormTypeMeta');
+        if (metaEl) {
+            try { icsTypeMeta = JSON.parse(metaEl.getAttribute('data-meta') || '{}') || {}; } catch (e) { icsTypeMeta = {}; }
+        }
         initTheme();
         loadFormsList();
         bindHubEvents();
+        bindFindForm();
         loadCustomTypeCards();
     });
+
+    /**
+     * GH#154 — "Find a form": filters the hub's cards by number or name as you
+     * type; Enter opens the first visible match; Escape clears. Keyboard-first:
+     * a dispatcher can type "205" and press Enter.
+     */
+    function bindFindForm() {
+        var input = document.getElementById('icsFormFind');
+        if (!input) return;
+        var apply = function () {
+            var q = input.value.trim().toLowerCase();
+            var cards = document.querySelectorAll('[data-form-search]');
+            cards.forEach(function (card) {
+                var hay = (card.getAttribute('data-form-search') || '').toLowerCase();
+                card.style.display = (!q || hay.indexOf(q) !== -1) ? '' : 'none';
+            });
+            var groups = document.querySelectorAll('.ics-form-group');
+            groups.forEach(function (g) {
+                var any = false;
+                g.querySelectorAll('[data-form-search]').forEach(function (c) {
+                    if (c.style.display !== 'none') any = true;
+                });
+                g.style.display = any ? '' : 'none';
+            });
+        };
+        input.addEventListener('input', apply);
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                input.value = '';
+                apply();
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                // The first New button not hidden by the filter (itself or any
+                // ancestor) -- the ICS 219 card group hides its non-matching
+                // card buttons individually.
+                var hub = document.getElementById('hubSection') || document.body;
+                var btns = hub.querySelectorAll('[data-new-form]');
+                for (var i = 0; i < btns.length; i++) {
+                    var el = btns[i], hidden = false;
+                    while (el && el !== hub) {
+                        if (el.style && el.style.display === 'none') { hidden = true; break; }
+                        el = el.parentNode;
+                    }
+                    if (!hidden) { btns[i].click(); return; }
+                }
+            }
+        });
+    }
 
     // ═══════════════════════════════════════════════════════════
     // Theme toggle (matches other pages)
@@ -271,7 +327,12 @@
                 types.forEach(function (t) {
                     html += renderCustomTypeCard(t);
                 });
-                if (html) row.insertAdjacentHTML('beforeend', html);
+                if (html) {
+                    row.insertAdjacentHTML('beforeend', html);
+                    // GH#154: the custom group stays hidden until it has a card.
+                    var grp = document.getElementById('customFormGroup');
+                    if (grp) grp.style.display = '';
+                }
             })
             .catch(function () {
                 // Feature unavailable or request failed -- the 9 built-in
@@ -293,7 +354,9 @@
         var icon = /^bi-[a-z0-9-]+$/.test(t.icon || '') ? t.icon : 'bi-file-earmark-text';
         var numberOrTitle = escHtml(t.form_number || t.form_title || 'Custom');
 
-        var h = '<div class="col-md-6 col-lg-4 col-xl-3">';
+        // data-form-search: so "Find a form" (bindFindForm()) also finds custom types.
+        var h = '<div class="col-12 col-sm-6 col-lg-4 col-xxl-3" data-form-search="'
+            + escAttr((t.form_number || '') + ' ' + (t.form_title || '') + ' custom') + '">';
         h += '<div class="card ics-type-card h-100">';
         h += '<div class="card-body">';
         h += '<div class="d-flex align-items-center justify-content-between mb-2">';
@@ -405,7 +468,8 @@
                 || meta.form_title || f.custom_form_title || 'Custom Form';
             return typeLabel + ' "' + (f.title || '(untitled)') + '"';
         }
-        return 'ICS-' + String(f.form_type || '').toUpperCase()
+        var bm = icsTypeMeta && icsTypeMeta[f.form_type];
+        return (bm ? bm.label : 'ICS-' + String(f.form_type || '').toUpperCase())
             + ' "' + (f.title || '(untitled)') + '"';
     }
 
@@ -598,19 +662,27 @@
         var container = document.getElementById('formFieldsContainer');
         if (!container) return;
 
-        var html = '';
+        // GH#154: fields sit on a Bootstrap grid (each field's optional `col`
+        // width, default full width), so a built-in FEMA form lays out its
+        // blocks side by side the way the paper form does.
+        var isNew = !currentFormId;
+        var html = '<div class="row g-2 ics-field-grid">';
         var tabIdx = 1;
         tpl.fields.forEach(function (field) {
             if (field.type === 'table') {
-                html += renderTableField(field, data[field.key] || []);
-            } else if (field.type === 'section_header') {
-                // No input, no tabIndex, no data key -- a divider only.
+                // A legacy table (kept only for old saved data) shows only
+                // when it holds rows.
+                if (field.legacy && !(data[field.key] && data[field.key].length)) return;
+                html += '<div class="col-12">' + renderTableField(field, data[field.key] || [], isNew) + '</div>';
+            } else if (field.type === 'section_header' || field.type === 'signature') {
+                // No input, no tabIndex, no data key -- a divider or note only.
                 html += renderSimpleField(field, '', 0);
             } else {
-                html += renderSimpleField(field, data[field.key] || '', tabIdx);
+                html += renderSimpleField(field, data[field.key] === undefined || data[field.key] === null ? '' : data[field.key], tabIdx);
                 tabIdx++;
             }
         });
+        html += '</div>';
         container.innerHTML = html;
 
         // Bind "Add Row" buttons for table fields
@@ -628,12 +700,34 @@
     function renderSimpleField(field, value, tabIdx) {
         var id = 'ics_' + field.key;
         var req = field.required ? ' <span class="text-danger">*</span>' : '';
+        // GH#154 — grid width (`col`, default full width; half width on a
+        // medium screen) and FEMA's short block instruction (`help`). Both
+        // are inlined here rather than in a helper so this function stays
+        // self-contained (tests extract and run it on its own).
+        var colN = parseInt(field.col, 10);
+        var colCls = (!colN || colN >= 12) ? 'col-12' : 'col-12 col-md-6 col-lg-' + colN;
+        var helpHtml = field.help ? '<div class="form-text ics-help">' + escHtml(field.help) + '</div>' : '';
 
         // Phase 140 — section_header: a divider only, no input, excluded
         // from collectFormData() and from the tabIndex sequence.
         if (field.type === 'section_header') {
             return '<div class="col-12 mt-2 mb-1"><h6 class="border-bottom pb-1 text-body-secondary">'
-                + escHtml(field.label) + '</h6></div>';
+                + escHtml(field.label) + '</h6>' + helpHtml + '</div>';
+        }
+
+        // GH#154 — a FEMA signature line. Nothing to type: it is signed on
+        // the printed copy, so the editor only says where the line goes.
+        if (field.type === 'signature') {
+            return '<div class="' + colCls + '"><div class="ics-signature-note small text-body-secondary">'
+                + '<i class="bi bi-pen me-1"></i>' + escHtml(field.label) + ': signed on the printed form</div></div>';
+        }
+
+        // GH#154 — a field kept only so data saved by an earlier version of
+        // the form stays visible. Hidden when it holds nothing.
+        var legacyNote = '';
+        if (field.legacy) {
+            if (value === '' || value === null || value === undefined || value === false) return '';
+            legacyNote = ' <span class="badge text-bg-secondary ics-legacy-badge" title="From an earlier version of this form">earlier version</span>';
         }
 
         // Phase 140 — checkbox: Bootstrap's form-check markup puts the
@@ -642,16 +736,16 @@
         // label-then-input div below.
         if (field.type === 'checkbox') {
             var checked = value ? ' checked' : '';
-            var ch = '<div class="mb-2 form-check">';
+            var ch = '<div class="' + colCls + '"><div class="mb-2 form-check">';
             ch += '<input type="checkbox" class="form-check-input" id="' + id + '" name="' + field.key
                 + '" tabindex="' + tabIdx + '"' + checked + '>';
-            ch += '<label class="form-check-label" for="' + id + '">' + escHtml(field.label) + req + '</label>';
-            ch += '</div>';
+            ch += '<label class="form-check-label" for="' + id + '">' + escHtml(field.label) + req + legacyNote + '</label>';
+            ch += helpHtml + '</div></div>';
             return ch;
         }
 
-        var h = '<div class="mb-2">';
-        h += '<label class="form-label" for="' + id + '">' + escHtml(field.label) + req + '</label>';
+        var h = '<div class="' + colCls + '"><div class="mb-2">';
+        h += '<label class="form-label" for="' + id + '">' + escHtml(field.label) + req + legacyNote + '</label>';
 
         if (field.type === 'textarea') {
             var rows = field.rows || 4;
@@ -687,7 +781,7 @@
                 + '" tabindex="' + tabIdx + '">';
         }
 
-        h += '</div>';
+        h += helpHtml + '</div></div>';
         return h;
     }
 
@@ -704,32 +798,107 @@
         var idAttr = id ? ' id="' + id + '"' : '';
         var h = '<select class="form-select form-select-sm"' + idAttr + ' name="' + name + '"' + tIdx + '>';
         h += '<option value=""></option>';
+        var matched = false;
         (options || []).forEach(function (opt) {
             var isObj = opt && typeof opt === 'object';
             var optVal = isObj ? (opt.value !== undefined ? opt.value : opt.label) : opt;
             var optLabel = isObj ? (opt.label !== undefined ? opt.label : opt.value) : opt;
             var sel = (String(optVal) === String(value)) ? ' selected' : '';
+            if (sel) matched = true;
             h += '<option value="' + escAttr(optVal) + '"' + sel + '>' + escHtml(optLabel) + '</option>';
         });
+        // GH#154 — a stored value that is not one of the options (e.g. free
+        // text saved before the field became a drop-down) is offered as its
+        // own option, so opening and re-saving the form never discards it.
+        if (!matched && value !== undefined && value !== null && String(value) !== '') {
+            h += '<option value="' + escAttr(value) + '" selected>' + escHtml(value) + '</option>';
+        }
         h += '</select>';
         return h;
     }
 
-    function renderTableField(field, rows) {
+    function renderTableField(field, rows, isNew) {
+        rows = rows || [];
+        // GH#154 — columns kept only for data saved by an earlier version
+        // (`legacy`) show only when some row holds a value. The visible list
+        // is remembered on the field so addTableRow()/collectTableData()
+        // build and read exactly the same columns.
+        var cols = [];
+        field.columns.forEach(function (col) {
+            if (col.legacy) {
+                var has = false;
+                rows.forEach(function (r) { if (r && r[col.key] !== undefined && r[col.key] !== null && String(r[col.key]) !== '') has = true; });
+                if (!has) return;
+            }
+            cols.push(col);
+        });
+        field._cols = cols;
+        var fixed = (field.fixed_rows && field.fixed_rows.length) ? field.fixed_rows : null;
+
         var h = '<div class="mb-3" id="tbl_wrap_' + field.key + '">';
         h += '<label class="form-label fw-bold">' + escHtml(field.label) + '</label>';
+        if (field.help) h += '<div class="form-text ics-help mt-0 mb-1">' + escHtml(field.help) + '</div>';
         h += '<div class="table-responsive">';
         h += '<table class="table table-sm table-bordered mb-1" id="tbl_' + field.key + '">';
-        h += '<thead><tr>';
-        field.columns.forEach(function (col) {
-            var w = col.width && col.width !== 'auto' ? ' style="width:' + col.width + '"' : '';
-            h += '<th' + w + '>' + escHtml(col.label) + '</th>';
+        h += '<thead>';
+
+        // GH#154 — forms whose FEMA blocks are columns (ICS 211, 209 blocks
+        // 48-51) get a second header row: "5. <block title>" spanning that
+        // block's columns, the column names underneath.
+        var groups = [];
+        cols.forEach(function (col) {
+            var b = col.block ? String(col.block) : '';
+            var last = groups.length - 1;
+            if (b && last >= 0 && groups[last].block === b) groups[last].cols.push(col);
+            else groups.push({ block: b, cols: [col] });
         });
-        h += '<th style="width:40px"></th></tr></thead>';
+        var twoRows = false;
+        groups.forEach(function (g) { if (g.block && g.cols.length > 1) twoRows = true; });
+        var rs = twoRows ? ' rowspan="2"' : '';
+        h += '<tr>';
+        if (fixed) h += '<th' + rs + '>' + escHtml(field.row_label_header || '') + '</th>';
+        groups.forEach(function (g) {
+            var c0 = g.cols[0];
+            var w0 = c0.width && c0.width !== 'auto' ? ' style="width:' + c0.width + '"' : '';
+            if (g.block && g.cols.length > 1) {
+                h += '<th colspan="' + g.cols.length + '" class="text-center">' + escHtml(g.block + '. ' + (c0.block_title || '')) + '</th>';
+            } else if (g.block) {
+                h += '<th' + rs + w0 + '>' + escHtml(g.block + '. ' + (c0.block_title || c0.label)) + '</th>';
+            } else {
+                h += '<th' + rs + w0 + '>' + escHtml(c0.label) + '</th>';
+            }
+        });
+        if (!fixed) h += '<th' + rs + ' style="width:40px"></th>';
+        h += '</tr>';
+        if (twoRows) {
+            h += '<tr>';
+            groups.forEach(function (g) {
+                if (g.block && g.cols.length > 1) {
+                    g.cols.forEach(function (col) {
+                        var w = col.width && col.width !== 'auto' ? ' style="width:' + col.width + '"' : '';
+                        h += '<th' + w + '>' + escHtml(col.label) + '</th>';
+                    });
+                }
+            });
+            h += '</tr>';
+        }
+        h += '</thead>';
         h += '<tbody>';
 
-        if (rows.length > 0) {
+        if (fixed) {
+            // GH#154 — labelled rows (e.g. ICS 209 block 31): exactly one row
+            // per label, stored by position, never added or removed.
+            fixed.forEach(function (label, idx) {
+                h += buildTableRow(field, rows[idx] || {}, idx, label);
+            });
+        } else if (rows.length > 0) {
             rows.forEach(function (rowData, idx) {
+                h += buildTableRow(field, rowData, idx);
+            });
+        } else if (isNew && field.default_data && field.default_data.length) {
+            // GH#154 — the rows a NEW form starts with (e.g. ICS 221's
+            // check-out units, ICS 230-CG's standard meetings).
+            field.default_data.forEach(function (rowData, idx) {
                 h += buildTableRow(field, rowData, idx);
             });
         } else {
@@ -750,8 +919,10 @@
 
         h += '</tbody></table>';
         h += '</div>';
-        h += '<button type="button" class="btn btn-sm btn-outline-primary" data-add-row="' + field.key + '">';
-        h += '<i class="bi bi-plus-lg me-1"></i>Add Row</button>';
+        if (!fixed) {
+            h += '<button type="button" class="btn btn-sm btn-outline-primary" data-add-row="' + field.key + '">';
+            h += '<i class="bi bi-plus-lg me-1"></i>Add Row</button>';
+        }
         h += '</div>';
         return h;
     }
@@ -769,6 +940,11 @@
             return '<td><input type="date" class="form-control form-control-sm" name="'
                 + name + '" value="' + escAttr(val) + '"></td>';
         }
+        // GH#154 — FEMA "Date/Time" columns (e.g. ICS 201 Date/Time Ordered).
+        if (col.type === 'datetime-local') {
+            return '<td><input type="datetime-local" class="form-control form-control-sm" name="'
+                + name + '" value="' + escAttr(val) + '"></td>';
+        }
         if (col.type === 'number') {
             return '<td><input type="number" class="form-control form-control-sm" name="'
                 + name + '" value="' + escAttr(val) + '"></td>';
@@ -776,17 +952,31 @@
         if (col.type === 'select') {
             return '<td>' + renderSelectField('', name, col.options, val, 0) + '</td>';
         }
+        // GH#154 — a check-box column (e.g. ICS 221 check-out, ICS 233-CG
+        // "Briefed POC"), stored as '1' or ''.
+        if (col.type === 'checkbox') {
+            var on = val && val !== '0' ? ' checked' : '';
+            return '<td class="text-center"><input type="checkbox" class="form-check-input" name="'
+                + name + '" value="1"' + on + '></td>';
+        }
         return '<td><input type="text" class="form-control form-control-sm" name="'
             + name + '" value="' + escAttr(val) + '"></td>';
     }
 
-    function buildTableRow(field, rowData, idx) {
+    function buildTableRow(field, rowData, idx, fixedLabel) {
+        rowData = rowData || {};
+        var cols = field._cols || field.columns;
         var h = '<tr>';
-        field.columns.forEach(function (col) {
-            h += buildTableCell(field, col, idx, rowData[col.key] || '');
+        // GH#154 — a labelled (fixed) row: read-only label first, no remove button.
+        if (fixedLabel !== undefined) h += '<th class="fw-normal small">' + escHtml(fixedLabel) + '</th>';
+        cols.forEach(function (col) {
+            var v = rowData[col.key];
+            h += buildTableCell(field, col, idx, v === undefined || v === null ? '' : v);
         });
-        h += '<td><button type="button" class="btn btn-sm btn-outline-danger btn-remove-row" title="Remove row">'
-            + '<i class="bi bi-trash"></i></button></td>';
+        if (fixedLabel === undefined) {
+            h += '<td><button type="button" class="btn btn-sm btn-outline-danger btn-remove-row" title="Remove row">'
+                + '<i class="bi bi-trash"></i></button></td>';
+        }
         h += '</tr>';
         return h;
     }
@@ -838,8 +1028,13 @@
         var data = {};
 
         currentTemplate.fields.forEach(function (field) {
-            if (field.type === 'section_header') {
-                return; // divider only -- no input, nothing to collect
+            if (field.type === 'section_header' || field.type === 'signature') {
+                return; // divider / signature line only -- nothing to collect
+            }
+            // GH#154 — an earlier-version field that was not shown (it held
+            // nothing) is not written back at all.
+            if (field.legacy && !document.getElementById(field.type === 'table' ? 'tbl_' + field.key : 'ics_' + field.key)) {
+                return;
             }
             if (field.type === 'table') {
                 data[field.key] = collectTableData(field);
@@ -860,17 +1055,26 @@
         if (!tbody) return [];
 
         var rows = [];
+        var cols = field._cols || field.columns;
+        // GH#154 — labelled (fixed) rows are stored by position, so every row
+        // is kept, empty or not; ordinary tables drop rows left blank.
+        var fixed = !!(field.fixed_rows && field.fixed_rows.length);
         var trs = tbody.querySelectorAll('tr');
         trs.forEach(function (tr) {
             var rowObj = {};
             var hasData = false;
-            field.columns.forEach(function (col) {
+            cols.forEach(function (col) {
                 var input = tr.querySelector('[name*="[' + col.key + ']"]');
-                var val = input ? input.value.trim() : '';
+                var val;
+                if (col.type === 'checkbox') {
+                    val = input && input.checked ? '1' : '';
+                } else {
+                    val = input ? input.value.trim() : '';
+                }
                 rowObj[col.key] = val;
                 if (val) hasData = true;
             });
-            if (hasData) rows.push(rowObj);
+            if (hasData || fixed) rows.push(rowObj);
         });
 
         return rows;
@@ -1085,14 +1289,42 @@
             titleEl.value = (inc.scope || incFallback);
         }
 
-        // Common: incident_name
+        // Common: incident_name (and, GH#154, incident_number -- many FEMA
+        // forms carry both).
         setFieldIfEmpty('incident_name', inc.scope || incFallback);
+        if (inc.incident_number) setFieldIfEmpty('incident_number', String(inc.incident_number));
 
-        // Date fields
+        // Date fields. GH#154: LOCAL date/time (toISOString() is UTC, so an
+        // evening dispatcher in the US got tomorrow's date), handed over as
+        // "YYYY-MM-DDTHH:MM" -- setFieldIfEmpty() trims it to what each
+        // input accepts (date, time or datetime-local).
         var now = new Date();
-        setFieldIfEmpty('date_prepared', now.toISOString().substring(0, 10));
-        setFieldIfEmpty('date', now.toISOString().substring(0, 10));
-        setFieldIfEmpty('time', now.toTimeString().substring(0, 5));
+        var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
+        var nowStamp = now.getFullYear() + '-' + p2(now.getMonth() + 1) + '-' + p2(now.getDate())
+            + 'T' + p2(now.getHours()) + ':' + p2(now.getMinutes());
+        setFieldIfEmpty('date_prepared', nowStamp);
+        setFieldIfEmpty('prepared_datetime', nowStamp);
+        setFieldIfEmpty('date', nowStamp.substring(0, 10));
+        setFieldIfEmpty('time', nowStamp.substring(11, 16));
+
+        // GH#154 — per-form extras declared by the template (`prefill`:
+        // field key -> source), e.g. ICS 201's Date/Time Initiated from the
+        // incident's start, ICS 209's incident definition from its type.
+        var start = inc.problemstart ? String(inc.problemstart).replace(' ', 'T').substring(0, 16) : '';
+        var where = [inc.street, inc.city, inc.state].filter(function (x) { return !!x; }).join(', ');
+        var sources = {
+            now: nowStamp,
+            incident_start: start,
+            incident_type: inc.type_name || '',
+            incident_location: where,
+            incident_city: inc.city || '',
+            incident_state: inc.state || ''
+        };
+        var extra = (currentTemplate && currentTemplate.prefill) || {};
+        Object.keys(extra).forEach(function (key) {
+            var v = sources[extra[key]];
+            if (v) setFieldIfEmpty(key, v);
+        });
 
         // ICS-213 specific
         // GH#101 — api/incident-detail.php's actual output key is
@@ -1121,7 +1353,17 @@
     function setFieldIfEmpty(key, value) {
         var el = document.getElementById('ics_' + key);
         if (el && !el.value && value) {
-            el.value = value;
+            // GH#154 — fit the value to the input: a "YYYY-MM-DDTHH:MM" stamp
+            // goes into a date input as its date and a time input as its time
+            // (a datetime-local input silently refuses a bare date, which is
+            // why "Date/Time Prepared" never pre-filled before).
+            var v = String(value);
+            var stamp = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(v);
+            if (el.type === 'date' && stamp) v = v.substring(0, 10);
+            else if (el.type === 'time' && stamp) v = v.substring(11, 16);
+            else if (el.type === 'datetime-local' && /^\d{4}-\d{2}-\d{2}$/.test(v)) v = v + 'T00:00';
+            else if (el.type === 'datetime-local' && stamp) v = v.substring(0, 10) + 'T' + v.substring(11, 16);
+            el.value = v;
         }
     }
 
@@ -1206,37 +1448,21 @@
             return '<span class="badge bg-' + cColor + '">' + cLabel + '</span>';
         }
 
+        // GH#154 — labels and colours for every built-in FEMA form come from
+        // the server's type list (ics_builtin_badge_map()), not a copy here.
         var type = f && f.form_type;
-        var labels = {
-            '213':   'ICS-213',
-            '214':   'ICS-214',
-            '202':   'ICS-202',
-            '205':   'ICS-205',
-            '205a':  'ICS-205A',
-            '206':   'ICS-206',
-            '213rr': 'ICS-213RR',
-            '214a':  'ICS-214a',
-            '221':   'ICS-221'
-        };
-        var colors = {
-            '213':   'primary',
-            '214':   'success',
-            '202':   'info',
-            '205':   'warning',
-            '205a':  'secondary',
-            '206':   'teal',
-            '213rr': 'danger',
-            '214a':  'indigo',
-            '221':   'orange'
-        };
-        var label = labels[type] || type;
-        var color = colors[type] || 'secondary';
+        var meta = (typeof icsTypeMeta !== 'undefined' && icsTypeMeta && icsTypeMeta[type]) || null;
+        var label = meta ? meta.label : ('ICS ' + String(type || '').toUpperCase());
+        var color = meta ? meta.color : 'secondary';
         // Bootstrap CSS variable colors need inline style instead of bg- class
-        var cssVarColors = { 'teal': true, 'indigo': true, 'orange': true };
+        var cssVarColors = { 'teal': true, 'indigo': true, 'orange': true, 'purple': true, 'pink': true, 'cyan': true };
+        var bgColors = { primary: 1, secondary: 1, success: 1, danger: 1, warning: 1, info: 1, dark: 1 };
         if (cssVarColors[color]) {
-            return '<span class="badge" style="background-color:var(--bs-' + color + ')">' + label + '</span>';
+            return '<span class="badge" style="background-color:var(--bs-' + color + ')">' + escHtml(label) + '</span>';
         }
-        return '<span class="badge bg-' + color + '">' + label + '</span>';
+        if (!bgColors[color]) color = 'secondary';
+        var textCls = (color === 'warning' || color === 'info') ? ' text-dark' : '';
+        return '<span class="badge bg-' + color + textCls + '">' + escHtml(label) + '</span>';
     }
 
     function getStatusBadge(status) {

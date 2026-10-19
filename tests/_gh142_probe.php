@@ -72,34 +72,11 @@ switch ($action) {
                 'deleted' => !empty($del['ok']), 'tmp' => sys_get_temp_dir()];
         break;
     case 'ics':
-        // generatePrintHtml() lives in api/ics-forms.php beneath that file's own
-        // endpoint dispatch, so extract the pure rendering functions (the same
-        // technique tests/test_ics_forms_builtin_regression.php uses) rather than
-        // include the file. branding_ics_letterhead() is the REAL one.
+        // generatePrintHtml() lives in inc/ics-forms-builtin.php (GH#154 moved it
+        // out of api/ics-forms.php, whose endpoint dispatch cannot be included
+        // from here). branding_ics_letterhead() is the REAL one.
         require_once $root . '/inc/ics-form-types.php';
-        $src = (string) file_get_contents($root . '/api/ics-forms.php');
-        $extract = function (string $name) use ($src): string {
-            if (!preg_match('/\nfunction\s+' . preg_quote($name, '/') . '\s*\([^)]*\)(?::\s*\??[A-Za-z|]+)?\s*\{/', $src, $m, PREG_OFFSET_CAPTURE)) {
-                throw new RuntimeException("no function $name");
-            }
-            $start = $m[0][1] + 1;
-            $i = strpos($src, '{', $start);
-            $depth = 0;
-            $len = strlen($src);
-            for (; $i < $len; $i++) {
-                if ($src[$i] === '{') {
-                    $depth++;
-                } elseif ($src[$i] === '}') {
-                    $depth--;
-                    if ($depth === 0) { $i++; break; }
-                }
-            }
-            return substr($src, $start, $i - $start);
-        };
-        foreach (['generatePrintHtml', 'pv', 'xs', 'printICS213', 'printICS214', 'printICS202', 'printICS205',
-                  'printICS205A', 'printICS213RR', 'printICS206', 'printICS214A', 'printICS221'] as $fn) {
-            eval($extract($fn));
-        }
+        require_once $root . '/inc/ics-forms-builtin.php';
         $row = is_array($p['row'] ?? null) ? $p['row'] : ['id' => 1, 'title' => 'Probe'];
         $res = [];
         foreach ((array) ($p['types'] ?? ['213']) as $type) {

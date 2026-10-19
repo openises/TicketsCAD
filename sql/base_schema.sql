@@ -3437,77 +3437,22 @@ commit;
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
+-- GH#153 (2026-10-19): utf8mb4 so any State / Province name fits
+-- ("Manawatū-Whanganui" is not latin1), and a unique key on code (the
+-- Settings → States / Provinces page treats a code as unique). The table is
+-- created EMPTY: sql/run_phase84_states_seed.php seeds the 50 US states + DC
+-- only into an empty, never-edited list, so re-importing this file can never
+-- put the US states back into a list an administrator replaced. Installs
+-- that predate this are converted by sql/run_gh153_states_translator_utf8mb4.php.
 CREATE TABLE IF NOT EXISTS `states_translator` (
   `id` int(4) NOT NULL AUTO_INCREMENT,
   `name` varchar(64) NOT NULL,
   `code` varchar(4) NOT NULL,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=53 DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_states_code` (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
---
--- Dumping data for table `states_translator`
---
-
-LOCK TABLES `states_translator` WRITE;
-/*!40000 ALTER TABLE `states_translator` DISABLE KEYS */;
-set autocommit=0;
-INSERT IGNORE INTO `states_translator` VALUES
-(1,'Alabama','AL'),
-(2,'Alaska','AK'),
-(3,'Arizona','AZ'),
-(4,'Arkansas','AR'),
-(5,'California','CA'),
-(6,'Colorado','CO'),
-(7,'Connecticut','CT'),
-(8,'Delaware','DE'),
-(9,'Florida','FL'),
-(10,'Georgia','GA'),
-(11,'Hawaii','HI'),
-(12,'Idaho','ID'),
-(13,'Illinois','IL'),
-(14,'Indiana','IN'),
-(15,'Iowa','IA'),
-(16,'Kansas','KS'),
-(17,'Kentucky','KY'),
-(18,'Louisiana','LA'),
-(19,'Maine','ME'),
-(20,'Maryland','MD'),
-(21,'Massachusetts','MA'),
-(22,'Michigan','MI'),
-(23,'Minnesota','MN'),
-(24,'Mississippi','MS'),
-(25,'Missouri','MO'),
-(26,'Montana','MT'),
-(27,'Nebraska','NE'),
-(28,'Nevada','NV'),
-(29,'New Hampshire','NH'),
-(30,'New Jersey','NJ'),
-(31,'New Mexico','NM'),
-(32,'New York','NY'),
-(33,'North Carolina','NC'),
-(34,'North Dakota','ND'),
-(35,'Ohio','OH'),
-(36,'Oklahoma','OK'),
-(37,'Oregon','OR'),
-(38,'Pennsylvania','PA'),
-(39,'Rhode Island','RI'),
-(40,'South Carolina','SC'),
-(41,'South Dakota','SD'),
-(42,'Tennessee','TN'),
-(43,'Texas','TX'),
-(44,'Utah','UT'),
-(45,'Vermont','VT'),
-(46,'Virginia','VA'),
-(47,'Washington','WA'),
-(48,'West Virginia','WV'),
-(49,'Wisconsin','WI'),
-(50,'Wyoming','WY'),
-(51,'England','UK'),
-(52,'District of Columbia','DC');
-/*!40000 ALTER TABLE `states_translator` ENABLE KEYS */;
-UNLOCK TABLES;
-commit;
 
 --
 -- Table structure for table `stats_settings`

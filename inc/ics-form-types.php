@@ -21,15 +21,22 @@
  */
 
 require_once __DIR__ . '/rbac.php';
+// GH#154 -- the built-in slug list (every FEMA form TicketsCAD ships).
+require_once __DIR__ . '/ics-forms-builtin.php';
 
 define('ICS_FORM_TYPE_MAX_SIMPLE_FIELDS', 40);
 define('ICS_FORM_TYPE_MAX_TABLE_FIELDS', 3);
 define('ICS_FORM_TYPE_MAX_TABLE_COLUMNS', 12);
 define('ICS_FORM_TYPE_MAX_TABLE_ROWS', 200);
 
-/** The nine built-in type codes, plus 'custom' itself -- a custom slug may never collide with one. */
+/**
+ * Every built-in type code, plus 'custom' itself -- a NEW custom slug may never
+ * collide with one. GH#154: the list grows with the built-in FEMA forms
+ * (inc/ics-forms-builtin.php); a custom type that already holds a slug which
+ * has since become reserved is grandfathered (ics_form_type_validate_metadata()).
+ */
 function ics_form_type_reserved_slugs(): array {
-    return ['213', '214', '202', '205', '205a', '213rr', '206', '214a', '221', 'custom'];
+    return array_merge(ics_builtin_slugs(), ['custom']);
 }
 
 /** Field/column keys a custom definition may never use -- JS prototype-pollution-adjacent words. */
@@ -193,7 +200,16 @@ function ics_form_type_validate_metadata(array $data, ?string $existingSlug = nu
     $errors = [];
 
     $slug = (string) ($data['slug'] ?? '');
-    if (!preg_match('/^[a-z][a-z0-9_-]{2,59}$/', $slug)) {
+    // GH#154 -- grandfathering. A slug is immutable, so on an UPDATE that keeps
+    // the row's own slug there is nothing new to validate: the format and
+    // reserved-slug rules apply to choosing a slug, not to keeping one. Without
+    // this, a custom type created before TicketsCAD reserved its slug for a
+    // built-in FEMA form (or stored by an import or by hand) could never be
+    // edited again, though it and its saved forms keep working.
+    $slugGrandfathered = ($existingSlug !== null && $slug === $existingSlug);
+    if ($slugGrandfathered) {
+        // kept as stored
+    } elseif (!preg_match('/^[a-z][a-z0-9_-]{2,59}$/', $slug)) {
         $errors[] = 'Slug must start with a lowercase letter and contain only lowercase letters, digits, underscore, or hyphen (3-60 characters total).';
     } elseif ($existingSlug !== null && $slug !== $existingSlug) {
         $errors[] = 'Slug cannot be changed after a type is created.';
@@ -239,7 +255,9 @@ function ics_form_type_validate_metadata(array $data, ?string $existingSlug = nu
     }
 
     if ($slug !== '') {
-        $imp = ics_form_type_check_impersonation($slug, $formNumber);
+        // A grandfathered slug skips only the reserved-slug half of the check;
+        // the form-number rule still applies to whatever the author types now.
+        $imp = ics_form_type_check_impersonation($slugGrandfathered ? '' : $slug, $formNumber);
         if (!$imp['valid']) $errors[] = $imp['error'];
     }
 

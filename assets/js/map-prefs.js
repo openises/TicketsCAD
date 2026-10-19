@@ -448,8 +448,14 @@
     // already set on the map instance.
     //
     // Layer preferences persist to the shared 'newui_map_layers'
-    // localStorage key so a category the operator turned on at the
-    // situation view is also on when they open unit-detail.
+    // localStorage key so a category the operator turned on (or off) at
+    // the situation view is also on (or off) when they open unit-detail.
+    //
+    // These groups are the ONLY drawing of markups on a page that uses
+    // them. GH#139: the EOC display also drew every markup a second time
+    // from its own markup panel, so turning a category off here left a
+    // copy on the map. Pages that edit markups call reload() on the
+    // controller this returns rather than drawing their own copy.
     var MARKUP_PREFS_KEY = 'newui_map_layers';
 
     function safeEsc(s) {
@@ -502,25 +508,49 @@
         } catch (e) { return null; }
     }
 
-    function attachMarkupOverlays(mapInstance, ctl) {
-        if (!mapInstance || !ctl) return;
-        if (mapInstance._markupOverlaysAttached) return;
+    // Returns a controller for the map's markup overlays (also kept on the
+    // map, see MapPrefs.getMarkupOverlays):
+    //   ready    — promise, settles once the first load has finished
+    //   reload() — re-fetch categories + markups and redraw them in place,
+    //              keeping each group's current on/off state. A page that
+    //              edits markups calls this after a save, rename, delete or
+    //              hide instead of drawing its own second copy (GH#139).
+    //   show(id) — switch on the group a markup of category `id` lands in
+    //              (0 / unknown = "Uncategorised markups") and remember it.
+    //
+    // opts.uncategorisedDefaultVisible — whether "Uncategorised markups"
+    //   starts on when the user has never chosen. Off by default; the EOC
+    //   display turns it on because markups drawn there are uncategorised
+    //   and were always shown there.
+    function attachMarkupOverlays(mapInstance, ctl, opts) {
+        if (!mapInstance || !ctl) return null;
+        if (mapInstance._markupOverlaysAttached) return mapInstance._markupOverlays || null;
         mapInstance._markupOverlaysAttached = true;
+        opts = opts || {};
 
-        // Read the saved active-overlay names so we can auto-enable
-        // categories the operator had on elsewhere.
+        // The user's explicit choices, by the label the layer control
+        // shows. `overlays` = turned on, `overlays_off` = turned off. Before
+        // GH#139 only the "on" list existed, so a category that is on by
+        // default came back on at every reload however often it was
+        // turned off — on a wall display that reloads, "turned off" never
+        // stuck.
         var savedActive = {};
+        var savedOff = {};
         try {
             var s = JSON.parse(localStorage.getItem(MARKUP_PREFS_KEY) || 'null');
             if (s && Array.isArray(s.overlays)) {
                 s.overlays.forEach(function (n) { savedActive[n] = true; });
             }
+            if (s && Array.isArray(s.overlays_off)) {
+                s.overlays_off.forEach(function (n) { savedOff[n] = true; });
+            }
         } catch (e) { /* ignore */ }
 
         // Track the per-category label -> layer so save/restore matches
         // exactly the display name the layer control shows.
-        var catLayers = {};   // catId -> { label, group }
-        var uncatLayer = null;
+        var catLayers = {};   // String(catId) | '_uncat' -> { label, group }
+        var applying = false; // true while WE add/remove groups (not the user)
+        var UNCAT_LABEL = '<span style="color:#9b59b6">&#9679;</span> Uncategorised markups';
 
         function catLabel(cat) {
             return '<span style="color:' +
@@ -529,72 +559,106 @@
                    safeEsc(cat.name || ('Category ' + cat.id));
         }
 
-        fetch('api/map-overlay-categories.php?action=list', { credentials: 'same-origin' })
-            .then(function (r) { return r.ok ? r.json() : { categories: [] }; })
-            .then(function (cd) {
-                var cats = (cd && cd.categories) || [];
-                cats.forEach(function (c) {
-                    var grp = L.layerGroup();
-                    var lbl = catLabel(c);
-                    catLayers[c.id] = { label: lbl, group: grp };
-                    ctl.addOverlay(grp, lbl);
-                    // Default-visible categories go on; saved-active
-                    // trumps default when we restore below.
-                    if (parseInt(c.default_visible, 10) === 1) grp.addTo(mapInstance);
-                });
-                // Catch-all for uncategorised markups
-                uncatLayer = L.layerGroup();
-                var uncatLbl = '<span style="color:#9b59b6">&#9679;</span> Uncategorised markups';
-                ctl.addOverlay(uncatLayer, uncatLbl);
-                catLayers['_uncat'] = { label: uncatLbl, group: uncatLayer };
-                return fetch('api/map-markups.php', { credentials: 'same-origin' });
-            })
-            .then(function (r) { return r ? r.json() : { markups: [] }; })
-            .then(function (md) {
-                var mkups = (md && md.markups) || [];
-                mkups.forEach(function (mk) {
-                    if (!mk.line_data || parseInt(mk.line_status, 10) === 0) return;
-                    var shape = shapeFromMarkup(mk);
-                    if (!shape) return;
-                    var effCat = parseInt(mk.category_id || mk.line_cat_id || 0, 10);
-                    var target = (effCat && catLayers[effCat])
-                        ? catLayers[effCat].group
-                        : uncatLayer;
-                    if (target) target.addLayer(shape);
-                });
-                // Restore per-category visibility from saved prefs.
-                Object.keys(catLayers).forEach(function (k) {
-                    var entry = catLayers[k];
-                    if (savedActive[entry.label] && !mapInstance.hasLayer(entry.group)) {
-                        entry.group.addTo(mapInstance);
-                    }
-                });
-            })
-            .catch(function () { /* graceful */ });
-
-        // Persist overlay preferences whenever a category toggles.
-        function saveActive() {
-            var active = [];
-            Object.keys(catLayers).forEach(function (k) {
-                var e = catLayers[k];
-                if (mapInstance.hasLayer(e.group)) active.push(e.label);
-            });
+        function ensureGroup(key, label, defaultVisible) {
+            if (catLayers[key]) return catLayers[key];
+            var grp = L.layerGroup();
+            catLayers[key] = { label: label, group: grp };
+            applying = true;
             try {
-                var prev = JSON.parse(localStorage.getItem(MARKUP_PREFS_KEY) || '{}');
+                ctl.addOverlay(grp, label);
+                var on = savedOff[label] ? false : (savedActive[label] ? true : !!defaultVisible);
+                if (on) grp.addTo(mapInstance);
+            } finally {
+                applying = false;
+            }
+            return catLayers[key];
+        }
+
+        function groupFor(catId) {
+            var id = parseInt(catId, 10) || 0;
+            return (id && catLayers[String(id)]) ? catLayers[String(id)] : catLayers._uncat;
+        }
+
+        function load() {
+            return fetch('api/map-overlay-categories.php?action=list', { credentials: 'same-origin' })
+                .then(function (r) { return r.ok ? r.json() : { categories: [] }; })
+                .then(function (cd) {
+                    var cats = (cd && cd.categories) || [];
+                    cats.forEach(function (c) {
+                        ensureGroup(String(c.id), catLabel(c), parseInt(c.default_visible, 10) === 1);
+                    });
+                    ensureGroup('_uncat', UNCAT_LABEL, !!opts.uncategorisedDefaultVisible);
+                    return fetch('api/map-markups.php', { credentials: 'same-origin' });
+                })
+                .then(function (r) { return (r && r.ok) ? r.json() : null; })
+                .then(function (md) {
+                    // A failed fetch keeps what is already drawn.
+                    if (!md || !Array.isArray(md.markups)) return;
+                    Object.keys(catLayers).forEach(function (k) {
+                        catLayers[k].group.clearLayers();
+                    });
+                    md.markups.forEach(function (mk) {
+                        if (!mk.line_data || parseInt(mk.line_status, 10) === 0) return;
+                        var shape = shapeFromMarkup(mk);
+                        if (!shape) return;
+                        var entry = groupFor(mk.category_id || mk.line_cat_id || 0);
+                        if (entry) entry.group.addLayer(shape);
+                    });
+                })
+                .catch(function () { /* graceful */ });
+        }
+
+        // Record ONE explicit user choice. Only the layer that changed is
+        // written, so a category that is merely off by default is never
+        // recorded as "turned off" (an administrator turning its default on
+        // later still reaches this user).
+        function remember(label, on) {
+            try {
+                var prev = JSON.parse(localStorage.getItem(MARKUP_PREFS_KEY) || '{}') || {};
                 // Merge: preserve any non-markup overlays (Weather, etc.)
-                // the dashboard's app.js might have persisted.
-                var prevOverlays = Array.isArray(prev.overlays) ? prev.overlays : [];
-                var isCatLabel = {};
-                Object.keys(catLayers).forEach(function (k) {
-                    isCatLabel[catLayers[k].label] = true;
-                });
-                var merged = prevOverlays.filter(function (n) { return !isCatLabel[n]; }).concat(active);
-                prev.overlays = merged;
+                // other pages might have persisted under the same key.
+                var onList = Array.isArray(prev.overlays) ? prev.overlays : [];
+                var offList = Array.isArray(prev.overlays_off) ? prev.overlays_off : [];
+                onList = onList.filter(function (n) { return n !== label; });
+                offList = offList.filter(function (n) { return n !== label; });
+                if (on) { onList.push(label); } else { offList.push(label); }
+                prev.overlays = onList;
+                prev.overlays_off = offList;
                 localStorage.setItem(MARKUP_PREFS_KEY, JSON.stringify(prev));
             } catch (e) { /* ignore */ }
+            if (on) { savedActive[label] = true; delete savedOff[label]; }
+            else { savedOff[label] = true; delete savedActive[label]; }
         }
-        mapInstance.on('overlayadd', saveActive);
-        mapInstance.on('overlayremove', saveActive);
+
+        function onOverlayChange(e) {
+            if (applying || !e || !e.layer) return;
+            Object.keys(catLayers).forEach(function (k) {
+                if (catLayers[k].group === e.layer) {
+                    remember(catLayers[k].label, e.type === 'overlayadd');
+                }
+            });
+        }
+        mapInstance.on('overlayadd', onOverlayChange);
+        mapInstance.on('overlayremove', onOverlayChange);
+
+        var chain = load();
+        var controller = {
+            ready: chain,
+            reload: function () {
+                chain = chain.then(load, load);
+                return chain;
+            },
+            show: function (catId) {
+                return chain.then(function () {
+                    var entry = groupFor(catId);
+                    if (!entry) return;
+                    if (!mapInstance.hasLayer(entry.group)) entry.group.addTo(mapInstance);
+                    remember(entry.label, true);
+                });
+            }
+        };
+        mapInstance._markupOverlays = controller;
+        return controller;
     }
 
     window.MapPrefs = {
@@ -902,9 +966,24 @@
          * Convenience: attach markup overlays to an already-built
          * layer control. Useful when the caller built the control
          * themselves and just wants MapPrefs' shared overlay logic.
+         * @param {L.Map} mapInstance
+         * @param {L.Control.Layers} ctl
+         * @param {Object} [opts]  { uncategorisedDefaultVisible: bool }
+         * @returns {Object|null}  the controller ({ ready, reload, show })
          */
-        addMarkupOverlays: function (mapInstance, ctl) {
-            attachMarkupOverlays(mapInstance, ctl);
+        addMarkupOverlays: function (mapInstance, ctl, opts) {
+            return attachMarkupOverlays(mapInstance, ctl, opts);
+        },
+
+        /**
+         * The markup-overlay controller attached to a map, or null. Lets a
+         * page that edits markups refresh the ONE drawing of them (the
+         * layer-control groups) instead of drawing a second copy.
+         * @param {L.Map} mapInstance
+         * @returns {Object|null}
+         */
+        getMarkupOverlays: function (mapInstance) {
+            return (mapInstance && mapInstance._markupOverlays) || null;
         }
     };
 })();

@@ -50,8 +50,12 @@
 
     /**
      * Load (once) the states list. Resolves to an array of {code,name}.
-     * Falls back to the US list if the API is unreachable or empty, so a
-     * broken fetch never leaves an empty dropdown.
+     * Falls back to the US list only when the list could not be READ (the
+     * API is unreachable, or it says states_from_db is not true), so a broken
+     * fetch never leaves an empty dropdown. GH#153: an administrator can now
+     * empty the list on purpose (Settings → States / Provinces); the API then
+     * answers states: [] with states_from_db: true, and the dropdown is left
+     * empty instead of being filled with US states nobody chose.
      */
     function load() {
         if (_promise) {
@@ -60,7 +64,7 @@
         _promise = fetch('api/incident-types.php', { credentials: 'same-origin' })
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (data) {
-                if (data && Array.isArray(data.states) && data.states.length) {
+                if (data && Array.isArray(data.states) && (data.states.length || data.states_from_db === true)) {
                     return _normalize(data.states);
                 }
                 return _normalize(FALLBACK_US);

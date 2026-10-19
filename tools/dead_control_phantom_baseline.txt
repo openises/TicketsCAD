@@ -483,7 +483,6 @@ phantom:webhook_subscriptions.dead_letter_count
 #     location_providers.code/color/icon (seed-only intrinsic identity,
 #     sql/run_03_location_providers.php); comm_modes.capabilities
 #     (static seed-only descriptor, sql/comm_identifiers.sql:86-91);
-#     states_translator.code/name (fixed 50-state reference catalog);
 #     tts_applications.app_key/label/sort_order (fixed application
 #     catalog -- app_key is the WHERE-clause identifying key, not a SET
 #     target, by design -- you don't rewrite a row's own key).
@@ -502,8 +501,6 @@ phantom:location_providers.code
 phantom:location_providers.color
 phantom:location_providers.icon
 phantom:comm_modes.capabilities
-phantom:states_translator.code
-phantom:states_translator.name
 phantom:tts_applications.app_key
 phantom:tts_applications.label
 phantom:tts_applications.sort_order

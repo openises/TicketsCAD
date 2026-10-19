@@ -287,7 +287,9 @@
         fetch('api/incident-types.php', { credentials: 'same-origin' })
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (data) {
-                if (data && Array.isArray(data.states) && data.states.length) {
+                // GH#153: an empty list the server READ is the administrator's
+                // choice; only a list it could not read falls back to the US.
+                if (data && Array.isArray(data.states) && (data.states.length || data.states_from_db === true)) {
                     appendStates(data.states);
                 } else {
                     appendStates(fallbackUS);

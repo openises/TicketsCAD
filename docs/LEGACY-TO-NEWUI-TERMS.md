@@ -83,7 +83,7 @@ https://www.youtube.com/playlist?list=PLeOKl8VFMO3ZmqFQ7Yxn8QZl2cqNfMLyh
 | **Audit log** (`audit_log` table) | OCSF-aligned, every state-changing action recorded. Distinct from the legacy per-incident `log` table. | [AUDIT-LOG-REFERENCE.md](AUDIT-LOG-REFERENCE.md) |
 | **Webhooks** | Outbound HTTP POSTs to user-configured URLs on subscribed events. HMAC-signed, retried with backoff. | [WEBHOOKS-INTEGRATOR-GUIDE.md](WEBHOOKS-INTEGRATOR-GUIDE.md) |
 | **i18n / captions** | Server-side `t($key)` calls plus a database-overlayable translation registry. EN/DE/NL/FR/ES seeded; community-extensible. | [I18N-GUIDE.md](I18N-GUIDE.md) |
-| **ICS forms** | Built-in 213, 214, 202, 205, 205a, 213rr, 206, 214a, 221 with Winlink XML export. | Training video: Major incidents |
+| **ICS forms** | Every form in the FEMA ICS Forms Booklet built in (201 through 233-CG, the ICS 219 cards, plus the pre-2010 214a), with Winlink XML export for the 213. See [ICS Forms](ICS-FORMS.md). | Training video: Major incidents |
 | **Map overlay categories** | Group map markups so dispatchers can toggle them in bulk. | Settings → Map Overlays |
 | **Major incidents** | Link multiple sub-incidents under a campaign with command structure. | Training video: Major incidents |
 | **Quick-start wizard** | First-run setup wizard for new installations. | [INSTALLATION-CHECKLIST.md](INSTALLATION-CHECKLIST.md) |

@@ -130,6 +130,7 @@ We follow the [Diátaxis](https://diataxis.fr) framework: four kinds of document
 ### Feature reference
 
 - **[PAR check guide](PAR-CHECK-GUIDE.md)** — Personnel Accountability Reports, cadence, escalation
+- **[ICS forms](ICS-FORMS.md)** — every form in the FEMA ICS Forms Booklet, how to use them, and what changed for forms saved before October 2026
 - **[Chat Bridge](CHAT-BRIDGE.md)** — forwarding local chat rooms to Slack/Telegram/Email/Mesh Radio, and why direct messages never leave the building
 - **[NewUI user guide (long form)](NEWUI-USER-GUIDE.md)** — every page and what it does
 - **[USER-GUIDE.md (developer-facing)](USER-GUIDE.md)** — technical companion to the user guide

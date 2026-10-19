@@ -4,12 +4,15 @@
  *
  * Unified ICS (Incident Command System) forms page.
  * Browse available form types, create new forms, view/edit saved forms.
- * Supports: ICS-213, ICS-214, ICS-202, ICS-205, ICS-205A, ICS-213RR
+ * Supports every form in the NIMS ICS Forms Booklet (FEMA 502-2) -- see
+ * inc/ics-forms-builtin.php -- plus agency custom form types (Phase 140).
  */
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/inc/i18n.php';
 require_once __DIR__ . '/inc/rbac.php';
+// GH#154 -- the built-in FEMA form list the hub cards are drawn from.
+require_once __DIR__ . '/inc/ics-forms-builtin.php';
 
 // 2026-07-04 (GH #13) — pick the session profile matching the
 // client's cookie (TCADMOBILE vs PHPSESSID). Without this, a
@@ -75,193 +78,59 @@ include_once NEWUI_ROOT . '/inc/navbar.php';
     <!-- ═══════════ HUB SECTION ═══════════ -->
     <div id="hubSection">
 
-        <!-- Form Type Cards -->
+        <!-- GH#154: the new-form pick-lists are generated from ics_builtin_form_types()
+             (inc/ics-forms-builtin.php), grouped, with the ICS 219 resource
+             status cards under one heading. "Find a form" filters them;
+             Enter opens the first match (assets/js/ics-forms.js bindFindForm()). -->
+        <div id="icsFormTypeMeta" hidden data-meta="<?php echo e(json_encode(ics_builtin_badge_map())); ?>"></div>
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <label class="form-label mb-0 small fw-semibold" for="icsFormFind"><i class="bi bi-search me-1"></i>Find a form</label>
+            <input type="search" class="form-control form-control-sm" id="icsFormFind" style="max-width:340px"
+                   placeholder="Number or name, e.g. 205 or medical — Enter opens" autocomplete="off">
+        </div>
+        <?php
+        // One compact pick-list per group: the form number (in the form's
+        // colour), its FEMA title and a one-line description. 35 forms fit on
+        // about one screen, so the saved forms below stay close at hand.
+        $groupNotes = [
+            'tcards' => 'Resource Status Cards for the Resources Unit\'s T-card rack; each colour is for a different kind of resource.',
+        ];
+        foreach (ics_builtin_groups() as $groupKey => $groupTitle):
+            $groupTypes = array_values(array_filter(ics_builtin_form_types(), function ($m) use ($groupKey) {
+                return $m['group'] === $groupKey;
+            }));
+            if (!$groupTypes) continue; ?>
+        <div class="ics-form-group card mb-2">
+            <div class="card-header py-1 d-flex align-items-baseline gap-2 flex-wrap">
+                <span class="ics-group-title"><?php echo e($groupTitle); ?></span>
+                <?php if (isset($groupNotes[$groupKey])): ?><small class="text-body-secondary"><?php echo e($groupNotes[$groupKey]); ?></small><?php endif; ?>
+            </div>
+            <div class="card-body p-2">
+                <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 row-cols-xxl-4 g-1">
+                    <?php foreach ($groupTypes as $m):
+                        $c = ics_builtin_color_classes($m['color']); ?>
+                    <div class="col" data-form-search="<?php echo e($m['number'] . ' ' . $m['title'] . ' ' . $m['slug']); ?>">
+                        <button type="button" class="btn btn-sm ics-pick w-100 text-start" data-new-form="<?php echo e($m['slug']); ?>"
+                                title="<?php echo e('New ' . $m['number'] . ': ' . $m['desc']); ?>">
+                            <span class="ics-pick-number<?php echo $c['text_class']; ?>"<?php echo $c['text_style']; ?>><?php echo e($m['number']); ?></span>
+                            <span class="ics-pick-title"><?php echo e($m['title']); ?></span>
+                            <?php if (!empty($m['legacy'])): ?><span class="badge text-bg-secondary ms-1">pre-2010</span><?php endif; ?>
+                            <small class="ics-pick-desc d-block text-body-secondary text-truncate"><?php echo e($m['desc']); ?></small>
+                        </button>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        </div>
+        <?php endforeach; ?>
+
         <!-- Phase 140: id="formTypeCardsRow" is where JS appends one card
              per active, in-scope custom ICS form type (assets/js/ics-forms.js
-             loadCustomTypeCards()), after these 9 static built-in cards. -->
-        <div class="row g-3 mb-4" id="formTypeCardsRow">
-
-            <!-- ICS-213: General Message -->
-            <div class="col-md-6 col-lg-4 col-xl-3">
-                <div class="card ics-type-card h-100">
-                    <div class="card-body">
-                        <div class="d-flex align-items-center justify-content-between mb-2">
-                            <span class="form-number text-primary">ICS-213</span>
-                            <span class="badge bg-primary">Message</span>
-                        </div>
-                        <h6 class="card-title mb-1">General Message</h6>
-                        <p class="form-desc text-body-secondary mb-2">
-                            Standard ICS general message form for sending/receiving communications.
-                            Supports Winlink XML export for radio transmission.
-                        </p>
-                        <button class="btn btn-sm btn-primary" data-new-form="213">
-                            <i class="bi bi-plus-lg me-1"></i>New
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ICS-214: Activity Log -->
-            <div class="col-md-6 col-lg-4 col-xl-3">
-                <div class="card ics-type-card h-100">
-                    <div class="card-body">
-                        <div class="d-flex align-items-center justify-content-between mb-2">
-                            <span class="form-number text-success">ICS-214</span>
-                            <span class="badge bg-success">Log</span>
-                        </div>
-                        <h6 class="card-title mb-1">Activity Log</h6>
-                        <p class="form-desc text-body-secondary mb-2">
-                            Record significant activities, events, and decisions during an
-                            operational period. Maintained by each unit leader.
-                        </p>
-                        <button class="btn btn-sm btn-success" data-new-form="214">
-                            <i class="bi bi-plus-lg me-1"></i>New
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ICS-202: Incident Objectives -->
-            <div class="col-md-6 col-lg-4 col-xl-3">
-                <div class="card ics-type-card h-100">
-                    <div class="card-body">
-                        <div class="d-flex align-items-center justify-content-between mb-2">
-                            <span class="form-number text-info">ICS-202</span>
-                            <span class="badge bg-info">Objectives</span>
-                        </div>
-                        <h6 class="card-title mb-1">Incident Objectives</h6>
-                        <p class="form-desc text-body-secondary mb-2">
-                            Document overall incident objectives and current actions summary
-                            for the operational period. Part of the Incident Action Plan (IAP).
-                        </p>
-                        <button class="btn btn-sm btn-info" data-new-form="202">
-                            <i class="bi bi-plus-lg me-1"></i>New
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ICS-205: Radio Communications Plan -->
-            <div class="col-md-6 col-lg-4 col-xl-3">
-                <div class="card ics-type-card h-100">
-                    <div class="card-body">
-                        <div class="d-flex align-items-center justify-content-between mb-2">
-                            <span class="form-number text-warning">ICS-205</span>
-                            <span class="badge bg-warning text-dark">Radio</span>
-                        </div>
-                        <h6 class="card-title mb-1">Radio Communications Plan</h6>
-                        <p class="form-desc text-body-secondary mb-2">
-                            Assign radio frequencies, channels, and tones for incident
-                            communications. Essential for amateur radio deployments.
-                        </p>
-                        <button class="btn btn-sm btn-warning" data-new-form="205">
-                            <i class="bi bi-plus-lg me-1"></i>New
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ICS-205A: Communications List -->
-            <div class="col-md-6 col-lg-4 col-xl-3">
-                <div class="card ics-type-card h-100">
-                    <div class="card-body">
-                        <div class="d-flex align-items-center justify-content-between mb-2">
-                            <span class="form-number text-secondary">ICS-205A</span>
-                            <span class="badge bg-secondary">Contacts</span>
-                        </div>
-                        <h6 class="card-title mb-1">Communications List</h6>
-                        <p class="form-desc text-body-secondary mb-2">
-                            Contact directory listing ICS positions, names, phone numbers,
-                            radio frequencies, and email addresses.
-                        </p>
-                        <button class="btn btn-sm btn-secondary" data-new-form="205a">
-                            <i class="bi bi-plus-lg me-1"></i>New
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ICS-213RR: Resource Request Message -->
-            <div class="col-md-6 col-lg-4 col-xl-3">
-                <div class="card ics-type-card h-100">
-                    <div class="card-body">
-                        <div class="d-flex align-items-center justify-content-between mb-2">
-                            <span class="form-number text-danger">ICS-213RR</span>
-                            <span class="badge bg-danger">Resources</span>
-                        </div>
-                        <h6 class="card-title mb-1">Resource Request Message</h6>
-                        <p class="form-desc text-body-secondary mb-2">
-                            Request personnel, equipment, or supplies through the logistics
-                            section. Tracks quantities, priorities, and estimated costs.
-                        </p>
-                        <button class="btn btn-sm btn-danger" data-new-form="213rr">
-                            <i class="bi bi-plus-lg me-1"></i>New
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ICS-206: Medical Plan -->
-            <div class="col-md-6 col-lg-4 col-xl-3">
-                <div class="card ics-type-card h-100">
-                    <div class="card-body">
-                        <div class="d-flex align-items-center justify-content-between mb-2">
-                            <span class="form-number" style="color:var(--bs-teal)">ICS-206</span>
-                            <span class="badge" style="background-color:var(--bs-teal)">Medical</span>
-                        </div>
-                        <h6 class="card-title mb-1">Medical Plan</h6>
-                        <p class="form-desc text-body-secondary mb-2">
-                            Document medical aid stations, ambulance services, hospitals,
-                            and emergency medical procedures for the incident.
-                        </p>
-                        <button class="btn btn-sm" style="background-color:var(--bs-teal);color:#fff" data-new-form="206">
-                            <i class="bi bi-plus-lg me-1"></i>New
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ICS-214a: Individual Activity Log -->
-            <div class="col-md-6 col-lg-4 col-xl-3">
-                <div class="card ics-type-card h-100">
-                    <div class="card-body">
-                        <div class="d-flex align-items-center justify-content-between mb-2">
-                            <span class="form-number" style="color:var(--bs-indigo)">ICS-214a</span>
-                            <span class="badge" style="background-color:var(--bs-indigo)">Individual Log</span>
-                        </div>
-                        <h6 class="card-title mb-1">Individual Activity Log</h6>
-                        <p class="form-desc text-body-secondary mb-2">
-                            Record individual personnel activities and notable events
-                            during an operational period. Similar to ICS-214 but for one person.
-                        </p>
-                        <button class="btn btn-sm" style="background-color:var(--bs-indigo);color:#fff" data-new-form="214a">
-                            <i class="bi bi-plus-lg me-1"></i>New
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ICS-221: Demobilization Check-Out -->
-            <div class="col-md-6 col-lg-4 col-xl-3">
-                <div class="card ics-type-card h-100">
-                    <div class="card-body">
-                        <div class="d-flex align-items-center justify-content-between mb-2">
-                            <span class="form-number" style="color:var(--bs-orange)">ICS-221</span>
-                            <span class="badge" style="background-color:var(--bs-orange)">Demob</span>
-                        </div>
-                        <h6 class="card-title mb-1">Demobilization Check-Out</h6>
-                        <p class="form-desc text-body-secondary mb-2">
-                            Track resource demobilization with section check-outs,
-                            reassignment details, and travel information.
-                        </p>
-                        <button class="btn btn-sm" style="background-color:var(--bs-orange);color:#fff" data-new-form="221">
-                            <i class="bi bi-plus-lg me-1"></i>New
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-        </div><!-- /row -->
+             loadCustomTypeCards()); the group stays hidden until it has one. -->
+        <div class="ics-form-group mb-4" id="customFormGroup" style="display:none">
+            <h6 class="ics-group-title text-body-secondary mb-2">Your agency's custom forms</h6>
+            <div class="row g-2" id="formTypeCardsRow"></div>
+        </div>
 
         <!-- Saved Forms Table -->
         <div class="card">
@@ -269,17 +138,11 @@ include_once NEWUI_ROOT . '/inc/navbar.php';
                 <span class="fw-semibold"><i class="bi bi-clock-history me-2"></i>Saved Forms</span>
                 <div class="d-flex align-items-center gap-2">
                     <label class="form-label mb-0 small" for="hubFilterType">Filter:</label>
-                    <select class="form-select form-select-sm" id="hubFilterType" style="width:140px">
+                    <select class="form-select form-select-sm" id="hubFilterType" style="width:180px">
                         <option value="">All Types</option>
-                        <option value="213">ICS-213</option>
-                        <option value="214">ICS-214</option>
-                        <option value="202">ICS-202</option>
-                        <option value="205">ICS-205</option>
-                        <option value="205a">ICS-205A</option>
-                        <option value="206">ICS-206</option>
-                        <option value="213rr">ICS-213RR</option>
-                        <option value="214a">ICS-214a</option>
-                        <option value="221">ICS-221</option>
+                        <?php foreach (ics_builtin_form_types() as $m): ?>
+                        <option value="<?php echo e($m['slug']); ?>"><?php echo e($m['number']); ?></option>
+                        <?php endforeach; ?>
                         <option value="custom">Custom</option>
                     </select>
                 </div>

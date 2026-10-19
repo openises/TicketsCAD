@@ -184,6 +184,10 @@ $canCfg   = (!function_exists('rbac_can') || rbac_can('action.manage_config'));
         <?php _cfg_tab('places',            t('sidebar.tab.places',           'Places'), 'places gazetteer landmarks named locations addresses'); ?>
         <?php _cfg_tab('regions',           t('sidebar.tab.regions',          'Regions'), 'regions boundaries areas districts'); ?>
         <?php _cfg_tab('road-conditions',   t('sidebar.tab.road_conditions',  'Road Conditions'), '511 traffic road conditions'); ?>
+        <?php // GH#153 — the list behind every State dropdown (standalone page; same
+              // permission the page and api/states.php check).
+              if ($canCfg) {
+                  _cfg_link('states-provinces', 'states-admin.php', t('sidebar.tab.states_provinces', 'States / Provinces'), 'states provinces territories regions counties address dropdown wizard canada mexico country'); } ?>
     </ul>
 
     <!-- 7. People -->

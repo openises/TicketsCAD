@@ -17,6 +17,9 @@ require_once __DIR__ . '/../inc/access.php';
 require_once __DIR__ . '/../inc/rbac.php';
 require_once __DIR__ . '/../inc/ics-forms-write.php';
 require_once __DIR__ . '/../inc/ics-form-types.php';
+// GH#154 -- the 35 built-in FEMA form definitions, the legacy-data mapping
+// and the print renderer (generatePrintHtml()).
+require_once __DIR__ . '/../inc/ics-forms-builtin.php';
 // GH#142 (Phase 155) -- agency logo letterhead on the print/PDF document.
 require_once __DIR__ . '/../inc/branding.php';
 if (file_exists(__DIR__ . '/../inc/security-labels.php')) {
@@ -116,6 +119,12 @@ if ($method === 'GET') {
         if (!$row) json_error('Form not found', 404);
         if (!ics_form_accessible($row, $icsShareStandalone)) json_error('Form not found', 404);
         $row['form_data'] = json_decode($row['form_data_json'], true);
+        // GH#154 -- a built-in form saved by an earlier version opens with its
+        // old values mapped onto today's FEMA fields (the same function the
+        // printer uses; nothing is written back until the user saves).
+        if ($row['form_type'] !== 'custom' && is_array($row['form_data'])) {
+            $row['form_data'] = ics_form_normalize_data((string) $row['form_type'], $row['form_data']);
+        }
         unset($row['form_data_json']);
         // Same key the hub list emits — the editor toolbar's Delete button
         // reads it to decide whether to show itself.
@@ -256,7 +265,8 @@ if ($method === 'POST') {
         $hasCustomCols = ics_forms_has_custom_type_columns();
 
         // Validate
-        $validTypes = ['213', '214', '202', '205', '205a', '213rr', '206', '214a', '221'];
+        // GH#154 -- every built-in FEMA form (inc/ics-forms-builtin.php).
+        $validTypes = ics_builtin_slugs();
         if ($hasCustomCols) $validTypes[] = 'custom';
         if (!in_array($formType, $validTypes)) {
             json_error('Invalid form_type. Must be one of: ' . implode(', ', $validTypes));
@@ -299,6 +309,7 @@ if ($method === 'POST') {
 
         $json = json_encode($formData, JSON_UNESCAPED_UNICODE);
         $userName = $_SESSION['user'] ?? '';
+        $wasUpdate = $formId > 0;
 
         if ($formId > 0) {
             // Phase 73q — IDOR fix on UPDATE. Without this, any logged-in
@@ -355,6 +366,33 @@ if ($method === 'POST') {
                 );
             }
             $formId = (int) db_insert_id();
+        }
+
+        // GH#154 review (2026-10-19): saving a form wrote no audit entry --
+        // only the delete did. Create and update are now recorded, for every
+        // form type. audit_log() catches its own failures; the extra guard
+        // keeps a logging fault from ever failing a save that already landed.
+        try {
+            $auditLabel = ics_form_label([
+                'form_type' => $formType, 'title' => $title, 'form_data_json' => $json,
+            ]);
+            audit_log(
+                'system',
+                $wasUpdate ? 'update' : 'create',
+                'ics_forms',
+                $formId,
+                ($wasUpdate ? 'Updated ' : 'Created ') . $auditLabel
+                    . ($incidentId ? " (incident #{$incidentId})" : ''),
+                [
+                    'form_type'      => $formType,
+                    'status'         => $status,
+                    'title'          => $title,
+                    'incident_id'    => $incidentId,
+                    'custom_type_id' => $customTypeId,
+                ]
+            );
+        } catch (Throwable $e) {
+            error_log('[ics-forms save audit] ' . $e->getMessage());
         }
 
         // Whether the user may now delete what they just saved — so the editor
@@ -484,233 +522,17 @@ json_error('Method not allowed', 405);
  * Phase 140: $customTypeId is only meaningful when $type === 'custom' --
  * delegates straight to ics_form_custom_template() (inc/ics-form-types.php),
  * the SAME org-scope + restrict_to_permission choke point the save handler
- * and api/ics-form-types.php's GET ?id=X use. Deliberately ahead of the
- * existing 9-entry $templates array below, which this diff does not touch
- * (tests/test_ics_forms_builtin_regression.php proves that byte-for-byte).
+ * and api/ics-form-types.php's GET ?id=X use.
+ *
+ * GH#154: the built-in templates (35 FEMA forms) live in
+ * inc/ics-forms-builtin.php, one definition shared with the hub page, the
+ * printer and the tests.
  */
 function getFormTemplate($type, $customTypeId = null) {
     if ($type === 'custom') {
         return ics_form_custom_template($customTypeId);
     }
-
-    $templates = [
-        '213' => [
-            'form_type'   => '213',
-            'form_number' => 'ICS-213',
-            'form_title'  => 'General Message',
-            'fields' => [
-                ['key' => 'to_name',           'label' => 'To (Name)',           'type' => 'text',     'required' => true],
-                ['key' => 'to_position',       'label' => 'To (Position)',       'type' => 'text',     'required' => false],
-                ['key' => 'from_name',         'label' => 'From (Name)',         'type' => 'text',     'required' => true],
-                ['key' => 'from_position',     'label' => 'From (Position)',     'type' => 'text',     'required' => false],
-                ['key' => 'subject',           'label' => 'Subject',             'type' => 'text',     'required' => true],
-                ['key' => 'date',              'label' => 'Date',                'type' => 'date',     'required' => true],
-                ['key' => 'time',              'label' => 'Time',                'type' => 'time',     'required' => true],
-                ['key' => 'message',           'label' => 'Message',             'type' => 'textarea', 'required' => true, 'rows' => 6],
-                ['key' => 'approved_name',     'label' => 'Approved By (Name)',  'type' => 'text',     'required' => false],
-                ['key' => 'approved_position', 'label' => 'Approved By (Position)', 'type' => 'text', 'required' => false],
-                ['key' => 'reply',             'label' => 'Reply',               'type' => 'textarea', 'required' => false, 'rows' => 4],
-                ['key' => 'reply_date',        'label' => 'Reply Date',          'type' => 'date',     'required' => false],
-                ['key' => 'reply_time',        'label' => 'Reply Time',          'type' => 'time',     'required' => false],
-                ['key' => 'reply_by',          'label' => 'Reply Signature/Position', 'type' => 'text', 'required' => false],
-            ]
-        ],
-        '214' => [
-            'form_type'   => '214',
-            'form_number' => 'ICS-214',
-            'form_title'  => 'Activity Log',
-            'fields' => [
-                ['key' => 'incident_name',     'label' => 'Incident Name',       'type' => 'text',     'required' => true],
-                ['key' => 'date_prepared',     'label' => 'Date Prepared',       'type' => 'date',     'required' => true],
-                ['key' => 'op_period_from',    'label' => 'Operational Period From', 'type' => 'datetime-local', 'required' => true],
-                ['key' => 'op_period_to',      'label' => 'Operational Period To',   'type' => 'datetime-local', 'required' => true],
-                ['key' => 'team_name',         'label' => 'Team Name/Number',    'type' => 'text',     'required' => true],
-                ['key' => 'team_leader_name',  'label' => 'Team Leader (Name)',  'type' => 'text',     'required' => true],
-                ['key' => 'team_leader_position', 'label' => 'Team Leader (Position)', 'type' => 'text', 'required' => false],
-                ['key' => 'activity_log',      'label' => 'Activity Log',        'type' => 'table',    'required' => false,
-                 'columns' => [
-                     ['key' => 'time',     'label' => 'Time',               'type' => 'time',  'width' => '120px'],
-                     ['key' => 'activity', 'label' => 'Notable Activities', 'type' => 'text',  'width' => 'auto']
-                 ]
-                ],
-                ['key' => 'prepared_by',       'label' => 'Prepared By',         'type' => 'text',     'required' => false],
-            ]
-        ],
-        '202' => [
-            'form_type'   => '202',
-            'form_number' => 'ICS-202',
-            'form_title'  => 'Incident Objectives',
-            'fields' => [
-                ['key' => 'incident_name',     'label' => 'Incident Name',       'type' => 'text',     'required' => true],
-                ['key' => 'date_prepared',     'label' => 'Date/Time Prepared',  'type' => 'datetime-local', 'required' => true],
-                ['key' => 'op_period_from',    'label' => 'Operational Period From', 'type' => 'datetime-local', 'required' => true],
-                ['key' => 'op_period_to',      'label' => 'Operational Period To',   'type' => 'datetime-local', 'required' => true],
-                ['key' => 'objectives',        'label' => 'Objective(s)',        'type' => 'textarea', 'required' => true, 'rows' => 8],
-                ['key' => 'current_actions',   'label' => 'Summary of Current Actions', 'type' => 'textarea', 'required' => false, 'rows' => 6],
-                ['key' => 'prepared_by',       'label' => 'Prepared By (Name/Position)', 'type' => 'text', 'required' => false],
-            ]
-        ],
-        '205' => [
-            'form_type'   => '205',
-            'form_number' => 'ICS-205',
-            'form_title'  => 'Radio Communications Plan',
-            'fields' => [
-                ['key' => 'incident_name',     'label' => 'Incident Name',       'type' => 'text',     'required' => true],
-                ['key' => 'date_prepared',     'label' => 'Date/Time Prepared',  'type' => 'datetime-local', 'required' => true],
-                ['key' => 'op_period_from',    'label' => 'Operational Period From', 'type' => 'datetime-local', 'required' => true],
-                ['key' => 'op_period_to',      'label' => 'Operational Period To',   'type' => 'datetime-local', 'required' => true],
-                ['key' => 'radio_channels',    'label' => 'Radio Channel Assignments', 'type' => 'table', 'required' => false,
-                 'columns' => [
-                     ['key' => 'zone_group',  'label' => 'Zone/Group',    'type' => 'text', 'width' => '100px'],
-                     ['key' => 'channel',     'label' => 'Channel',       'type' => 'text', 'width' => '80px'],
-                     ['key' => 'function',    'label' => 'Function',      'type' => 'text', 'width' => '120px'],
-                     ['key' => 'frequency_rx','label' => 'Freq (RX)',     'type' => 'text', 'width' => '100px'],
-                     ['key' => 'frequency_tx','label' => 'Freq (TX)',     'type' => 'text', 'width' => '100px'],
-                     ['key' => 'tone',        'label' => 'Tone/NAC',     'type' => 'text', 'width' => '80px'],
-                     ['key' => 'assignment',  'label' => 'Assignment',    'type' => 'text', 'width' => 'auto'],
-                 ]
-                ],
-                ['key' => 'special_instructions', 'label' => 'Special Instructions', 'type' => 'textarea', 'required' => false, 'rows' => 4],
-                ['key' => 'prepared_by',       'label' => 'Prepared By (Name/Position)', 'type' => 'text', 'required' => false],
-            ]
-        ],
-        '205a' => [
-            'form_type'   => '205a',
-            'form_number' => 'ICS-205A',
-            'form_title'  => 'Communications List',
-            'fields' => [
-                ['key' => 'incident_name',     'label' => 'Incident Name',       'type' => 'text',     'required' => true],
-                ['key' => 'date_prepared',     'label' => 'Date/Time Prepared',  'type' => 'datetime-local', 'required' => true],
-                ['key' => 'op_period_from',    'label' => 'Operational Period From', 'type' => 'datetime-local', 'required' => true],
-                ['key' => 'op_period_to',      'label' => 'Operational Period To',   'type' => 'datetime-local', 'required' => true],
-                ['key' => 'contacts',          'label' => 'Communications List', 'type' => 'table', 'required' => false,
-                 'columns' => [
-                     ['key' => 'position',    'label' => 'ICS Position',   'type' => 'text', 'width' => '140px'],
-                     ['key' => 'name',        'label' => 'Name',           'type' => 'text', 'width' => '140px'],
-                     ['key' => 'phone',       'label' => 'Phone #',        'type' => 'text', 'width' => '120px'],
-                     ['key' => 'radio',       'label' => 'Radio/Freq',     'type' => 'text', 'width' => '100px'],
-                     ['key' => 'email',       'label' => 'Email',          'type' => 'text', 'width' => 'auto'],
-                 ]
-                ],
-                ['key' => 'prepared_by',       'label' => 'Prepared By (Name/Position)', 'type' => 'text', 'required' => false],
-            ]
-        ],
-        '213rr' => [
-            'form_type'   => '213rr',
-            'form_number' => 'ICS-213RR',
-            'form_title'  => 'Resource Request Message',
-            'fields' => [
-                ['key' => 'incident_name',     'label' => 'Incident Name',       'type' => 'text',     'required' => true],
-                ['key' => 'date_prepared',     'label' => 'Date/Time Prepared',  'type' => 'datetime-local', 'required' => true],
-                ['key' => 'to_name',           'label' => 'To (Name/Position)',  'type' => 'text',     'required' => true],
-                ['key' => 'from_name',         'label' => 'From (Name/Position)','type' => 'text',     'required' => true],
-                ['key' => 'resource_requests', 'label' => 'Resource Requests',   'type' => 'table',    'required' => false,
-                 'columns' => [
-                     ['key' => 'qty',         'label' => 'Qty',             'type' => 'text', 'width' => '60px'],
-                     ['key' => 'kind',        'label' => 'Kind',            'type' => 'text', 'width' => '100px'],
-                     ['key' => 'type',        'label' => 'Type',            'type' => 'text', 'width' => '80px'],
-                     ['key' => 'description', 'label' => 'Item Description','type' => 'text', 'width' => 'auto'],
-                     ['key' => 'arrival',     'label' => 'Requested Arrival','type' => 'text', 'width' => '120px'],
-                     ['key' => 'priority',    'label' => 'Priority',        'type' => 'text', 'width' => '80px'],
-                     ['key' => 'cost',        'label' => 'Est. Cost',       'type' => 'text', 'width' => '80px'],
-                 ]
-                ],
-                ['key' => 'delivery_location', 'label' => 'Delivery Location',    'type' => 'text',     'required' => false],
-                ['key' => 'substitutes',       'label' => 'Substitutes / Notes',  'type' => 'textarea', 'required' => false, 'rows' => 3],
-                ['key' => 'requested_by',      'label' => 'Requested By',         'type' => 'text',     'required' => false],
-                ['key' => 'approved_by',       'label' => 'Approved By (Logistics)', 'type' => 'text',  'required' => false],
-                ['key' => 'approved_date',     'label' => 'Approved Date/Time',   'type' => 'datetime-local', 'required' => false],
-            ]
-        ],
-        '206' => [
-            'form_type'   => '206',
-            'form_number' => 'ICS-206',
-            'form_title'  => 'Medical Plan',
-            'fields' => [
-                ['key' => 'incident_name',     'label' => 'Incident Name',           'type' => 'text',           'required' => true],
-                ['key' => 'date_prepared',     'label' => 'Date/Time Prepared',      'type' => 'datetime-local', 'required' => true],
-                ['key' => 'op_period_from',    'label' => 'Operational Period From',  'type' => 'datetime-local', 'required' => true],
-                ['key' => 'op_period_to',      'label' => 'Operational Period To',    'type' => 'datetime-local', 'required' => true],
-                ['key' => 'aid_stations',      'label' => 'Medical Aid Stations',     'type' => 'table',          'required' => false,
-                 'columns' => [
-                     ['key' => 'name',       'label' => 'Name',           'type' => 'text', 'width' => '160px'],
-                     ['key' => 'location',   'label' => 'Location',       'type' => 'text', 'width' => 'auto'],
-                     ['key' => 'paramedics', 'label' => 'Paramedics Y/N', 'type' => 'text', 'width' => '100px'],
-                 ]
-                ],
-                ['key' => 'transportation',    'label' => 'Transportation',           'type' => 'table',          'required' => false,
-                 'columns' => [
-                     ['key' => 'service',    'label' => 'Ambulance Service', 'type' => 'text', 'width' => '160px'],
-                     ['key' => 'address',    'label' => 'Address',           'type' => 'text', 'width' => 'auto'],
-                     ['key' => 'phone',      'label' => 'Phone',             'type' => 'text', 'width' => '120px'],
-                     ['key' => 'paramedics', 'label' => 'Paramedics Y/N',   'type' => 'text', 'width' => '100px'],
-                 ]
-                ],
-                ['key' => 'hospitals',         'label' => 'Hospitals',                'type' => 'table',          'required' => false,
-                 'columns' => [
-                     ['key' => 'name',         'label' => 'Name',              'type' => 'text', 'width' => '140px'],
-                     ['key' => 'address',      'label' => 'Address',           'type' => 'text', 'width' => 'auto'],
-                     ['key' => 'phone',        'label' => 'Phone',             'type' => 'text', 'width' => '110px'],
-                     ['key' => 'travel_time',  'label' => 'Travel Time',       'type' => 'text', 'width' => '80px'],
-                     ['key' => 'trauma_level', 'label' => 'Trauma Ctr Level',  'type' => 'text', 'width' => '90px'],
-                     ['key' => 'helipad',      'label' => 'Helipad Y/N',       'type' => 'text', 'width' => '80px'],
-                 ]
-                ],
-                ['key' => 'medical_procedures', 'label' => 'Medical Emergency Procedures', 'type' => 'textarea', 'required' => false, 'rows' => 6],
-                ['key' => 'prepared_by',       'label' => 'Prepared By (Name/Position)',   'type' => 'text',     'required' => false],
-            ]
-        ],
-        '214a' => [
-            'form_type'   => '214a',
-            'form_number' => 'ICS-214a',
-            'form_title'  => 'Individual Activity Log',
-            'fields' => [
-                ['key' => 'incident_name',     'label' => 'Incident Name',           'type' => 'text',           'required' => true],
-                ['key' => 'date_prepared',     'label' => 'Date Prepared',           'type' => 'date',           'required' => true],
-                ['key' => 'op_period_from',    'label' => 'Operational Period From',  'type' => 'datetime-local', 'required' => true],
-                ['key' => 'op_period_to',      'label' => 'Operational Period To',    'type' => 'datetime-local', 'required' => true],
-                ['key' => 'individual_name',   'label' => 'Name',                    'type' => 'text',           'required' => true],
-                ['key' => 'ics_position',      'label' => 'ICS Position',            'type' => 'text',           'required' => false],
-                ['key' => 'home_agency',       'label' => 'Home Agency',             'type' => 'text',           'required' => false],
-                ['key' => 'activity_log',      'label' => 'Activity Log',            'type' => 'table',          'required' => false,
-                 'columns' => [
-                     ['key' => 'time',     'label' => 'Time',               'type' => 'time',  'width' => '120px'],
-                     ['key' => 'activity', 'label' => 'Notable Activities', 'type' => 'text',  'width' => 'auto']
-                 ]
-                ],
-                ['key' => 'prepared_by',       'label' => 'Prepared By',             'type' => 'text',           'required' => false],
-            ]
-        ],
-        '221' => [
-            'form_type'   => '221',
-            'form_number' => 'ICS-221',
-            'form_title'  => 'Demobilization Check-Out',
-            'fields' => [
-                ['key' => 'incident_name',     'label' => 'Incident Name/Number',    'type' => 'text',           'required' => true],
-                ['key' => 'date_time',         'label' => 'Date/Time',               'type' => 'datetime-local', 'required' => true],
-                ['key' => 'resource_unit_id',  'label' => 'Resource/Unit ID',        'type' => 'text',           'required' => true],
-                ['key' => 'leader_name',       'label' => 'Leader Name',             'type' => 'text',           'required' => true],
-                ['key' => 'chk_logistics',     'label' => 'Logistics Section',       'type' => 'text',           'required' => false],
-                ['key' => 'chk_supply',        'label' => 'Supply Unit',             'type' => 'text',           'required' => false],
-                ['key' => 'chk_communications','label' => 'Communications Unit',     'type' => 'text',           'required' => false],
-                ['key' => 'chk_facilities',    'label' => 'Facilities Unit',         'type' => 'text',           'required' => false],
-                ['key' => 'chk_ground_support','label' => 'Ground Support Unit',     'type' => 'text',           'required' => false],
-                ['key' => 'reassign_destination', 'label' => 'Reassignment Destination', 'type' => 'text',      'required' => false],
-                ['key' => 'reassign_eta',      'label' => 'Reassignment ETA',        'type' => 'text',           'required' => false],
-                ['key' => 'reassign_area',     'label' => 'Area/Agency/Region',      'type' => 'text',           'required' => false],
-                ['key' => 'travel_room',       'label' => 'Room Reservations',       'type' => 'text',           'required' => false],
-                ['key' => 'travel_method',     'label' => 'Travel Method',           'type' => 'text',           'required' => false],
-                ['key' => 'travel_contact',    'label' => 'Contact Information',     'type' => 'text',           'required' => false],
-                ['key' => 'remarks',           'label' => 'Remarks',                 'type' => 'textarea',       'required' => false, 'rows' => 4],
-                ['key' => 'prepared_by',       'label' => 'Prepared By',             'type' => 'text',           'required' => false],
-                ['key' => 'approved_unit_leader', 'label' => 'Approved By (Unit Leader)', 'type' => 'text',     'required' => false],
-                ['key' => 'approved_planning', 'label' => 'Approved By (Planning Section)', 'type' => 'text',   'required' => false],
-                ['key' => 'approved_logistics','label' => 'Approved By (Logistics)',  'type' => 'text',          'required' => false],
-            ]
-        ],
-    ];
-
-    return isset($templates[$type]) ? $templates[$type] : null;
+    return ics_builtin_template((string) $type);
 }
 
 /**
@@ -812,417 +634,4 @@ function xs($str) {
     return htmlspecialchars($str ?? '', ENT_XML1, 'UTF-8');
 }
 
-/**
- * Generate print-optimized HTML for any ICS form type.
- */
-function generatePrintHtml($formType, $data, $row) {
-    if ($formType === 'custom') {
-        // Phase 140: title/name come from the instance's own frozen _meta
-        // (never a fresh ics_form_types lookup -- see ics_form_custom_print_html()'s
-        // docblock). Unlike the 9 built-ins' $names entries below (fixed
-        // internal strings, safe unescaped), form_number/form_title are
-        // agency-authored free text and MUST be escaped here.
-        $meta = is_array($data) && isset($data['_meta']) && is_array($data['_meta']) ? $data['_meta'] : [];
-        $title = htmlspecialchars(strtoupper((string) ($meta['form_number'] ?? 'CUSTOM')), ENT_QUOTES, 'UTF-8');
-        $formName = htmlspecialchars((string) ($meta['form_title'] ?? 'Custom Form'), ENT_QUOTES, 'UTF-8');
-    } else {
-        $title = strtoupper('ICS-' . $formType);
-        $names = [
-            '213'   => 'GENERAL MESSAGE',
-            '214'   => 'ACTIVITY LOG',
-            '202'   => 'INCIDENT OBJECTIVES',
-            '205'   => 'RADIO COMMUNICATIONS PLAN',
-            '205a'  => 'COMMUNICATIONS LIST',
-            '213rr' => 'RESOURCE REQUEST MESSAGE',
-            '206'   => 'MEDICAL PLAN',
-            '214a'  => 'INDIVIDUAL ACTIVITY LOG',
-            '221'   => 'DEMOBILIZATION CHECK-OUT',
-        ];
-        $formName = $names[$formType] ?? $formType;
-    }
-
-    // GH#142 (Phase 155): the agency letterhead for this document, or null. null
-    // (no logo, printing branding off, or branding code not loaded) leaves the
-    // document byte-for-byte what it was -- tests/test_ics_forms_builtin_regression.php
-    // proves that for all nine built-in form types. The function_exists() guard is
-    // for an OPTIONAL cosmetic feature, not a security control.
-    $brandLetterhead = function_exists('branding_ics_letterhead')
-        ? branding_ics_letterhead(is_array($row) ? $row : [])
-        : null;
-
-    $html = '<!DOCTYPE html><html><head>';
-    $html .= '<meta charset="UTF-8">';
-    $html .= '<title>' . $title . ' - ' . htmlspecialchars($row['title'] ?? '') . '</title>';
-    $html .= '<style>';
-    $html .= 'body{font-family:Arial,sans-serif;font-size:10pt;color:#000;margin:0.5in;background:#fff}';
-    $html .= 'h1{text-align:center;font-size:14pt;margin:0 0 4px}';
-    $html .= 'h2{text-align:center;font-size:11pt;margin:0 0 12px;font-weight:normal}';
-    $html .= 'table{width:100%;border-collapse:collapse;margin-bottom:12px}';
-    $html .= 'td,th{border:1px solid #000;padding:4px 6px;vertical-align:top;font-size:9pt}';
-    $html .= 'th{background:#f0f0f0;font-weight:bold;text-align:left}';
-    $html .= '.label{font-size:7pt;font-weight:bold;color:#333;display:block;margin-bottom:2px}';
-    $html .= '.value{min-height:18px}';
-    $html .= '.footer{margin-top:20px;font-size:8pt;color:#666;text-align:center}';
-    $html .= '@media print{body{margin:0.3in}@page{size:letter;margin:0.5in}}';
-    $html .= '</style></head><body>';
-    if ($brandLetterhead !== null) {
-        $html .= $brandLetterhead['html'];
-    }
-    $html .= '<h1>' . $title . '</h1>';
-    $html .= '<h2>' . $formName . '</h2>';
-
-    switch ($formType) {
-        case 'custom':
-            $html .= ics_form_custom_print_html($data, $row);
-            break;
-        case '213':
-            $html .= printICS213($data);
-            break;
-        case '214':
-            $html .= printICS214($data);
-            break;
-        case '202':
-            $html .= printICS202($data);
-            break;
-        case '205':
-            $html .= printICS205($data);
-            break;
-        case '205a':
-            $html .= printICS205A($data);
-            break;
-        case '213rr':
-            $html .= printICS213RR($data);
-            break;
-        case '206':
-            $html .= printICS206($data);
-            break;
-        case '214a':
-            $html .= printICS214A($data);
-            break;
-        case '221':
-            $html .= printICS221($data);
-            break;
-    }
-
-    if ($brandLetterhead !== null && $brandLetterhead['footer_replace']) {
-        // branding_print_banner = replace: the logo stands in for the product line.
-        $html .= '<div class="footer">Generated &mdash; ' . date('Y-m-d H:i') . '</div>';
-    } else {
-        $html .= '<div class="footer">Generated by Tickets CAD v4 &mdash; ' . date('Y-m-d H:i') . '</div>';
-    }
-    $html .= '</body></html>';
-    return $html;
-}
-
-function pv($data, $key) {
-    return htmlspecialchars($data[$key] ?? '', ENT_QUOTES, 'UTF-8');
-}
-
-function printICS213($d) {
-    $h  = '<table>';
-    $h .= '<tr><td style="width:50%"><span class="label">TO:</span><span class="value">' . pv($d,'to_name') . '</span></td>';
-    $h .= '<td><span class="label">POSITION:</span><span class="value">' . pv($d,'to_position') . '</span></td></tr>';
-    $h .= '<tr><td><span class="label">FROM:</span><span class="value">' . pv($d,'from_name') . '</span></td>';
-    $h .= '<td><span class="label">POSITION:</span><span class="value">' . pv($d,'from_position') . '</span></td></tr>';
-    $h .= '<tr><td><span class="label">SUBJECT:</span><span class="value">' . pv($d,'subject') . '</span></td>';
-    $h .= '<td style="width:30%"><span class="label">DATE/TIME:</span><span class="value">' . pv($d,'date') . ' ' . pv($d,'time') . '</span></td></tr>';
-    $h .= '<tr><th colspan="2" style="background:#e5e5e5">MESSAGE:</th></tr>';
-    $h .= '<tr><td colspan="2" style="min-height:100px"><span class="value">' . nl2br(pv($d,'message')) . '</span></td></tr>';
-    $h .= '<tr><td><span class="label">APPROVED BY:</span><span class="value">' . pv($d,'approved_name') . '</span></td>';
-    $h .= '<td><span class="label">POSITION:</span><span class="value">' . pv($d,'approved_position') . '</span></td></tr>';
-    $h .= '<tr><th colspan="2" style="background:#e5e5e5">REPLY:</th></tr>';
-    $h .= '<tr><td colspan="2" style="min-height:80px"><span class="value">' . nl2br(pv($d,'reply')) . '</span></td></tr>';
-    $h .= '<tr><td><span class="label">REPLY DATE/TIME:</span><span class="value">' . pv($d,'reply_date') . ' ' . pv($d,'reply_time') . '</span></td>';
-    $h .= '<td><span class="label">SIGNATURE/POSITION:</span><span class="value">' . pv($d,'reply_by') . '</span></td></tr>';
-    $h .= '</table>';
-    return $h;
-}
-
-function printICS214($d) {
-    $h  = '<table>';
-    $h .= '<tr><td style="width:50%"><span class="label">INCIDENT NAME:</span><span class="value">' . pv($d,'incident_name') . '</span></td>';
-    $h .= '<td><span class="label">DATE PREPARED:</span><span class="value">' . pv($d,'date_prepared') . '</span></td></tr>';
-    $h .= '<tr><td><span class="label">OPERATIONAL PERIOD FROM:</span><span class="value">' . pv($d,'op_period_from') . '</span></td>';
-    $h .= '<td><span class="label">OPERATIONAL PERIOD TO:</span><span class="value">' . pv($d,'op_period_to') . '</span></td></tr>';
-    $h .= '<tr><td><span class="label">TEAM NAME/NUMBER:</span><span class="value">' . pv($d,'team_name') . '</span></td>';
-    $h .= '<td><span class="label">TEAM LEADER:</span><span class="value">' . pv($d,'team_leader_name') . ' ' . pv($d,'team_leader_position') . '</span></td></tr>';
-    $h .= '</table>';
-    $h .= '<table><tr><th style="width:120px">Time</th><th>Notable Activities</th></tr>';
-    $log = isset($d['activity_log']) ? $d['activity_log'] : [];
-    if (!empty($log)) {
-        foreach ($log as $entry) {
-            $h .= '<tr><td>' . htmlspecialchars($entry['time'] ?? '', ENT_QUOTES, 'UTF-8') . '</td>';
-            $h .= '<td>' . htmlspecialchars($entry['activity'] ?? '', ENT_QUOTES, 'UTF-8') . '</td></tr>';
-        }
-    } else {
-        for ($i = 0; $i < 15; $i++) {
-            $h .= '<tr><td style="height:22px">&nbsp;</td><td>&nbsp;</td></tr>';
-        }
-    }
-    $h .= '</table>';
-    $h .= '<table><tr><td><span class="label">PREPARED BY:</span><span class="value">' . pv($d,'prepared_by') . '</span></td></tr></table>';
-    return $h;
-}
-
-function printICS202($d) {
-    $h  = '<table>';
-    $h .= '<tr><td style="width:50%"><span class="label">INCIDENT NAME:</span><span class="value">' . pv($d,'incident_name') . '</span></td>';
-    $h .= '<td><span class="label">DATE/TIME PREPARED:</span><span class="value">' . pv($d,'date_prepared') . '</span></td></tr>';
-    $h .= '<tr><td><span class="label">OPERATIONAL PERIOD FROM:</span><span class="value">' . pv($d,'op_period_from') . '</span></td>';
-    $h .= '<td><span class="label">OPERATIONAL PERIOD TO:</span><span class="value">' . pv($d,'op_period_to') . '</span></td></tr>';
-    $h .= '</table>';
-    $h .= '<table><tr><th>OBJECTIVE(S):</th></tr>';
-    $h .= '<tr><td style="min-height:150px">' . nl2br(pv($d,'objectives')) . '</td></tr></table>';
-    $h .= '<table><tr><th>SUMMARY OF CURRENT ACTIONS:</th></tr>';
-    $h .= '<tr><td style="min-height:120px">' . nl2br(pv($d,'current_actions')) . '</td></tr></table>';
-    $h .= '<table><tr><td><span class="label">PREPARED BY:</span><span class="value">' . pv($d,'prepared_by') . '</span></td></tr></table>';
-    return $h;
-}
-
-function printICS205($d) {
-    $h  = '<table>';
-    $h .= '<tr><td style="width:50%"><span class="label">INCIDENT NAME:</span><span class="value">' . pv($d,'incident_name') . '</span></td>';
-    $h .= '<td><span class="label">DATE/TIME PREPARED:</span><span class="value">' . pv($d,'date_prepared') . '</span></td></tr>';
-    $h .= '<tr><td><span class="label">OPERATIONAL PERIOD FROM:</span><span class="value">' . pv($d,'op_period_from') . '</span></td>';
-    $h .= '<td><span class="label">OPERATIONAL PERIOD TO:</span><span class="value">' . pv($d,'op_period_to') . '</span></td></tr>';
-    $h .= '</table>';
-    $h .= '<table><tr><th>Zone/Group</th><th>Channel</th><th>Function</th><th>Freq (RX)</th><th>Freq (TX)</th><th>Tone/NAC</th><th>Assignment</th></tr>';
-    $channels = isset($d['radio_channels']) ? $d['radio_channels'] : [];
-    if (!empty($channels)) {
-        foreach ($channels as $ch) {
-            $h .= '<tr>';
-            foreach (['zone_group','channel','function','frequency_rx','frequency_tx','tone','assignment'] as $k) {
-                $h .= '<td>' . htmlspecialchars($ch[$k] ?? '', ENT_QUOTES, 'UTF-8') . '</td>';
-            }
-            $h .= '</tr>';
-        }
-    } else {
-        for ($i = 0; $i < 10; $i++) {
-            $h .= '<tr>' . str_repeat('<td style="height:22px">&nbsp;</td>', 7) . '</tr>';
-        }
-    }
-    $h .= '</table>';
-    $h .= '<table><tr><th>SPECIAL INSTRUCTIONS:</th></tr>';
-    $h .= '<tr><td style="min-height:60px">' . nl2br(pv($d,'special_instructions')) . '</td></tr></table>';
-    $h .= '<table><tr><td><span class="label">PREPARED BY:</span><span class="value">' . pv($d,'prepared_by') . '</span></td></tr></table>';
-    return $h;
-}
-
-function printICS205A($d) {
-    $h  = '<table>';
-    $h .= '<tr><td style="width:50%"><span class="label">INCIDENT NAME:</span><span class="value">' . pv($d,'incident_name') . '</span></td>';
-    $h .= '<td><span class="label">DATE/TIME PREPARED:</span><span class="value">' . pv($d,'date_prepared') . '</span></td></tr>';
-    $h .= '<tr><td><span class="label">OPERATIONAL PERIOD FROM:</span><span class="value">' . pv($d,'op_period_from') . '</span></td>';
-    $h .= '<td><span class="label">OPERATIONAL PERIOD TO:</span><span class="value">' . pv($d,'op_period_to') . '</span></td></tr>';
-    $h .= '</table>';
-    $h .= '<table><tr><th>ICS Position</th><th>Name</th><th>Phone #</th><th>Radio/Freq</th><th>Email</th></tr>';
-    $contacts = isset($d['contacts']) ? $d['contacts'] : [];
-    if (!empty($contacts)) {
-        foreach ($contacts as $c) {
-            $h .= '<tr>';
-            foreach (['position','name','phone','radio','email'] as $k) {
-                $h .= '<td>' . htmlspecialchars($c[$k] ?? '', ENT_QUOTES, 'UTF-8') . '</td>';
-            }
-            $h .= '</tr>';
-        }
-    } else {
-        for ($i = 0; $i < 12; $i++) {
-            $h .= '<tr>' . str_repeat('<td style="height:22px">&nbsp;</td>', 5) . '</tr>';
-        }
-    }
-    $h .= '</table>';
-    $h .= '<table><tr><td><span class="label">PREPARED BY:</span><span class="value">' . pv($d,'prepared_by') . '</span></td></tr></table>';
-    return $h;
-}
-
-function printICS213RR($d) {
-    $h  = '<table>';
-    $h .= '<tr><td style="width:50%"><span class="label">INCIDENT NAME:</span><span class="value">' . pv($d,'incident_name') . '</span></td>';
-    $h .= '<td><span class="label">DATE/TIME PREPARED:</span><span class="value">' . pv($d,'date_prepared') . '</span></td></tr>';
-    $h .= '<tr><td><span class="label">TO:</span><span class="value">' . pv($d,'to_name') . '</span></td>';
-    $h .= '<td><span class="label">FROM:</span><span class="value">' . pv($d,'from_name') . '</span></td></tr>';
-    $h .= '</table>';
-    $h .= '<table><tr><th>Qty</th><th>Kind</th><th>Type</th><th>Item Description</th><th>Requested Arrival</th><th>Priority</th><th>Est. Cost</th></tr>';
-    $reqs = isset($d['resource_requests']) ? $d['resource_requests'] : [];
-    if (!empty($reqs)) {
-        foreach ($reqs as $r) {
-            $h .= '<tr>';
-            foreach (['qty','kind','type','description','arrival','priority','cost'] as $k) {
-                $h .= '<td>' . htmlspecialchars($r[$k] ?? '', ENT_QUOTES, 'UTF-8') . '</td>';
-            }
-            $h .= '</tr>';
-        }
-    } else {
-        for ($i = 0; $i < 8; $i++) {
-            $h .= '<tr>' . str_repeat('<td style="height:22px">&nbsp;</td>', 7) . '</tr>';
-        }
-    }
-    $h .= '</table>';
-    $h .= '<table>';
-    $h .= '<tr><td><span class="label">DELIVERY LOCATION:</span><span class="value">' . pv($d,'delivery_location') . '</span></td></tr>';
-    $h .= '<tr><td><span class="label">SUBSTITUTES / NOTES:</span><span class="value">' . nl2br(pv($d,'substitutes')) . '</span></td></tr>';
-    $h .= '<tr><td style="width:50%"><span class="label">REQUESTED BY:</span><span class="value">' . pv($d,'requested_by') . '</span></td></tr>';
-    $h .= '<tr><td><span class="label">APPROVED BY (LOGISTICS):</span><span class="value">' . pv($d,'approved_by') . '</span></td></tr>';
-    $h .= '<tr><td><span class="label">APPROVED DATE/TIME:</span><span class="value">' . pv($d,'approved_date') . '</span></td></tr>';
-    $h .= '</table>';
-    return $h;
-}
-
-function printICS206($d) {
-    $h  = '<table>';
-    $h .= '<tr><td style="width:50%"><span class="label">INCIDENT NAME:</span><span class="value">' . pv($d,'incident_name') . '</span></td>';
-    $h .= '<td><span class="label">DATE/TIME PREPARED:</span><span class="value">' . pv($d,'date_prepared') . '</span></td></tr>';
-    $h .= '<tr><td><span class="label">OPERATIONAL PERIOD FROM:</span><span class="value">' . pv($d,'op_period_from') . '</span></td>';
-    $h .= '<td><span class="label">OPERATIONAL PERIOD TO:</span><span class="value">' . pv($d,'op_period_to') . '</span></td></tr>';
-    $h .= '</table>';
-
-    // Medical Aid Stations
-    $h .= '<table><tr><th colspan="3" style="background:#e5e5e5">MEDICAL AID STATIONS</th></tr>';
-    $h .= '<tr><th>Name</th><th>Location</th><th style="width:100px">Paramedics Y/N</th></tr>';
-    $stations = isset($d['aid_stations']) ? $d['aid_stations'] : [];
-    if (!empty($stations)) {
-        foreach ($stations as $s) {
-            $h .= '<tr>';
-            foreach (['name','location','paramedics'] as $k) {
-                $h .= '<td>' . htmlspecialchars($s[$k] ?? '', ENT_QUOTES, 'UTF-8') . '</td>';
-            }
-            $h .= '</tr>';
-        }
-    } else {
-        for ($i = 0; $i < 4; $i++) {
-            $h .= '<tr>' . str_repeat('<td style="height:22px">&nbsp;</td>', 3) . '</tr>';
-        }
-    }
-    $h .= '</table>';
-
-    // Transportation
-    $h .= '<table><tr><th colspan="4" style="background:#e5e5e5">TRANSPORTATION</th></tr>';
-    $h .= '<tr><th>Ambulance Service</th><th>Address</th><th>Phone</th><th style="width:100px">Paramedics Y/N</th></tr>';
-    $transport = isset($d['transportation']) ? $d['transportation'] : [];
-    if (!empty($transport)) {
-        foreach ($transport as $t) {
-            $h .= '<tr>';
-            foreach (['service','address','phone','paramedics'] as $k) {
-                $h .= '<td>' . htmlspecialchars($t[$k] ?? '', ENT_QUOTES, 'UTF-8') . '</td>';
-            }
-            $h .= '</tr>';
-        }
-    } else {
-        for ($i = 0; $i < 4; $i++) {
-            $h .= '<tr>' . str_repeat('<td style="height:22px">&nbsp;</td>', 4) . '</tr>';
-        }
-    }
-    $h .= '</table>';
-
-    // Hospitals
-    $h .= '<table><tr><th colspan="6" style="background:#e5e5e5">HOSPITALS</th></tr>';
-    $h .= '<tr><th>Name</th><th>Address</th><th>Phone</th><th>Travel Time</th><th>Trauma Ctr Level</th><th>Helipad Y/N</th></tr>';
-    $hospitals = isset($d['hospitals']) ? $d['hospitals'] : [];
-    if (!empty($hospitals)) {
-        foreach ($hospitals as $hosp) {
-            $h .= '<tr>';
-            foreach (['name','address','phone','travel_time','trauma_level','helipad'] as $k) {
-                $h .= '<td>' . htmlspecialchars($hosp[$k] ?? '', ENT_QUOTES, 'UTF-8') . '</td>';
-            }
-            $h .= '</tr>';
-        }
-    } else {
-        for ($i = 0; $i < 4; $i++) {
-            $h .= '<tr>' . str_repeat('<td style="height:22px">&nbsp;</td>', 6) . '</tr>';
-        }
-    }
-    $h .= '</table>';
-
-    // Medical Emergency Procedures
-    $h .= '<table><tr><th>MEDICAL EMERGENCY PROCEDURES:</th></tr>';
-    $h .= '<tr><td style="min-height:100px">' . nl2br(pv($d,'medical_procedures')) . '</td></tr></table>';
-
-    $h .= '<table><tr><td><span class="label">PREPARED BY:</span><span class="value">' . pv($d,'prepared_by') . '</span></td></tr></table>';
-    return $h;
-}
-
-function printICS214A($d) {
-    $h  = '<table>';
-    $h .= '<tr><td style="width:50%"><span class="label">INCIDENT NAME:</span><span class="value">' . pv($d,'incident_name') . '</span></td>';
-    $h .= '<td><span class="label">DATE PREPARED:</span><span class="value">' . pv($d,'date_prepared') . '</span></td></tr>';
-    $h .= '<tr><td><span class="label">OPERATIONAL PERIOD FROM:</span><span class="value">' . pv($d,'op_period_from') . '</span></td>';
-    $h .= '<td><span class="label">OPERATIONAL PERIOD TO:</span><span class="value">' . pv($d,'op_period_to') . '</span></td></tr>';
-    $h .= '<tr><td><span class="label">NAME:</span><span class="value">' . pv($d,'individual_name') . '</span></td>';
-    $h .= '<td><span class="label">ICS POSITION:</span><span class="value">' . pv($d,'ics_position') . '</span></td></tr>';
-    $h .= '<tr><td colspan="2"><span class="label">HOME AGENCY:</span><span class="value">' . pv($d,'home_agency') . '</span></td></tr>';
-    $h .= '</table>';
-
-    $h .= '<table><tr><th style="width:120px">Time</th><th>Notable Activities</th></tr>';
-    $log = isset($d['activity_log']) ? $d['activity_log'] : [];
-    if (!empty($log)) {
-        foreach ($log as $entry) {
-            $h .= '<tr><td>' . htmlspecialchars($entry['time'] ?? '', ENT_QUOTES, 'UTF-8') . '</td>';
-            $h .= '<td>' . htmlspecialchars($entry['activity'] ?? '', ENT_QUOTES, 'UTF-8') . '</td></tr>';
-        }
-    } else {
-        for ($i = 0; $i < 15; $i++) {
-            $h .= '<tr><td style="height:22px">&nbsp;</td><td>&nbsp;</td></tr>';
-        }
-    }
-    $h .= '</table>';
-
-    $h .= '<table><tr><td><span class="label">PREPARED BY:</span><span class="value">' . pv($d,'prepared_by') . '</span></td></tr></table>';
-    return $h;
-}
-
-function printICS221($d) {
-    $h  = '<table>';
-    $h .= '<tr><td style="width:50%"><span class="label">INCIDENT NAME/NUMBER:</span><span class="value">' . pv($d,'incident_name') . '</span></td>';
-    $h .= '<td><span class="label">DATE/TIME:</span><span class="value">' . pv($d,'date_time') . '</span></td></tr>';
-    $h .= '<tr><td><span class="label">RESOURCE/UNIT ID:</span><span class="value">' . pv($d,'resource_unit_id') . '</span></td>';
-    $h .= '<td><span class="label">LEADER NAME:</span><span class="value">' . pv($d,'leader_name') . '</span></td></tr>';
-    $h .= '</table>';
-
-    // Demob section checkboxes
-    $h .= '<table><tr><th colspan="2" style="background:#e5e5e5">DEMOBILIZATION SECTION CHECK-OUT</th></tr>';
-    $checks = [
-        'chk_logistics'      => 'Logistics Section',
-        'chk_supply'         => 'Supply Unit',
-        'chk_communications' => 'Communications Unit',
-        'chk_facilities'     => 'Facilities Unit',
-        'chk_ground_support' => 'Ground Support Unit',
-    ];
-    foreach ($checks as $key => $label) {
-        $val = isset($d[$key]) && $d[$key] ? $d[$key] : '';
-        $mark = ($val !== '' && strtolower($val) !== 'n' && strtolower($val) !== 'no') ? '&#9745;' : '&#9744;';
-        $h .= '<tr><td style="width:30px;text-align:center">' . $mark . '</td>';
-        $h .= '<td>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8');
-        if ($val !== '' && strtolower($val) !== 'y' && strtolower($val) !== 'yes' && strtolower($val) !== 'n' && strtolower($val) !== 'no') {
-            $h .= ' <em>(' . htmlspecialchars($val, ENT_QUOTES, 'UTF-8') . ')</em>';
-        }
-        $h .= '</td></tr>';
-    }
-    $h .= '</table>';
-
-    // Reassignment
-    $h .= '<table><tr><th colspan="2" style="background:#e5e5e5">REASSIGNMENT INFORMATION</th></tr>';
-    $h .= '<tr><td style="width:50%"><span class="label">DESTINATION:</span><span class="value">' . pv($d,'reassign_destination') . '</span></td>';
-    $h .= '<td><span class="label">ETA:</span><span class="value">' . pv($d,'reassign_eta') . '</span></td></tr>';
-    $h .= '<tr><td colspan="2"><span class="label">AREA/AGENCY/REGION:</span><span class="value">' . pv($d,'reassign_area') . '</span></td></tr>';
-    $h .= '</table>';
-
-    // Travel info
-    $h .= '<table><tr><th colspan="2" style="background:#e5e5e5">TRAVEL INFORMATION</th></tr>';
-    $h .= '<tr><td style="width:50%"><span class="label">ROOM RESERVATIONS:</span><span class="value">' . pv($d,'travel_room') . '</span></td>';
-    $h .= '<td><span class="label">TRAVEL METHOD:</span><span class="value">' . pv($d,'travel_method') . '</span></td></tr>';
-    $h .= '<tr><td colspan="2"><span class="label">CONTACT INFORMATION:</span><span class="value">' . pv($d,'travel_contact') . '</span></td></tr>';
-    $h .= '</table>';
-
-    // Remarks
-    $h .= '<table><tr><th>REMARKS:</th></tr>';
-    $h .= '<tr><td style="min-height:60px">' . nl2br(pv($d,'remarks')) . '</td></tr></table>';
-
-    // Signatures
-    $h .= '<table>';
-    $h .= '<tr><td><span class="label">PREPARED BY:</span><span class="value">' . pv($d,'prepared_by') . '</span></td></tr>';
-    $h .= '<tr><td><span class="label">APPROVED BY (UNIT LEADER):</span><span class="value">' . pv($d,'approved_unit_leader') . '</span></td></tr>';
-    $h .= '<tr><td><span class="label">APPROVED BY (PLANNING SECTION):</span><span class="value">' . pv($d,'approved_planning') . '</span></td></tr>';
-    $h .= '<tr><td><span class="label">APPROVED BY (LOGISTICS):</span><span class="value">' . pv($d,'approved_logistics') . '</span></td></tr>';
-    $h .= '</table>';
-    return $h;
-}
+// generatePrintHtml() and the print renderer live in inc/ics-forms-builtin.php (GH#154).

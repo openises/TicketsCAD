@@ -5,6 +5,22 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- GH#154: map old ICS 214 team data by FEMA's block instructions.
+- GH#154: drop four UI-consistency baseline entries the change made stale.
+- GH#153: name the right command for adding the unique key after a conflict.
+- docs: GH#154 ICS forms guide, help topic and user guide.
+- GH#154: build the ICS 219 cards, 220, 225, 230-CG and 233-CG; compact form picker.
+- GH#153: validate every target list again inside apply/preview.
+- GH#139: keep the Draw Toolbar comment straight after #sitOverlay.
+- GH#154: build ICS 201, 203, 204, 207, 208, 208 HM, 209, 210, 211, 215, 215A, 217A, 218.
+- GH#154: ICS 213, 213 RR, 202, 205A, 206 and 221 match the FEMA forms.
+- GH#153: configurable State / Province list with a configuration wizard.
+- GH#154: ICS 205 and ICS 214 match the FEMA forms; one shared form engine.
+- GH#139: EOC markup panel - escape quotes in names, accept only hex colours.
+- GH#139: EOC display drew every map markup twice; one place to show or hide.
+
 ## [4.2.29] — 2026-10-15
 
 **Administrators, after updating:** run `composer install` as well as `php sql/run_migrations.php`, to

@@ -91,7 +91,7 @@ sweep interval later).
 | Dispatch call board, incident list, incident detail | |
 | Roster, teams, units, vehicles, equipment | |
 | Facilities, including bed and capacity tracking | |
-| ICS forms (213, 214, 202, 205, 205a, 213rr, 206, 214a, 221) | Including Winlink XML export to a file |
+| ICS forms (every form in the FEMA ICS Forms Booklet, plus the pre-2010 214a) | Including Winlink XML export to a file |
 | Internal messaging and local chat | Between users of this install |
 | Reports and statistics | |
 | Printing, and the print stylesheet | |

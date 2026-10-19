@@ -133,6 +133,12 @@
             "capt",
             "repl"
         ],
+        "captions_i18n": [
+            "caption_key",
+            "category",
+            "lang",
+            "value"
+        ],
         "certifications": [
             "category",
             "description",
@@ -1366,6 +1372,10 @@
             "visibility_ids",
             "visibility_scope"
         ],
+        "states_translator": [
+            "code",
+            "name"
+        ],
         "status_transitions": [
             "conditions_json",
             "created_by",
@@ -2001,8 +2011,8 @@
     "_meta": {
         "generated_by": "tools/gen_schema_manifest.php",
         "purpose": "columns this code writes to + tables it references; checked by inc/schema-verify.php",
-        "tables": 177,
-        "columns": 1433,
+        "tables": 179,
+        "columns": 1439,
         "required_tables": 208
     }
 }

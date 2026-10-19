@@ -17,7 +17,7 @@ Every term used in TicketsCAD NewUI, defined.
 - **Comms**: [AMBE](#ambe), [APRS / APRS-IS](#aprs--aprs-is), [Broadcast](#broadcast), [Broker](#broker), [Channel](#channel), [Chat](#chat), [DigestPlay](#digestplay), [Direct message (DM)](#direct-message-dm), [DMR](#dmr), [DVSwitch](#dvswitch), [Forward (routing)](#forward-routing), [HMAC](#hmac), [md380-emu](#md380-emu), [MeshCore](#meshcore), [Meshtastic](#meshtastic), [MMDVM_Bridge](#mmdvm_bridge), [Notification tray](#notification-tray), [ODMRTP](#odmrtp), [OwnTracks](#owntracks), [Piper](#piper), [Recipient](#recipient), [Route](#route), [Routing engine](#routing-engine), [SSE](#sse-server-sent-events), [Talkgroup (TG)](#talkgroup-tg), [TTS / STT](#tts--stt), [USRP](#usrp), [Vosk](#vosk), [Webhook](#webhook), [Whisper / faster-whisper](#whisper--faster-whisper), [Winlink](#winlink), [Zello](#zello)
 - **Map & location**: [Binding (location)](#binding-location), [Browser GPS](#browser-gps), [Clock-in](#clock-in), [Geofence](#geofence), [Inheritance (location)](#inheritance-location), [Location provider](#location-provider), [Location resolver](#location-resolver), [Map markup](#map-markup), [Mileage log](#mileage-log), [Overlay category](#overlay-category), [Personal resource](#personal-resource), [Place](#place), [Route playback](#route-playback), [Stale marker](#stale-marker)
 - **Security & RBAC**: [Audit log](#audit-log), [Backup code](#backup-code), [Bridge token](#bridge-token), [CJIS](#cjis), [CSRF](#csrf), [Encryption key](#encryption-key), [Field encryption](#field-encryption), [Force password change](#force-password-change), [Grant](#grant), [is_admin()](#is_admin), [Lockout](#lockout), [Password policy](#password-policy), [Permission](#permission), [RBAC](#rbac), [Remember device](#remember-device), [Role](#role), [Session](#session), [Super (admin)](#super-admin), [TFA / 2FA / TOTP](#tfa--2fa--totp), [Trusted CIDR](#trusted-cidr)
-- **ICS forms**: [ICS-202](#ics-202), [ICS-205](#ics-205), [ICS-205A](#ics-205a), [ICS-206](#ics-206), [ICS-213](#ics-213), [ICS-213RR](#ics-213rr), [ICS-214](#ics-214), [ICS-214A](#ics-214a), [ICS-221](#ics-221)
+- **ICS forms**: [ICS-202](#ics-202), [ICS-205](#ics-205), [ICS-205A](#ics-205a), [ICS-206](#ics-206), [ICS-213](#ics-213), [ICS-213RR](#ics-213rr), [ICS-214](#ics-214), [ICS-214A](#ics-214a), [ICS-221](#ics-221) — and every other form in the FEMA booklet, listed in [ICS Forms](ICS-FORMS.md)
 - **Codebase concepts**: [Allocates](#allocates), [Captions](#captions), [db_query / db_fetch_*](#db_query--db_fetch_), [Migration](#migration), [Schema drift](#schema-drift), [Self-healing INSERT](#self-healing-insert), [`safe_*` wrappers](#safe_-wrappers)
 
 ---
@@ -194,10 +194,10 @@ General Message form. The most-used ICS form. TicketsCAD can export ICS-213 as W
 Resource Request Message form.
 
 ### ICS-214
-Activity Log form. Personal ICS-214 entries are auto-generated from PAR acks (Phase 26A).
+Activity Log form, for one person or a whole unit (the people assigned go in block 6). Personal ICS-214 entries are auto-generated from PAR acks (Phase 26A).
 
 ### ICS-214A
-Individual Activity Log form.
+Individual Log — the pre-2010 form FEMA merged into the [ICS-214](#ics-214). Kept in TicketsCAD only so logs already saved keep working.
 
 ### ICS-221
 Demobilization Check-Out form.

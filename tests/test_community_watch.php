@@ -51,6 +51,9 @@ $yes = [
 $no = [
     'Verified, closing. Thanks!', 'Confirmed fixed. Works now.', 'thanks', 'Looks good on my install.', 'Verified: it no longer fails, closing.',
     "> still broken?\n\nLooks good now, thanks.", "```\nerror: is this a question?\n```\nresolved, thanks",
+    // A "?" inside inline code is an operator or a query string, not a question (2026-10-19):
+    'Confirmed: `var inc = (resp && resp.incident) ? resp.incident : resp;` renders the incident.',
+    'Ran `GET api/map-overlay-categories.php?action=list` as a Dispatcher: HTTP 200 with the full list.',
 ];
 foreach ($yes as $t) ct('asks/persists: ' . json_encode(substr($t, 0, 50)), cw_unresolved($t) === true);
 foreach ($no as $t) ct('a confirmation, skipped: ' . json_encode(substr($t, 0, 50)), cw_unresolved($t) === false);
@@ -90,6 +93,17 @@ $items = [
     $item('o/r', $row(140, 'Closed and confirmed', 'reporter-a', '2026-09-08T08:00:00Z',
         ['state' => 'closed', 'closed' => '2026-09-10T08:00:00Z', 'updated' => '2026-09-10T09:00:00Z']),
         [$com('ejosterberg', '2026-09-09T09:00:00Z', 'Fixed.'), $com('reporter-a', '2026-09-10T09:00:00Z', 'Verified, closing. Thanks!')]),
+    // The 2026-10 false positives: the REPORTER verified the fix and closed the issue in
+    // the same second, with a long write-up that happens to contain "still" and a "?".
+    // Twelve such issues were listed as "a reporter is waiting" for weeks.
+    $item('o/r', $row(101, 'Closed by the reporter with a verification', 'reporter-a', '2026-08-21T04:40:00Z',
+        ['state' => 'closed', 'closed' => '2026-08-23T14:15:10Z', 'updated' => '2026-08-23T14:15:10Z']),
+        [$com('ejosterberg', '2026-08-21T18:25:00Z', 'Fixed.'),
+         $com('reporter-a', '2026-08-23T14:15:10Z', "Verified on v4.2.25.\n\nThe old 403 is still returned for the mutating actions, as it should be. Does the list load? Yes.")]),
+    // ...but the same reporter coming back a day after the close with a question IS waiting:
+    $item('o/r', $row(102, 'Comment after a close', 'reporter-a', '2026-08-21T04:40:00Z',
+        ['state' => 'closed', 'closed' => '2026-09-20T10:00:00Z', 'updated' => '2026-09-21T10:00:00Z']),
+        [$com('ejosterberg', '2026-09-20T09:59:00Z', 'Fixed, closing.'), $com('reporter-a', '2026-09-21T10:00:00Z', 'Is the second screen covered too?')]),
     $item('o/r', $row(52, 'Old closed', 'reporter-c', '2026-06-01T08:00:00Z',
         ['state' => 'closed', 'closed' => '2026-06-02T08:00:00Z', 'updated' => '2026-07-04T08:00:00Z']),
         [$com('reporter-c', '2026-07-04T08:00:00Z', 'This is still not working')]),                                    // 90d ago: outside the window
@@ -113,7 +127,7 @@ $items = [
     $item('o/legacy', $row(16, 'PHP 7 report fatals', 'reporter-a', '2026-08-29T08:00:00Z')),
     $item('o/legacy', $row(17, 'Fix for #16', 'reporter-a', '2026-08-29T08:01:00Z', ['pr' => true])),
 ];
-$data = ['now' => $now, 'maintainers' => ['ejosterberg'], 'repos' => ['o/r' => ['items' => array_slice($items, 0, 16)], 'o/legacy' => ['items' => array_slice($items, 16)]]];
+$data = ['now' => $now, 'maintainers' => ['ejosterberg'], 'repos' => ['o/r' => ['items' => array_slice($items, 0, 18)], 'o/legacy' => ['items' => array_slice($items, 18)]]];
 $cfg = cw_config();
 $res = cw_compute($data, $cfg);
 $nums = static fn(array $rows): array => array_map(static fn(array $r): string => $r['repo'] . '#' . $r['number'], $rows);
@@ -130,6 +144,8 @@ ct('UNANSWERED: 3 hours old is under the 4h threshold; 5 hours old is over it',
 
 ct('WAITING: a stranger\'s "still exists" on a CLOSED issue (the #139 case) is found', in_array('o/r#139', $nums($res['waiting']), true), json_encode($nums($res['waiting'])));
 ct('WAITING: "Verified, closing. Thanks!" on a closed issue is not', !in_array('o/r#140', $nums($res['waiting']), true));
+ct('WAITING: a reporter\'s own verification posted WITH the close is not, whatever words it uses (the #101 case)', !in_array('o/r#101', $nums($res['waiting']), true), json_encode($nums($res['waiting'])));
+ct('WAITING: a question posted a day AFTER the close is', in_array('o/r#102', $nums($res['waiting']), true));
 ct('WAITING: a closed issue whose last word was 90 days ago is outside the 60-day window', !in_array('o/r#52', $nums($res['waiting']), true));
 ct('WAITING: an open issue whose newest HUMAN comment is the reporter\'s question is found even though a bot comment came after it', in_array('o/r#60', $nums($res['waiting']), true));
 ct('WAITING: if the maintainer spoke last, nobody is waiting', !in_array('o/r#61', $nums($res['waiting']), true));
@@ -218,11 +234,17 @@ $d2 = cw_notify_decision($d['state'], $more, $t0 + 3600 * 26, 24);
 ct('the next run after the quiet period sees the difference and speaks', $d2['notify'] === true && $d2['added'] === ['unanswered:o/r#150'] && $d2['cleared'] === []);
 ct('...and records the new set with the new time', $d2['state']['keys'] === ['unanswered:o/r#147', 'unanswered:o/r#150', 'waiting:o/r#139'] && $d2['state']['at'] === gmdate('c', $t0 + 3600 * 26));
 $cleared = cw_notify_decision($d2['state'], ['unanswered:o/r#150'], $t0 + 3600 * 60, 24);
-ct('items that cleared are reported as cleared', $cleared['notify'] === true && $cleared['cleared'] === ['unanswered:o/r#147', 'waiting:o/r#139'] && $cleared['added'] === []);
+ct('items only CLEARING send nothing (no email that asks nothing of anyone)', $cleared['notify'] === false && $cleared['added'] === [] && $cleared['cleared'] === ['unanswered:o/r#147', 'waiting:o/r#139']);
+ct('...but the smaller set IS recorded, keeping the last notice\'s time', $cleared['state']['keys'] === ['unanswered:o/r#150'] && $cleared['state']['at'] === $d2['state']['at']);
+$back = cw_notify_decision($cleared['state'], ['unanswered:o/r#150', 'waiting:o/r#139'], $t0 + 3600 * 90, 24);
+ct('...so an item that clears and later RETURNS is news again', $back['notify'] === true && $back['added'] === ['waiting:o/r#139']);
 $allClear = cw_notify_decision($d2['state'], [], $t0 + 3600 * 60, 24);
-ct('the set becoming EMPTY is worth one "all clear" notice', $allClear['notify'] === true && cw_notice_text($allClear, '') !== '' && strpos(cw_notice_text($allClear, ''), 'is clear') !== false);
+ct('the set becoming EMPTY is recorded silently too', $allClear['notify'] === false && $allClear['state']['keys'] === []);
+ct('the "inbox is clear" wording still renders for a manual run', strpos(cw_notice_text(['added' => [], 'cleared' => ['x'], 'state' => ['keys' => []]], ''), 'is clear') !== false);
 $stillClear = cw_notify_decision($allClear['state'], [], $t0 + 3600 * 200, 24);
 ct('...and an empty set that stays empty is silent', $stillClear['notify'] === false);
+$soon = cw_notify_decision($state, ['unanswered:o/r#147'], $t0 + 3600 * 1, 24);
+ct('a clearance inside the quiet period is recorded at once (it is not "deferred")', $soon['notify'] === false && $soon['state']['keys'] === ['unanswered:o/r#147']);
 $min = cw_notify_decision($state, $more, $t0 + 3600 * 2, 1);
 ct('COMMUNITY_NOTIFY_MIN_HOURS is the gap applied (a 1h gap lets a 2h-later change through)', $min['notify'] === true);
 $rt = cw_parse_state('text ' . cw_state_marker($state) . ' more');

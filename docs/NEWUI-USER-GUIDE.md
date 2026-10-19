@@ -1117,7 +1117,19 @@ Markups persist in the database and are visible to all users.
 
 On the dashboard map and the full-screen situation map, open the layer control (the layers icon in the upper right). Each map overlay category is listed as its own checkbox so dispatchers can show or hide an entire group of markups in one click --- for example, showing the Parade Routes layer only during a planned event, or hiding Precincts to declutter the map during a working incident.
 
-The initial visibility for each category is set by the administrator on the **Map Overlay Categories** settings panel. Your personal choices are remembered in your browser so the map opens with the same layers visible the next time you log in.
+The initial visibility for each category is set by the administrator on the **Map Overlay Categories** settings panel. Your personal choices --- the categories you turned on and the ones you turned off --- are remembered in your browser so the map opens with the same layers visible the next time you log in.
+
+### Drawing and Editing Markups on the Situation Overview (EOC) Display
+
+On the Situation Overview (EOC) display, the layer control is the **only** place to show or hide markups. Markups drawn on that screen have no category, so they are listed under **Uncategorised markups**, which starts switched on there.
+
+If your role can manage the map, a drawing toolbar sits below the layer control (marker, circle, line, polygon). Its last button (the pin-on-map icon) opens **Edit Markups**, which lists every saved markup with three actions:
+
+- **Hide / show for everyone** (eye icon) --- hides the markup on every map for every user, or brings it back. This changes the saved markup; it is not a personal show/hide.
+- **Rename** (pencil icon).
+- **Delete** (trash icon) --- cannot be undone.
+
+Drawing a new markup turns **Uncategorised markups** on so you can see what you drew.
 
 ## Address Search on Map
 
@@ -1599,6 +1611,20 @@ Show your own agency logo instead of the generic radio-tower icon, and use it as
 
 Changing the install-wide logo or any setting needs the **Manage Agency Branding** permission (Super Admin only). Changing your own organization's logo needs **Manage Own Org's Logo** (Super Admin and Org Admin). Every change is recorded in the audit log. See the Agency Logo & Branding guide (`docs/AGENCY-BRANDING.md`) for all eleven settings, how the logo is stored and served, and troubleshooting.
 
+## States / Provinces
+
+Go to Settings → States / Provinces (in the Application — Geographic Data group).
+
+This one list fills every State dropdown — incidents, members, units, facilities, vehicles, constituents, places and warn locations. A fresh install has the 50 US states and the District of Columbia.
+
+- **Configuration wizard** --- choose a built-in list in one click (US 48, US 50, US 50 with the territories, every US postal code, Canada, Mexico, US + Canada, North America) or tick any of the built-in lists (also Australia, New Zealand, the United Kingdom, Ireland, Germany, Brazil and India), choose **Replace the list** or **Add to the list**, check the preview, and apply. The last step offers to rename the field to match, for example **Province** for Canada.
+- **Preview before anything changes** --- it shows what is added, removed, renamed and skipped, and for every code being removed how many saved records use it. Saved records are never changed: they keep their code and still show it.
+- **Import CSV / Export CSV** --- a two-column `code,name` file, UTF-8 (in Excel: Save As → CSV UTF-8). Each built-in list can also be downloaded as CSV, edited and imported back.
+- **Single entries** --- Add entry, Edit (code or name) and Delete on each row.
+- **Field label** --- call the field State, Province, State or Province, Region, County or your own wording.
+
+Pages that are already open show the new list after a reload. The page needs the **Manage configuration** permission (Super Admin). Every change is recorded in the audit log. See the States and Provinces guide (`docs/STATES-AND-PROVINCES.md`).
+
 ---
 
 # Part 11: Call Board
@@ -1631,29 +1657,27 @@ The call board also shows incidents that were closed within the last 30 minutes 
 
 # Part 12: ICS Forms
 
-TicketsCAD supports creating, editing, and exporting standard ICS (Incident Command System) forms used in emergency management.
+TicketsCAD has every form in the FEMA NIMS ICS Forms Booklet (FEMA 502-2) built in, laid out the way FEMA lays them out: the same blocks, block numbers, titles, order and table columns, with each block's FEMA instruction under it and FEMA's heading, signature lines and footer on the printout. The full list, and what changed for forms saved before October 2026, is in the [ICS Forms guide](ICS-FORMS.md).
 
-## Supported Form Types
+## Available Forms
 
-| Form | Name | Purpose |
-|------|------|---------|
-| ICS 202 | Incident Objectives | Documents incident objectives and strategy |
-| ICS 205 | Incident Radio Communications Plan | Lists radio frequencies and assignments |
-| ICS 205a | Communications List | Contact information for incident personnel |
-| ICS 206 | Medical Plan | Medical aid stations, transport, and hospitals |
-| ICS 213 | General Message | Standard message form for written communications |
-| ICS 213rr | Resource Request Message | Request and track resource orders |
-| ICS 214 | Activity Log | Unit or personnel activity log |
-| ICS 214a | Individual Activity Log | Individual personnel task tracking |
-| ICS 221 | Demobilization Check-Out | Tracks resource demobilization process |
+| Group | Forms |
+|-------|-------|
+| Incident Action Plan | ICS 202 Incident Objectives, 203 Organization Assignment List, 204 Assignment List, 205 Incident Radio Communications Plan, 205A Communications List, 206 Medical Plan, 208 Safety Message/Plan, 208 HM Site Safety and Control Plan |
+| Briefing, planning and status | ICS 201 Incident Briefing, 207 Incident Organization Chart, 209 Incident Status Summary, 215 Operational Planning Worksheet, 215A Incident Action Plan Safety Analysis, 220 Air Operations Summary, 230-CG Daily Meeting Schedule, 233-CG Incident Open Action Tracker |
+| Messages and logs | ICS 213 General Message, 213 RR Resource Request Message, 214 Activity Log, 214a Individual Log (pre-2010) |
+| Resources, logistics and personnel | ICS 210 Resource Status Change, 211 Incident Check-In List, 217A Communications Resource Availability Worksheet, 218 Support Vehicle/Equipment Inventory, 221 Demobilization Check-Out, 225 Incident Personnel Performance Rating |
+| ICS 219 Resource Status Cards | 219-1 Header, 219-2 Crew/Team, 219-3 Engine, 219-4 Helicopter, 219-5 Personnel, 219-6 Fixed-Wing, 219-7 Equipment, 219-8 Miscellaneous Equipment/Task Force, 219-10 Generic |
+
+The ICS 214 Activity Log works for one person or a whole unit: list the people working with you in block 6, Resources Assigned. The pre-2010 ICS 214a is kept only so logs already saved keep working.
 
 ## Creating an ICS Form
 
-1. Navigate to the **ICS Forms** page.
-2. Click **New Form** and select the form type.
-3. Fill in the form fields. Each form type has its own set of fields matching the official ICS form layout.
-4. Optionally link the form to an existing incident.
-5. Click **Save as Draft** to save your work, or **Finalize** to mark it as complete.
+1. Navigate to the **ICS Forms** page (or type `/ics` in the command bar).
+2. Type a number or word in **Find a form** and press **Enter**, or click the form in the list.
+3. Fill in the form fields. Required fields have a red asterisk; signature lines are signed on the printed copy.
+4. Optionally link the form to an existing incident: the incident name and number, the date and time prepared, the operational period start and any form-specific details are filled in for you.
+5. Click **Save Draft** to save your work, or **Finalize** to mark it as complete.
 
 ## Form Statuses
 
@@ -1665,9 +1689,9 @@ TicketsCAD supports creating, editing, and exporting standard ICS (Incident Comm
 
 For ICS 213 forms, TicketsCAD can export the form as a Winlink-compatible XML file:
 
-1. Open a finalized ICS 213 form.
-2. Click the **Export to Winlink** button.
-3. Download the XML file.
+1. Open a saved ICS 213 form.
+2. Click the **Export XML** button in the editor toolbar.
+3. Save the XML file it downloads.
 4. Import it into Winlink Express or Pat for transmission over amateur radio.
 
 This allows organizations to send formal ICS messages over HF/VHF radio when internet connectivity is unavailable.

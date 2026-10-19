@@ -225,6 +225,64 @@
         tryNext(0);
     }
 
+    /**
+     * Pick the State option that matches a geocoder address.
+     *
+     * GH#153: the State list can now hold provinces and other countries'
+     * regions (Settings → States / Provinces), and an exact name match is not
+     * enough there: the geocoder may answer "Quebec" for a list that says
+     * "Québec", and "Michoacán" for a list that says "Michoacán de Ocampo".
+     * Tried in order: (1) exact name or code, case-insensitive — the US
+     * behaviour unchanged; (2) the name with accents removed; (3) the ISO
+     * 3166-2 code the geocoder also returns ("CA-QC" -> QC, "MX-MIC" -> MIC,
+     * "US-MN" -> MN), which is the code every built-in preset uses. Leaves the
+     * field alone when nothing matches.
+     */
+    function foldAccents(s) {
+        s = String(s || '').toLowerCase();
+        try {
+            s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        } catch (e) {
+            // A browser without String.prototype.normalize: compare as typed.
+        }
+        return s.replace(/^\s+|\s+$/g, '');
+    }
+
+    function selectStateFromAddress(stateEl, addr) {
+        if (!stateEl || !addr) return false;
+        var options = stateEl.options;
+        var i;
+        var wanted = String(addr.state || '').toLowerCase();
+        if (wanted) {
+            for (i = 0; i < options.length; i++) {
+                if (options[i].value && (options[i].textContent.toLowerCase() === wanted ||
+                    options[i].value.toLowerCase() === wanted)) {
+                    stateEl.value = options[i].value;
+                    return true;
+                }
+            }
+            var folded = foldAccents(addr.state);
+            for (i = 0; i < options.length; i++) {
+                if (options[i].value && foldAccents(options[i].textContent) === folded) {
+                    stateEl.value = options[i].value;
+                    return true;
+                }
+            }
+        }
+        var iso = String(addr['ISO3166-2-lvl4'] || '');
+        var dash = iso.indexOf('-');
+        if (dash > 0) {
+            var sub = iso.substring(dash + 1).toUpperCase();
+            for (i = 0; i < options.length; i++) {
+                if (options[i].value && options[i].value.toUpperCase() === sub) {
+                    stateEl.value = options[i].value;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     function handleGeocodeResult(r, fromNormalized) {
         setMarker(parseFloat(r.lat), parseFloat(r.lon));
 
@@ -237,16 +295,7 @@
             foundCity = r.address.city || r.address.town || r.address.village || '';
             if (foundCity) cityEl.value = foundCity;
 
-            if (r.address.state) {
-                var options = stateEl.options;
-                for (var i = 0; i < options.length; i++) {
-                    if (options[i].textContent.toLowerCase() === r.address.state.toLowerCase() ||
-                        options[i].value.toLowerCase() === r.address.state.toLowerCase()) {
-                        stateEl.value = options[i].value;
-                        break;
-                    }
-                }
-            }
+            selectStateFromAddress(stateEl, r.address);
 
             // Auto-fill cross street from geocoder neighbourhood/suburb
             var crossParts = [];
@@ -300,16 +349,7 @@
 
                 cityEl.value = addr.city || addr.town || addr.village || '';
 
-                if (addr.state) {
-                    var options = stateEl.options;
-                    for (var i = 0; i < options.length; i++) {
-                        if (options[i].textContent.toLowerCase() === addr.state.toLowerCase() ||
-                            options[i].value.toLowerCase() === addr.state.toLowerCase()) {
-                            stateEl.value = options[i].value;
-                            break;
-                        }
-                    }
-                }
+                selectStateFromAddress(stateEl, addr);
 
                 // Cross street / neighbourhood
                 var crossParts = [];

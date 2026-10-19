@@ -326,6 +326,22 @@ facility, with a live side panel. It is built to run unattended for hours.</p>
 Click the <strong>same</strong> row again to restore the exact view you had
 before you zoomed in.</p>
 
+<h6>Overlays and markups &mdash; one place to show or hide</h6>
+<ul>
+    <li>Show or hide anything on this map with the <strong>layer control</strong>
+        (top-right): each map overlay category, <strong>Uncategorised
+        markups</strong> (markups drawn on this screen), weather, units and
+        facilities. What you turn off stays off when the screen reloads.</li>
+    <li>If you can manage the map, a drawing toolbar sits below the layer
+        control. Its last button (<i class="bi bi-pin-map"></i>) opens
+        <strong>Edit Markups</strong>, where you rename or delete a markup, or
+        hide it on <em>every</em> map for <em>every</em> user. It does not
+        show or hide anything just for you &mdash; that is the layer
+        control&rsquo;s job.</li>
+    <li>A markup you draw here is uncategorised. Drawing one turns
+        <strong>Uncategorised markups</strong> on, so you can see it.</li>
+</ul>
+
 <h6>Radar &mdash; two layers</h6>
 <p>The layer control (top-right) offers two radar layers:</p>
 <ul>
@@ -913,6 +929,21 @@ detail an internet lookup service is told about who is querying (the User-Agent)
 '
             ],
             [
+                'slug'  => 'ics-forms',
+                'title' => 'ICS Forms (FEMA)',
+                'body'  => '
+<p>The <strong>ICS Forms</strong> page (menu, or <code>/ics</code>) has every form in the FEMA NIMS ICS Forms Booklet, laid out as FEMA lays them out: the same blocks, block numbers, titles, order and columns, with FEMA&rsquo;s instruction under each block and FEMA&rsquo;s heading, signature lines and footer on the printout.</p>
+<ul>
+    <li><strong>Find a form</strong> &mdash; type a number or word (&ldquo;205&rdquo;, &ldquo;medical&rdquo;) and press <kbd>Enter</kbd> to open the first match; <kbd>Esc</kbd> clears it.</li>
+    <li><strong>Link to Incident</strong> &mdash; fills in the incident name and number, the date and time prepared, the operational period start and form-specific details. Nothing you typed is overwritten.</li>
+    <li><strong>ICS 214</strong> works for one person or a whole unit: list the people with you in block 6. The pre-2010 ICS 214a is kept only for logs already saved.</li>
+    <li><strong>Signature lines</strong> print blank, to be signed by hand.</li>
+    <li>Forms saved before October 2026 open with their values in the corrected FEMA fields; fields FEMA does not have are marked <em>earlier version</em>. Nothing saved was lost.</li>
+</ul>
+<p>The full list and the notes for older forms are in the <a href="documentation/?doc=ICS-FORMS" target="_blank">ICS Forms guide</a>.</p>
+'
+            ],
+            [
                 'slug'  => 'import-export',
                 'title' => 'Import & Export',
                 'body'  => '
@@ -977,6 +1008,22 @@ detail an internet lookup service is told about who is querying (the User-Agent)
 <p>On a multi-organization install, each organization can have its own logo; one without a logo uses its parent organization&rsquo;s, then the install-wide logo. An Org Admin can only change their own organization&rsquo;s logo.</p>
 <p>The uploaded image is re-encoded on the server: hidden metadata (such as camera location tags) is removed and the stored copy is kept under 256 KB.</p>
 <p>See the <a href="documentation/?doc=AGENCY-BRANDING" target="_blank">Agency Logo &amp; Branding guide</a> for every setting, the permissions and troubleshooting.</p>
+'
+            ],
+            [
+                'slug'  => 'states-provinces',
+                'title' => 'States / Provinces',
+                'body'  => '
+<p>One list fills <strong>every State dropdown</strong> &mdash; incidents, members, units, facilities, vehicles, constituents, places and warn locations. Change it at <strong>Settings &rarr; States / Provinces</strong> (in <em>Application &mdash; Geographic Data</em>; needs the <em>Manage configuration</em> permission).</p>
+<ol>
+    <li>Click <strong>Configuration wizard</strong>. Press a one-click button (for example <em>US 50 + DC + territories</em> or <em>Canada</em>) or tick one or more built-in lists: United States (48 or 50, with DC, the territories, the armed forces codes and the freely associated states as options), Canada, Mexico, Australia, New Zealand, United Kingdom, Ireland, Germany, Brazil, India.</li>
+    <li>Choose <strong>Replace the list</strong> (it becomes exactly your choice) or <strong>Add to the list</strong> (codes already there are skipped).</li>
+    <li>Read the <strong>preview</strong>: what is added, removed, renamed and skipped, and how many saved records use each code being removed. Then <strong>Apply</strong>.</li>
+    <li>Optionally rename the field &mdash; the wizard suggests <em>Province</em> for Canada, <em>County</em> for Ireland, and so on.</li>
+</ol>
+<p><strong>Saved records are never changed.</strong> A record keeps the code it was saved with even after that code is removed, and its form still shows it. Pages that are already open show the new list after a reload.</p>
+<p>For anywhere else in the world use <strong>Import CSV</strong>: a UTF-8 file with the header <code>code,name</code> (codes of 1 to 4 letters or digits, names up to 64 characters). <strong>Export CSV</strong> downloads the current list, and each built-in list can be downloaded, edited in a spreadsheet and imported back. Single entries can be added, edited and deleted on the page.</p>
+<p>See the <a href="documentation/?doc=STATES-AND-PROVINCES" target="_blank">States and Provinces guide</a>.</p>
 '
             ],
             [
