@@ -11,6 +11,22 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "deps"
+    ignore:
+      # minishlink/web-push v11 moved its crypto onto web-token/jwt-library 4.x, so
+      # tools/patch_vendor_webpush.php (the GH#31 OpenSSL-config fix that patches
+      # Encryption.php::createLocalKeyObject) no longer matches and a `composer
+      # install` of v11 fails outright (the patch runs as a post-install script).
+      # A major bump needs that vendor patch rewritten and push delivery re-tested
+      # on hosts without a working OPENSSL_CONF first — it is not a drop-in. This
+      # blocks only the major VERSION-update noise; security updates still flow, and
+      # 9.x patch/minor updates still open normally.
+      - dependency-name: "minishlink/web-push"
+        update-types: ["version-update:semver-major"]
+      # ratchet/pawl is deliberately pinned to an exact version in composer.json to
+      # match the cboden/ratchet + ReactPHP stack the Zello/DMR WebSocket proxy runs
+      # on. A bump needs a live proxy smoke-test, not an automated merge. (Security
+      # updates are unaffected by this ignore.)
+      - dependency-name: "ratchet/pawl"
   # GitHub Actions used by the CI workflows
   - package-ecosystem: "github-actions"
     directory: "/"

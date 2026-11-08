@@ -2,10 +2,10 @@
     "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
     "bomFormat": "CycloneDX",
     "specVersion": "1.6",
-    "serialNumber": "urn:uuid:d913f36c-ec1c-57e0-ae32-a3ce44892725",
-    "version": 52,
+    "serialNumber": "urn:uuid:2ca4cde2-8473-5551-9954-c2b7a8c99888",
+    "version": 53,
     "metadata": {
-        "timestamp": "2026-10-15T16:26:11Z",
+        "timestamp": "2026-11-08T14:35:51Z",
         "lifecycles": [
             {
                 "phase": "pre-build"
@@ -52,7 +52,7 @@
         "properties": [
             {
                 "name": "ticketscad:content-digest",
-                "value": "3b9b732e0d29e85ca5898dc07e0d1e1acc63bade5fb0422abf245356fa5d683d"
+                "value": "b95a685a7239fbf8ba62c5cfb36f6759a151871782cbbfe219413583d982430b"
             },
             {
                 "name": "ticketscad:standard",
@@ -1295,10 +1295,10 @@
         },
         {
             "type": "library",
-            "bom-ref": "pkg:composer/firebase/php-jwt@7.0.3#php-composer",
+            "bom-ref": "pkg:composer/firebase/php-jwt@7.2.1#php-composer",
             "name": "firebase/php-jwt",
             "publisher": "firebase",
-            "version": "7.0.3",
+            "version": "7.2.1",
             "description": "A simple library to encode and decode JSON Web Tokens (JWT) in PHP. Should conform to the current spec.",
             "scope": "required",
             "licenses": [
@@ -1308,25 +1308,25 @@
                     }
                 }
             ],
-            "purl": "pkg:composer/firebase/php-jwt@7.0.3",
+            "purl": "pkg:composer/firebase/php-jwt@7.2.1",
             "externalReferences": [
                 {
                     "type": "vcs",
-                    "url": "https://github.com/firebase/php-jwt.git"
+                    "url": "https://github.com/googleapis/php-jwt.git"
                 }
             ],
             "properties": [
                 {
                     "name": "ticketscad:identifier",
-                    "value": "pkg:composer/firebase/php-jwt@7.0.3"
+                    "value": "pkg:composer/firebase/php-jwt@7.2.1"
                 },
                 {
                     "name": "ticketscad:identifier",
-                    "value": "git-commit:28aa0694bcfdfa5e2959c394d5a1ee7a5083629e"
+                    "value": "git-commit:0501f5729b9e2448516674aff07c7d1727869b8e"
                 },
                 {
                     "name": "ticketscad:note",
-                    "value": "Pinned commit: 28aa0694bcfdfa5e2959c394d5a1ee7a5083629e"
+                    "value": "Pinned commit: 0501f5729b9e2448516674aff07c7d1727869b8e"
                 },
                 {
                     "name": "ticketscad:unknown",
@@ -2195,10 +2195,10 @@
         },
         {
             "type": "library",
-            "bom-ref": "pkg:composer/symfony/deprecation-contracts@3.7.1#php-composer",
+            "bom-ref": "pkg:composer/symfony/deprecation-contracts@3.8.1#php-composer",
             "name": "symfony/deprecation-contracts",
             "publisher": "symfony",
-            "version": "3.7.1",
+            "version": "3.8.1",
             "description": "A generic function and convention to trigger deprecation notices",
             "scope": "required",
             "licenses": [
@@ -2208,7 +2208,7 @@
                     }
                 }
             ],
-            "purl": "pkg:composer/symfony/deprecation-contracts@3.7.1",
+            "purl": "pkg:composer/symfony/deprecation-contracts@3.8.1",
             "externalReferences": [
                 {
                     "type": "vcs",
@@ -2218,15 +2218,15 @@
             "properties": [
                 {
                     "name": "ticketscad:identifier",
-                    "value": "pkg:composer/symfony/deprecation-contracts@3.7.1"
+                    "value": "pkg:composer/symfony/deprecation-contracts@3.8.1"
                 },
                 {
                     "name": "ticketscad:identifier",
-                    "value": "git-commit:f3202fa1b5097b0af062dc978b32ecf63404e31d"
+                    "value": "git-commit:feb1edf4e546af3b85c5caebe8359a20db230ca3"
                 },
                 {
                     "name": "ticketscad:note",
-                    "value": "Pinned commit: f3202fa1b5097b0af062dc978b32ecf63404e31d"
+                    "value": "Pinned commit: feb1edf4e546af3b85c5caebe8359a20db230ca3"
                 },
                 {
                     "name": "ticketscad:unknown",
@@ -2240,10 +2240,10 @@
         },
         {
             "type": "library",
-            "bom-ref": "pkg:composer/symfony/http-foundation@6.4.48#php-composer",
+            "bom-ref": "pkg:composer/symfony/http-foundation@6.4.50#php-composer",
             "name": "symfony/http-foundation",
             "publisher": "symfony",
-            "version": "6.4.48",
+            "version": "6.4.50",
             "description": "Defines an object-oriented layer for the HTTP specification",
             "scope": "required",
             "licenses": [
@@ -2253,7 +2253,7 @@
                     }
                 }
             ],
-            "purl": "pkg:composer/symfony/http-foundation@6.4.48",
+            "purl": "pkg:composer/symfony/http-foundation@6.4.50",
             "externalReferences": [
                 {
                     "type": "vcs",
@@ -2263,15 +2263,15 @@
             "properties": [
                 {
                     "name": "ticketscad:identifier",
-                    "value": "pkg:composer/symfony/http-foundation@6.4.48"
+                    "value": "pkg:composer/symfony/http-foundation@6.4.50"
                 },
                 {
                     "name": "ticketscad:identifier",
-                    "value": "git-commit:b1721caa556f32d150d9a14bb0a3fc4b86dfda33"
+                    "value": "git-commit:f0cd207e06ba547c9ad4ee4bdf04729984d39045"
                 },
                 {
                     "name": "ticketscad:note",
-                    "value": "Pinned commit: b1721caa556f32d150d9a14bb0a3fc4b86dfda33"
+                    "value": "Pinned commit: f0cd207e06ba547c9ad4ee4bdf04729984d39045"
                 },
                 {
                     "name": "ticketscad:unknown",
@@ -2285,10 +2285,10 @@
         },
         {
             "type": "library",
-            "bom-ref": "pkg:composer/symfony/polyfill-mbstring@1.38.2#php-composer",
+            "bom-ref": "pkg:composer/symfony/polyfill-mbstring@1.43.3#php-composer",
             "name": "symfony/polyfill-mbstring",
             "publisher": "symfony",
-            "version": "1.38.2",
+            "version": "1.43.3",
             "description": "Symfony polyfill for the Mbstring extension",
             "scope": "required",
             "licenses": [
@@ -2298,7 +2298,7 @@
                     }
                 }
             ],
-            "purl": "pkg:composer/symfony/polyfill-mbstring@1.38.2",
+            "purl": "pkg:composer/symfony/polyfill-mbstring@1.43.3",
             "externalReferences": [
                 {
                     "type": "vcs",
@@ -2308,15 +2308,15 @@
             "properties": [
                 {
                     "name": "ticketscad:identifier",
-                    "value": "pkg:composer/symfony/polyfill-mbstring@1.38.2"
+                    "value": "pkg:composer/symfony/polyfill-mbstring@1.43.3"
                 },
                 {
                     "name": "ticketscad:identifier",
-                    "value": "git-commit:d3d318bad5e7a1bfbd026009c8bfb8d8f99ae6b6"
+                    "value": "git-commit:122889ed24dc000165bcbfd77ec412f15cbdfc6a"
                 },
                 {
                     "name": "ticketscad:note",
-                    "value": "Pinned commit: d3d318bad5e7a1bfbd026009c8bfb8d8f99ae6b6"
+                    "value": "Pinned commit: 122889ed24dc000165bcbfd77ec412f15cbdfc6a"
                 },
                 {
                     "name": "ticketscad:unknown",
@@ -2330,10 +2330,10 @@
         },
         {
             "type": "library",
-            "bom-ref": "pkg:composer/symfony/polyfill-php80@1.37.0#php-composer",
+            "bom-ref": "pkg:composer/symfony/polyfill-php80@1.43.0#php-composer",
             "name": "symfony/polyfill-php80",
             "publisher": "symfony",
-            "version": "1.37.0",
+            "version": "1.43.0",
             "description": "Symfony polyfill backporting some PHP 8.0+ features to lower PHP versions",
             "scope": "required",
             "licenses": [
@@ -2343,7 +2343,7 @@
                     }
                 }
             ],
-            "purl": "pkg:composer/symfony/polyfill-php80@1.37.0",
+            "purl": "pkg:composer/symfony/polyfill-php80@1.43.0",
             "externalReferences": [
                 {
                     "type": "vcs",
@@ -2353,15 +2353,15 @@
             "properties": [
                 {
                     "name": "ticketscad:identifier",
-                    "value": "pkg:composer/symfony/polyfill-php80@1.37.0"
+                    "value": "pkg:composer/symfony/polyfill-php80@1.43.0"
                 },
                 {
                     "name": "ticketscad:identifier",
-                    "value": "git-commit:dfb55726c3a76ea3b6459fcfda1ec2d80a682411"
+                    "value": "git-commit:9c6a5d6b01ca51d486c813e9a9c0ed55f208bb74"
                 },
                 {
                     "name": "ticketscad:note",
-                    "value": "Pinned commit: dfb55726c3a76ea3b6459fcfda1ec2d80a682411"
+                    "value": "Pinned commit: 9c6a5d6b01ca51d486c813e9a9c0ed55f208bb74"
                 },
                 {
                     "name": "ticketscad:unknown",
@@ -2420,10 +2420,10 @@
         },
         {
             "type": "library",
-            "bom-ref": "pkg:composer/symfony/polyfill-php83@1.38.2#php-composer",
+            "bom-ref": "pkg:composer/symfony/polyfill-php83@1.43.0#php-composer",
             "name": "symfony/polyfill-php83",
             "publisher": "symfony",
-            "version": "1.38.2",
+            "version": "1.43.0",
             "description": "Symfony polyfill backporting some PHP 8.3+ features to lower PHP versions",
             "scope": "required",
             "licenses": [
@@ -2433,7 +2433,7 @@
                     }
                 }
             ],
-            "purl": "pkg:composer/symfony/polyfill-php83@1.38.2",
+            "purl": "pkg:composer/symfony/polyfill-php83@1.43.0",
             "externalReferences": [
                 {
                     "type": "vcs",
@@ -2443,15 +2443,15 @@
             "properties": [
                 {
                     "name": "ticketscad:identifier",
-                    "value": "pkg:composer/symfony/polyfill-php83@1.38.2"
+                    "value": "pkg:composer/symfony/polyfill-php83@1.43.0"
                 },
                 {
                     "name": "ticketscad:identifier",
-                    "value": "git-commit:796a26abb75ce49f3a84433cd81bf1009d73d5f8"
+                    "value": "git-commit:80ccff923a8d61f73ebe9da0aa94e25232f004ce"
                 },
                 {
                     "name": "ticketscad:note",
-                    "value": "Pinned commit: 796a26abb75ce49f3a84433cd81bf1009d73d5f8"
+                    "value": "Pinned commit: 80ccff923a8d61f73ebe9da0aa94e25232f004ce"
                 },
                 {
                     "name": "ticketscad:unknown",
@@ -2465,10 +2465,10 @@
         },
         {
             "type": "library",
-            "bom-ref": "pkg:composer/symfony/routing@6.4.41#php-composer",
+            "bom-ref": "pkg:composer/symfony/routing@6.4.50#php-composer",
             "name": "symfony/routing",
             "publisher": "symfony",
-            "version": "6.4.41",
+            "version": "6.4.50",
             "description": "Maps an HTTP request to a set of configuration variables",
             "scope": "required",
             "licenses": [
@@ -2478,7 +2478,7 @@
                     }
                 }
             ],
-            "purl": "pkg:composer/symfony/routing@6.4.41",
+            "purl": "pkg:composer/symfony/routing@6.4.50",
             "externalReferences": [
                 {
                     "type": "vcs",
@@ -2488,15 +2488,15 @@
             "properties": [
                 {
                     "name": "ticketscad:identifier",
-                    "value": "pkg:composer/symfony/routing@6.4.41"
+                    "value": "pkg:composer/symfony/routing@6.4.50"
                 },
                 {
                     "name": "ticketscad:identifier",
-                    "value": "git-commit:af04c79671fd8df0805a44c83fa2b0ba56c8329e"
+                    "value": "git-commit:80253f3a04ea4e1ba4d78690b8a1727ed9f104e0"
                 },
                 {
                     "name": "ticketscad:note",
-                    "value": "Pinned commit: af04c79671fd8df0805a44c83fa2b0ba56c8329e"
+                    "value": "Pinned commit: 80253f3a04ea4e1ba4d78690b8a1727ed9f104e0"
                 },
                 {
                     "name": "ticketscad:unknown",
@@ -3885,7 +3885,7 @@
                 "pkg:composer/brick/math@0.17.2#php-composer",
                 "pkg:composer/cboden/ratchet@0.4.4#php-composer",
                 "pkg:composer/evenement/evenement@3.0.2#php-composer",
-                "pkg:composer/firebase/php-jwt@7.0.3#php-composer",
+                "pkg:composer/firebase/php-jwt@7.2.1#php-composer",
                 "pkg:composer/guzzlehttp/guzzle@7.15.2#php-composer",
                 "pkg:composer/guzzlehttp/promises@2.5.1#php-composer",
                 "pkg:composer/guzzlehttp/psr7@2.13.0#php-composer",
@@ -3905,13 +3905,13 @@
                 "pkg:composer/react/stream@1.4.0#php-composer",
                 "pkg:composer/spomky-labs/base64url@2.0.4#php-composer",
                 "pkg:composer/spomky-labs/pki-framework@1.4.2#php-composer",
-                "pkg:composer/symfony/deprecation-contracts@3.7.1#php-composer",
-                "pkg:composer/symfony/http-foundation@6.4.48#php-composer",
-                "pkg:composer/symfony/polyfill-mbstring@1.38.2#php-composer",
-                "pkg:composer/symfony/polyfill-php80@1.37.0#php-composer",
+                "pkg:composer/symfony/deprecation-contracts@3.8.1#php-composer",
+                "pkg:composer/symfony/http-foundation@6.4.50#php-composer",
+                "pkg:composer/symfony/polyfill-mbstring@1.43.3#php-composer",
+                "pkg:composer/symfony/polyfill-php80@1.43.0#php-composer",
                 "pkg:composer/symfony/polyfill-php82@1.38.1#php-composer",
-                "pkg:composer/symfony/polyfill-php83@1.38.2#php-composer",
-                "pkg:composer/symfony/routing@6.4.41#php-composer",
+                "pkg:composer/symfony/polyfill-php83@1.43.0#php-composer",
+                "pkg:composer/symfony/routing@6.4.50#php-composer",
                 "pkg:composer/web-token/jwt-library@4.1.7#php-composer",
                 "pkg:pypi/aprslib#python-services",
                 "pkg:pypi/esptool#python-services",
@@ -3954,8 +3954,8 @@
                 "pkg:composer/ratchet/rfc6455@0.3.1#php-composer",
                 "pkg:composer/react/event-loop@1.6.0#php-composer",
                 "pkg:composer/react/socket@1.17.0#php-composer",
-                "pkg:composer/symfony/http-foundation@6.4.48#php-composer",
-                "pkg:composer/symfony/routing@6.4.41#php-composer"
+                "pkg:composer/symfony/http-foundation@6.4.50#php-composer",
+                "pkg:composer/symfony/routing@6.4.50#php-composer"
             ]
         },
         {
@@ -3963,7 +3963,7 @@
             "dependsOn": []
         },
         {
-            "ref": "pkg:composer/firebase/php-jwt@7.0.3#php-composer",
+            "ref": "pkg:composer/firebase/php-jwt@7.2.1#php-composer",
             "dependsOn": []
         },
         {
@@ -3972,14 +3972,14 @@
                 "pkg:composer/guzzlehttp/promises@2.5.1#php-composer",
                 "pkg:composer/guzzlehttp/psr7@2.13.0#php-composer",
                 "pkg:composer/psr/http-client@1.0.3#php-composer",
-                "pkg:composer/symfony/deprecation-contracts@3.7.1#php-composer",
-                "pkg:composer/symfony/polyfill-php80@1.37.0#php-composer"
+                "pkg:composer/symfony/deprecation-contracts@3.8.1#php-composer",
+                "pkg:composer/symfony/polyfill-php80@1.43.0#php-composer"
             ]
         },
         {
             "ref": "pkg:composer/guzzlehttp/promises@2.5.1#php-composer",
             "dependsOn": [
-                "pkg:composer/symfony/deprecation-contracts@3.7.1#php-composer"
+                "pkg:composer/symfony/deprecation-contracts@3.8.1#php-composer"
             ]
         },
         {
@@ -3988,8 +3988,8 @@
                 "pkg:composer/psr/http-factory@1.1.0#php-composer",
                 "pkg:composer/psr/http-message@2.0#php-composer",
                 "pkg:composer/ralouphie/getallheaders@3.0.3#php-composer",
-                "pkg:composer/symfony/deprecation-contracts@3.7.1#php-composer",
-                "pkg:composer/symfony/polyfill-php80@1.37.0#php-composer"
+                "pkg:composer/symfony/deprecation-contracts@3.8.1#php-composer",
+                "pkg:composer/symfony/polyfill-php80@1.43.0#php-composer"
             ]
         },
         {
@@ -4090,23 +4090,23 @@
             ]
         },
         {
-            "ref": "pkg:composer/symfony/deprecation-contracts@3.7.1#php-composer",
+            "ref": "pkg:composer/symfony/deprecation-contracts@3.8.1#php-composer",
             "dependsOn": []
         },
         {
-            "ref": "pkg:composer/symfony/http-foundation@6.4.48#php-composer",
+            "ref": "pkg:composer/symfony/http-foundation@6.4.50#php-composer",
             "dependsOn": [
-                "pkg:composer/symfony/deprecation-contracts@3.7.1#php-composer",
-                "pkg:composer/symfony/polyfill-mbstring@1.38.2#php-composer",
-                "pkg:composer/symfony/polyfill-php83@1.38.2#php-composer"
+                "pkg:composer/symfony/deprecation-contracts@3.8.1#php-composer",
+                "pkg:composer/symfony/polyfill-mbstring@1.43.3#php-composer",
+                "pkg:composer/symfony/polyfill-php83@1.43.0#php-composer"
             ]
         },
         {
-            "ref": "pkg:composer/symfony/polyfill-mbstring@1.38.2#php-composer",
+            "ref": "pkg:composer/symfony/polyfill-mbstring@1.43.3#php-composer",
             "dependsOn": []
         },
         {
-            "ref": "pkg:composer/symfony/polyfill-php80@1.37.0#php-composer",
+            "ref": "pkg:composer/symfony/polyfill-php80@1.43.0#php-composer",
             "dependsOn": []
         },
         {
@@ -4114,13 +4114,13 @@
             "dependsOn": []
         },
         {
-            "ref": "pkg:composer/symfony/polyfill-php83@1.38.2#php-composer",
+            "ref": "pkg:composer/symfony/polyfill-php83@1.43.0#php-composer",
             "dependsOn": []
         },
         {
-            "ref": "pkg:composer/symfony/routing@6.4.41#php-composer",
+            "ref": "pkg:composer/symfony/routing@6.4.50#php-composer",
             "dependsOn": [
-                "pkg:composer/symfony/deprecation-contracts@3.7.1#php-composer"
+                "pkg:composer/symfony/deprecation-contracts@3.8.1#php-composer"
             ]
         },
         {
