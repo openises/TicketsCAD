@@ -26,7 +26,14 @@ echo "================================\n\n";
 
 $prefix = $GLOBALS['db_prefix'] ?? '';
 $validZones = DateTimeZone::listIdentifiers();
-$defaultZone = 'America/New_York';
+// Seed default honours a container's NEWUI_TIMEZONE/TZ (set by
+// docker-config-gen.php on the same install) so the zone the app applies
+// matches config.php's pre-DB default; an unset or invalid value falls
+// back to the historical America/New_York.
+$envTz = getenv('NEWUI_TIMEZONE') ?: getenv('TZ') ?: '';
+$defaultZone = ($envTz !== '' && in_array($envTz, $validZones, true))
+    ? $envTz
+    : 'America/New_York';
 
 try {
     $existing = db_fetch_value(

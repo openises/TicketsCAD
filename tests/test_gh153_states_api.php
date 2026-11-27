@@ -157,11 +157,13 @@ gh153a_t('...and the list is still unchanged', states_list_hash(states_list()) =
 echo "\n--- Super Admin ---\n";
 $r = gh153a_api('GET', 'list', $adminId);
 $b = $r['body'] ?? [];
-gh153a_t('list: 200 with states, count, schema, field_label, label_lang, languages, customized',
+gh153a_t('list: 200 with states, count, schema, field_label, label_lang, languages, label_by_lang, customized',
     ($r['status'] ?? 0) === 200 && count($b['states'] ?? []) === 51 && ($b['count'] ?? 0) === 51
-    && isset($b['schema']['utf8mb4'], $b['field_label'], $b['label_lang'], $b['languages']) && array_key_exists('customized', $b), json_encode($r));
+    && isset($b['schema']['utf8mb4'], $b['field_label'], $b['label_lang'], $b['languages'])
+    && array_key_exists('customized', $b) && is_array($b['label_by_lang'] ?? null)
+    && isset($b['label_by_lang']['en']), json_encode($r));
 $r = gh153a_api('GET', 'presets', $adminId);
-gh153a_t('presets: the catalog, quick picks and label choices', ($r['status'] ?? 0) === 200 && count($r['body']['presets'] ?? []) === 11
+gh153a_t('presets: the catalog, quick picks and label choices', ($r['status'] ?? 0) === 200 && count($r['body']['presets'] ?? []) === 12
     && count($r['body']['quick_picks'] ?? []) >= 5 && in_array('Province', $r['body']['label_choices'] ?? [], true));
 
 $r = gh153a_api('POST', 'create', $adminId, ['action' => 'create', 'code' => 'zq', 'name' => 'Zed Québec']);
@@ -188,6 +190,7 @@ $r = gh153a_api('POST', 'preset_preview', $adminId, ['action' => 'preset_preview
 $pv = $r['body'] ?? [];
 gh153a_t('preset_preview: 200 with the diff, the record counts and a list hash', ($r['status'] ?? 0) === 200
     && count($pv['adds'] ?? []) === 13 && count($pv['removes'] ?? []) === 51 && isset($pv['list_hash'], $pv['records_using_removed'])
+    && array_key_exists('records_renamed_in_use', $pv)
     && ($pv['label_suggestion'] ?? '') === 'Province' && array_key_exists('usage_by', $pv['removes'][0] ?? []), json_encode($r));
 gh153a_t('...and changed nothing', states_count() === 51);
 $r = gh153a_api('POST', 'preset_apply', $adminId, ['action' => 'preset_apply', 'selection' => ['ca' => []], 'mode' => 'replace', 'list_hash' => 'stale']);
@@ -233,6 +236,13 @@ $r = gh153a_api('POST', 'set_label', $adminId, ['action' => 'set_label', 'label'
 gh153a_t('set_label: 200 and form.state is now "Province"', ($r['status'] ?? 0) === 200 && states_field_label('en') === 'Province', json_encode($r));
 $r = gh153a_api('POST', 'set_label', $adminId, ['action' => 'set_label', 'label' => '', 'lang' => 'en']);
 gh153a_t('set_label refuses an empty label (400)', ($r['status'] ?? 0) === 400);
+$r = gh153a_api('POST', 'set_label', $adminId, ['action' => 'set_label', 'labels' => ['en' => 'State or Province', 'fr' => 'Province']]);
+gh153a_t('set_label with a per-language map: 200, saved 2, each language gets its own word',
+    ($r['status'] ?? 0) === 200 && ($r['body']['saved'] ?? 0) === 2
+    && states_field_label('en') === 'State or Province' && states_field_label('fr') === 'Province', json_encode($r));
+$r = gh153a_api('POST', 'set_label', $adminId, ['action' => 'set_label', 'labels' => ['en' => 'Changed', 'fr' => '']]);
+gh153a_t('set_label map validates the whole set first: one bad label writes nothing (400)',
+    ($r['status'] ?? 0) === 400 && states_field_label('en') === 'State or Province' && states_field_label('fr') === 'Province', json_encode($r));
 $r = gh153a_api('POST', 'nonsense', $adminId, ['action' => 'nonsense']);
 gh153a_t('an unknown action is a 404', ($r['status'] ?? 0) === 404);
 

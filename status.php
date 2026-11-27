@@ -1303,8 +1303,56 @@ $csrf     = csrf_token();
             }
         }
 
+        // ── States / Provinces: leftover "England" (UK) row (GH#153) ───
+        // Only rendered when the stray seed row is still present; a healthy
+        // install (the row removed automatically, or never there) shows nothing.
+        var seu = data.states_england || {};
+        if (seu.present) {
+            html += '<div class="mt-3 mb-1 fw-semibold" style="font-size:0.8rem">' +
+                    '<i class="bi bi-signpost-2 me-1"></i>States / Provinces: leftover "England" (UK) row</div>';
+            html += '<div style="font-size:0.78rem" class="text-warning">' + esc(seu.summary || '') + ' ' + sevBadge('warn') + '</div>';
+            html += '<div class="mt-1 d-flex flex-wrap gap-2">' +
+                    '<button type="button" class="btn btn-sm btn-danger" data-st-remove-england data-st-id="' +
+                    esc(String(seu.id || 0)) + '"><i class="bi bi-trash me-1"></i>Remove it</button>' +
+                    '<a class="btn btn-sm btn-outline-secondary" href="states-admin.php">Open States / Provinces</a></div>';
+            html += '<div class="text-body-secondary" style="font-size:0.72rem">Records keep the code UK and still show it; ' +
+                    'removing the row only stops UK being offered for new entries. Uses the normal, audited delete.</div>';
+        }
+
         body.innerHTML = html;
     }
+
+    // The System Health "Remove it" button for the leftover England/UK row.
+    // Uses the EXISTING, audited api/states.php delete path — no new endpoint.
+    // Delegated because render() rebuilds the body on every refresh.
+    body.addEventListener('click', function (ev) {
+        var btn = (ev.target && ev.target.closest) ? ev.target.closest('[data-st-remove-england]') : null;
+        if (!btn) { return; }
+        var id = parseInt(btn.getAttribute('data-st-id'), 10) || 0;
+        if (!id) { return; }
+        if (!window.confirm('Remove the leftover "England" (UK) row from the State / Province list?\n\n' +
+            'Saved records keep the code UK and still show it; it just stops being offered for new entries.')) { return; }
+        btn.disabled = true;
+        var meta = document.querySelector('meta[name="csrf-token"]');
+        fetch('api/states.php', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'delete', id: id, csrf_token: meta ? meta.getAttribute('content') : '' })
+        }).then(function (r) {
+            return r.text().then(function (t) { var b = null; try { b = JSON.parse(t); } catch (e) {} return { ok: r.ok, body: b }; });
+        }).then(function (res) {
+            if (!res.ok) {
+                btn.disabled = false;
+                window.alert((res.body && res.body.error) ? res.body.error : 'Could not remove the row.');
+                return;
+            }
+            fetchIt();
+        }).catch(function () {
+            btn.disabled = false;
+            window.alert('The request did not reach the server.');
+        });
+    });
 
     function fmtAgo(s) {
         if (s === null || s === undefined) return 'never';

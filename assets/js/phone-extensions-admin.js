@@ -226,6 +226,7 @@
                 document.getElementById('pePbxWssUrl').value = data.settings.wss_url || '';
                 document.getElementById('pePbxGeneral').value = data.settings.general_number || '';
                 loadScope(data.settings);
+                loadEmergencyPolicy(data.settings);
             }
         }).catch(function () {});
     }
@@ -266,6 +267,52 @@
         }).catch(function () { showToast('Save failed', true); });
     }
 
+    // GH#108 (panel-review C2): the emergency-call policy card exists only for a
+    // caller with action.manage_config (the page omits it otherwise), so every
+    // access is guarded. The DANGER warning is revealed/hidden live as the
+    // restriction toggle changes; it is a courtesy indication, NOT a control.
+    function loadEmergencyPolicy(settings) {
+        var numbers = document.getElementById('peEmergencyNumbers');
+        if (numbers && settings && settings.emergency_numbers) {
+            numbers.value = (settings.emergency_numbers instanceof Array)
+                ? settings.emergency_numbers.join(', ')
+                : String(settings.emergency_numbers);
+        }
+        var toggle = document.getElementById('peRestrictEmergency');
+        if (toggle && settings && typeof settings.restrict_emergency !== 'undefined') {
+            toggle.checked = !!settings.restrict_emergency;
+        }
+        updateEmergencyWarning();
+    }
+
+    function updateEmergencyWarning() {
+        var toggle = document.getElementById('peRestrictEmergency');
+        var warn = document.getElementById('peEmergencyWarning');
+        if (!toggle || !warn) { return; }
+        if (toggle.checked) { warn.classList.remove('d-none'); }
+        else { warn.classList.add('d-none'); }
+    }
+
+    function saveEmergencyPolicy() {
+        var numbers = document.getElementById('peEmergencyNumbers');
+        var toggle = document.getElementById('peRestrictEmergency');
+        apiPost('emergency_policy_save', {
+            emergency_numbers: numbers ? numbers.value : '',
+            restrict_emergency: (toggle && toggle.checked) ? 1 : 0
+        }).then(function (res) {
+            if (res && res.ok) {
+                if (numbers && res.emergency_numbers instanceof Array) {
+                    numbers.value = res.emergency_numbers.join(', ');
+                }
+                showToast(res.restrict_emergency
+                    ? 'Saved. Emergency calling is RESTRICTED on this install (FreePBX must enforce it).'
+                    : 'Saved. Every extension can dial the emergency numbers.', false);
+            } else {
+                showToast((res && res.error) || 'Save failed', true);
+            }
+        }).catch(function () { showToast('Save failed', true); });
+    }
+
     function saveScope() {
         apiPost('register_scope_save', {
             register_scope: document.getElementById('pePhoneScope').value
@@ -298,6 +345,10 @@
         if (scopeBtn) { scopeBtn.addEventListener('click', saveScope); }
         var internalBtn = document.getElementById('peBtnSaveInternal');
         if (internalBtn) { internalBtn.addEventListener('click', saveInternalConstituents); }
+        var emergToggle = document.getElementById('peRestrictEmergency');
+        if (emergToggle) { emergToggle.addEventListener('change', updateEmergencyWarning); }
+        var emergBtn = document.getElementById('peBtnSaveEmergency');
+        if (emergBtn) { emergBtn.addEventListener('click', saveEmergencyPolicy); }
         document.getElementById('peUseMyToken').addEventListener('click', useMyToken);
         document.getElementById('peBtnNew').addEventListener('click', openNew);
         document.getElementById('peBtnSave').addEventListener('click', saveExtension);

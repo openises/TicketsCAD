@@ -56,6 +56,16 @@
         </div>
 
         <div class="phone-body" id="phoneBody">
+            <!-- GH#108 (panel-review C2): a courtesy note shown when emergency
+                 calling is RESTRICTED on this install, so the operator knows this
+                 phone will not reach emergency services. This is NOT a security
+                 boundary -- FreePBX's dial plan enforces routing; see
+                 phone-widget.js updateEmergencyNote(). Hidden by default. -->
+            <div class="phone-emergency-note alert alert-warning small py-1 px-2 mb-2 d-none" id="phoneEmergencyNote" role="alert">
+                <i class="bi bi-exclamation-triangle-fill me-1" aria-hidden="true"></i>
+                <span id="phoneEmergencyNoteText"></span>
+            </div>
+
             <!-- Incoming call banner -->
             <div class="phone-incoming d-none" id="phoneIncoming">
                 <div class="phone-incoming-caller">

@@ -180,7 +180,9 @@ the API screen — ask 3CX if yours is hosted.
    next to `bridge.py`. Fill in `threecx_url` (the address you type to open
    the 3CX web client — add `:5001` if that is the port your system uses — no
    path), `threecx_client_id` and `threecx_client_secret`.
-   - Self-signed 3CX certificate? Add `threecx_verify_tls = false`.
+   - Self-signed 3CX certificate? Prefer `threecx_ca_bundle = /path/to/server.pem`
+     to validate against that certificate (pinned). `threecx_verify_tls = false`
+     turns verification off entirely and is less safe.
    - **3CX does not tell the bridge which number was dialed** (the field exists
      but is empty on V20). If you want TicketsCAD to show the line a call came
      in on — or to ring one dispatcher's own screen for a direct number
@@ -255,7 +257,7 @@ gets built next — or run Asterisk/FreePBX in front of 3CX.
 | `--check`: *403 for /callcontrol*, or *no 'Enterprise' role* | *3CX Call Control API Access* not ticked, or the licence is not AI Edition | Tick it; confirm the licence |
 | `--check`: *lists NO extensions* | The API client's *extensions to monitor* list is empty | Add every dispatch extension to it |
 | Bridge connects but no call ever appears | Extension not on the client's monitored list, or the call rings a queue/ring group that is not monitored | Add the individual dispatch extensions; capture a call with `capture_file` |
-| `--check`: *TLS error* | Self-signed 3CX certificate | `threecx_verify_tls = false` |
+| `--check`: *TLS error* | Self-signed 3CX certificate | `threecx_ca_bundle = /path/to/server.pem` (validates against it), or `threecx_verify_tls = false` to disable verification (less safe) |
 | Banner appears but never goes away | The PBX never reported the call ending | Bridge closes a call that never ends after 5 min (ringing) / 6 h (answered); report the log |
 | Test call rings but real calls do not | The TicketsCAD side is fine; the PBX side is not feeding the bridge | `log_level = DEBUG`, place a call, look for `3CX event:` lines; or use `capture_file` |
 

@@ -91,6 +91,7 @@ $csrf     = csrf_token();
 
     <div id="stToast" class="alert d-none" role="status" aria-live="polite"></div>
     <div id="stSchemaBanner" class="alert alert-warning small d-none" role="alert"></div>
+    <div id="stEnglandNotice" class="alert alert-warning small d-none" role="alert"></div>
     <noscript><div class="alert alert-warning">This page needs JavaScript.</div></noscript>
 
     <div class="alert alert-secondary small mb-3">
@@ -224,16 +225,11 @@ $csrf     = csrf_token();
 
         <section id="stWizStep5" class="d-none">
           <div id="stWizResult" class="alert alert-success small"></div>
-          <p class="small mb-1">Optionally, rename the field to match the list. Suggested:
-            <strong id="stWizLabelSuggest"></strong>.</p>
-          <div class="row g-2 align-items-end">
-            <div class="col-sm-6">
-              <label class="form-label form-label-sm mb-0" for="stWizLabelChoice">Call the field</label>
-              <select class="form-select form-select-sm" id="stWizLabelChoice"></select>
-            </div>
-            <div class="col-sm-6">
-              <input type="text" class="form-control form-control-sm d-none" id="stWizLabelCustom" maxlength="40" placeholder="Your own wording" aria-label="Custom field label">
-            </div>
+          <div id="stWizLabelBlock">
+            <p class="small mb-1">Optionally, rename the field to match the list. Suggested:
+              <strong id="stWizLabelSuggest"></strong>. Tick the languages to change &mdash; each keeps its own
+              wording, and only your current language is ticked to start with.</p>
+            <div id="stWizLabelLangs"></div>
           </div>
         </section>
 

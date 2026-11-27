@@ -915,6 +915,48 @@ exactly one UTC offset old, so the one-hour window matched nothing.
 
 ---
 
+### incident-note-times-off
+
+**Symptom:** incident event-note (and other DB) timestamps are an hour — or
+more — behind the clock at the top of the app, and Settings → System Health →
+Time Check reports the *Server Time (PHP)* zone as something other than the
+Agency Time Zone you configured (Settings → Display Settings → Agency Time
+Zone). Most common on Docker and other fresh installs.
+
+**Diagnostic:** open Time Check. The top-of-app clock and both Time Check
+clocks tick from your *browser*, so they read correctly regardless — it is the
+**TZ:** label under *Server Time (PHP)* that tells the truth about PHP's zone.
+If that label is wrong, confirm whether your `config.php` applies the setting:
+
+```bash
+grep -n area_timezone config.php   # a correct config.php has the override block; an affected one has none
+```
+
+**Cause:** the Agency Time Zone (`area_timezone`) is applied by a block near
+the bottom of `config.php` that reads the setting *after* the DB layer loads
+and re-applies it to PHP and the MySQL session (`inc/db.php` syncs MySQL's
+`time_zone` to PHP's offset). An install whose `config.php` was generated from
+a `config.example.php` older than v4.2.x never got that block, so the setting
+is written to the DB but never applied: PHP stays on the template's hardcoded
+default and `NOW()`/`date()` stamp every row with it — one hour off whenever
+the default and your real zone differ by an hour (e.g. Chicago vs New York).
+
+**Fix:**
+
+- Fresh/Docker installs on the current template apply the setting
+  automatically. Docker users can also set `NEWUI_TIMEZONE=America/New_York`
+  (your zone) in the compose environment and recreate the container.
+- `config.php` is per-install and never changes on `git pull`, so an
+  already-affected install must be fixed in place: copy the `area_timezone`
+  override block from the current [`config.example.php`](../config.example.php)
+  into your `config.php` (just below where it requires `inc/functions.php`).
+  Quick stopgap: set the hardcoded `date_default_timezone_set(...)` line in
+  your `config.php` to your own zone.
+- If a `config.php` is already present, `docker-config-gen.php` leaves it
+  untouched — edit the mounted file directly.
+
+---
+
 ### webhook-failed
 
 **Symptom:** every webhook delivery shows status=failed in the delivery log.

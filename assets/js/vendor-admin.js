@@ -691,9 +691,12 @@
         $('vpSetReason').checked = s.vendor_override_requires_reason === '1';
         $('vpSetDial').value = s.phone_click_to_call;
         $('vpSetReason').disabled = !$('vpSetOverride').checked;
+        // Plate retention: 0 shows as a blank box (the "off" default), any other value as the number.
+        $('vpSetPlateRetention').value = (s.vendor_plate_retention_days && s.vendor_plate_retention_days !== '0') ? s.vendor_plate_retention_days : '';
+        renderPlateRetentionImpact();
         var canEdit = !!ov.can_all_agencies;           // install-wide: the server refuses anyone else too
         $('vpSettingsNote').classList.toggle('d-none', canEdit);
-        ['vpSetEnabled', 'vpSetMode', 'vpSetAdvance', 'vpSetOverride', 'vpSetDial', 'vpBtnSaveSettings'].forEach(function (id) { $(id).disabled = !canEdit; });
+        ['vpSetEnabled', 'vpSetMode', 'vpSetAdvance', 'vpSetOverride', 'vpSetDial', 'vpSetPlateRetention', 'vpBtnSaveSettings'].forEach(function (id) { $(id).disabled = !canEdit; });
         if (!canEdit) $('vpSetReason').disabled = true;
 
         var cl = $('vpChecklist');
@@ -712,6 +715,35 @@
         });
     }
 
+    // The "N records would be cleared" readout, from the overview's plate_retention block. textContent only
+    // (server-authored data is never written with innerHTML), rebuilt from the saved value on every render.
+    function renderPlateRetentionImpact() {
+        var box = $('vpPlateRetentionImpact');
+        if (!box) return;
+        clear(box);
+        var pr = ov.plate_retention || {};
+        var days = parseInt(pr.retention_days, 10) || 0;
+        if (days <= 0) {
+            box.appendChild(document.createTextNode('Currently off — nothing is cleared automatically.'));
+            return;
+        }
+        var n = parseInt(pr.eligible_count, 10) || 0;
+        var msg = 'Currently set to ' + days + ' day' + (days === 1 ? '' : 's') + '. ';
+        msg += n === 0
+            ? 'No dispatch records older than that carry vehicle or plate data right now.'
+            : n + ' dispatch record' + (n === 1 ? '' : 's') + ' older than that still carry vehicle or plate data and will be cleared on the next daily run.';
+        box.appendChild(document.createTextNode(msg));
+    }
+
+    // Normalise the plate-retention box to a whole number of days in range (blank / junk => 0 = off).
+    function plateRetentionValue() {
+        var raw = ($('vpSetPlateRetention').value || '').trim();
+        var n = parseInt(raw, 10);
+        if (!(n > 0)) return '0';
+        if (n > 3650) n = 3650;
+        return String(n);
+    }
+
     function saveSettings() {
         // Only what the administrator actually changed is sent, so saving this tab can never overwrite a setting it
         // does not own (phone_click_to_call is shared with the click-to-dial feature) with a stale value.
@@ -721,7 +753,8 @@
             vendor_advance_rule: $('vpSetAdvance').value,
             vendor_allow_override: $('vpSetOverride').checked ? '1' : '0',
             vendor_override_requires_reason: $('vpSetReason').checked ? '1' : '0',
-            phone_click_to_call: $('vpSetDial').value
+            phone_click_to_call: $('vpSetDial').value,
+            vendor_plate_retention_days: plateRetentionValue()
         };
         var body = { action: 'settings_save' };
         var n = 0;

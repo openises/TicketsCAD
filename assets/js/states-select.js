@@ -97,9 +97,14 @@
                 }
             }
             if (!found) {
+                // A saved value that is not one of the current choices (legacy
+                // free text, or a code removed from the list since the record
+                // was saved). Keep it so the record is never silently blanked,
+                // but mark it so the dispatcher can see it is no longer an
+                // offered choice — "UK (not in list)", not a bare "UK". GH#153.
                 var opt = document.createElement('option');
                 opt.value = val;
-                opt.textContent = val;
+                opt.textContent = val + ' (not in list)';
                 sel.appendChild(opt);
             }
         }

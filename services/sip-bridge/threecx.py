@@ -433,11 +433,24 @@ class ThreeCxError(Exception):
     """A problem talking to 3CX, phrased for an administrator to act on."""
 
 
-def _ssl_context(verify_tls):
-    ctx = ssl.create_default_context()
-    if not verify_tls:
+def _ssl_context(verify_tls, ca_bundle=None, log=None):
+    # Secure by default: create_default_context() verifies the chain and the
+    # hostname. A self-signed 3CX is better handled by PINNING its certificate
+    # (ca_bundle) than by turning verification off wholesale -- that keeps the
+    # connection authenticated against exactly one certificate instead of none.
+    ctx = ssl.create_default_context(cafile=ca_bundle) if ca_bundle else ssl.create_default_context()
+    try:
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    except (AttributeError, ValueError):
+        pass  # very old Python; create_default_context() already floors at 1.2
+    if not verify_tls and not ca_bundle:
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
+        if log:
+            log.warning("3CX TLS certificate verification is DISABLED "
+                        "(threecx_verify_tls = false, no threecx_ca_bundle set). This is "
+                        "insecure against a man-in-the-middle. Prefer setting "
+                        "threecx_ca_bundle to your 3CX server's certificate file.")
     return ctx
 
 
@@ -457,11 +470,17 @@ def _jwt_roles(token):
 
 class ThreeCxClient:
     def __init__(self, base_url, client_id, client_secret, verify_tls=True,
-                 ws_url=None, token_url=None, timeout=10, log=None, capture=None):
+                 ca_bundle=None, ws_url=None, token_url=None, timeout=10, log=None,
+                 capture=None):
         self.base_url = base_url.rstrip("/")
         self.client_id = client_id
         self.client_secret = client_secret
         self.verify_tls = verify_tls
+        # Optional path to a CA/certificate bundle to validate the 3CX server
+        # against (e.g. its own self-signed cert). When set it takes precedence
+        # over verify_tls: the connection is VALIDATED against this bundle rather
+        # than disabled. See _ssl_context() and the requests verify= args below.
+        self.ca_bundle = ca_bundle or None
         self.timeout = timeout
         self.log = log
         self.capture = capture
@@ -486,10 +505,11 @@ class ThreeCxClient:
                 self.token_url,
                 data={"client_id": self.client_id, "client_secret": self.client_secret,
                       "grant_type": "client_credentials"},
-                timeout=self.timeout, verify=self.verify_tls)
+                timeout=self.timeout, verify=(self.ca_bundle or self.verify_tls))
         except requests.exceptions.SSLError as exc:
             raise ThreeCxError("TLS error reaching %s (%s). If your 3CX uses a self-signed certificate, "
-                               "set threecx_verify_tls = false." % (self.token_url, exc))
+                               "set threecx_ca_bundle to its certificate file (validated), or (less "
+                               "secure) set threecx_verify_tls = false." % (self.token_url, exc))
         except requests.RequestException as exc:
             raise ThreeCxError("cannot reach 3CX at %s (%s). Check threecx_url (add :5001 if your 3CX "
                                "uses that port) and that this machine can reach it." % (self.token_url, exc))
@@ -544,7 +564,7 @@ class ThreeCxClient:
         try:
             resp = requests.get(self.base_url + path,
                                 headers={"Authorization": "Bearer " + self.token()},
-                                timeout=self.timeout, verify=self.verify_tls)
+                                timeout=self.timeout, verify=(self.ca_bundle or self.verify_tls))
         except requests.RequestException as exc:
             raise ThreeCxError("GET %s failed: %s" % (path, exc))
         if resp.status_code == 401 and _retry:
@@ -592,7 +612,7 @@ class ThreeCxClient:
             "ping_timeout": 10,
         }
         if self.ws_url.lower().startswith("wss"):
-            kwargs["ssl"] = _ssl_context(self.verify_tls)
+            kwargs["ssl"] = _ssl_context(self.verify_tls, self.ca_bundle, self.log)
         try:
             return connect(self.ws_url, **kwargs)
         except Exception as exc:    # InvalidStatus (401), timeouts, DNS, TLS ...
@@ -614,9 +634,15 @@ def build_tracker(cfg, log=None, clock=None):
 def build_client(cfg, log=None):
     capture = CaptureLog(cfg.get("capture_file", ""), redact=bool(cfg.get("capture_redact", True))) \
         if cfg.get("capture_file") else None
+    verify_tls = bool(cfg.get("threecx_verify_tls", True))
+    ca_bundle = cfg.get("threecx_ca_bundle") or None
+    if log and not verify_tls and not ca_bundle:
+        log.warning("3CX: threecx_verify_tls is false and no threecx_ca_bundle is set -- the "
+                    "bridge will NOT verify the 3CX server's TLS certificate. Prefer pinning "
+                    "the server certificate with threecx_ca_bundle.")
     return ThreeCxClient(
         cfg["threecx_url"], cfg["threecx_client_id"], cfg["threecx_client_secret"],
-        verify_tls=bool(cfg.get("threecx_verify_tls", True)),
+        verify_tls=verify_tls, ca_bundle=ca_bundle,
         ws_url=cfg.get("threecx_ws_url") or None,
         token_url=cfg.get("threecx_token_url") or None,
         log=log, capture=capture), capture

@@ -629,14 +629,30 @@ function states_validate_target(array $target): void
     }
 }
 
-/** The diff plus, for every code being removed, how many saved records hold it. */
+/**
+ * The diff plus, for every code being removed, how many saved records hold it,
+ * AND — for a Replace that renames a code records are using to a DIFFERENT name
+ * (e.g. the stray "UK" = England becoming "UK" = Uttarakhand when India's list
+ * is applied) — the same count per renamed code. Removing a code only stops it
+ * being offered; renaming a code records hold silently relabels what those
+ * records display, which is the more surprising change, so it is surfaced too.
+ */
 function states_preview(array $target, string $mode): array
 {
     states_validate_target($target);
     $current = states_list();
     $diff = states_diff($current, $target, $mode);
-    $removeCodes = array_map(static function ($r) { return $r['code']; }, $diff['removes']);
-    $usage = states_usage($removeCodes);
+
+    // Count usage for removed codes and for renamed codes whose NAME changes,
+    // in one pass (states_usage counts soft-deleted rows too).
+    $codesToCount = array_map(static function ($r) { return $r['code']; }, $diff['removes']);
+    foreach ($diff['renames'] as $r) {
+        if ($r['old_name'] !== $r['new_name']) {
+            $codesToCount[] = $r['code'];
+        }
+    }
+    $usage = states_usage($codesToCount);
+
     $records = 0;
     foreach ($diff['removes'] as $i => $r) {
         $u = $usage[states_normalize_code($r['code'])] ?? ['total' => 0, 'by' => []];
@@ -650,6 +666,17 @@ function states_preview(array $target, string $mode): array
         $records += $u['total'];
     }
     $diff['records_using_removed'] = $records;
+
+    $renamedInUse = 0;
+    foreach ($diff['renames'] as $i => $r) {
+        $nameChanged = $r['old_name'] !== $r['new_name'];
+        $u = ($nameChanged ? ($usage[states_normalize_code($r['code'])] ?? null) : null) ?? ['total' => 0, 'by' => []];
+        $diff['renames'][$i]['usage'] = $u['total'];
+        $diff['renames'][$i]['usage_by'] = $u['by'];
+        $renamedInUse += $u['total'];
+    }
+    $diff['records_renamed_in_use'] = $renamedInUse;
+
     $diff['list_hash'] = states_list_hash($current);
     $diff['too_many'] = $diff['final_count'] > STATES_MAX_ROWS;
     return $diff;
@@ -892,6 +919,35 @@ function states_field_label(string $lang = 'en'): string
     return 'State';
 }
 
+/** Null when the (already cleaned) label is acceptable, otherwise the reason. */
+function states_label_error(string $label): ?string
+{
+    if ($label === '' || !mb_check_encoding($label, 'UTF-8') || mb_strlen($label, 'UTF-8') > STATES_LABEL_MAX
+        || preg_match('/[\x00-\x1F\x7F<>]/', $label)) {
+        return 'The label must be 1 to ' . STATES_LABEL_MAX . ' characters, without < or >.';
+    }
+    return null;
+}
+
+/**
+ * The State field label each of $langs currently shows (what the wizard offers
+ * for editing per language). Every requested language is present in the answer.
+ *
+ * @param string[] $langs
+ * @return array<string, string>
+ */
+function states_field_labels_by_lang(array $langs): array
+{
+    $out = [];
+    foreach ($langs as $lang) {
+        $l = states_sanitize_lang((string) $lang);
+        if (!isset($out[$l])) {
+            $out[$l] = states_field_label($l);
+        }
+    }
+    return $out;
+}
+
 /**
  * Set the label every State field shows, for one language. Writes caption
  * form.state (what every page reads) and keeps the two legacy keys
@@ -903,9 +959,9 @@ function states_field_label(string $lang = 'en'): string
 function states_set_field_label(string $label, string $lang = 'en'): array
 {
     $label = states_clean_name($label);
-    if ($label === '' || !mb_check_encoding($label, 'UTF-8') || mb_strlen($label, 'UTF-8') > STATES_LABEL_MAX
-        || preg_match('/[\x00-\x1F\x7F<>]/', $label)) {
-        throw new InvalidArgumentException('The label must be 1 to ' . STATES_LABEL_MAX . ' characters, without < or >.');
+    $err = states_label_error($label);
+    if ($err !== null) {
+        throw new InvalidArgumentException($err);
     }
     $lang = states_sanitize_lang($lang);
     $previous = states_field_label($lang);
@@ -922,9 +978,66 @@ function states_set_field_label(string $label, string $lang = 'en'): array
     return ['label' => $label, 'lang' => $lang, 'previous' => $previous];
 }
 
+/**
+ * Set the State field label for several languages at once — the wizard's
+ * per-language label step (GH#153 panel, Q2), where each enabled language can
+ * be given its own wording ("Province" for French, "Bundesland" for German…),
+ * instead of one word overwriting every translation. A thin loop over the
+ * single-language states_set_field_label(), which keeps auditing each write on
+ * its own, as before. Every label is validated BEFORE any is written, so a bad
+ * entry in the set leaves nothing half-saved.
+ *
+ * @param array<string, string> $byLang  lang code => the label for that language
+ * @return array{saved:int, results:array<int, array{lang:string, label:string, previous:string}>}
+ * @throws InvalidArgumentException on an empty map or any bad label (named by language)
+ */
+function states_set_field_labels(array $byLang): array
+{
+    if ($byLang === []) {
+        throw new InvalidArgumentException('Choose at least one language to set the label for.');
+    }
+    // Validate the whole set first — do not write anything if one is bad.
+    $clean = [];
+    foreach ($byLang as $lang => $label) {
+        $l = states_sanitize_lang((string) $lang);
+        $text = states_clean_name((string) $label);
+        $err = states_label_error($text);
+        if ($err !== null) {
+            throw new InvalidArgumentException($l . ': ' . $err);
+        }
+        $clean[$l] = $text;   // last one wins if a language repeats
+    }
+    $results = [];
+    foreach ($clean as $lang => $text) {
+        $results[] = states_set_field_label($text, $lang);
+    }
+    return ['saved' => count($results), 'results' => $results];
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Health of the table itself (shown on the page)
 // ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * The stray seed row, name='England' / code='UK', if this install still has it
+ * (GH#153 panel, Q1). Returns the row (id/code/name) or null. The row is a
+ * pre-GH#153 seed artefact that also collides with the ISO code for the Indian
+ * state Uttarakhand; sql/run_gh153_england_row_cleanup.php removes it only on a
+ * qualifying install, and the States / Provinces page + System Health surface a
+ * notice (with the usage count and a Remove button) wherever it cannot.
+ */
+function states_england_uk_row(): ?array
+{
+    try {
+        $row = db_fetch_one(
+            'SELECT `id`, `code`, `name` FROM ' . db_table('states_translator')
+            . " WHERE `code` = 'UK' AND `name` = 'England' ORDER BY `id` LIMIT 1"
+        );
+    } catch (Throwable $e) {
+        return null;
+    }
+    return $row ? ['id' => (int) $row['id'], 'code' => (string) $row['code'], 'name' => (string) $row['name']] : null;
+}
 
 /** Codes that appear on more than one row (case-insensitive). */
 function states_duplicate_codes(): array

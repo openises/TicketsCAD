@@ -29,7 +29,7 @@ $data = states_presets();
 $presets = $data['presets'];
 
 $expected = [
-    'us50' => 50, 'us48' => 48, 'ca' => 13, 'mx' => 32, 'au' => 8, 'nz' => 16,
+    'us50' => 50, 'us48' => 48, 'ca' => 13, 'ca_fr' => 13, 'mx' => 32, 'au' => 8, 'nz' => 16,
     'gb' => 4, 'ie' => 26, 'de' => 16, 'br' => 27, 'in' => 28,
 ];
 gh153p_t('the preset ids are exactly the documented set', array_keys($presets) === array_keys($expected),
@@ -93,6 +93,17 @@ gh153p_t('armed forces codes are AA, AE, AP', array_column($presets['us50']['opt
 gh153p_t('freely associated states are FM, MH, PW', array_column($presets['us50']['options']['freely_associated']['rows'], 0) === ['FM', 'MH', 'PW']);
 $ca = array_column($presets['ca']['rows'], 1, 0);
 gh153p_t('Canada: QC is "Quebec" (the English form, a stated choice) and YT is "Yukon"', ($ca['QC'] ?? '') === 'Quebec' && ($ca['YT'] ?? '') === 'Yukon');
+$caFr = array_column($presets['ca_fr']['rows'], 1, 0);
+gh153p_t('Canada (French names): QC is "Québec" with its accent, BC is "Colombie-Britannique"',
+    ($caFr['QC'] ?? '') === 'Québec' && ($caFr['BC'] ?? '') === 'Colombie-Britannique');
+gh153p_t('Canada (French names): PE is "Île-du-Prince-Édouard", NS is "Nouvelle-Écosse", NT is "Territoires du Nord-Ouest"',
+    ($caFr['PE'] ?? '') === 'Île-du-Prince-Édouard' && ($caFr['NS'] ?? '') === 'Nouvelle-Écosse'
+    && ($caFr['NT'] ?? '') === 'Territoires du Nord-Ouest');
+gh153p_t('Canada (French names): the codes are identical to the English Canada preset',
+    array_column($presets['ca_fr']['rows'], 0) === array_column($presets['ca']['rows'], 0));
+gh153p_t('Canada (French names): its suggested label is "Province"', states_build_selection(['ca_fr' => []])['label_suggestion'] === 'Province');
+gh153p_t('Canada (French names): Québec survives the builder with its accent',
+    in_array(['QC', 'Québec'], states_build_selection(['ca_fr' => []])['rows'], true));
 $mx = array_column($presets['mx']['rows'], 1, 0);
 gh153p_t('Mexico: CMX (not the retired DIF) is Ciudad de México', ($mx['CMX'] ?? '') === 'Ciudad de México' && !isset($mx['DIF']));
 gh153p_t('Mexico: MIC is "Michoacán de Ocampo" (UTF-8 accent intact)', ($mx['MIC'] ?? '') === 'Michoacán de Ocampo');

@@ -2,10 +2,10 @@
     "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
     "bomFormat": "CycloneDX",
     "specVersion": "1.6",
-    "serialNumber": "urn:uuid:2ca4cde2-8473-5551-9954-c2b7a8c99888",
-    "version": 53,
+    "serialNumber": "urn:uuid:e11f1eb8-dc6f-51db-b192-e6dd0c96e28b",
+    "version": 56,
     "metadata": {
-        "timestamp": "2026-11-08T14:35:51Z",
+        "timestamp": "2026-11-27T04:35:57Z",
         "lifecycles": [
             {
                 "phase": "pre-build"
@@ -52,7 +52,7 @@
         "properties": [
             {
                 "name": "ticketscad:content-digest",
-                "value": "b95a685a7239fbf8ba62c5cfb36f6759a151871782cbbfe219413583d982430b"
+                "value": "945aebb18bdb8b3b459329b105baa8fcbd77b49557ed5d662c6367e62df746e6"
             },
             {
                 "name": "ticketscad:standard",
@@ -1160,10 +1160,10 @@
         },
         {
             "type": "library",
-            "bom-ref": "pkg:composer/brick/math@0.17.2#php-composer",
+            "bom-ref": "pkg:composer/brick/math@1.0.0#php-composer",
             "name": "brick/math",
             "publisher": "brick",
-            "version": "0.17.2",
+            "version": "1.0.0",
             "description": "Arbitrary-precision arithmetic library",
             "scope": "required",
             "licenses": [
@@ -1173,7 +1173,7 @@
                     }
                 }
             ],
-            "purl": "pkg:composer/brick/math@0.17.2",
+            "purl": "pkg:composer/brick/math@1.0.0",
             "externalReferences": [
                 {
                     "type": "vcs",
@@ -1183,15 +1183,15 @@
             "properties": [
                 {
                     "name": "ticketscad:identifier",
-                    "value": "pkg:composer/brick/math@0.17.2"
+                    "value": "pkg:composer/brick/math@1.0.0"
                 },
                 {
                     "name": "ticketscad:identifier",
-                    "value": "git-commit:8189e751995f9e15729c1aa2f89fa8f166ffe818"
+                    "value": "git-commit:2effe05d2177c451b86c6a073196a4034c02f211"
                 },
                 {
                     "name": "ticketscad:note",
-                    "value": "Pinned commit: 8189e751995f9e15729c1aa2f89fa8f166ffe818"
+                    "value": "Pinned commit: 2effe05d2177c451b86c6a073196a4034c02f211"
                 },
                 {
                     "name": "ticketscad:unknown",
@@ -1295,10 +1295,10 @@
         },
         {
             "type": "library",
-            "bom-ref": "pkg:composer/firebase/php-jwt@7.2.1#php-composer",
+            "bom-ref": "pkg:composer/firebase/php-jwt@7.2.2#php-composer",
             "name": "firebase/php-jwt",
             "publisher": "firebase",
-            "version": "7.2.1",
+            "version": "7.2.2",
             "description": "A simple library to encode and decode JSON Web Tokens (JWT) in PHP. Should conform to the current spec.",
             "scope": "required",
             "licenses": [
@@ -1308,7 +1308,7 @@
                     }
                 }
             ],
-            "purl": "pkg:composer/firebase/php-jwt@7.2.1",
+            "purl": "pkg:composer/firebase/php-jwt@7.2.2",
             "externalReferences": [
                 {
                     "type": "vcs",
@@ -1318,15 +1318,15 @@
             "properties": [
                 {
                     "name": "ticketscad:identifier",
-                    "value": "pkg:composer/firebase/php-jwt@7.2.1"
+                    "value": "pkg:composer/firebase/php-jwt@7.2.2"
                 },
                 {
                     "name": "ticketscad:identifier",
-                    "value": "git-commit:0501f5729b9e2448516674aff07c7d1727869b8e"
+                    "value": "git-commit:99efeb17d6def8c0295777f2d45b07ff4fdb4e40"
                 },
                 {
                     "name": "ticketscad:note",
-                    "value": "Pinned commit: 0501f5729b9e2448516674aff07c7d1727869b8e"
+                    "value": "Pinned commit: 99efeb17d6def8c0295777f2d45b07ff4fdb4e40"
                 },
                 {
                     "name": "ticketscad:unknown",
@@ -2150,10 +2150,10 @@
         },
         {
             "type": "library",
-            "bom-ref": "pkg:composer/spomky-labs/pki-framework@1.4.2#php-composer",
+            "bom-ref": "pkg:composer/spomky-labs/pki-framework@1.6.3#php-composer",
             "name": "spomky-labs/pki-framework",
             "publisher": "spomky-labs",
-            "version": "1.4.2",
+            "version": "1.6.3",
             "description": "A PHP framework for managing Public Key Infrastructures. It comprises X.509 public key certificates, attribute certificates, certification requests and certification path validation.",
             "scope": "required",
             "licenses": [
@@ -2163,7 +2163,7 @@
                     }
                 }
             ],
-            "purl": "pkg:composer/spomky-labs/pki-framework@1.4.2",
+            "purl": "pkg:composer/spomky-labs/pki-framework@1.6.3",
             "externalReferences": [
                 {
                     "type": "vcs",
@@ -2173,15 +2173,15 @@
             "properties": [
                 {
                     "name": "ticketscad:identifier",
-                    "value": "pkg:composer/spomky-labs/pki-framework@1.4.2"
+                    "value": "pkg:composer/spomky-labs/pki-framework@1.6.3"
                 },
                 {
                     "name": "ticketscad:identifier",
-                    "value": "git-commit:aa576cbd07128075bef97ac2f8af9854e67513d8"
+                    "value": "git-commit:792e909d4e387adffe3c4f404451c7d57a3d2022"
                 },
                 {
                     "name": "ticketscad:note",
-                    "value": "Pinned commit: aa576cbd07128075bef97ac2f8af9854e67513d8"
+                    "value": "Pinned commit: 792e909d4e387adffe3c4f404451c7d57a3d2022"
                 },
                 {
                     "name": "ticketscad:unknown",
@@ -2465,10 +2465,10 @@
         },
         {
             "type": "library",
-            "bom-ref": "pkg:composer/symfony/routing@6.4.50#php-composer",
+            "bom-ref": "pkg:composer/symfony/routing@6.4.51#php-composer",
             "name": "symfony/routing",
             "publisher": "symfony",
-            "version": "6.4.50",
+            "version": "6.4.51",
             "description": "Maps an HTTP request to a set of configuration variables",
             "scope": "required",
             "licenses": [
@@ -2478,7 +2478,7 @@
                     }
                 }
             ],
-            "purl": "pkg:composer/symfony/routing@6.4.50",
+            "purl": "pkg:composer/symfony/routing@6.4.51",
             "externalReferences": [
                 {
                     "type": "vcs",
@@ -2488,15 +2488,15 @@
             "properties": [
                 {
                     "name": "ticketscad:identifier",
-                    "value": "pkg:composer/symfony/routing@6.4.50"
+                    "value": "pkg:composer/symfony/routing@6.4.51"
                 },
                 {
                     "name": "ticketscad:identifier",
-                    "value": "git-commit:80253f3a04ea4e1ba4d78690b8a1727ed9f104e0"
+                    "value": "git-commit:238f28b27658bec77e5039e7e31744174bdc58b6"
                 },
                 {
                     "name": "ticketscad:note",
-                    "value": "Pinned commit: 80253f3a04ea4e1ba4d78690b8a1727ed9f104e0"
+                    "value": "Pinned commit: 238f28b27658bec77e5039e7e31744174bdc58b6"
                 },
                 {
                     "name": "ticketscad:unknown",
@@ -2510,10 +2510,10 @@
         },
         {
             "type": "library",
-            "bom-ref": "pkg:composer/web-token/jwt-library@4.1.7#php-composer",
+            "bom-ref": "pkg:composer/web-token/jwt-library@4.2.8#php-composer",
             "name": "web-token/jwt-library",
             "publisher": "web-token",
-            "version": "4.1.7",
+            "version": "4.2.8",
             "description": "JWT library",
             "scope": "required",
             "licenses": [
@@ -2523,7 +2523,7 @@
                     }
                 }
             ],
-            "purl": "pkg:composer/web-token/jwt-library@4.1.7",
+            "purl": "pkg:composer/web-token/jwt-library@4.2.8",
             "externalReferences": [
                 {
                     "type": "vcs",
@@ -2533,15 +2533,15 @@
             "properties": [
                 {
                     "name": "ticketscad:identifier",
-                    "value": "pkg:composer/web-token/jwt-library@4.1.7"
+                    "value": "pkg:composer/web-token/jwt-library@4.2.8"
                 },
                 {
                     "name": "ticketscad:identifier",
-                    "value": "git-commit:fbcbf2c276d04d8b056f5c2957815abd5dfb704d"
+                    "value": "git-commit:a1909b6b7c9171529f65e6bb6ecae615cd8a92ed"
                 },
                 {
                     "name": "ticketscad:note",
-                    "value": "Pinned commit: fbcbf2c276d04d8b056f5c2957815abd5dfb704d"
+                    "value": "Pinned commit: a1909b6b7c9171529f65e6bb6ecae615cd8a92ed"
                 },
                 {
                     "name": "ticketscad:unknown",
@@ -3882,10 +3882,10 @@
                 "pkg:deb/qemu-user-static#os-packages",
                 "pkg:deb/unzip#os-packages",
                 "pkg:deb/zlib1g-dev#os-packages",
-                "pkg:composer/brick/math@0.17.2#php-composer",
+                "pkg:composer/brick/math@1.0.0#php-composer",
                 "pkg:composer/cboden/ratchet@0.4.4#php-composer",
                 "pkg:composer/evenement/evenement@3.0.2#php-composer",
-                "pkg:composer/firebase/php-jwt@7.2.1#php-composer",
+                "pkg:composer/firebase/php-jwt@7.2.2#php-composer",
                 "pkg:composer/guzzlehttp/guzzle@7.15.2#php-composer",
                 "pkg:composer/guzzlehttp/promises@2.5.1#php-composer",
                 "pkg:composer/guzzlehttp/psr7@2.13.0#php-composer",
@@ -3904,15 +3904,15 @@
                 "pkg:composer/react/socket@1.17.0#php-composer",
                 "pkg:composer/react/stream@1.4.0#php-composer",
                 "pkg:composer/spomky-labs/base64url@2.0.4#php-composer",
-                "pkg:composer/spomky-labs/pki-framework@1.4.2#php-composer",
+                "pkg:composer/spomky-labs/pki-framework@1.6.3#php-composer",
                 "pkg:composer/symfony/deprecation-contracts@3.8.1#php-composer",
                 "pkg:composer/symfony/http-foundation@6.4.50#php-composer",
                 "pkg:composer/symfony/polyfill-mbstring@1.43.3#php-composer",
                 "pkg:composer/symfony/polyfill-php80@1.43.0#php-composer",
                 "pkg:composer/symfony/polyfill-php82@1.38.1#php-composer",
                 "pkg:composer/symfony/polyfill-php83@1.43.0#php-composer",
-                "pkg:composer/symfony/routing@6.4.50#php-composer",
-                "pkg:composer/web-token/jwt-library@4.1.7#php-composer",
+                "pkg:composer/symfony/routing@6.4.51#php-composer",
+                "pkg:composer/web-token/jwt-library@4.2.8#php-composer",
                 "pkg:pypi/aprslib#python-services",
                 "pkg:pypi/esptool#python-services",
                 "pkg:pypi/faster-whisper#python-services",
@@ -3944,7 +3944,7 @@
             ]
         },
         {
-            "ref": "pkg:composer/brick/math@0.17.2#php-composer",
+            "ref": "pkg:composer/brick/math@1.0.0#php-composer",
             "dependsOn": []
         },
         {
@@ -3955,7 +3955,7 @@
                 "pkg:composer/react/event-loop@1.6.0#php-composer",
                 "pkg:composer/react/socket@1.17.0#php-composer",
                 "pkg:composer/symfony/http-foundation@6.4.50#php-composer",
-                "pkg:composer/symfony/routing@6.4.50#php-composer"
+                "pkg:composer/symfony/routing@6.4.51#php-composer"
             ]
         },
         {
@@ -3963,7 +3963,7 @@
             "dependsOn": []
         },
         {
-            "ref": "pkg:composer/firebase/php-jwt@7.2.1#php-composer",
+            "ref": "pkg:composer/firebase/php-jwt@7.2.2#php-composer",
             "dependsOn": []
         },
         {
@@ -3998,7 +3998,7 @@
                 "pkg:composer/guzzlehttp/guzzle@7.15.2#php-composer",
                 "pkg:composer/spomky-labs/base64url@2.0.4#php-composer",
                 "pkg:composer/symfony/polyfill-php82@1.38.1#php-composer",
-                "pkg:composer/web-token/jwt-library@4.1.7#php-composer"
+                "pkg:composer/web-token/jwt-library@4.2.8#php-composer"
             ]
         },
         {
@@ -4083,10 +4083,9 @@
             "dependsOn": []
         },
         {
-            "ref": "pkg:composer/spomky-labs/pki-framework@1.4.2#php-composer",
+            "ref": "pkg:composer/spomky-labs/pki-framework@1.6.3#php-composer",
             "dependsOn": [
-                "pkg:composer/brick/math@0.17.2#php-composer",
-                "pkg:composer/psr/clock@1.0.0#php-composer"
+                "pkg:composer/brick/math@1.0.0#php-composer"
             ]
         },
         {
@@ -4118,17 +4117,18 @@
             "dependsOn": []
         },
         {
-            "ref": "pkg:composer/symfony/routing@6.4.50#php-composer",
+            "ref": "pkg:composer/symfony/routing@6.4.51#php-composer",
             "dependsOn": [
                 "pkg:composer/symfony/deprecation-contracts@3.8.1#php-composer"
             ]
         },
         {
-            "ref": "pkg:composer/web-token/jwt-library@4.1.7#php-composer",
+            "ref": "pkg:composer/web-token/jwt-library@4.2.8#php-composer",
             "dependsOn": [
-                "pkg:composer/brick/math@0.17.2#php-composer",
+                "pkg:composer/brick/math@1.0.0#php-composer",
                 "pkg:composer/psr/clock@1.0.0#php-composer",
-                "pkg:composer/spomky-labs/pki-framework@1.4.2#php-composer"
+                "pkg:composer/spomky-labs/pki-framework@1.6.3#php-composer",
+                "pkg:composer/symfony/deprecation-contracts@3.8.1#php-composer"
             ]
         }
     ]

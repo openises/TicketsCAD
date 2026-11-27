@@ -122,6 +122,7 @@ DEFAULT_CONFIG = {
     "threecx_client_secret": "",  # the API key (shown once when the client was created)
     "threecx_monitor_dns": "",    # optional: comma-separated extensions to consider; blank = all the API client lists
     "threecx_verify_tls": True,   # set false only for a self-signed 3CX certificate
+    "threecx_ca_bundle": "",      # better than verify_tls=false: path to the 3CX server's cert to validate against
     "threecx_include_internal": False,  # also report extension-to-extension calls
     "threecx_trunk_did_map": "",  # 3CX gives no dialed number on V20: "10001=+16125550100,10002=+16125550111"
     "threecx_default_called_number": "",  # called_number to send when nothing maps

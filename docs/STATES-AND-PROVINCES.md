@@ -17,7 +17,8 @@ Data* group). The page needs the **Manage configuration** permission
   old list until they are reloaded.
 - It **never changes a saved record.** An incident saved with `MN` keeps `MN`
   after Minnesota is removed, and its form still shows `MN`. The removed code
-  is simply no longer offered for new entries.
+  is simply no longer offered for new entries. A dropdown showing such a value
+  marks it `MN (not in list)`, so it is clear the value is no longer a choice.
 - Before anything is removed, the preview tells you how many saved records use
   each code being removed, and where (incidents, members, units, facilities,
   constituents, places, warn locations, organizations, vehicles, regions, major
@@ -46,7 +47,12 @@ Data* group). The page needs the **Manage configuration** permission
    this selection* gives you the chosen list as a CSV file instead.
 5. **Apply**, then optionally **set the field label**. The wizard suggests one
    from your choice: Canada → *Province*, Ireland → *County*, New Zealand →
-   *Region*, the US and Canada together → *State or Province*.
+   *Region*, the US and Canada together → *State or Province*. When more than
+   one language is enabled, this step lists every language with its current
+   label, ticks only your own to start with, and pre-fills yours with the
+   suggestion; tick the others and edit any wording to give each language its
+   own word (so *Province* for French need not overwrite *Bundesland* for
+   German). With only one language the step is skipped.
 
 If somebody else changes the list between your preview and your Apply, the
 Apply is refused and the preview runs again, so you never apply a preview you
@@ -56,13 +62,20 @@ When two of the lists you chose use the same code for different places (the
 United States and Australia both use `WA`), the first list's entry is kept and
 the preview names the one that was not added.
 
+A **Replace** can also *rename* a code that saved records already use — for
+example applying the India list turns the old `UK` (*England*) row into `UK`
+(*Uttarakhand*). Records keep their code but would then display the new name,
+so the preview warns you, names the code, and gives the affected-record count
+before you confirm.
+
 ## Built-in lists
 
 | List | Entries | Codes and names from |
 |------|---------|----------------------|
 | United States — 50 states | 50 (+ DC, territories, armed forces, freely associated) | USPS Publication 28, Appendix B |
 | United States — 48 contiguous states | 48 (same options) | USPS Publication 28, Appendix B |
-| Canada | 13 provinces and territories | Canada Post addressing guidelines |
+| Canada | 13 provinces and territories (English names) | Canada Post addressing guidelines |
+| Canada (French names) | the same 13, with French names (*Québec*, *Colombie-Britannique*, …) | Postes Canada |
 | Mexico | 32 federal entities | ISO 3166-2:MX |
 | Australia | 6 states + 2 territories | ISO 3166-2:AU |
 | New Zealand | 16 regions (+ Chatham Islands) | ISO 3166-2:NZ |
@@ -72,11 +85,14 @@ the preview names the one that was not added.
 | Brazil | 26 states + the Federal District | ISO 3166-2:BR |
 | India | 28 states (+ 8 union territories) | ISO 3166-2:IN |
 
-Two deliberate choices: Canada's names are the English forms Canada Post
-publishes (*Quebec*, not *Québec*); India's codes are the current ISO codes
-(CG, OD, TS, UK since November 2023) with the names as the Government of India
-writes them, without the ISO romanisation marks. Change either after applying
-if your agency writes them differently — *Edit* on the row.
+Two deliberate choices: the plain **Canada** list uses the English forms Canada
+Post publishes (*Quebec*, not *Québec*) — for French names pick **Canada (French
+names)** instead, which carries the accented forms and suggests the field label
+*Province* (right in French; the generic shipped French label is not). India's
+codes are the current ISO codes (CG, OD, TS, UK since November 2023) with the
+names as the Government of India writes them, without the ISO romanisation
+marks. Change any of these after applying if your agency writes them
+differently — *Edit* on the row.
 
 Each built-in list can be downloaded as CSV from the *Built-in lists as CSV*
 card, edited, and imported back.
@@ -118,7 +134,19 @@ The *Field label* card renames the State fields on every form — *State*,
 *Province*, *State or Province*, *Region*, *County* or your own wording (up to
 40 characters) — for the language you choose. It writes the caption
 `form.state`, the same one Settings → Translations edits; other languages keep
-their own translation.
+their own translation. (The configuration wizard's last step does the same
+thing for several languages at once — see step 5 above.)
+
+## The leftover "England / UK" row
+
+Older versions seeded an extra `England` row with the code `UK` beside the US
+states. It is no longer seeded, and on upgrade it is removed automatically when
+it is safe to: the row is still exactly *England* / `UK`, nothing has been
+edited through this page, and no saved record uses the code `UK` (soft-deleted
+records counted). Where any of those is not true the row is kept and a notice
+appears on this page — and a matching row on **Settings → System Health** — with
+the usage count and a **Remove** button (the normal, audited delete). Removing
+it also clears the clash with the India list, which uses `UK` for Uttarakhand.
 
 ## New Incident address lookup
 
@@ -145,6 +173,9 @@ for an empty list — it does so only when the list could not be read at all.
   which seeds **only** an empty list that nobody has changed through this page
   (setting `states_list_customized`), so running the migrations again never
   puts the US states back.
+- `sql/run_gh153_england_row_cleanup.php` removes the leftover *England* / `UK`
+  row on a qualifying install (see *The leftover "England / UK" row* above);
+  it is idempotent and a no-op everywhere else.
 - Endpoint `api/states.php`; library `inc/states.php`; the built-in data lives
   in one file, `inc/state-presets.php`.
 - Every change — single entries, wizard and import applies, exports, the label —

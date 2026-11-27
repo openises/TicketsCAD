@@ -51,6 +51,12 @@ Task Scheduler entry for `tools\run-scheduled-jobs.bat` keeps working and now ru
 
 ### Fixed
 
+- Add the browser phone's emergency-call policy (GH#108, panel-review C2).
+- GH#148: licence-plate / vehicle-field retention + purge for vendor dispatch.
+- Add ephemeral SIP credentials for the browser phone (GH#108).
+- GH#153: England/UK cleanup, per-language label step, Replace-rename warning (panel Q1-Q3).
+- GH#153: label an orphaned saved value as "<code> (not in list)" (panel Q1).
+- GH#153: add the "Canada (French names)" preset (panel Q4).
 - The Situation Overview (EOC) display drew every saved map markup twice, so turning a category off in
   the layers control left a copy on the map. The layers control is now the only place markups are drawn
   and shown or hidden, and a category turned off stays off after a reload; the panel at the bottom,

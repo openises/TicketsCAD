@@ -138,6 +138,7 @@ function sched_runner_timeout_s(string $key, int $intervalS): int {
         'webhook_retry'                       => 600,   // up to 50 deliveries per run, same reason
         'audit_log_purge'                     => 3600,  // archives before it deletes
         'message_log_purge'                   => 3600,
+        'vendor_plate_purge'                  => 3600,  // one indexed UPDATE; generous like the sibling purges
     ];
     if (isset($explicit[$key])) return $explicit[$key];
     return max(300, min(3600, $intervalS * 3));

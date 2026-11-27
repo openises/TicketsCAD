@@ -26,7 +26,9 @@
         currentLabel: 'State',
         lang: 'en',
         languages: [],
-        editingId: 0
+        labelByLang: {},
+        editingId: 0,
+        englandDismissed: false
     };
     var wiz = { step: 1, selection: {}, mode: 'replace', preview: null, labelSuggestion: 'State' };
     var imp = { csv: '', mode: 'replace', preview: null };
@@ -126,10 +128,12 @@
             page.currentLabel = d.field_label || 'State';
             page.lang = d.label_lang || 'en';
             page.languages = d.languages || ['en'];
+            page.labelByLang = d.label_by_lang || {};
             $('stCount').textContent = String(d.count);
             renderList();
             renderSchema(d.schema || {});
             renderLabelCard();
+            renderEnglandNotice();
         }).catch(function () {
             toast('Could not load the list. Check your connection and reload the page.', 'danger');
         });
@@ -156,6 +160,56 @@
             banner.appendChild(el('div', '', problems[j]));
         }
         show(banner, problems.length > 0);
+    }
+
+    // ── the leftover "England / UK" row notice (GH#153 panel, Q1) ───────
+    // Shown only when the stray row is still present; the migration removes it
+    // automatically on a qualifying install, so most installs never see this.
+    function findEnglandRow() {
+        for (var i = 0; i < page.list.length; i++) {
+            var r = page.list[i];
+            if (r.code === 'UK' && r.name === 'England') { return r; }
+        }
+        return null;
+    }
+
+    function renderEnglandNotice() {
+        var box = $('stEnglandNotice');
+        if (!box) { return; }
+        clear(box);
+        var row = findEnglandRow();
+        if (!row || page.englandDismissed) { show(box, false); return; }
+
+        var head = el('div', 'fw-semibold');
+        head.appendChild(el('i', 'bi bi-signpost-2 me-1'));
+        head.appendChild(document.createTextNode('A leftover "England" entry (code UK) is still on your list.'));
+        box.appendChild(head);
+        var body = el('div', 'mt-1', 'Older versions seeded this row. It also clashes with the code UK that the '
+            + 'built-in India list uses for Uttarakhand. Counting how many saved records use it…');
+        box.appendChild(body);
+        var actions = el('div', 'mt-2 d-flex flex-wrap gap-2');
+        var remove = button('btn btn-sm btn-danger', 'Remove England (UK)', 'bi-trash');
+        remove.addEventListener('click', function () { deleteRow(row, remove); });
+        var dismiss = button('btn btn-sm btn-outline-secondary', 'Dismiss');
+        dismiss.addEventListener('click', function () { page.englandDismissed = true; show(box, false); });
+        actions.appendChild(remove);
+        actions.appendChild(dismiss);
+        box.appendChild(actions);
+        show(box, true);
+
+        apiGet('action=usage&codes=UK').then(function (res) {
+            var u = (res.ok && res.body && res.body.usage) ? res.body.usage.UK : null;
+            var n = u ? u.total : 0;
+            clear(body);
+            if (n > 0) {
+                body.appendChild(document.createTextNode(plural(n, 'saved record') + ' use the code UK ('
+                    + usageText(u.by) + '). They keep the code and still show it; removing the row only stops UK being '
+                    + 'offered for new entries, and clears the clash with the India list (UK = Uttarakhand).'));
+            } else {
+                body.appendChild(document.createTextNode('No saved record uses the code UK, so removing it changes nothing '
+                    + 'but the list — and clears the clash with the India list, which uses UK for Uttarakhand.'));
+            }
+        }).catch(function () { /* keep the placeholder text */ });
     }
 
     function filterText() {
@@ -386,6 +440,24 @@
         });
     }
 
+    // Set the label for several languages at once (the wizard's per-language
+    // step). The page's own Field-label card still uses saveLabel() above.
+    function saveLabels(labelMap, btn) {
+        if (btn) { btn.disabled = true; }
+        return apiPost({ action: 'set_label', labels: labelMap }).then(function (res) {
+            if (btn) { btn.disabled = false; }
+            if (!res.ok) { toast(failText(res), 'danger'); return false; }
+            var n = res.body.saved || 0;
+            toast('Updated the State field label for ' + plural(n, 'language') + '. Reload open pages to see it.', 'success');
+            loadList();
+            return true;
+        }).catch(function () {
+            if (btn) { btn.disabled = false; }
+            toast('The save did not reach the server.', 'danger');
+            return false;
+        });
+    }
+
     function initLabelCard() {
         $('stLabelChoice').addEventListener('change', function () {
             show($('stLabelCustom'), this.value === CUSTOM);
@@ -440,6 +512,71 @@
 
     // ── the wizard ─────────────────────────────────────────────────────
     var wizModal = null;
+    var wizLabelInputs = [];   // [{lang, cb, input}] for the per-language label step
+
+    // Only offer the per-language label step when there is more than one
+    // language to choose between (GH#153 panel, Q2: skip it otherwise).
+    function wizHasLabelStep() {
+        return (page.languages ? page.languages.length : 0) > 1;
+    }
+
+    // Build one row per enabled language: a checkbox, the language code, and an
+    // input holding the label to set for it. The admin's own language is the
+    // only one ticked by default and is pre-filled with the suggested label;
+    // every other language shows its current wording, unticked, so a save
+    // touches only what the admin deliberately ticks.
+    function renderWizLabelLangs() {
+        var box = $('stWizLabelLangs');
+        if (!box) { return; }
+        clear(box);
+        wizLabelInputs = [];
+        var langs = (page.languages && page.languages.length) ? page.languages : ['en'];
+        for (var i = 0; i < langs.length; i++) {
+            (function (lang) {
+                var row = el('div', 'row g-2 align-items-center mb-1');
+                var c1 = el('div', 'col-auto');
+                var wrap = el('div', 'form-check mb-0');
+                var cb = el('input', 'form-check-input');
+                cb.type = 'checkbox';
+                cb.id = 'stWizLang_' + lang;
+                cb.checked = (lang === page.lang);
+                var lab = el('label', 'form-check-label small font-monospace', lang);
+                lab.htmlFor = cb.id;
+                wrap.appendChild(cb);
+                wrap.appendChild(lab);
+                c1.appendChild(wrap);
+                var c2 = el('div', 'col');
+                var inp = el('input', 'form-control form-control-sm');
+                inp.maxLength = 40;
+                inp.setAttribute('aria-label', 'Field label for ' + lang);
+                inp.value = (lang === page.lang) ? wiz.labelSuggestion : (page.labelByLang[lang] || 'State');
+                c2.appendChild(inp);
+                row.appendChild(c1);
+                row.appendChild(c2);
+                box.appendChild(row);
+                wizLabelInputs.push({ lang: lang, cb: cb, input: inp });
+            })(langs[i]);
+        }
+    }
+
+    function saveWizLabels(btn) {
+        var map = {};
+        var any = false;
+        for (var i = 0; i < wizLabelInputs.length; i++) {
+            if (wizLabelInputs[i].cb.checked) {
+                map[wizLabelInputs[i].lang] = wizLabelInputs[i].input.value;
+                any = true;
+            }
+        }
+        if (!any) {
+            showError($('stWizError'), 'Tick at least one language to rename, or press Done to leave the labels unchanged.');
+            return;
+        }
+        showError($('stWizError'), '');
+        saveLabels(map, btn).then(function (ok) {
+            if (ok && wizModal) { wizModal.hide(); }
+        });
+    }
 
     function openWizard() {
         if (!page.catalog) { toast('The built-in lists are still loading.', 'warning'); return; }
@@ -566,7 +703,10 @@
         show($('stWizNext'), n < 4);
         show($('stWizApply'), n === 4 && !!wiz.preview);
         show($('stWizDownload'), n >= 2 && n <= 4);
-        show($('stWizSetLabel'), n === 5);
+        // The field-label step is skipped entirely when only one language is
+        // enabled — then step 5 is just the result and a Done button.
+        show($('stWizLabelBlock'), n === 5 && wizHasLabelStep());
+        show($('stWizSetLabel'), n === 5 && wizHasLabelStep());
         show($('stWizDone'), n === 5);
         if (n === 4) { runPreview(); }
     }
@@ -665,6 +805,25 @@
                 + 'Removed codes are simply no longer offered for new entries.'));
             box.appendChild(warn);
         }
+        // Replace mode can RENAME a code records already hold to a different
+        // name (the stray "UK" = England becoming "UK" = Uttarakhand when the
+        // India list replaces the list). Records keep the code but now DISPLAY
+        // the new name — a quieter surprise than a removal, so flag it loudly.
+        if (p.records_renamed_in_use > 0) {
+            var rwarn = el('div', 'alert alert-warning small');
+            rwarn.appendChild(el('div', 'fw-semibold',
+                plural(p.records_renamed_in_use, 'saved record') + ' use a code that would be RENAMED to a different name.'));
+            var names = [];
+            for (var ri = 0; ri < p.renames.length; ri++) {
+                var rr = p.renames[ri];
+                if (rr.old_name !== rr.new_name && rr.usage > 0) {
+                    names.push(rr.code + ': "' + rr.old_name + '" → "' + rr.new_name + '" (' + plural(rr.usage, 'record') + ')');
+                }
+            }
+            rwarn.appendChild(el('div', '', 'Those records keep their code but will now DISPLAY the new name: '
+                + names.join('; ') + '. Check this is what you want before applying.'));
+            box.appendChild(rwarn);
+        }
         if (p.conflicts && p.conflicts.length) {
             section(box, 'Codes used by two of the lists you chose — the first is kept', p.conflicts, [
                 ['Code', function (r) { return r.code; }],
@@ -684,7 +843,8 @@
         section(box, 'To rename', p.renames, [
             ['Code', function (r) { return r.code; }],
             ['Now', function (r) { return r.old_name; }],
-            ['Becomes', function (r) { return r.new_name; }]
+            ['Becomes', function (r) { return r.new_name; }],
+            ['Saved records using it', function (r) { return r.usage ? r.usage + ' — ' + usageText(r.usage_by) : 'none'; }]
         ]);
         section(box, 'Skipped — already on the list', p.skipped, [
             ['Code', function (r) { return r.code; }],
@@ -715,7 +875,7 @@
                 : 'Nothing needed to change: the list already matched your choice.';
             wiz.labelSuggestion = d.label_suggestion || wiz.labelSuggestion;
             $('stWizLabelSuggest').textContent = '"' + wiz.labelSuggestion + '"';
-            fillLabelSelect($('stWizLabelChoice'), $('stWizLabelCustom'), wiz.labelSuggestion);
+            renderWizLabelLangs();
             goStep(5);
             loadList();
         }).catch(function () { btn.disabled = false; showError($('stWizError'), 'The apply did not reach the server.'); });
@@ -735,14 +895,8 @@
         });
         $('stWizApply').addEventListener('click', wizApply);
         $('stWizDownload').addEventListener('click', wizDownload);
-        $('stWizLabelChoice').addEventListener('change', function () {
-            show($('stWizLabelCustom'), this.value === CUSTOM);
-        });
         $('stWizSetLabel').addEventListener('click', function () {
-            var btn = this;
-            saveLabel(chosenLabel($('stWizLabelChoice'), $('stWizLabelCustom')), page.lang, btn).then(function (ok) {
-                if (ok && wizModal) { wizModal.hide(); }
-            });
+            saveWizLabels(this);
         });
     }
 

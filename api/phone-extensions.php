@@ -12,6 +12,7 @@
  * POST action=extension_set_password — store the password the PBX already has (never echoed back)
  * POST action=register_scope_save  — where the phone registers (Phase 155; action.manage_config)
  * POST action=internal_constituents_save — do calls from our own extensions create a Constituent (Phase 155; action.manage_config)
+ * POST action=emergency_policy_save — emergency numbers + whether the restriction is on (GH#108 C2; action.manage_config)
  *
  * RBAC: action.manage_calls, reused from Phase 149's sip-trunks admin
  * (same telephony domain) rather than a new permission code.
@@ -82,7 +83,12 @@ if ($method === 'GET' && $action === 'my_extension') {
                 'register_scope' => $pbx['register_scope'],
             ]);
         }
-        json_response([
+        // GH#108 (panel-review section 4): in 'ephemeral' mode the browser gets
+        // a short-TTL credential derived from a server-only shared secret, and
+        // the stored, permanent sip_password NEVER leaves the server. 'static'
+        // mode (the default) is byte-identical to before this change: the stored
+        // password, and no expires_at key.
+        $payload = [
             'bound' => true,
             'extension' => $ext['extension'],
             'label' => $ext['label'],
@@ -91,7 +97,19 @@ if ($method === 'GET' && $action === 'my_extension') {
             'wss_url' => $pbx['wss_url'],
             'general_number' => $general ? $general['extension'] : $pbx['general_number'],
             'register_scope' => $pbx['register_scope'],
-        ]);
+            // GH#108 (panel-review C2): the install-wide emergency-call policy, so
+            // the widget can show the operator a courtesy note when emergency
+            // calling is restricted. DISPLAY ONLY -- FreePBX is the real boundary.
+            'restrict_emergency' => $pbx['restrict_emergency'],
+            'emergency_numbers'  => $pbx['emergency_numbers'],
+        ];
+        if (phone_sip_mode() === 'ephemeral') {
+            $cred = phone_extension_mint_ephemeral($ext);
+            $payload['sip_username'] = $cred['sip_username'];
+            $payload['sip_password'] = $cred['sip_password'];
+            $payload['expires_at']   = $cred['expires_at'];
+        }
+        json_response($payload);
     } catch (Exception $e) {
         error_log('[phone-extensions my_extension] ' . $e->getMessage());
         json_error('lookup failed', 500);
@@ -313,6 +331,39 @@ if ($method === 'POST') {
         } catch (Exception $e) {
             error_log('[phone-extensions internal_constituents_save] ' . $e->getMessage());
             json_error('Failed to save the setting', 500);
+        }
+        exit;
+    }
+
+    // GH#108 (panel-review C2): the install-wide emergency-call policy -- the
+    // emergency-number list and whether the restriction is ENABLED (OFF by
+    // default; every extension can dial emergency numbers otherwise). Install-wide,
+    // so Super Admin only -- action.manage_config (NOT `|| is_admin()`, Phase 138
+    // lesson), on top of the action.manage_calls gate this file already passed.
+    // Policy/display only; FreePBX's dial plan is the real routing boundary.
+    if ($action === 'emergency_policy_save') {
+        pe_csrf_check($input);
+        if (!rbac_can('action.manage_config')) {
+            json_error('Insufficient permissions: change install-wide phone settings', 403);
+        }
+        try {
+            // Numbers first: it validates, so an invalid list rejects the whole
+            // save (the restriction flag is not written) rather than half-applying.
+            $numbers  = phone_emergency_numbers_save($input['emergency_numbers'] ?? '');
+            $restrict = phone_restrict_emergency_save(!empty($input['restrict_emergency']));
+            audit_log('comms', 'phone_emergency_policy.update', 'settings', 0,
+                'Emergency-call restriction ' . ($restrict ? 'ENABLED' : 'disabled')
+                . '; emergency numbers: ' . implode(', ', $numbers));
+            json_response([
+                'ok' => true,
+                'restrict_emergency' => $restrict,
+                'emergency_numbers'  => $numbers,
+            ]);
+        } catch (InvalidArgumentException $e) {
+            json_error($e->getMessage());
+        } catch (Exception $e) {
+            error_log('[phone-extensions emergency_policy_save] ' . $e->getMessage());
+            json_error('Failed to save the emergency-call policy', 500);
         }
         exit;
     }

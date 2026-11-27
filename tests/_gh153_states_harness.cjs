@@ -37,6 +37,7 @@ function reply(status, json) {
 
 async function modeSelect() {
     const src = fs.readFileSync(root + '/assets/js/states-select.js', 'utf8');
+    let lastTexts = [];
     async function run(answer, selected) {
         const dom = new JSDOM('<!doctype html><select id="s"></select>', { runScripts: 'outside-only', url: 'http://localhost/x.php' });
         const w = dom.window;
@@ -45,6 +46,7 @@ async function modeSelect() {
         const sel = w.document.getElementById('s');
         if (selected) { sel.setAttribute('data-selected', selected); }
         await w.TCADStates.fill(sel);
+        lastTexts = Array.prototype.map.call(sel.options, function (o) { return o.textContent; });
         return Array.prototype.map.call(sel.options, function (o) { return o.value; });
     }
     let v = await run({ states: [{ code: 'ON', name: 'Ontario' }, { code: 'QC', name: 'Quebec' }], states_from_db: true });
@@ -57,8 +59,15 @@ async function modeSelect() {
     C['no server at all falls back to the US list'] = v.length === 52;
     v = await run({ states: [{ code: 'ON', name: 'Ontario' }], states_from_db: true }, 'MN');
     C['a saved code that is no longer on the list is still shown (records never blank)'] = JSON.stringify(v) === JSON.stringify(['', 'ON', 'MN']);
+    C['...rendered as "MN (not in list)", not a bare code'] = lastTexts.indexOf('MN (not in list)') !== -1 && lastTexts.indexOf('MN') === -1;
     v = await run({ states: [], states_from_db: true }, 'MN');
     C['...even when the list is empty'] = JSON.stringify(v) === JSON.stringify(['', 'MN']);
+    C['...and still labelled "MN (not in list)" in the empty list'] = lastTexts.indexOf('MN (not in list)') !== -1;
+    // A genuine list member keeps its own name/code text — the suffix is only
+    // for a value that is NOT one of the offered choices.
+    v = await run({ states: [{ code: 'ON', name: 'Ontario' }], states_from_db: true }, 'ON');
+    C['a saved value that IS on the list keeps its real label (no "(not in list)")'] =
+        lastTexts.indexOf('ON — Ontario') !== -1 && lastTexts.join('|').indexOf('not in list') === -1;
 }
 
 async function modeGeo() {
@@ -116,7 +125,15 @@ async function modeAdmin() {
             if (a === 'preset_apply') { return reply(200, fx.apply); }
             if (a === 'import_preview') { return reply(200, importAnswer === 'bad' ? fx.import_bad : fx.import_good); }
             if (a === 'import_apply') { return reply(200, fx.apply); }
-            if (a === 'set_label') { return reply(200, { ok: true, label: body.label, lang: body.lang, previous: 'State' }); }
+            if (a === 'set_label') {
+                if (body.labels) {
+                    const results = Object.keys(body.labels).map(function (lang) {
+                        return { lang: lang, label: body.labels[lang], previous: 'State' };
+                    });
+                    return reply(200, { ok: true, saved: results.length, results: results });
+                }
+                return reply(200, { ok: true, label: body.label, lang: body.lang, previous: 'State' });
+            }
             if (a === 'update') { return reply(200, { ok: true, changed: true, id: body.id, code: body.code, name: body.name, old_code: body.code, old_code_usage: 0 }); }
             if (a === 'delete') { return reply(200, { ok: true, deleted: { id: body.id }, usage: 2 }); }
             if (a === 'create') { return reply(200, { ok: true, state: { id: 999, code: String(body.code).toUpperCase(), name: body.name } }); }
@@ -147,6 +164,12 @@ async function modeAdmin() {
     C['the built-in lists are offered as CSV downloads'] = d.querySelectorAll('#stPresetDownloads a').length === fx.presets.presets.length
         && d.querySelector('#stPresetDownloads a').getAttribute('href').indexOf('api/states.php?action=preset_csv&preset=') === 0;
     C['the schema banner is hidden when the table is healthy'] = d.getElementById('stSchemaBanner').classList.contains('d-none');
+    // The leftover England/UK row (present in the fixture list) raises a
+    // dismissible notice with a Remove button that reuses the delete path.
+    const eng = d.getElementById('stEnglandNotice');
+    C['a leftover England/UK row raises a notice with a Remove button'] =
+        !eng.classList.contains('d-none') && eng.textContent.indexOf('England') !== -1
+        && eng.querySelector('button') !== null;
 
     // filter
     const filter = d.getElementById('stFilter');
@@ -177,6 +200,8 @@ async function modeAdmin() {
     const previewText = d.getElementById('stWizPreview').textContent;
     C['...and, for a removed code, how many saved records use it and where'] = previewText.indexOf('3 — Incidents: 2, Members: 1') !== -1;
     C['...and that saved records keep their code'] = previewText.indexOf('Saved records are never changed') !== -1;
+    C['...and warns when a Replace would rename a used code to a different name'] =
+        previewText.indexOf('would be RENAMED to a different name') !== -1 && previewText.indexOf('Uttarakhand') !== -1;
     C['Apply is offered after the preview'] = !d.getElementById('stWizApply').classList.contains('d-none');
     d.getElementById('stWizApply').click();
     await sleep(30);
@@ -185,11 +210,34 @@ async function modeAdmin() {
         && JSON.stringify(ap.selection) === JSON.stringify({ ca: [] });
     C['the result step says what changed and suggests "Province"'] = !d.getElementById('stWizStep5').classList.contains('d-none')
         && d.getElementById('stWizResult').textContent.indexOf(fx.apply.added + ' added') !== -1
-        && d.getElementById('stWizLabelChoice').value === 'Province';
+        && d.getElementById('stWizLabelSuggest').textContent.indexOf('Province') !== -1;
+    // The label step lists EVERY enabled language, ticks only the admin's own
+    // by default, and pre-fills that one with the suggestion.
+    const langRows = d.querySelectorAll('#stWizLabelLangs .row');
+    C['the label step lists one row per enabled language'] = langRows.length === fx.list.languages.length && langRows.length > 1;
+    const checkedLangs = [];
+    Array.prototype.forEach.call(d.querySelectorAll('#stWizLabelLangs input[type=checkbox]'), function (cb) {
+        if (cb.checked) { checkedLangs.push(cb.id); }
+    });
+    C['only the admin\'s own language is ticked by default'] = checkedLangs.length === 1 && checkedLangs[0] === 'stWizLang_' + fx.list.label_lang;
+    const ownRow = d.getElementById('stWizLang_' + fx.list.label_lang).closest('.row');
+    C['the admin\'s own language is pre-filled with the suggested label'] =
+        ownRow.querySelector('input:not([type=checkbox])').value === 'Province';
+    // A second language is shown unticked, with its own current label.
+    const otherLang = fx.list.languages.filter(function (l) { return l !== fx.list.label_lang; })[0];
+    const otherRow = d.getElementById('stWizLang_' + otherLang).closest('.row');
+    C['another language shows its current label, unticked'] =
+        d.getElementById('stWizLang_' + otherLang).checked === false
+        && otherRow.querySelector('input:not([type=checkbox])').value === (fx.list.label_by_lang[otherLang] || 'State');
+    // Tick the second language and give it its own word, then Set label.
+    d.getElementById('stWizLang_' + otherLang).checked = true;
+    otherRow.querySelector('input:not([type=checkbox])').value = 'Province';
     d.getElementById('stWizSetLabel').click();
     await sleep(30);
     const sl = out.posts[out.posts.length - 1];
-    C['Set label sends the suggested label'] = sl.action === 'set_label' && sl.label === 'Province' && sl.lang === fx.list.label_lang;
+    C['Set label sends a per-language map of only the ticked languages'] = sl.action === 'set_label'
+        && !!sl.labels && sl.labels[fx.list.label_lang] === 'Province' && sl.labels[otherLang] === 'Province'
+        && Object.keys(sl.labels).length === 2;
 
     // ── import ──
     d.getElementById('stBtnImport').click();

@@ -2797,6 +2797,57 @@ function health_check_scheduled_jobs(): array
 }
 
 /**
+ * The stray "England" / "UK" State-list seed row (GH#153 panel, Q1). Absent is
+ * the healthy, ordinary state — fresh installs never had it, and the cleanup
+ * migration or an admin removed it everywhere it qualified — so it stays silent
+ * and green then. When it is STILL present it is surfaced as a warning with the
+ * usage count, because sql/run_gh153_england_row_cleanup.php deliberately left
+ * it for a person to decide (the list was customised, or records use the code).
+ * The Status page offers a Remove button that uses the normal, audited delete.
+ */
+function health_check_states_england_row(): array
+{
+    try {
+        if (!function_exists('db_fetch_value') || !function_exists('db_table')) {
+            return ['checked' => false, 'severity' => 'ok', 'present' => false];
+        }
+        if (!function_exists('states_england_uk_row')) {
+            $inc = __DIR__ . '/states.php';
+            if (is_file($inc)) { require_once $inc; }
+        }
+        if (!function_exists('states_england_uk_row')) {
+            return ['checked' => false, 'severity' => 'ok', 'present' => false];
+        }
+        $row = states_england_uk_row();
+        if ($row === null) {
+            return ['checked' => true, 'severity' => 'ok', 'present' => false,
+                    'summary' => 'No leftover England/UK row on the State / Province list.'];
+        }
+        $usage = states_usage(['UK']);
+        $total = (int) ($usage['UK']['total'] ?? 0);
+        $by = [];
+        foreach ($usage['UK']['by'] ?? [] as $b) {
+            $by[] = $b['label'] . ': ' . $b['count'];
+        }
+        $summary = $total > 0
+            ? 'A leftover "England" (code UK) row is on the State / Province list; '
+              . $total . ' saved record(s) use the code UK (' . implode(', ', $by) . ').'
+            : 'A leftover "England" (code UK) row is on the State / Province list; no saved record uses it.';
+        return [
+            'checked'  => true,
+            'severity' => 'warn',
+            'present'  => true,
+            'id'       => (int) $row['id'],
+            'count'    => $total,
+            'usage_by' => $usage['UK']['by'] ?? [],
+            'summary'  => $summary,
+        ];
+    } catch (Throwable $e) {
+        return ['checked' => false, 'severity' => 'ok', 'present' => false, 'error' => 'England/UK row check failed'];
+    }
+}
+
+/**
  * Address lookup — is it configured coherently, and is it actually working?
  *
  * WHY THIS EXISTS, AND WHY IT DOES NOT PROBE THE NETWORK BY DEFAULT.
@@ -3507,6 +3558,7 @@ function health_check_all(): array
         $httpsEnforcement = health_check_https_enforcement();
         $matrixRegulatory = health_check_matrix_regulatory();
         $dvmFne = health_check_dvm_fne();
+        $statesEngland = health_check_states_england_row();
 
         $critical = 0;
         $warn     = 0;
@@ -3548,7 +3600,7 @@ function health_check_all(): array
             $warn++;
         }
         foreach ([$backups, $keys, $exposure, $geocoding, $geocodeCacheWritable, $tileCacheWritable,
-                  $publicBoard, $teamMembership, $httpsEnforcement, $matrixRegulatory, $dvmFne] as $sec) {
+                  $publicBoard, $teamMembership, $httpsEnforcement, $matrixRegulatory, $dvmFne, $statesEngland] as $sec) {
             if (($sec['severity'] ?? '') === 'critical') {
                 $critical++;
             } elseif (($sec['severity'] ?? '') === 'warn') {
@@ -3589,6 +3641,7 @@ function health_check_all(): array
             'https_enforcement' => $httpsEnforcement,
             'matrix_regulatory' => $matrixRegulatory,
             'dvm_fne'      => $dvmFne,
+            'states_england' => $statesEngland,
             'summary'      => ['critical' => $critical, 'warn' => $warn, 'unknown' => $unknown],
         ];
     } catch (Throwable $e) {

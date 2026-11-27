@@ -155,6 +155,29 @@ return [
             ],
             'options' => [],
         ],
+        // A second Canada list carrying the FRENCH province/territory names
+        // (GH#153 panel, Q4). The codes are identical to 'ca' (Canada Post uses
+        // the same two-letter symbols in both official languages); only the
+        // names differ. Its suggested label is "Province" — correct in French,
+        // where the shipped generic form.state ("État/Région") is wrong for
+        // Canada. The English-names 'ca' preset above is left exactly as it was
+        // ("Quebec", a deliberate choice recorded there); this adds a choice,
+        // it changes nothing. Bilingual installs can apply this list and set
+        // the French label from the wizard's per-language label step.
+        'ca_fr' => [
+            'name'    => 'Canada (French names) — 10 provinces et 3 territoires',
+            'country' => 'Canada',
+            'label'   => 'Province',
+            'source'  => 'Postes Canada — noms français des provinces et territoires',
+            'rows'    => [
+                ['AB', 'Alberta'], ['BC', 'Colombie-Britannique'], ['MB', 'Manitoba'],
+                ['NB', 'Nouveau-Brunswick'], ['NL', 'Terre-Neuve-et-Labrador'], ['NS', 'Nouvelle-Écosse'],
+                ['NT', 'Territoires du Nord-Ouest'], ['NU', 'Nunavut'], ['ON', 'Ontario'],
+                ['PE', 'Île-du-Prince-Édouard'], ['QC', 'Québec'], ['SK', 'Saskatchewan'],
+                ['YT', 'Yukon'],
+            ],
+            'options' => [],
+        ],
         'mx' => [
             'name'    => 'Mexico — 32 federal entities',
             'country' => 'Mexico',

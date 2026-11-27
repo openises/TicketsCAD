@@ -56,6 +56,12 @@ switch ($action) {
                 'allow_override' => vendor_setting('vendor_allow_override'), 'requires_reason' => vendor_setting('vendor_override_requires_reason'),
                 'dial' => vendor_setting('phone_click_to_call')];
         break;
+    case 'plate_retention':
+        // The plate-retention setting read + the scheduled-job required decision, both in a FRESH process so
+        // get_variable()'s per-process cache reflects the settings this worker was handed (GH#148 / Phase 151).
+        require_once $root . '/inc/scheduled-jobs.php';
+        $res = ['days' => vendor_plate_retention_days(), 'required' => sched_job_required('vendor_plate_purge')['required']];
+        break;
     default:
         fwrite(STDERR, "unknown action: $action\n");
         exit(1);

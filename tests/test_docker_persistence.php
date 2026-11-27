@@ -145,7 +145,13 @@ foreach ($writePaths as $label => $hostPath) {
 // app_keys volume. A directory BENEATH a mounted volume is persisted, so this
 // accepts a descendant; the exact-match checks above are untouched.
 require_once $root . '/inc/tts/keys.php';
-$ttsKeys = $toContainer(tts_keys_dir_for($root, false, null));
+// Simulate the Docker (Linux) layout like every other path above: pass the
+// Linux-simulated FE_KEYS_DIR explicitly. Passing null makes tts_keys_dir_for()
+// read the REAL FE_KEYS_DIR constant, which on a Windows dev box is a
+// %ProgramData% path that maps to no container volume — a false failure on
+// Windows only (CI/Linux passed). The Docker-persistence question is a
+// Linux-deploy question, so simulate Linux here too.
+$ttsKeys = $toContainer(tts_keys_dir_for($root, false, fe_default_keys_dir_for($root, false)));
 $underMount = function (?string $path) use ($mounted): bool {
     if ($path === null) { return false; }
     foreach ($mounted as $mt) {

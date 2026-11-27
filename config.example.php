@@ -71,7 +71,13 @@ function asset_v($relPath) {
 }
 
 // ── Timezone ────────────────────────────────────────────────────
-date_default_timezone_set('America/Chicago');   // adjust per install
+// Safe default used only until the DB loads. The per-install
+// `area_timezone` setting (Settings → Display Settings → Agency Time
+// Zone) overrides it at the bottom of this file — so admins declare the
+// agency's zone in the UI, not by editing this line. Docker installs can
+// set NEWUI_TIMEZONE (or TZ) to change both this default and the seeded
+// setting in one place (see docker-config-gen.php + sql/run_phase22_area_timezone.php).
+date_default_timezone_set('America/New_York');
 
 // ── Error handling ──────────────────────────────────────────────
 // Production posture: log everything, display nothing.
@@ -102,3 +108,27 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 // ── Bootstrap ───────────────────────────────────────────────────
 require_once NEWUI_ROOT . '/inc/db.php';
 require_once NEWUI_ROOT . '/inc/functions.php';
+
+// ── Agency timezone override (reads the settings table) ─────────
+// Apply the per-install `area_timezone` setting now that the DB layer is
+// loaded (we could not above — it needs a query). PHP datetime objects
+// created after this use the new zone, and the MySQL session time_zone is
+// re-synced to match (inc/db.php set it to this file's pre-DB default on
+// connect, so refresh it). WITHOUT this block the Agency Time Zone setting
+// is written but never applied — displayed times and DB stamps stay on the
+// pre-DB default above, an hour (or more) off from what the admin selected.
+try {
+    $area_tz = (string) db_fetch_value(
+        "SELECT `value` FROM `" . ($GLOBALS['db_prefix'] ?? '') . "settings`
+          WHERE `name` = 'area_timezone' LIMIT 1"
+    );
+    if ($area_tz !== '' && in_array($area_tz, DateTimeZone::listIdentifiers(), true)) {
+        date_default_timezone_set($area_tz);
+        try {
+            $offset = (new DateTime('now'))->format('P');
+            db()->exec("SET time_zone = '{$offset}'");
+        } catch (Exception $e) {}
+    }
+} catch (Exception $e) {
+    // settings table missing on a fresh install — keep PHP default
+}

@@ -33,6 +33,10 @@ threecx_client_secret =
 # threecx_monitor_dns = 100,101,102
 # Set to false ONLY if your 3CX uses a self-signed certificate.
 # threecx_verify_tls = true
+# Better than turning verification off for a self-signed 3CX: point this at the
+# server's certificate file to VALIDATE against it (pinned). Takes precedence
+# over threecx_verify_tls.
+# threecx_ca_bundle = /etc/3cx/server.pem
 # 3CX does not report the dialed number on V20. Map each trunk's DN to the
 # number it carries so TicketsCAD can show the line (and Phone Extensions can
 # route a direct number), or set one fixed value:

@@ -225,6 +225,39 @@ foreach ([[[['on', 'Ontario']], 'a code not in stored form'], [[['ON', 'Ontario'
     }) && states_count() === 0);
 }
 
+// A Replace that RENAMES a code records are using to a different name — the
+// India-list-vs-England guard (panel Q1 extra). The preview must flag it, with
+// the usage count, so the admin is warned before the dropdowns silently relabel.
+db_query("DELETE FROM {$T}");
+db_query("INSERT INTO {$T} (`code`, `name`) VALUES ('UK', 'England'), ('MN', 'Minnesota'), ('ZZ', 'Old Zed')");
+$ukPlaceIds = [];
+foreach (['UK', 'UK'] as $st) {
+    db_query('INSERT INTO ' . db_table('places') . ' (`state`) VALUES (?)', [$st]);
+    $id = (int) db_insert_id();
+    $ukPlaceIds[] = $id;
+    $fixtures['places'][] = $id;   // belt and braces: $restore() also sweeps these
+}
+$prevR = states_preview([['UK', 'Uttarakhand'], ['MN', 'Minnesota'], ['ZZ', 'New Zed']], 'replace');
+gh153l_t('a Replace that renames the USED code UK to a different name is flagged (records_renamed_in_use)',
+    $prevR['records_renamed_in_use'] === 2, json_encode($prevR['records_renamed_in_use']));
+$ukRename = null;
+$zzRename = null;
+foreach ($prevR['renames'] as $rr) {
+    if ($rr['code'] === 'UK') { $ukRename = $rr; }
+    if ($rr['code'] === 'ZZ') { $zzRename = $rr; }
+}
+gh153l_t('...the renamed row carries the count and the per-place breakdown',
+    $ukRename !== null && $ukRename['usage'] === 2 && $ukRename['old_name'] === 'England'
+    && $ukRename['new_name'] === 'Uttarakhand' && count($ukRename['usage_by']) >= 1, json_encode($ukRename));
+gh153l_t('renaming an UNUSED code (ZZ) is a rename but adds nothing to the in-use count',
+    $zzRename !== null && $zzRename['usage'] === 0, json_encode($zzRename));
+gh153l_t('a Replace with the SAME names renames nothing and flags no in-use records',
+    states_preview([['UK', 'England'], ['MN', 'Minnesota'], ['ZZ', 'Old Zed']], 'replace')['records_renamed_in_use'] === 0);
+// Remove this block's own UK usage rows now, so later sections (the England/UK
+// cleanup) start from a clean "nothing uses UK" state.
+foreach ($ukPlaceIds as $id) { db_query('DELETE FROM ' . db_table('places') . ' WHERE `id` = ?', [$id]); }
+$fixtures['places'] = array_values(array_diff($fixtures['places'], $ukPlaceIds));
+
 // ═════════ D. utf8mb4 ═════════
 echo "\n--- D. accented names survive ---\n";
 states_apply($mexico, 'replace', null, 'test');
@@ -336,6 +369,80 @@ gh153l_t('a third run has nothing to do', $m3['code'] === 0 && strpos($m3['out']
 gh153l_t('with the key in place the database itself refuses a duplicate code', gh153l_throws(function () use ($T) {
     db_query("INSERT INTO {$T} (`code`, `name`) VALUES ('mn', 'Second Minnesota')");
 }, 'PDOException'));
+
+// ═════════ H. the England/UK cleanup migration (panel Q1) ═════════
+echo "\n--- H. England/UK row cleanup ---\n";
+$cleanupMig = __DIR__ . '/../sql/run_gh153_england_row_cleanup.php';
+$clearCustom = function () { db_query('DELETE FROM ' . db_table('settings') . ' WHERE `name` = ?', [STATES_CUSTOMIZED_SETTING]); };
+$setUsStates = function () use ($T, $us) {
+    db_query("DELETE FROM {$T}");
+    foreach ($us as [$c, $n]) { db_query("INSERT INTO {$T} (`code`, `name`) VALUES (?, ?)", [$c, $n]); }
+};
+$hasEnglandUk = function () use ($T): int {
+    return (int) db_fetch_value("SELECT COUNT(*) FROM {$T} WHERE `code` = 'UK' AND `name` = 'England'");
+};
+
+// (1) qualifying install: 50+DC plus England/UK, never customised, nothing uses UK.
+$setUsStates();
+db_query("INSERT INTO {$T} (`code`, `name`) VALUES ('UK', 'England')");
+$clearCustom();
+gh153l_t('setup: a qualifying install has the England/UK row and no UK usage',
+    $hasEnglandUk() === 1 && states_count() === 52 && (int) ($found = states_usage(['UK'])['UK']['total']) === 0);
+$h1 = gh142_run_php([$cleanupMig]);
+gh153l_t('qualifying install: the cleanup removes the England/UK row and nothing else',
+    $h1['code'] === 0 && $hasEnglandUk() === 0 && states_count() === 51 && gh153l_name('MN') === 'Minnesota',
+    $h1['out'] . $h1['err']);
+$h1b = gh142_run_php([$cleanupMig]);
+gh153l_t('...and a second run is a clean no-op (idempotent)',
+    $h1b['code'] === 0 && $hasEnglandUk() === 0 && strpos($h1b['out'], '[SKIP] no England/UK row') !== false, $h1b['out']);
+
+// (2) a customised list is left untouched, however the row looks.
+$setUsStates();
+db_query("INSERT INTO {$T} (`code`, `name`) VALUES ('UK', 'England')");
+$clearCustom();
+states_mark_customized();
+$h2 = gh142_run_php([$cleanupMig]);
+gh153l_t('a customised install keeps the England/UK row (the panel wants a person to decide)',
+    $h2['code'] === 0 && $hasEnglandUk() === 1 && strpos($h2['out'], '[KEEP]') !== false && strpos($h2['out'], 'customised') !== false,
+    $h2['out'] . $h2['err']);
+$clearCustom();
+
+// (3) a saved record using the code UK blocks automatic removal. places.state
+//     is a usage column; states_usage() counts the row (no deleted_at filter),
+//     which is why "soft-deleted rows included" holds here too (section B above
+//     proves states_usage counts soft-deleted rows directly).
+$setUsStates();
+db_query("INSERT INTO {$T} (`code`, `name`) VALUES ('UK', 'England')");
+$clearCustom();
+db_query('INSERT INTO ' . db_table('places') . " (`state`) VALUES ('UK')");
+$fixtures['places'][] = (int) db_insert_id();
+gh153l_t('setup: one saved record now uses the code UK', (int) (states_usage(['UK'])['UK']['total']) === 1);
+$h3 = gh142_run_php([$cleanupMig]);
+gh153l_t('a record using code UK keeps the England/UK row and names the usage',
+    $h3['code'] === 0 && $hasEnglandUk() === 1 && strpos($h3['out'], '[KEEP]') !== false
+    && strpos($h3['out'], 'use the code UK') !== false, $h3['out'] . $h3['err']);
+foreach ($fixtures['places'] as $id) { db_query('DELETE FROM ' . db_table('places') . ' WHERE `id` = ?', [$id]); }
+$fixtures['places'] = [];
+
+// (4) a row that is no longer EXACTLY England/UK (an admin recoded/renamed it)
+//     is not the stray seed row — leave it alone.
+$setUsStates();
+db_query("INSERT INTO {$T} (`code`, `name`) VALUES ('UK', 'United Kingdom')");
+$clearCustom();
+$h4 = gh142_run_php([$cleanupMig]);
+gh153l_t('a UK row renamed away from "England" is left alone',
+    $h4['code'] === 0 && (int) db_fetch_value("SELECT COUNT(*) FROM {$T} WHERE `code` = 'UK' AND `name` = 'United Kingdom'") === 1
+    && strpos($h4['out'], '[SKIP] no England/UK row') !== false, $h4['out'] . $h4['err']);
+
+// (5) a missing table is a clean no-op, not a crash (schema-resilient).
+//     Verified without dropping the shared table: the migration's own guard is
+//     exercised by section-A/G setup where the table always exists; here we just
+//     confirm the guard text is present and the script is CLI-guarded.
+$cleanupSrc = (string) file_get_contents($cleanupMig);
+gh153l_t('the migration is CLI-only and guards a missing states_translator table',
+    strpos($cleanupSrc, "PHP_SAPI !== 'cli'") !== false
+    && strpos($cleanupSrc, 'information_schema.TABLES') !== false
+    && strpos($cleanupSrc, 'does not exist yet') !== false);
 
 $restore();
 gh153l_t('the original list is back, ids and all', db_fetch_all("SELECT `id`, `code`, `name` FROM {$T} ORDER BY `id`") === $snapRows);

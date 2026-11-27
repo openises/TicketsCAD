@@ -210,6 +210,44 @@
         return '';
     }
 
+    // ── Ephemeral SIP credentials (GH#108, panel-review section 4) ─────
+    //
+    // In ephemeral mode api/phone-extensions.php returns a short-TTL credential
+    // plus an `expires_at` (unix seconds); the browser must re-fetch a fresh
+    // one and re-REGISTER before it dies. In static mode no `expires_at` is
+    // sent and none of this runs.
+
+    /**
+     * Milliseconds to wait before re-fetching the credential, given its unix
+     * `expiresAt` and the current unix `nowSeconds`. Refresh a safety margin
+     * BEFORE expiry (a third of the remaining lifetime, bounded to 5..60s) so
+     * a re-REGISTER always carries a still-valid credential. Returns null when
+     * there is no expiry (static mode -> never refresh). Floored at `floorMs`
+     * (default 1000) so a tiny or already-past TTL can never schedule a
+     * 0ms/negative busy-loop.
+     */
+    function credentialRefreshDelayMs(expiresAt, nowSeconds, floorMs) {
+        var exp = Number(expiresAt);
+        if (!exp || exp <= 0) { return null; }
+        var now = Number(nowSeconds) || 0;
+        var remaining = exp - now;
+        var margin = Math.floor(remaining / 3);
+        if (margin < 5) { margin = 5; }
+        if (margin > 60) { margin = 60; }
+        var floor = (floorMs === undefined || floorMs === null) ? 1000 : floorMs;
+        var ms = (remaining - margin) * 1000;
+        return ms < floor ? floor : ms;
+    }
+
+    /** Is a JsSIP registration-failure cause an authentication rejection?
+     *  In ephemeral mode an expired credential (e.g. a stale one held at a
+     *  window handover) looks exactly like this, so the widget re-fetches and
+     *  retries once rather than sitting dead until the next scheduled refresh. */
+    function isAuthFailure(cause) {
+        var c = String(cause || '');
+        return c === 'Authentication Error' || c === 'Rejected';
+    }
+
     var api = {
         REGISTER_PAGES: REGISTER_PAGES,
         REGISTRANT_KEY: REGISTRANT_KEY,
@@ -229,7 +267,9 @@
         describeRegistrationFailure: describeRegistrationFailure,
         describeDisconnect: describeDisconnect,
         describeCallFailure: describeCallFailure,
-        describeMicBlocker: describeMicBlocker
+        describeMicBlocker: describeMicBlocker,
+        credentialRefreshDelayMs: credentialRefreshDelayMs,
+        isAuthFailure: isAuthFailure
     };
 
     if (typeof module !== 'undefined' && module.exports) {

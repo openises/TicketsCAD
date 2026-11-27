@@ -99,6 +99,10 @@ foreach (['adds', 'removes', 'renames', 'skipped', 'unchanged', 'current_count',
           'records_using_removed', 'usage_by', 'existing_name', 'old_name', 'new_name', 'kept_from', 'dropped_from'] as $k) {
     gh153w_t("the preview carries '$k' and the script reads it", strpos($lib, "'$k'") !== false && strpos($jsCode, '.' . $k) !== false);
 }
+gh153w_t("the preview flags a replace that renames a used code ('records_renamed_in_use') and the script warns on it",
+    strpos($lib, 'records_renamed_in_use') !== false && strpos($jsCode, '.records_renamed_in_use') !== false);
+gh153w_t('...and the list answer carries per-language labels the wizard step reads (label_by_lang)',
+    strpos($api, "'label_by_lang'") !== false && strpos($jsCode, '.label_by_lang') !== false);
 
 echo "\n--- permissions ---\n";
 gh153w_t("the page gates on rbac_can('action.manage_config')", strpos($page, "if (!rbac_can('action.manage_config'))") !== false);
@@ -182,10 +186,12 @@ if (!$jsdomOk || !$haveDb) {
         $listRows[] = ['id' => $i++, 'code' => $c, 'name' => $n];
     }
     $listRows[] = ['id' => 999001, 'code' => 'XS', 'name' => '<img src=x onerror="window.__xss=1">'];
+    $listRows[] = ['id' => 999002, 'code' => 'UK', 'name' => 'England'];   // the stray seed row — exercises the notice
     $real = states_list();
     gh153w_t('[admin] the fixture rows have exactly the shape states_list() returns', $real === [] || array_keys($real[0]) === array_keys($listRows[0]));
     $listAnswer = ['states' => $listRows, 'count' => count($listRows), 'max_rows' => STATES_MAX_ROWS, 'schema' => states_schema_status(),
-        'field_label' => 'State', 'label_lang' => 'en', 'languages' => ['en'], 'customized' => false];
+        'field_label' => 'State', 'label_lang' => 'en', 'languages' => ['en', 'fr'],
+        'label_by_lang' => ['en' => 'State', 'fr' => 'État/Région'], 'customized' => false];
     $listAnswer['schema']['duplicates'] = [];
     $listAnswer['schema']['utf8mb4'] = true;
     $listAnswer['schema']['unique_code'] = true;
@@ -201,6 +207,10 @@ if (!$jsdomOk || !$haveDb) {
                                               ['label' => 'Members', 'table' => 'member', 'column' => 'state', 'count' => 1]];
         $preview['records_using_removed'] = 3;
     }
+    // Inject a synthetic rename of a USED code so the replace-rename warning renders.
+    $preview['renames'][] = ['id' => 999500, 'code' => 'UK', 'old_code' => 'UK', 'old_name' => 'England', 'new_name' => 'Uttarakhand',
+        'usage' => 4, 'usage_by' => [['label' => 'Incidents', 'table' => 'ticket', 'column' => 'state', 'count' => 4]]];
+    $preview['records_renamed_in_use'] = 4;
     $bad = states_csv_parse("code,name\nON,Ontario\non,Again\n");
     $good = states_csv_parse("code,name\nON,Ontario\n");
     $goodPreview = states_preview($good['rows'], 'replace') + ['ok' => true, 'errors' => [], 'target_count' => 1];

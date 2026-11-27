@@ -334,6 +334,23 @@ function sched_job_registry(): array {
             'purpose'    => 'Retries failed webhook deliveries with exponential backoff, and dead-letters ones that '
                           . 'ran out of attempts or waited longer than the stale-work cutoff',
         ],
+        // GH#148 (2026-10-20) -- towing / roadside plate retention. Daily, same
+        // grace as the other purge jobs (3 intervals): a once-a-day sweep that
+        // is a couple of days late deserves attention sooner than "15 missed
+        // daily runs" would imply. Clears the licence-plate + vehicle fields on
+        // dispatch rows older than vendor_plate_retention_days; it never
+        // deletes a dispatch row or touches the append-only ledger. Required
+        // only once an admin sets a nonzero window (default is 0 = off).
+        'vendor_plate_purge' => [
+            'label'      => 'Towing / roadside plate retention purge',
+            'interval_s' => 86400,
+            'grace_mult' => 3,
+            'unit'       => $unit('ticketscad-vendor-plate-purge.timer'),
+            'unit_kind'  => $kind,
+            'command'    => $win ? 'php tools\\vendor_plate_purge_tick.php' : 'php tools/vendor_plate_purge_tick.php',
+            'purpose'    => 'Clears the licence plate and vehicle-identifying fields on towing / roadside dispatch rows '
+                          . 'older than the configured retention window (the dispatch row and ledger history are kept)',
+        ],
     ];
 }
 
@@ -681,6 +698,24 @@ function sched_job_required(string $jobKey): array {
             }
         } catch (Exception $e) {}
         return ['required' => false, 'why' => 'No failed webhook deliveries are waiting to be retried'];
+    }
+
+    if ($jobKey === 'vendor_plate_purge') {
+        // Same "shipped default configuration is not evidence of use"
+        // discipline as every job above: vendor_plate_retention_days defaults
+        // to 0 (disabled) on every install, so a fresh/CI install must never
+        // report this job critical just because nothing is scheduling it. The
+        // moment an admin sets a nonzero window, this turns required — and if
+        // nothing is running the job, critical — which is exactly when it
+        // matters.
+        $on = false;
+        try {
+            require_once __DIR__ . '/vendor-plate-retention.php';
+            $on = vendor_plate_retention_days() > 0;
+        } catch (Exception $e) {}
+        return $on
+            ? ['required' => true,  'why' => 'Towing / roadside plate retention is enabled']
+            : ['required' => false, 'why' => 'Towing / roadside plate retention is disabled (Settings → Service Providers (Towing) → Settings)'];
     }
 
     return ['required' => false, 'why' => 'Unknown job'];

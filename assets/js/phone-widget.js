@@ -42,6 +42,9 @@
     var BANNER_CHANNEL = 'ticketscad-phone';
     var CLAIM_URL = 'api/inbound-calls.php?action=claim_by_provider';
     var CLAIM_RETRY_MS = 1500;
+    // GH#108 ephemeral credentials: how soon to retry after a failed refresh
+    // fetch, without tearing down a still-working registration.
+    var CRED_REFRESH_RETRY_MS = 5000;
 
     var pageName = Logic ? Logic.pageNameFromPath(window.location.pathname) : '';
     var myId = 'pw' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -69,6 +72,8 @@
     var bannerWired = false;
     var flashIv = null;
     var baseTitle = '';
+    var credRefreshTimer = null;          // GH#108: ephemeral-credential refresh (static mode never sets it)
+    var credRetriedAfterAuthFail = false; // one re-fetch+retry on an auth rejection, reset on success
 
     var dragState = { active: false, startX: 0, startY: 0, origLeft: 0, origTop: 0 };
     var resizeState = { active: false, startX: 0, startY: 0, origW: 0, origH: 0 };
@@ -202,6 +207,32 @@
         } else {
             generalBtn.classList.add('d-none');
         }
+        updateEmergencyNote();
+    }
+
+    // ── Emergency-calling courtesy note (GH#108, panel-review C2) ────────
+    // Shown only when the install-wide restriction is ON (myExtension.restrict_emergency
+    // from the my_extension payload). It tells the operator this phone will NOT
+    // reach emergency services, and lists the configured numbers. This is a
+    // COURTESY INDICATION, never a security boundary: TicketsCAD does not route
+    // or block calls -- FreePBX's dial plan does, and it is the real enforcement
+    // point (see docs/PHONE-TELEPHONY-GUIDE.md). In the default (unrestricted)
+    // state, and on any install without the field, the note stays hidden.
+    function updateEmergencyNote() {
+        var note = widget.querySelector('#phoneEmergencyNote');
+        if (!note) { return; }
+        var restricted = !!(myExtension && myExtension.bound && myExtension.restrict_emergency);
+        if (!restricted) { note.classList.add('d-none'); return; }
+        var textEl = widget.querySelector('#phoneEmergencyNoteText');
+        if (textEl) {
+            var nums = (myExtension.emergency_numbers instanceof Array)
+                ? myExtension.emergency_numbers.join(', ') : '';
+            // textContent, never innerHTML -- the numbers come from a server setting.
+            textEl.textContent = 'This phone cannot dial emergency services'
+                + (nums ? ' (' + nums + ')' : '')
+                + '. Use another phone for emergencies.';
+        }
+        note.classList.remove('d-none');
     }
 
     /** Decide, from the settings payload, what this page's widget does. */
@@ -282,8 +313,56 @@
         if (rec && rec.id === myId) { storageRemove(Logic.REGISTRANT_KEY); }
     }
 
+    // ── Ephemeral-credential refresh (GH#108, panel-review section 4) ────
+    // In ephemeral mode my_extension returns a short-TTL credential with an
+    // expires_at; the stored password never leaves the server, so this browser
+    // re-fetches a fresh credential and re-REGISTERs before the current one
+    // dies. In static mode no expires_at is sent and none of this runs, so the
+    // widget behaves exactly as it did before this change.
+    function clearCredRefresh() {
+        if (credRefreshTimer) { clearTimeout(credRefreshTimer); credRefreshTimer = null; }
+    }
+
+    function scheduleCredRefresh() {
+        clearCredRefresh();
+        if (!Logic || !myExtension || !myExtension.expires_at) { return; }
+        var delay = Logic.credentialRefreshDelayMs(myExtension.expires_at, Math.floor(Date.now() / 1000));
+        if (delay === null) { return; }
+        credRefreshTimer = setTimeout(doCredRefresh, delay);
+    }
+
+    function doCredRefresh() {
+        credRefreshTimer = null;
+        var token = getWorkstationToken();
+        fetch('api/phone-extensions.php?action=my_extension&workstation_token=' + encodeURIComponent(token), {
+            credentials: 'same-origin'
+        }).then(function (r) {
+            if (!r.ok) { throw new Error('HTTP ' + r.status); }
+            return r.json();
+        }).then(function (data) {
+            if (!data || !data.bound || !data.expires_at) {
+                // Switched to static (or the binding was removed) under us, so
+                // hand off to applyState() instead of forcing a re-register.
+                myExtension = data || null;
+                applyState();
+                return;
+            }
+            myExtension = data;
+            if (ua) {
+                startRegistration();     // re-register with the fresh credential; reschedules the next refresh
+            } else {
+                scheduleCredRefresh();   // not the registrant right now; keep a timer so the credential stays current
+            }
+        }).catch(function () {
+            // A failed refresh must not tear down a working registration: keep
+            // the current credential and try again shortly.
+            credRefreshTimer = setTimeout(doCredRefresh, CRED_REFRESH_RETRY_MS);
+        });
+    }
+
     // ── Registration ────────────────────────────────────────────────────
     function stopRegistration() {
+        clearCredRefresh();
         if (ua) {
             try { ua.stop(); } catch (e) { /* already stopped */ }
             ua = null;
@@ -336,11 +415,24 @@
         function current() { return ua === thisUa; }
         thisUa.on('connecting', function () { if (current()) { setRegistrationStatus('connecting', 'Connecting…'); } });
         thisUa.on('registered', function () {
-            if (current()) { setRegistrationStatus('connected', 'Registered as ' + myExtension.extension); }
+            if (current()) {
+                credRetriedAfterAuthFail = false;
+                setRegistrationStatus('connected', 'Registered as ' + myExtension.extension);
+            }
         });
         thisUa.on('unregistered', function () { if (current()) { setRegistrationStatus('disconnected', 'Unregistered'); } });
         thisUa.on('registrationFailed', function (e) {
-            if (current()) { setRegistrationStatus('disconnected', Logic.describeRegistrationFailure(e && e.cause, wssUrl)); }
+            if (!current()) { return; }
+            var cause = e && e.cause;
+            setRegistrationStatus('disconnected', Logic.describeRegistrationFailure(cause, wssUrl));
+            // GH#108: in ephemeral mode an auth rejection may simply mean the
+            // credential expired (e.g. this window held a stale one when it took
+            // over the registration). Fetch a fresh one and retry ONCE, rather
+            // than sitting dead until the next scheduled refresh.
+            if (myExtension && myExtension.expires_at && Logic.isAuthFailure(cause) && !credRetriedAfterAuthFail) {
+                credRetriedAfterAuthFail = true;
+                doCredRefresh();
+            }
         });
         thisUa.on('disconnected', function () {
             if (current()) { setRegistrationStatus('disconnected', Logic.describeDisconnect(wssUrl)); }
@@ -350,6 +442,9 @@
         });
 
         thisUa.start();
+        // Ephemeral mode only (static mode has no expires_at): keep the
+        // credential fresh for as long as this window holds the registration.
+        scheduleCredRefresh();
     }
 
     // ── Call session handling ────────────────────────────────────────

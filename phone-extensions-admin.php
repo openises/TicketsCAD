@@ -14,6 +14,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/inc/i18n.php';
 require_once __DIR__ . '/inc/rbac.php';
+require_once __DIR__ . '/inc/phone-extensions.php'; // GH#108 C2: render the emergency-call policy server-side
 
 require_once __DIR__ . '/inc/session-bootstrap.php';
 sess_bootstrap_auto();
@@ -168,6 +169,49 @@ $csrf     = csrf_token();
                 </div>
                 <div class="col-md-2">
                     <button class="btn btn-sm btn-primary w-100" id="peBtnSaveInternal">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- GH#108 (panel-review C2) -- emergency-call policy. Install-wide, so it
+         lives in this action.manage_config block. Every extension can dial
+         emergency numbers BY DEFAULT; the restriction below is opt-in and OFF by
+         default. TicketsCAD surfaces the policy and warns; FreePBX's dial plan is
+         the real routing boundary (and sets each device's caller-ID / dispatchable
+         location for the RAY BAUM'S Act). -->
+    <div class="card mb-3" id="peEmergencyPanel">
+        <div class="card-header"><i class="bi bi-telephone-outbound me-2"></i>Emergency calling (911 / 112 / &hellip;)</div>
+        <div class="card-body">
+            <p class="small text-body-secondary mb-2">
+                By default <strong>every extension can dial emergency services</strong>. These numbers are
+                surfaced to operators and belong in your FreePBX dial plan; <strong>FreePBX, not TicketsCAD,
+                routes the call</strong> and sets each registered device's outbound caller-ID and dispatchable
+                location (RAY BAUM&rsquo;S Act). The on-screen note in the phone is a courtesy reminder, not a
+                security control.
+            </p>
+            <div class="row g-2 align-items-end">
+                <div class="col-md-7">
+                    <label class="form-label form-label-sm mb-0" for="peEmergencyNumbers">Emergency numbers</label>
+                    <input type="text" class="form-control form-control-sm font-monospace" id="peEmergencyNumbers"
+                           placeholder="911, 112">
+                    <div class="form-text">Comma-separated. Add the numbers your region uses &mdash; for example
+                        <code>911</code> (US/Canada), <code>112</code> (EU/much of the world), <code>999</code> (UK),
+                        <code>000</code> (Australia), <code>144</code> (Switzerland, ambulance). Each is 2&ndash;10 of the
+                        digits 0&ndash;9, <code>*</code> or <code>#</code>.</div>
+                </div>
+            </div>
+            <hr class="my-3">
+            <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="peRestrictEmergency">
+                <label class="form-check-label" for="peRestrictEmergency">Restrict emergency calling (not recommended)</label>
+            </div>
+            <!-- Rendered shown/hidden from the saved state by the one canonical
+                 helper; the JS reveals/hides it live as the toggle changes. -->
+            <?php echo phone_emergency_policy_banner_html(phone_restrict_emergency_enabled()); ?>
+            <div class="row g-2 align-items-end">
+                <div class="col-md-2 ms-auto">
+                    <button class="btn btn-sm btn-primary w-100" id="peBtnSaveEmergency">Save</button>
                 </div>
             </div>
         </div>

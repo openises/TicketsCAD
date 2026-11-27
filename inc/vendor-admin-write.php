@@ -19,6 +19,7 @@
 
 require_once __DIR__ . '/vendor-dispatch.php';
 require_once __DIR__ . '/audit.php';   // the AUDIT_* severity constants are used at the call sites below
+require_once __DIR__ . '/vendor-plate-retention.php';  // the plate-retention setting reader/validator + its cap
 
 /** audit_log wrapper that can never break the action it records. */
 function vendor_admin_audit(string $activity, string $targetType, $targetId, string $summary, array $details = [], int $severity = 1): void
@@ -602,6 +603,23 @@ function vendor_settings_save(array $in, array $actor): array
         }
         $clean[$name] = $v;
     }
+    // vendor_plate_retention_days is a NUMBER of days, not an enum, so it is not
+    // in vendor_setting_defs() (which is [default, allowed-values] pairs). Range-
+    // validate it here: a non-negative integer, 0 = disabled, capped at the
+    // 10-year maximum. An empty string means 0 (the form's "leave blank = off").
+    if (array_key_exists('vendor_plate_retention_days', $in)) {
+        $raw = $in['vendor_plate_retention_days'];
+        $raw = is_string($raw) ? trim($raw) : $raw;
+        if ($raw === '' || $raw === null) $raw = '0';
+        if (!is_int($raw) && !(is_string($raw) && ctype_digit($raw))) {
+            return vendor_fail(422, 'validation', 'Plate retention must be a whole number of days (0 = off).');
+        }
+        $d = (int) $raw;
+        if ($d < 0 || $d > VENDOR_PLATE_RETENTION_MAX_DAYS) {
+            return vendor_fail(422, 'validation', 'Plate retention must be between 0 and ' . VENDOR_PLATE_RETENTION_MAX_DAYS . ' days (0 = off).');
+        }
+        $clean['vendor_plate_retention_days'] = (string) $d;
+    }
     $before = []; $after = [];
     try {
         foreach ($clean as $name => $v) {
@@ -640,6 +658,19 @@ function vendor_settings_current(): array
         $v = $stored[$name] ?? $def[0];
         $out[$name] = in_array($v, $def[1], true) ? $v : $def[0];
     }
+    // vendor_plate_retention_days is numeric, not in vendor_setting_defs(); read
+    // it straight from the table too (default '0' = off), clamped to the cap so
+    // a value the generic settings endpoint stored out of range still shows
+    // sanely. Days as a string, matching the enum values' type.
+    $retDays = 0;
+    try {
+        $raw = db_fetch_value("SELECT `value` FROM `{$prefix}settings` WHERE `name` = ?", ['vendor_plate_retention_days']);
+        if ($raw !== false && $raw !== null && $raw !== '') {
+            $d = (int) $raw;
+            if ($d > 0) $retDays = min($d, VENDOR_PLATE_RETENTION_MAX_DAYS);
+        }
+    } catch (Throwable $e) { /* missing settings table → 0 */ }
+    $out['vendor_plate_retention_days'] = (string) $retDays;
     return $out;
 }
 
@@ -741,6 +772,9 @@ function vendor_admin_overview(): array
         'orgs' => $orgChoices['orgs'], 'can_all_agencies' => $orgChoices['can_all_agencies'],
         'counts' => ['providers' => count($provOut), 'lists' => count($listOut)],
         'settings' => vendor_settings_current(),
+        // GH#148 plate retention — the window and how many rows would be cleared
+        // right now, so the Settings tab can show the impact before a change.
+        'plate_retention' => vendor_plate_retention_status(),
     ];
 }
 

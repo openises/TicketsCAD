@@ -309,6 +309,28 @@ $schemaReady = vendor_schema_ready();
                             <div class="form-text">The call is always recorded first, then dialled. Shared with the click-to-dial setting used elsewhere.</div>
                         </div>
                     </div>
+                    <hr>
+                    <div class="fw-semibold small mb-1"><i class="bi bi-shield-lock me-1"></i>Licence plate &amp; vehicle data retention</div>
+                    <div class="row g-3 align-items-start">
+                        <div class="col-md-4">
+                            <label class="form-label form-label-sm mb-0" for="vpSetPlateRetention">Clear vehicle &amp; plate data after</label>
+                            <div class="input-group input-group-sm" style="max-width:12rem">
+                                <input type="number" inputmode="numeric" min="0" max="3650" step="1" class="form-control form-control-sm" id="vpSetPlateRetention" placeholder="0">
+                                <span class="input-group-text">days</span>
+                            </div>
+                        </div>
+                        <div class="col-md-8">
+                            <div class="form-text mt-md-4">
+                                A licence plate is personal data in many places. Enter a number of days to automatically clear the
+                                <strong>vehicle description, licence plate and plate state</strong> from a towing / roadside dispatch
+                                once it is that old. The dispatch itself &mdash; who was called, when, the outcome and the rotation /
+                                fee history &mdash; is kept; only the vehicle-identifying fields are removed.
+                                Leave it at <strong>0</strong> to keep this data until the incident is deleted (the default; nothing is
+                                cleared automatically).
+                                <span id="vpPlateRetentionImpact" class="d-block mt-1"></span>
+                            </div>
+                        </div>
+                    </div>
                     <div class="mt-3"><button type="button" class="btn btn-primary btn-sm" id="vpBtnSaveSettings"><i class="bi bi-save me-1"></i>Save settings</button></div>
                     <div class="small text-body-secondary mt-2 d-none" id="vpSettingsNote"><i class="bi bi-lock me-1"></i>These settings apply to every agency on
                         this install, so only a Super Admin can change them.</div>

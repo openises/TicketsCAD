@@ -83,15 +83,17 @@ if ($method === 'GET') {
     if ($action === 'list') {
         try {
             $lang = i18n_lang();
+            $langs = i18n_available_langs();
             json_response([
-                'states'      => states_list(),
-                'count'       => states_count(),
-                'max_rows'    => STATES_MAX_ROWS,
-                'schema'      => states_schema_status(),
-                'field_label' => states_field_label($lang),
-                'label_lang'  => $lang,
-                'languages'   => i18n_available_langs(),
-                'customized'  => states_is_customized(),
+                'states'        => states_list(),
+                'count'         => states_count(),
+                'max_rows'      => STATES_MAX_ROWS,
+                'schema'        => states_schema_status(),
+                'field_label'   => states_field_label($lang),
+                'label_lang'    => $lang,
+                'languages'     => $langs,
+                'label_by_lang' => states_field_labels_by_lang($langs),
+                'customized'    => states_is_customized(),
             ]);
         } catch (Throwable $e) {
             json_error_safe('Could not read the State / Province list.', $e, 'states.list');
@@ -212,8 +214,18 @@ try {
             break;
 
         case 'set_label':
-            $r = states_set_field_label((string) ($input['label'] ?? ''), (string) ($input['lang'] ?? i18n_lang()));
-            json_response(['ok' => true] + $r);
+            // The wizard's per-language step sends a {lang: label} map; the
+            // page's single Field-label card still sends one label + lang.
+            if (isset($input['labels']) && is_array($input['labels'])) {
+                $map = [];
+                foreach ($input['labels'] as $lang => $label) {
+                    $map[(string) $lang] = (string) $label;
+                }
+                json_response(['ok' => true] + states_set_field_labels($map));
+            } else {
+                $r = states_set_field_label((string) ($input['label'] ?? ''), (string) ($input['lang'] ?? i18n_lang()));
+                json_response(['ok' => true] + $r);
+            }
             break;
 
         default:
